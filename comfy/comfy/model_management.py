@@ -2234,6 +2234,25 @@ def get_free_memory_by_nvml_for_nvidia(dev=None):
         return None
     return memory_info.free
 
+def _sync_aimdo_simple_vram_headroom(reserved_vram):
+    if not comfy.memory_management.aimdo_enabled:
+        return
+
+    try:
+        import comfy_aimdo.control as aimdo_control
+
+        if getattr(aimdo_control, "lib", None) is None:
+            return
+
+        try:
+            aimdo_control.init(simple_vram_headroom=int(reserved_vram))
+        except TypeError:
+            setter = getattr(aimdo_control.lib, "set_simple_vram_headroom", None)
+            if setter is not None:
+                setter(int(reserved_vram))
+    except Exception as e:
+        logging.debug("Unable to update DynamicVRAM reserved headroom: %s", e)
+
 def set_extra_reserved_vram(reserved):
     global EXTRA_RESERVED_VRAM, WINDOWS
 
@@ -2250,11 +2269,13 @@ def set_extra_reserved_vram(reserved):
         if EXTRA_RESERVED_VRAM != default_reserved:
             logging.info(f'reset EXTRA_RESERVED_VRAM={default_reserved / (1024 * 1024)}MB')
         EXTRA_RESERVED_VRAM = default_reserved
+        _sync_aimdo_simple_vram_headroom(default_reserved)
         return
 
     if EXTRA_RESERVED_VRAM != reserved_vram:
         logging.info(f'set EXTRA_RESERVED_VRAM={reserved_vram / (1024 * 1024)}MB')
     EXTRA_RESERVED_VRAM = reserved_vram
+    _sync_aimdo_simple_vram_headroom(reserved_vram)
 
 def get_compute_capability(device):
     if not is_nvidia():
