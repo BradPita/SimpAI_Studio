@@ -241,6 +241,7 @@ PRESET_STORE_ORDER = [
     "Tile",
     "Relight",
     "SD1.5",
+    "ReActor-FaceSwap",
 ]
 
 def _strip_preset_marker(name):

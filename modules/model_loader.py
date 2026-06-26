@@ -79,6 +79,21 @@ def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size
     }
 
 
+def _split_download_urls(url):
+    if isinstance(url, (list, tuple)):
+        raw_items = url
+    else:
+        raw_items = str(url or "").split(",")
+    return [str(item or "").strip().strip("`") for item in raw_items if str(item or "").strip().strip("`")]
+
+
+def _apply_hf_mirror(url):
+    url = str(url or "")
+    if 'HF_MIRROR' in os.environ:
+        return str.replace(url, "huggingface.co", os.environ["HF_MIRROR"].rstrip('/'), 1)
+    return url
+
+
 def cancel_download_task(task_id):
     task_id = str(task_id or "").replace("\\", "/").strip("/")
     if not task_id:
@@ -179,8 +194,7 @@ async def download_file_with_progress(url: str, file_path: str, size: int=0, tas
     logger.info(f'the download file timeout: {timeout}s')
     async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
         try:
-            if 'HF_MIRROR' in os.environ:
-                url = str.replace(url, "huggingface.co", os.environ["HF_MIRROR"].rstrip('/'), 1)
+            url = _apply_hf_mirror(url)
             model_dir = os.path.dirname(file_path)
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir, exist_ok=True)
@@ -301,12 +315,14 @@ def load_file_from_url(
 
     Returns the path to the downloaded file.
     """
-    if 'HF_MIRROR' in os.environ:
-        url = str.replace(url, "huggingface.co", os.environ["HF_MIRROR"].rstrip('/'), 1)
+    download_urls = _split_download_urls(url)
+    if not download_urls:
+        download_urls = [str(url or "")]
+    primary_url = _apply_hf_mirror(download_urls[0])
     if not os.path.exists(model_dir):
         os.makedirs(model_dir, exist_ok=True)
     if not file_name:
-        parts = urlparse(url)
+        parts = urlparse(primary_url)
         file_name = os.path.basename(parts.path)
     cached_file = os.path.abspath(os.path.join(model_dir, file_name))
     effective_task_id = task_id or file_name
@@ -327,9 +343,41 @@ def load_file_from_url(
     if (not cached_file_exists) or cached_file_size_mismatch:
         #logger.info(f'Downloading: "{url}" to {cached_file}')
         logger.info(f'正在下载文件: "{url}"。如果速度慢，建议自行用工具下载后保存到: {cached_file}。')
+        def _download_with_progress_from_urls():
+            last_error = None
+            for candidate_url in download_urls:
+                candidate_url = _apply_hf_mirror(candidate_url)
+                try:
+                    anyio.run(download_file_with_progress, candidate_url, cached_file, expected_size, effective_task_id)
+                    return
+                except DownloadCancelled:
+                    raise
+                except Exception as e:
+                    last_error = e
+                    logger.warning("模型下载地址失败，准备尝试下一个地址: %s", candidate_url)
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("No download URL available")
+
+        def _download_direct_from_urls():
+            last_error = None
+            for candidate_url in download_urls:
+                candidate_url = _apply_hf_mirror(candidate_url)
+                try:
+                    download_url_to_file(candidate_url, cached_file, progress=progress)
+                    shared.modelsinfo.refresh_file('add', cached_file, candidate_url)
+                    _clear_missing_model_list_cache()
+                    return
+                except Exception as e:
+                    last_error = e
+                    logger.warning("模型下载地址失败，准备尝试下一个地址: %s", candidate_url)
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError("No download URL available")
+
         def _download_task():
             try:
-                anyio.run(download_file_with_progress, url, cached_file, expected_size, effective_task_id)
+                _download_with_progress_from_urls()
             except DownloadCancelled as e:
                 print(f'下载任务:{effective_task_id} 已停止: {e}')
             except Exception as e:
@@ -371,11 +419,9 @@ def load_file_from_url(
             thread_pool.submit(_download_task)
         else:
             if cached_file_size_mismatch:
-                anyio.run(download_file_with_progress, url, cached_file, expected_size, effective_task_id)
+                _download_with_progress_from_urls()
             else:
-                download_url_to_file(url, cached_file, progress=progress)
-                shared.modelsinfo.refresh_file('add', cached_file, url)
-                _clear_missing_model_list_cache()
+                _download_direct_from_urls()
     return cached_file
 
 
@@ -431,9 +477,11 @@ def _parse_model_list_entries(raw_model_list):
             parts = model_entry.split(',')
             if len(parts) < 5:
                 continue
-            cata, path_file, size, hash10, url = parts[:5]
+            cata, path_file, size, hash10 = parts[:4]
+            url = ",".join(parts[4:])
         elif isinstance(model_entry, (list, tuple)) and len(model_entry) >= 5:
-            cata, path_file, size, hash10, url = model_entry[:5]
+            cata, path_file, size, hash10 = model_entry[:4]
+            url = ",".join(str(part) for part in model_entry[4:] if str(part).strip())
         else:
             continue
 

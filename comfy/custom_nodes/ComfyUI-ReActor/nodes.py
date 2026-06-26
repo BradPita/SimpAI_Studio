@@ -33,6 +33,7 @@ from scripts.reactor_faceswap import (
     providers
 )
 from scripts.reactor_swapper import (
+    _reactor_progress,
     unload_all_models,
 )
 from scripts.reactor_logger import logger
@@ -260,84 +261,82 @@ class reactor:
 
             out_images = []
 
-            for i in range(total_images):
+            with _reactor_progress(total_images, "Restore frames") as restore_progress:
+                for i in range(total_images):
+                    cur_image_np = image_np[i,:, :, ::-1]
 
-                if total_images > 1:
-                    logger.status(f"Restoring {i+1}")
+                    original_resolution = cur_image_np.shape[0:2]
 
-                cur_image_np = image_np[i,:, :, ::-1]
+                    if facerestore_model is None or self.face_helper is None:
+                        return result
 
-                original_resolution = cur_image_np.shape[0:2]
+                    self.face_helper.clean_all()
+                    self.face_helper.read_image(cur_image_np)
+                    self.face_helper.get_face_landmarks_5(only_center_face=False, resize=640, eye_dist_threshold=5)
+                    self.face_helper.align_warp_face()
 
-                if facerestore_model is None or self.face_helper is None:
-                    return result
+                    restored_face = None
 
-                self.face_helper.clean_all()
-                self.face_helper.read_image(cur_image_np)
-                self.face_helper.get_face_landmarks_5(only_center_face=False, resize=640, eye_dist_threshold=5)
-                self.face_helper.align_warp_face()
+                    for idx, cropped_face in enumerate(self.face_helper.cropped_faces):
 
-                restored_face = None
+                        # if ".pth" in face_restore_model:
+                        cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
+                        normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
+                        cropped_face_t = cropped_face_t.unsqueeze(0).to(device)
 
-                for idx, cropped_face in enumerate(self.face_helper.cropped_faces):
+                        try:
 
-                    # if ".pth" in face_restore_model:
-                    cropped_face_t = img2tensor(cropped_face / 255., bgr2rgb=True, float32=True)
-                    normalize(cropped_face_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-                    cropped_face_t = cropped_face_t.unsqueeze(0).to(device)
+                            with torch.no_grad():
 
-                    try:
+                                if ".onnx" in face_restore_model: # ONNX models
 
-                        with torch.no_grad():
+                                    for ort_session_input in ort_session.get_inputs():
+                                        if ort_session_input.name == "input":
+                                            cropped_face_prep = prepare_cropped_face(cropped_face)
+                                            ort_session_inputs[ort_session_input.name] = cropped_face_prep
+                                        if ort_session_input.name == "weight":
+                                            weight = np.array([ 1 ], dtype = np.double)
+                                            ort_session_inputs[ort_session_input.name] = weight
 
-                            if ".onnx" in face_restore_model: # ONNX models
+                                    output = ort_session.run(None, ort_session_inputs)[0][0]
+                                    restored_face = normalize_cropped_face(output)
 
-                                for ort_session_input in ort_session.get_inputs():
-                                    if ort_session_input.name == "input":
-                                        cropped_face_prep = prepare_cropped_face(cropped_face)
-                                        ort_session_inputs[ort_session_input.name] = cropped_face_prep
-                                    if ort_session_input.name == "weight":
-                                        weight = np.array([ 1 ], dtype = np.double)
-                                        ort_session_inputs[ort_session_input.name] = weight
+                                else: # PTH models
 
-                                output = ort_session.run(None, ort_session_inputs)[0][0]
-                                restored_face = normalize_cropped_face(output)
+                                    output = facerestore_model(cropped_face_t, w=codeformer_weight)[0] if "codeformer" in face_restore_model.lower() else facerestore_model(cropped_face_t)[0]
+                                    restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
 
-                            else: # PTH models
+                            del output
+                            torch.cuda.empty_cache()
 
-                                output = facerestore_model(cropped_face_t, w=codeformer_weight)[0] if "codeformer" in face_restore_model.lower() else facerestore_model(cropped_face_t)[0]
-                                restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
+                        except Exception as error:
 
-                        del output
-                        torch.cuda.empty_cache()
+                            print(f"\tFailed inference: {error}", file=sys.stderr)
+                            restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
 
-                    except Exception as error:
+                        if face_restore_visibility < 1:
+                            restored_face = cropped_face * (1 - face_restore_visibility) + restored_face * face_restore_visibility
 
-                        print(f"\tFailed inference: {error}", file=sys.stderr)
-                        restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
+                        restored_face = restored_face.astype("uint8")
+                        self.face_helper.add_restored_face(restored_face)
 
-                    if face_restore_visibility < 1:
-                        restored_face = cropped_face * (1 - face_restore_visibility) + restored_face * face_restore_visibility
+                    self.face_helper.get_inverse_affine(None)
 
-                    restored_face = restored_face.astype("uint8")
-                    self.face_helper.add_restored_face(restored_face)
+                    restored_img = self.face_helper.paste_faces_to_input_image()
+                    restored_img = restored_img[:, :, ::-1]
 
-                self.face_helper.get_inverse_affine(None)
+                    if original_resolution != restored_img.shape[0:2]:
+                        restored_img = cv2.resize(restored_img, (0, 0), fx=original_resolution[1]/restored_img.shape[1], fy=original_resolution[0]/restored_img.shape[0], interpolation=cv2.INTER_AREA)
 
-                restored_img = self.face_helper.paste_faces_to_input_image()
-                restored_img = restored_img[:, :, ::-1]
+                    self.face_helper.clean_all()
 
-                if original_resolution != restored_img.shape[0:2]:
-                    restored_img = cv2.resize(restored_img, (0, 0), fx=original_resolution[1]/restored_img.shape[1], fy=original_resolution[0]/restored_img.shape[0], interpolation=cv2.INTER_AREA)
+                    # out_images[i] = restored_img
+                    out_images.append(restored_img)
+                    restore_progress.update(1)
 
-                self.face_helper.clean_all()
-
-                # out_images[i] = restored_img
-                out_images.append(restored_img)
-
-                if state.interrupted or model_management.processing_interrupted():
-                    logger.status("Interrupted by User")
-                    return input_image
+                    if state.interrupted or model_management.processing_interrupted():
+                        logger.status("Interrupted by User")
+                        return input_image
 
             restored_img_np = np.array(out_images).astype(np.float32) / 255.0
             restored_img_tensor = torch.from_numpy(restored_img_np)

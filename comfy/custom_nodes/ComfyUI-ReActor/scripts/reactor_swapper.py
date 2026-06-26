@@ -1,4 +1,6 @@
 import glob
+import ctypes
+import logging
 import os
 import shutil
 from typing import List, Union
@@ -6,8 +8,10 @@ from typing import List, Union
 import cv2
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 import insightface
+import onnxruntime
 from insightface.app.common import Face
 # try:
 #     import torch.cuda as cuda
@@ -31,19 +35,65 @@ import warnings
 np.warnings = warnings
 np.warnings.filterwarnings('ignore')
 
-# PROVIDERS
-try:
-    if torch.cuda.is_available():
-        providers = ["CUDAExecutionProvider"]
-    elif torch.backends.mps.is_available():
-        providers = ["CoreMLExecutionProvider"]
-    elif hasattr(torch,'dml') or hasattr(torch,'privateuseone'):
-        providers = ["ROCMExecutionProvider"]
-    else:
-        providers = ["CPUExecutionProvider"]
-except Exception as e:
-    logger.debug(f"ExecutionProviderError: {e}.\nEP is set to CPU.")
-    providers = ["CPUExecutionProvider"]
+
+def _reactor_progress(total, desc):
+    status_level = getattr(logging, "STATUS", logging.INFO + 5)
+    return tqdm(
+        total=total,
+        desc=f"[ReActor] {desc}",
+        unit="frame",
+        dynamic_ncols=True,
+        mininterval=0.3,
+        ascii=True,
+        leave=True,
+        disable=total <= 1 or not logger.isEnabledFor(status_level),
+    )
+
+def _with_cpu_provider(provider):
+    if provider == "CPUExecutionProvider":
+        return [provider]
+    return [provider, "CPUExecutionProvider"]
+
+
+def _missing_windows_cuda12_dlls():
+    if os.name != "nt":
+        return []
+
+    required_dlls = (
+        "cublasLt64_12.dll",
+        "cublas64_12.dll",
+        "cudart64_12.dll",
+    )
+    missing = []
+    for dll_name in required_dlls:
+        try:
+            ctypes.WinDLL(dll_name)
+        except OSError:
+            missing.append(dll_name)
+    return missing
+
+
+def _select_ort_providers():
+    try:
+        available = set(onnxruntime.get_available_providers())
+        if torch.cuda.is_available() and "CUDAExecutionProvider" in available:
+            missing = _missing_windows_cuda12_dlls()
+            if not missing:
+                return _with_cpu_provider("CUDAExecutionProvider")
+            logger.warning(
+                "ONNXRuntime CUDA provider disabled: missing %s. ReActor will use CPUExecutionProvider.",
+                ", ".join(missing),
+            )
+        elif torch.backends.mps.is_available() and "CoreMLExecutionProvider" in available:
+            return _with_cpu_provider("CoreMLExecutionProvider")
+        elif (hasattr(torch, 'dml') or hasattr(torch, 'privateuseone')) and "ROCMExecutionProvider" in available:
+            return _with_cpu_provider("ROCMExecutionProvider")
+    except Exception as e:
+        logger.debug(f"ExecutionProviderError: {e}.\nEP is set to CPU.")
+    return ["CPUExecutionProvider"]
+
+
+providers = _select_ort_providers()
 # if cuda is not None:
 #     if cuda.is_available():
 #         providers = ["CUDAExecutionProvider"]
@@ -545,47 +595,42 @@ def swap_face_many(
         if source_faces is not None:
 
             target_faces = []
-            for i, target_img in enumerate(target_imgs):
-                if state.interrupted or model_management.processing_interrupted():
-                    logger.status("Interrupted by User")
-                    break
-                
-                target_image_md5hash = get_image_md5hash(target_img)
-                if len(TARGET_IMAGE_LIST_HASH) == 0:
-                    TARGET_IMAGE_LIST_HASH = [target_image_md5hash]
-                    target_image_same = False
-                elif len(TARGET_IMAGE_LIST_HASH) == i:
-                    TARGET_IMAGE_LIST_HASH.append(target_image_md5hash)
-                    target_image_same = False
-                else:
-                    target_image_same = True if TARGET_IMAGE_LIST_HASH[i] == target_image_md5hash else False
-                    if not target_image_same:
-                        TARGET_IMAGE_LIST_HASH[i] = target_image_md5hash
-                
-                logger.info("(Image %s) Target Image MD5 Hash = %s", i, TARGET_IMAGE_LIST_HASH[i])
-                logger.info("(Image %s) Target Image the Same? %s", i, target_image_same)
+            with _reactor_progress(len(target_imgs), "Analyze target frames") as analyze_progress:
+                for i, target_img in enumerate(target_imgs):
+                    if state.interrupted or model_management.processing_interrupted():
+                        logger.status("Interrupted by User")
+                        break
 
-                if len(TARGET_FACES_LIST) == 0:
-                    logger.status(f"Analyzing Target Image {i}...")
-                    target_face = analyze_faces(target_img)
-                    TARGET_FACES_LIST = [target_face]
-                elif len(TARGET_FACES_LIST) == i and not target_image_same:
-                    logger.status(f"Analyzing Target Image {i}...")
-                    target_face = analyze_faces(target_img)
-                    TARGET_FACES_LIST.append(target_face)
-                elif len(TARGET_FACES_LIST) != i and not target_image_same:
-                    logger.status(f"Analyzing Target Image {i}...")
-                    target_face = analyze_faces(target_img)
-                    TARGET_FACES_LIST[i] = target_face
-                elif target_image_same:
-                    logger.status("(Image %s) Using Hashed Target Face(s) Model...", i)
-                    target_face = TARGET_FACES_LIST[i]
-                
+                    target_image_md5hash = get_image_md5hash(target_img)
+                    if len(TARGET_IMAGE_LIST_HASH) == 0:
+                        TARGET_IMAGE_LIST_HASH = [target_image_md5hash]
+                        target_image_same = False
+                    elif len(TARGET_IMAGE_LIST_HASH) == i:
+                        TARGET_IMAGE_LIST_HASH.append(target_image_md5hash)
+                        target_image_same = False
+                    else:
+                        target_image_same = True if TARGET_IMAGE_LIST_HASH[i] == target_image_md5hash else False
+                        if not target_image_same:
+                            TARGET_IMAGE_LIST_HASH[i] = target_image_md5hash
 
-                # logger.status(f"Analyzing Target Image {i}...")
-                # target_face = analyze_faces(target_img)
-                if target_face is not None:
-                    target_faces.append(target_face)
+                    logger.info("(Image %s) Target Image MD5 Hash = %s", i, TARGET_IMAGE_LIST_HASH[i])
+                    logger.info("(Image %s) Target Image the Same? %s", i, target_image_same)
+
+                    if len(TARGET_FACES_LIST) == 0:
+                        target_face = analyze_faces(target_img)
+                        TARGET_FACES_LIST = [target_face]
+                    elif len(TARGET_FACES_LIST) == i and not target_image_same:
+                        target_face = analyze_faces(target_img)
+                        TARGET_FACES_LIST.append(target_face)
+                    elif len(TARGET_FACES_LIST) != i and not target_image_same:
+                        target_face = analyze_faces(target_img)
+                        TARGET_FACES_LIST[i] = target_face
+                    elif target_image_same:
+                        target_face = TARGET_FACES_LIST[i]
+
+                    if target_face is not None:
+                        target_faces.append(target_face)
+                    analyze_progress.update(1)
 
             # No use in trying to swap faces if no faces are found, enhancement
             if len(target_faces) == 0:
@@ -609,45 +654,51 @@ def swap_face_many(
 
                 source_face_idx = 0
 
-                for face_num in faces_index:
-                    # No use in trying to swap faces if no further faces are found, enhancement
-                    if face_num >= len(target_faces):
-                        logger.status("Checked all existing target faces, skipping swapping...")
-                        break
+                if face_boost_enabled:
+                    logger.status("Face Boost is enabled")
 
-                    if len(source_faces_index) > 1 and source_face_idx > 0:
-                        source_face, src_wrong_gender = get_face_single(source_img, source_faces, face_index=source_faces_index[source_face_idx], gender_source=gender_source, order=faces_order[1])
-                    source_face_idx += 1
+                swap_total = len(faces_index) * len(results)
+                with _reactor_progress(swap_total, "Swap frames") as swap_progress:
+                    for face_num in faces_index:
+                        # No use in trying to swap faces if no further faces are found, enhancement
+                        if face_num >= len(target_faces):
+                            logger.status("Checked all existing target faces, skipping swapping...")
+                            break
 
-                    if source_face is not None and src_wrong_gender == 0:
-                        # Reading results to make current face swap on a previous face result
-                        for i, (target_img, target_face) in enumerate(zip(results, target_faces)):
-                            target_face_single, wrong_gender = get_face_single(target_img, target_face, face_index=face_num, gender_target=gender_target, order=faces_order[0])
-                            if target_face_single is not None and wrong_gender == 0:
-                                result = target_img
-                                logger.status(f"Swapping {i}...")
-                                if face_boost_enabled:
-                                    logger.status(f"Face Boost is enabled")
-                                    bgr_fake, M = face_swapper.get(target_img, target_face_single, source_face, paste_back=False)
-                                    bgr_fake, scale = restorer.get_restored_face(bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
-                                    M *= scale
-                                    result = swapper.in_swap(target_img, bgr_fake, M)
-                                else:
-                                    # logger.status(f"Swapping as-is")
-                                    result = face_swapper.get(target_img, target_face_single, source_face)
-                                results[i] = result
-                            elif wrong_gender == 1:
-                                wrong_gender = 0
-                                logger.status("Wrong target gender detected")
-                                continue
-                            else:
-                                logger.status(f"No target face found for {face_num}")
-                    elif src_wrong_gender == 1:
-                        src_wrong_gender = 0
-                        logger.status("Wrong source gender detected")
-                        continue
-                    else:
-                        logger.status(f"No source face found for face number {source_face_idx}.")
+                        if len(source_faces_index) > 1 and source_face_idx > 0:
+                            source_face, src_wrong_gender = get_face_single(source_img, source_faces, face_index=source_faces_index[source_face_idx], gender_source=gender_source, order=faces_order[1])
+                        source_face_idx += 1
+
+                        if source_face is not None and src_wrong_gender == 0:
+                            # Reading results to make current face swap on a previous face result
+                            for i, (target_img, target_face) in enumerate(zip(results, target_faces)):
+                                try:
+                                    target_face_single, wrong_gender = get_face_single(target_img, target_face, face_index=face_num, gender_target=gender_target, order=faces_order[0])
+                                    if target_face_single is not None and wrong_gender == 0:
+                                        result = target_img
+                                        if face_boost_enabled:
+                                            bgr_fake, M = face_swapper.get(target_img, target_face_single, source_face, paste_back=False)
+                                            bgr_fake, scale = restorer.get_restored_face(bgr_fake, face_restore_model, face_restore_visibility, codeformer_weight, interpolation)
+                                            M *= scale
+                                            result = swapper.in_swap(target_img, bgr_fake, M)
+                                        else:
+                                            # logger.status(f"Swapping as-is")
+                                            result = face_swapper.get(target_img, target_face_single, source_face)
+                                        results[i] = result
+                                    elif wrong_gender == 1:
+                                        wrong_gender = 0
+                                        logger.status("Wrong target gender detected")
+                                        continue
+                                    else:
+                                        logger.status(f"No target face found for {face_num}")
+                                finally:
+                                    swap_progress.update(1)
+                        elif src_wrong_gender == 1:
+                            src_wrong_gender = 0
+                            logger.status("Wrong source gender detected")
+                            continue
+                        else:
+                            logger.status(f"No source face found for face number {source_face_idx}.")
 
                 result_images = [Image.fromarray(cv2.cvtColor(result, cv2.COLOR_BGR2RGB)) for result in results]
 

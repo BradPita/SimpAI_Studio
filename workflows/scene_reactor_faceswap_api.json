@@ -1,0 +1,155 @@
+{
+  "74": {
+    "inputs": {
+      "enabled": true,
+      "swap_model": "inswapper_128.onnx",
+      "facedetection": "retinaface_resnet50",
+      "face_restore_model": "GFPGANv1.4.pth",
+      "face_restore_visibility": [
+        "83",
+        12
+      ],
+      "codeformer_weight": [
+        "83",
+        13
+      ],
+      "detect_gender_input": "no",
+      "detect_gender_source": "no",
+      "input_faces_index": [
+        "88",
+        0
+      ],
+      "source_faces_index": [
+        "83",
+        1
+      ],
+      "console_log_level": 1,
+      "input_image": [
+        "80",
+        0
+      ],
+      "source_image": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "ReActorFaceSwap",
+    "_meta": {
+      "title": "ReActor 🌌 Fast Face Swap"
+    }
+  },
+  "78": {
+    "inputs": {
+      "image_name": [
+        "83",
+        2
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "LoadInputImage"
+    }
+  },
+  "80": {
+    "inputs": {
+      "video": "example.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "82": {
+    "inputs": {
+      "video_info": [
+        "80",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoLoaded",
+    "_meta": {
+      "title": "Video Info (Loaded) 🎥🅥🅗🅢"
+    }
+  },
+  "83": {
+    "inputs": {
+      "prompt": "0",
+      "additional_prompt": "0",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 512,
+      "height": 512,
+      "cfg": 8,
+      "steps": 20,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 1,
+      "var_number4": 0.5,
+      "var_number5": 0,
+      "var_number6": 0,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 0
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "84": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": [
+        "82",
+        0
+      ],
+      "crf": 19,
+      "images": [
+        "74",
+        0
+      ]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {
+      "title": "SaveVideoWebsocket"
+    }
+  },
+  "88": {
+    "inputs": {
+      "value": [
+        "83",
+        0
+      ],
+      "trim_empty_lines": true
+    },
+    "class_type": "CodeableString",
+    "_meta": {
+      "title": "Codeable String"
+    }
+  }
+}
