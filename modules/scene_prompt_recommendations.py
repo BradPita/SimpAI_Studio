@@ -340,49 +340,325 @@ RANDOM_FALLBACK_CHARACTERS = [
 
 RANDOM_PROMPT_NSFW_PROFILES = [
     {
-        "id": "dev_nsfw_lingerie_room",
+        "id": "dev_nsfw_pair_bedroom",
+        "weight": 3,
+        "subject_id": "duo",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.25,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["sex", "vaginal", "cum"],
+        "tags": ["1girl", "1boy", "sex", "vaginal"],
+        "setting": [
+            ["bedroom", "bed", "bed_sheet"],
+            ["couch", "indoors", "night"],
+            ["shower", "wet", "tile_floor"],
+            ["table", "indoors", "lamp"],
+        ],
+        "pose": [["missionary_position", "legs_up"], ["cowgirl_position", "straddling"]],
+        "action": [["sex", "vaginal", "penetration", "grabbing_hips"], ["cowgirl_position", "vaginal", "penetration", "straddling"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "half-closed_eyes", "heavy_breathing"]],
+        "body_detail": [["pussy", "penis", "nipples", "wet_pussy"], ["cum", "cum_on_body", "pussy", "penis"]],
+        "finish_detail": [["cum", "cum_in_pussy", "cumdrip"], ["after_sex", "cum_on_breasts", "cum_on_body"]],
+        "lighting": [["warm_lighting", "depth_of_field"], ["low_light", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_pair_from_behind",
+        "weight": 3,
+        "subject_id": "duo",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.25,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["sex_from_behind", "vaginal", "cum"],
+        "tags": ["1girl", "1boy", "sex", "sex_from_behind"],
+        "setting": [
+            ["bedroom", "bed", "pillow"],
+            ["shower", "wet", "tile_wall"],
+            ["kitchen", "counter", "indoors"],
+            ["car_interior", "night", "window"],
+        ],
+        "pose": [["sex_from_behind", "on_all_fours"], ["doggystyle", "ass_focus"]],
+        "action": [["sex_from_behind", "vaginal", "penetration", "grabbing_hips"], ["doggystyle", "spread_legs", "penetration"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "heavy_breathing", "tears"]],
+        "body_detail": [["pussy", "penis", "ass", "wet_pussy"], ["cum", "cum_on_ass", "nipples", "pussy"]],
+        "finish_detail": [["cum", "cum_in_pussy", "cumdrip"], ["cum_on_ass", "after_sex", "cum_on_body"]],
+        "lighting": [["warm_lighting", "soft_shadow"], ["low_light", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_pair_oral",
+        "weight": 3,
+        "subject_id": "duo",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.25,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["fellatio", "cum"],
+        "tags": ["1girl", "1boy", "fellatio"],
+        "setting": [
+            ["bedroom", "bed", "night"],
+            ["indoors", "couch", "lamp"],
+            ["office_chair", "desk", "indoors"],
+            ["car_interior", "night", "window"],
+        ],
+        "pose": [["kneeling", "looking_up"], ["sitting", "from_above"]],
+        "action": [["fellatio", "penis", "saliva"], ["deepthroat", "saliva", "handjob"]],
+        "expression": [["open_mouth", "blush", "half-closed_eyes"], ["ahegao", "tears", "drooling"]],
+        "body_detail": [["penis", "saliva"], ["breasts", "nipples"]],
+        "finish_detail": [["cum", "cum_on_face", "cum_on_tongue"], ["cum_in_mouth", "after_sex", "drooling"]],
+        "lighting": [["warm_lighting", "depth_of_field"], ["soft_lighting", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_yuri_pair",
+        "weight": 2,
         "subject_id": "solo_girl",
-        "trigger_tags": ["lingerie"],
-        "tags": ["1girl", "solo", "mature_female", "lingerie"],
-        "setting": [["bedroom", "bed", "curtains"], ["indoors", "window", "bed_sheet"]],
-        "pose": [["sitting", "looking_at_viewer"], ["lying", "looking_at_viewer"]],
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["yuri", "tribadism", "cunnilingus"],
+        "tags": ["2girls", "yuri", "sex"],
+        "setting": [
+            ["dressing_room", "mirror", "chair"],
+            ["shower", "wet", "tile_floor"],
+            ["couch", "indoors", "night"],
+            ["poolside", "wet", "water"],
+        ],
+        "pose": [["straddling", "breast_press"], ["lying", "legs_intertwined"], ["sitting", "spread_legs"]],
+        "action": [["tribadism", "grinding"], ["cunnilingus", "spread_legs"], ["kissing", "breast_grab"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "heavy_breathing"], ["teasing_smile", "half-closed_eyes"]],
+        "body_detail": [["pussy", "thighs"], ["nipples", "breasts"], ["wet_pussy", "female_ejaculation"]],
+        "finish_detail": [["female_ejaculation", "cum_on_body"], ["after_sex", "messy_hair"], ["wet_pussy", "pussy_juice"]],
+        "lighting": [["soft_lighting", "depth_of_field"], ["rim_lighting", "wet"]],
+    },
+    {
+        "id": "dev_nsfw_toy_private",
+        "weight": 3,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["sex_toy", "vibrator", "orgasm"],
+        "tags": ["1girl", "solo", "nude", "sex_toy"],
+        "setting": [
+            ["bedroom", "bed", "pillow"],
+            ["bathroom", "mirror", "tile_floor"],
+            ["dressing_room", "mirror", "chair"],
+            ["couch", "indoors", "night"],
+        ],
+        "pose": [["lying", "spread_legs"], ["sitting", "legs_apart"]],
+        "action": [["vibrator", "masturbation", "hand_between_legs"], ["dildo", "penetration", "spread_legs"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "heavy_breathing", "drooling"]],
+        "body_detail": [["pussy", "wet_pussy"], ["nipples", "pubic_hair"]],
+        "finish_detail": [["cum", "cum_on_body", "cumdrip"], ["after_sex", "cum_on_thighs", "wet_pussy"]],
         "lighting": [["soft_lighting", "depth_of_field"], ["warm_lighting", "rim_lighting"]],
     },
     {
-        "id": "dev_nsfw_bikini_beach",
+        "id": "dev_nsfw_exposure_outfit",
+        "weight": 3,
         "subject_id": "solo_girl",
-        "trigger_tags": ["bikini"],
-        "tags": ["1girl", "solo", "mature_female", "bikini"],
-        "setting": [["beach", "ocean", "sunset"], ["poolside", "water", "blue_sky"]],
-        "pose": [["standing", "looking_at_viewer"], ["walking", "looking_back"]],
-        "lighting": [["sunlight", "sparkling_water"], ["golden_hour", "backlighting"]],
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.2,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["clothes_lift", "upskirt", "no_panties"],
+        "tags": ["1girl", "solo", "clothes_lift", "no_panties"],
+        "setting": [
+            ["dressing_room", "mirror", "chair"],
+            ["classroom", "desk", "window"],
+            ["backstage", "curtains", "spotlight"],
+            ["stairwell", "indoors", "railing"],
+        ],
+        "pose": [["standing", "skirt_lift"], ["sitting", "spread_legs"], ["bent_over", "looking_back"]],
+        "action": [["clothes_lift", "flashing"], ["upskirt", "pantyshot"], ["shirt_lift", "no_bra"]],
+        "expression": [["embarrassed", "blush", "open_mouth"], ["teasing_smile", "looking_at_viewer"], ["heavy_breathing", "half-closed_eyes"]],
+        "body_detail": [["pussy", "cameltoe"], ["nipples", "underboob"], ["thighs", "ass"]],
+        "finish_detail": [["wet_pussy", "pussy_juice"], ["cum", "cum_on_clothes"], ["after_sex", "disheveled_clothes"]],
+        "lighting": [["soft_lighting", "depth_of_field"], ["spotlight", "dark_background"]],
+    },
+    {
+        "id": "dev_nsfw_wet_see_through",
+        "weight": 3,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["see-through_clothes", "wet_clothes", "nipples"],
+        "tags": ["1girl", "solo", "wet_clothes", "see-through_clothes"],
+        "setting": [
+            ["shower", "wet", "tile_wall"],
+            ["rain", "wet", "night"],
+            ["poolside", "wet", "water"],
+            ["bathroom", "mirror", "steam"],
+        ],
+        "pose": [["standing", "from_side"], ["sitting", "spread_legs"], ["leaning_forward", "looking_at_viewer"]],
+        "action": [["see-through_clothes", "clothes_lift"], ["wet_shirt", "no_bra"], ["panties_aside", "hand_between_legs"]],
+        "expression": [["blush", "open_mouth", "heavy_breathing"], ["orgasm", "half-closed_eyes"], ["teasing_smile", "looking_at_viewer"]],
+        "body_detail": [["nipples", "erect_nipples"], ["pussy", "wet_pussy"], ["underboob", "thighs"]],
+        "finish_detail": [["cum", "cum_on_body"], ["wet_pussy", "pussy_juice"], ["after_sex", "messy_hair"]],
+        "lighting": [["steam", "diffused_light"], ["backlighting", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_after_scene",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["after_sex", "cum", "disheveled_clothes"],
+        "tags": ["1girl", "solo", "after_sex", "cum"],
+        "setting": [
+            ["couch", "indoors", "night"],
+            ["car_interior", "window", "night"],
+            ["dressing_room", "mirror", "chair"],
+            ["bedroom", "bed", "pillow"],
+        ],
+        "pose": [["lying", "spread_legs"], ["sitting", "legs_apart"], ["reclining", "looking_at_viewer"]],
+        "action": [["after_sex", "disheveled_clothes"], ["clothes_lift", "cum"], ["panties_aside", "cumdrip"]],
+        "expression": [["afterglow", "half-closed_eyes", "blush"], ["heavy_breathing", "open_mouth"], ["tired", "messy_hair"]],
+        "body_detail": [["cum_on_body", "pussy"], ["cum_on_breasts", "nipples"], ["wet_pussy", "thighs"]],
+        "finish_detail": [["cum", "cumdrip"], ["cum_on_clothes", "messy_hair"], ["after_sex", "pussy_juice"]],
+        "lighting": [["low_light", "soft_shadow"], ["warm_lighting", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_cosplay_private",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.75,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.2,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["cosplay", "no_panties", "clothes_lift"],
+        "tags": ["1girl", "solo", "cosplay", "no_panties"],
+        "setting": [
+            ["dressing_room", "mirror", "clothes_rack"],
+            ["bedroom", "mirror", "night"],
+            ["photo_studio", "curtains", "spotlight"],
+            ["backstage", "curtains", "chair"],
+        ],
+        "pose": [["standing", "clothes_lift"], ["sitting", "spread_legs"], ["kneeling", "looking_at_viewer"]],
+        "action": [["clothes_lift", "panties_aside"], ["shirt_lift", "no_bra"], ["breast_grab", "skirt_lift"]],
+        "expression": [["teasing_smile", "blush"], ["orgasm", "open_mouth"], ["ahegao", "heavy_breathing"]],
+        "body_detail": [["pussy", "nipples"], ["cameltoe", "thighs"], ["wet_pussy", "underboob"]],
+        "finish_detail": [["cum", "cum_on_body"], ["wet_pussy", "pussy_juice"], ["after_sex", "disheveled_clothes"]],
+        "lighting": [["spotlight", "dark_background"], ["soft_lighting", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_lingerie_private",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.2,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["lingerie", "orgasm", "wet_pussy"],
+        "tags": ["1girl", "solo", "lingerie", "no_panties"],
+        "setting": [
+            ["bedroom", "bed", "curtains"],
+            ["dressing_room", "mirror", "chair"],
+            ["couch", "indoors", "curtains"],
+            ["balcony", "curtains", "night"],
+        ],
+        "pose": [["lying", "spread_legs"], ["sitting", "legs_apart"], ["standing", "clothes_lift"]],
+        "action": [["masturbation", "hand_between_legs", "spread_legs"], ["panties_aside", "wet_pussy"], ["breast_grab", "no_bra"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "half-closed_eyes", "heavy_breathing"]],
+        "body_detail": [["pussy", "nipples"], ["wet_pussy", "thighs"]],
+        "finish_detail": [["cum", "cum_on_body", "cumdrip"], ["after_sex", "cum_on_breasts", "wet_pussy"]],
+        "lighting": [["soft_lighting", "depth_of_field"], ["warm_lighting", "rim_lighting"]],
     },
     {
         "id": "dev_nsfw_onsen",
+        "weight": 2,
         "subject_id": "solo_girl",
-        "trigger_tags": ["nude"],
-        "tags": ["1girl", "solo", "mature_female", "nude"],
-        "setting": [["onsen", "steam", "water"], ["bath", "wet", "towel"]],
-        "pose": [["sitting", "covered_chest"], ["standing", "from_side"]],
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.2,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["nude", "wet_pussy", "orgasm"],
+        "tags": ["1girl", "solo", "nude", "wet"],
+        "setting": [["onsen", "steam", "water"], ["bath", "wet", "towel"], ["shower", "wet", "tile_wall"]],
+        "pose": [["sitting", "spread_legs"], ["lying", "legs_apart"]],
+        "action": [["masturbation", "fingering", "spread_legs"], ["touching_self", "wet_pussy", "legs_apart"], ["breast_grab", "legs_apart"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "half-closed_eyes", "heavy_breathing"]],
+        "body_detail": [["pussy", "nipples"], ["wet_pussy", "pubic_hair"]],
+        "finish_detail": [["cum", "cum_on_body", "cumdrip"], ["after_sex", "cum_on_thighs", "wet_pussy"]],
         "lighting": [["steam", "soft_lighting"], ["mist", "diffused_light"]],
     },
     {
         "id": "dev_nsfw_lounge",
+        "weight": 2,
         "subject_id": "solo_girl",
-        "trigger_tags": ["topless"],
-        "tags": ["1girl", "solo", "mature_female", "topless"],
-        "setting": [["couch", "fireplace", "curtains"], ["indoors", "lamp", "night"]],
-        "pose": [["sitting", "crossed_legs"], ["reclining", "looking_at_viewer"]],
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.2,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["topless", "breast_grab", "orgasm"],
+        "tags": ["1girl", "solo", "topless", "breast_grab"],
+        "setting": [["couch", "fireplace", "curtains"], ["chair", "indoors", "lamp"], ["table", "indoors", "night"]],
+        "pose": [["reclining", "spread_legs"], ["sitting", "legs_apart"]],
+        "action": [["breast_grab", "hand_between_legs"], ["panties_aside", "spread_legs", "touching_self"], ["clothes_lift", "no_bra"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "half-closed_eyes", "heavy_breathing"]],
+        "body_detail": [["nipples", "areolae"], ["pussy", "thighs"]],
+        "finish_detail": [["cum", "cum_on_breasts", "cumdrip"], ["after_sex", "cum_on_body", "wet_pussy"]],
         "lighting": [["warm_light", "soft_shadow"], ["low_light", "depth_of_field"]],
     },
     {
         "id": "dev_nsfw_stage",
+        "weight": 1,
         "subject_id": "solo_girl",
-        "trigger_tags": ["no_bra"],
-        "tags": ["1girl", "solo", "mature_female", "no_bra"],
+        "character_chance": 0.55,
+        "copyright_chance": 0.3,
+        "lighting_chance": 0.15,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["no_bra", "clothes_lift", "orgasm"],
+        "tags": ["1girl", "solo", "no_bra", "clothes_lift"],
         "setting": [["stage", "spotlight", "curtains"], ["dressing_room", "mirror", "spotlight"]],
-        "pose": [["standing", "dynamic_pose"], ["hand_on_hip", "looking_at_viewer"]],
+        "pose": [["standing", "spread_legs"], ["sitting", "legs_apart"]],
+        "action": [["clothes_lift", "breast_grab", "spread_legs"], ["panties_aside", "hand_between_legs", "spread_legs"]],
+        "expression": [["orgasm", "open_mouth", "heavy_breathing"], ["ahegao", "half-closed_eyes", "blush"]],
+        "body_detail": [["nipples", "underboob"], ["pussy", "cameltoe"]],
+        "finish_detail": [["cum", "cum_on_body", "cumdrip"], ["after_sex", "cum_on_breasts", "wet_pussy"]],
         "lighting": [["spotlight", "dramatic_lighting"], ["rim_lighting", "dark_background"]],
+    },
+    {
+        "id": "dev_nsfw_striptease_photo",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["striptease", "nude", "no_panties"],
+        "tags": ["1girl", "solo", "striptease", "no_panties"],
+        "setting": [
+            ["photo_studio", "curtains", "spotlight"],
+            ["dressing_room", "mirror", "clothes_rack"],
+            ["balcony", "night", "curtains"],
+            ["office_chair", "desk", "indoors"],
+        ],
+        "pose": [["standing", "clothes_lift"], ["sitting", "spread_legs"], ["from_behind", "looking_back"]],
+        "action": [["shirt_lift", "no_bra"], ["skirt_lift", "panties_aside"], ["breast_grab", "clothes_lift"]],
+        "expression": [["teasing_smile", "looking_at_viewer"], ["orgasm", "open_mouth"], ["embarrassed", "blush"]],
+        "body_detail": [["pussy", "thighs"], ["nipples", "underboob"], ["wet_pussy", "cameltoe"]],
+        "finish_detail": [["wet_pussy", "pussy_juice"], ["cum", "cum_on_clothes"], ["after_sex", "disheveled_clothes"]],
+        "lighting": [["spotlight", "dark_background"], ["soft_lighting", "depth_of_field"]],
     },
 ]
 
@@ -408,47 +684,18 @@ RANDOM_PROMPT_ADULT_SLOT_ORDER = (
     "lighting",
 )
 
-RANDOM_PROMPT_ADULT_SAFE_STYLE_TAGS = [
-    "anime_style",
-    "illustration",
-    "detailed_background",
-    "highly_detailed",
-]
-
-RANDOM_PROMPT_ADULT_BLOCKED_EXACT_TAGS = {
-    "school_uniform",
-    "serafuku",
-    "student_uniform",
-    "pov",
-    "pov_hands",
-    "pov_crotch",
-    "water_gun",
-    "water_bottle",
-    "holding_water_gun",
-}
+RANDOM_PROMPT_ADULT_BLOCKED_EXACT_TAGS = set()
 
 RANDOM_PROMPT_ADULT_BLOCKED_FRAGMENTS = (
-    "child", "children", "loli", "shota", "minor", "kid", "young",
-    "kindergarten", "elementary", "schoolgirl", "schoolboy", "school_uniform",
-    "serafuku", "student", "blue_archive", "pokemon", "madoka", "homura",
-    "school_idol", "idol", "love_live", "project_sekai", "bang_dream",
-    "precure", "illya", "illyasviel", "magical_girl", "klee", "nahida", "qiqi",
-    "yaoyao", "paimon", "edogawa_conan", "detective_conan",
-    "rape", "gore", "torture", "bestial", "animal_penis", "vore",
-    "feces", "urine", "amputation", "mosaic", "censored", "watermark",
-    "signature", "artist", "commentary", "request", "text", "english_text",
-    "sex", "vaginal", "anal", "fellatio", "deepthroat", "handjob",
-    "paizuri", "masturbat", "penetrat", "orgasm", "irrumatio",
-    "cunnilingus", "footjob", "dildo", "vibrator", "sex_toy", "tentacle",
+    "child", "children", "loli", "shota", "minor", "kindergarten", "elementary",
+    "watermark", "signature", "artist", "commentary", "request", "text", "english_text",
+    "mosaic", "censored",
 )
 
 RANDOM_PROMPT_ADULT_CHARACTER_BLOCK_FRAGMENTS = (
     "child", "children", "loli", "shota", "minor", "kindergarten",
-    "elementary", "school", "student", "idol", "schoolgirl", "schoolboy",
-    "blue_archive", "pokemon", "love_live", "project_sekai", "bang_dream",
-    "precure",
-    "madoka", "homura", "illya", "illyasviel", "magical_girl", "klee",
-    "nahida", "qiqi", "yaoyao", "paimon", "edogawa_conan", "detective_conan",
+    "elementary", "klee", "qiqi", "yaoyao", "paimon", "edogawa_conan",
+    "detective_conan",
 )
 
 RANDOM_PROMPT_ADULT_NEGATIVE_MIN_SCORE = 2500.0
@@ -828,7 +1075,7 @@ def _random_prompt_adult_negative_conflicts(tag, anchors):
     return False
 
 
-def _random_prompt_adult_stats_tags(trigger_tags, current_tags, rng, max_count=6):
+def _random_prompt_adult_stats_tags(trigger_tags, current_tags, rng, max_count=6, allowed_slots=None):
     by_trigger = _random_prompt_adult_slot_rows()
     if not by_trigger:
         return []
@@ -842,12 +1089,16 @@ def _random_prompt_adult_stats_tags(trigger_tags, current_tags, rng, max_count=6
 
     current_norms = {_prompt_lookup_norm(tag) for tag in current_tags if _prompt_lookup_norm(tag)}
     candidates_by_slot = {}
+    allowed_slot_set = {_clean_text(item).lower() for item in allowed_slots or [] if _clean_text(item)}
     for trigger in triggers:
         for row in by_trigger.get(trigger, [])[:80]:
             related = row.get("related")
+            slot = _clean_text(row.get("slot")).lower()
+            if allowed_slot_set and slot not in allowed_slot_set:
+                continue
             if not related or related in current_norms:
                 continue
-            candidates_by_slot.setdefault(row.get("slot"), []).append(row)
+            candidates_by_slot.setdefault(slot, []).append(row)
 
     picked = []
     picked_norms = set()
@@ -883,7 +1134,10 @@ def _adult_character_row_allowed(row):
     )
 
 
-def _pick_adult_random_character_tags(rng, subject_id):
+def _pick_adult_random_character_tags(rng, subject_id, chance=1.0, copyright_chance=1.0):
+    chance = max(0.0, min(1.0, _safe_float(chance, 1.0)))
+    if chance < 1.0 and rng.random() > chance:
+        return []
     rows = [
         row for row in _random_prompt_character_rows()
         if _character_subject_matches(row, subject_id) and _adult_character_row_allowed(row)
@@ -895,7 +1149,8 @@ def _pick_adult_random_character_tags(rng, subject_id):
     top = rows[: min(len(rows), RANDOM_CHARACTER_SAMPLE_POOL)]
     picked = rng.choice(top)
     tags = [picked.get("character_tag")]
-    if picked.get("copyright_tag"):
+    copyright_chance = max(0.0, min(1.0, _safe_float(copyright_chance, 1.0)))
+    if picked.get("copyright_tag") and rng.random() <= copyright_chance:
         tags.append(picked.get("copyright_tag"))
     return [tag for tag in tags if tag]
 
@@ -1157,6 +1412,23 @@ def _pick_group(rng, groups):
     return list(picked or [])
 
 
+def _pick_weighted_profile(rng, profiles):
+    rows = [profile for profile in profiles or [] if isinstance(profile, dict)]
+    if not rows:
+        return {}
+    weighted = []
+    total = 0
+    for profile in rows:
+        weight = max(1, _safe_int(profile.get("weight"), 1))
+        total += weight
+        weighted.append((total, profile))
+    target = rng.uniform(0, total)
+    for upper, profile in weighted:
+        if target <= upper:
+            return profile
+    return weighted[-1][1]
+
+
 def _extend_tag_group(tags, slots, slot_name, values):
     clean_values = [item for item in values or [] if _clean_text(item)]
     if not clean_values:
@@ -1177,28 +1449,36 @@ def _random_prompt_lookup_terms(rng, subject, scene):
 
 def _compose_developer_nsfw_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None):
     rng = random.Random(seed) if seed is not None else random.Random()
-    profile = rng.choice(RANDOM_PROMPT_NSFW_PROFILES)
+    profile = _pick_weighted_profile(rng, RANDOM_PROMPT_NSFW_PROFILES)
     picked_slots = []
     prompt_tags = []
 
     _extend_tag_group(prompt_tags, picked_slots, "rating", ["nsfw", "rating_explicit", "adult"])
     _extend_tag_group(prompt_tags, picked_slots, "subject", profile.get("tags"))
-    character_tags = _pick_adult_random_character_tags(rng, profile.get("subject_id"))
+    character_tags = _pick_adult_random_character_tags(
+        rng,
+        profile.get("subject_id"),
+        chance=profile.get("character_chance", 1.0),
+        copyright_chance=profile.get("copyright_chance", 1.0),
+    )
     _extend_tag_group(prompt_tags, picked_slots, "character", character_tags)
     _extend_tag_group(prompt_tags, picked_slots, "setting", _pick_group(rng, profile.get("setting")))
     _extend_tag_group(prompt_tags, picked_slots, "pose", _pick_group(rng, profile.get("pose")))
-    _extend_tag_group(prompt_tags, picked_slots, "lighting", _pick_group(rng, profile.get("lighting")))
+    _extend_tag_group(prompt_tags, picked_slots, "adult_action", _pick_group(rng, profile.get("action")))
+    _extend_tag_group(prompt_tags, picked_slots, "adult_expression", _pick_group(rng, profile.get("expression")))
+    _extend_tag_group(prompt_tags, picked_slots, "adult_body_detail", _pick_group(rng, profile.get("body_detail")))
+    _extend_tag_group(prompt_tags, picked_slots, "adult_finish_detail", _pick_group(rng, profile.get("finish_detail")))
+    if rng.random() <= max(0.0, min(1.0, _safe_float(profile.get("lighting_chance"), 1.0))):
+        _extend_tag_group(prompt_tags, picked_slots, "lighting", _pick_group(rng, profile.get("lighting")))
 
     association_tags = _random_prompt_adult_stats_tags(
         profile.get("trigger_tags"),
         prompt_tags,
         rng,
-        max_count=6,
+        max_count=max(0, _safe_int(profile.get("association_max"), 6)),
+        allowed_slots=profile.get("association_slots"),
     )
     _extend_tag_group(prompt_tags, picked_slots, "adult_association_stats", association_tags)
-
-    _extend_tag_group(prompt_tags, picked_slots, "style", RANDOM_PROMPT_ADULT_SAFE_STYLE_TAGS)
-    prompt_tags.extend(RANDOM_QUALITY_TAGS)
     prompt = ", ".join(_dedupe_tags(prompt_tags))
     title = "Random Prompt (NSFW)" if _clean_lang(lang) == "en" else "随机提示词(NSFW)"
     return {
