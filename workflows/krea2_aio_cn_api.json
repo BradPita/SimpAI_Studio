@@ -368,7 +368,7 @@
   "58": {
     "inputs": {
       "text": [
-        "83",
+        "27",
         0
       ],
       "clip": [
@@ -697,10 +697,7 @@
         "81",
         0
       ],
-      "string_b": [
-        "27",
-        0
-      ],
+      "string_b": "",
       "delimiter": ""
     },
     "class_type": "StringConcatenate",

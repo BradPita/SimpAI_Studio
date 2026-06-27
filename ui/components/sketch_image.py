@@ -9,6 +9,8 @@ import gradio as gr
 import numpy as np
 from PIL import Image as PILImage
 
+from ui.components import sketch_cache
+
 
 DEFAULT_SKETCH_BRUSH_RADIUS = 64
 MAX_SKETCH_BRUSH_RADIUS = 512
@@ -76,8 +78,10 @@ def _sketch_textbox_preprocess(self, payload):
     if not isinstance(data, dict):
         return None
 
-    image = _decode_data_url_to_value(data.get("image"), self.image_type, self.image_mode)
-    mask = _decode_mask_data_url_to_value(data.get("mask"), self.image_type)
+    image_source = sketch_cache.resolve_payload_source(data, "image")
+    mask_source = sketch_cache.resolve_payload_source(data, "mask")
+    image = _decode_data_url_to_value(image_source, self.image_type, self.image_mode)
+    mask = _decode_mask_data_url_to_value(mask_source, self.image_type)
     if image is None and mask is None:
         return None
     return {"image": image, "mask": mask}

@@ -195,6 +195,16 @@ def normalize_gradio_sketch_value(value, image_mode="RGBA"):
             image = normalize_gradio_image_value(text, image_mode=image_mode)
             return {"image": image, "mask": normalize_gradio_mask_value(None, getattr(image, "shape", None))} if image is not None else None
     if isinstance(value, dict):
+        try:
+            from ui.components import sketch_cache
+
+            value = dict(value)
+            for role in ("image", "mask"):
+                ref_value = sketch_cache.resolve_payload_source(value, role)
+                if ref_value:
+                    value[role] = ref_value
+        except Exception:
+            pass
         image = None
         for key in ("image", "background", "composite", "data", "path", "name"):
             image = normalize_gradio_image_value(value.get(key), image_mode=image_mode)

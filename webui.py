@@ -44,6 +44,7 @@ import copy
 import args_manager
 import ldm_patched.modules.model_management as model_management
 from ui.components.sketch_image import create_sketch_image
+from ui.components import sketch_cache as sketch_payload_cache
 from ui.layout.floating import floating_card, floating_panel, floating_shell
 from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
 from ui.frontend_http_guard import configure_frontend_http_guard
@@ -8157,14 +8158,14 @@ with shared.gradio_root:
             show_progress=False
         )
 
-        scene_sketch_flush_js = """() => {
+        scene_sketch_flush_js = """async () => {
             try {
-                if (window.SimpAISketch?.flushAll) window.SimpAISketch.flushAll({ force: true, change: true });
+                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
         }"""
-        generation_start_js = """(...args) => {
+        generation_start_js = """async (...args) => {
             const rootById = (id) => {
                 try {
                     return (typeof getGradioRootById === "function" ? getGradioRootById(id) : null)
@@ -8221,7 +8222,7 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] generation_button_prepare_failed", e);
             }
             try {
-                if (window.SimpAISketch?.flushAll) window.SimpAISketch.flushAll({ force: true, change: true });
+                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
@@ -8234,9 +8235,9 @@ with shared.gradio_root:
             }
             return args;
         }"""
-        preview_start_js = """() => {
+        preview_start_js = """async () => {
             try {
-                if (window.SimpAISketch?.flushAll) window.SimpAISketch.flushAll({ force: true, change: true });
+                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
@@ -8408,6 +8409,18 @@ with shared.gradio_root:
             except Exception:
                 return None
 
+        def _resolve_cached_sketch_image_for_slider(value):
+            if not isinstance(value, dict):
+                return None
+            try:
+                source = sketch_payload_cache.resolve_payload_source(value, "image")
+            except Exception as e:
+                logger.warning(f"[Compare] failed to resolve sketch cache image for slider: {e}")
+                return None
+            if not source:
+                return None
+            return process_image_for_slider(source)
+
         def _normalize_slider_image_path(path_value):
             if not isinstance(path_value, str):
                 return path_value
@@ -8428,6 +8441,9 @@ with shared.gradio_root:
             if img is None:
                 return None
             if isinstance(img, dict):
+                processed = _resolve_cached_sketch_image_for_slider(img)
+                if processed is not None:
+                    return processed
                 for key in ('image', 'background', 'composite', 'path', 'name', 'data', 'url'):
                     processed = process_image_for_slider(img.get(key))
                     if processed is not None:
@@ -10291,6 +10307,15 @@ _openpose_lock = threading.Lock()
 _sam3_image_mask_lock = threading.Lock()
 _canvas_translate_lock = threading.Lock()
 _canvas_translate_jobs = {}
+
+
+@app.post("/simpai/sketch-cache")
+async def simpai_sketch_cache_endpoint(payload: dict = Body(...)):
+    try:
+        return await run_in_threadpool(lambda: sketch_payload_cache.store_payload(payload))
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
 
 def _canvas_workbench_standalone_system_params(request: Request):
     query = request.query_params if request is not None else {}

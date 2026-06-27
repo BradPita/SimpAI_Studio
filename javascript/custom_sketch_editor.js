@@ -6,6 +6,7 @@
     const DOCK_OPEN_DELAY_MS = 35;
     const DOCK_HIDE_DELAY_MS = 260;
     const IMAGE_FILE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp|bmp|avif|tiff?|ico)$/i;
+    const SKETCH_CACHE_ENDPOINT = "/simpai/sketch-cache";
     let activeSketchApi = null;
 
     function ensureSimpAISketchNamespace() {
@@ -667,6 +668,27 @@
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
+    }
+
+    function isDataImageUrl(value) {
+        return /^data:image\//i.test(String(value || ""));
+    }
+
+    async function postSketchCachePayload(payload) {
+        if (!payload || (!isDataImageUrl(payload.image) && !isDataImageUrl(payload.mask))) return null;
+        const response = await fetch(SKETCH_CACHE_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                image: isDataImageUrl(payload.image) ? payload.image : "",
+                mask: isDataImageUrl(payload.mask) ? payload.mask : "",
+                width: payload.width,
+                height: payload.height
+            })
+        });
+        if (!response.ok) return null;
+        const result = await response.json();
+        return result && result.ok ? result : null;
     }
 
     function transferTypes(transfer) {
@@ -1809,6 +1831,9 @@
         let lastExternalValue = input.value || "";
         let lastWrittenValue = input.value || "";
         let payloadSequence = 0;
+        let payloadCacheSnapshot = null;
+        let payloadCacheTask = null;
+        let payloadCacheTaskKey = "";
 
         function drawMaskImage(maskImage) {
             maskCtx.clearRect(0, 0, width, height);
@@ -1821,6 +1846,122 @@
                 maskCtx.globalCompositeOperation = prev;
             } catch {
             }
+        }
+
+        function buildSketchPayload() {
+            return {
+                image: sourceImageDataUrl || bgCanvas.toDataURL("image/png"),
+                mask: maskCanvas.toDataURL("image/png"),
+                width,
+                height
+            };
+        }
+
+        function cloneSketchPayload(payload) {
+            return {
+                image: payload?.image || "",
+                mask: payload?.mask || "",
+                width: payload?.width || 0,
+                height: payload?.height || 0
+            };
+        }
+
+        function payloadCacheKey(payload) {
+            const image = String(payload?.image || "");
+            const mask = String(payload?.mask || "");
+            return [
+                payload?.width || 0,
+                payload?.height || 0,
+                image.length,
+                image.slice(0, 80),
+                image.slice(-80),
+                mask.length,
+                mask.slice(0, 80),
+                mask.slice(-80)
+            ].join("|");
+        }
+
+        function sameSketchPayload(left, right) {
+            return !!(left && right)
+                && left.image === right.image
+                && left.mask === right.mask
+                && left.width === right.width
+                && left.height === right.height;
+        }
+
+        function writeInputPayload(text, payload, options = {}) {
+            lastPayload = payload;
+            if (proxyImage.src !== payload.image) {
+                proxyImage.src = payload.image;
+            }
+            internalWrite = true;
+            setInputValue(input, text, options);
+            lastExternalValue = text;
+            lastWrittenValue = text;
+            internalWrite = false;
+        }
+
+        function cachedReferencePayload(payload) {
+            if (!payloadCacheSnapshot || !sameSketchPayload(payloadCacheSnapshot.payload, payload)) return null;
+            return payloadCacheSnapshot.reference || null;
+        }
+
+        function cachedReferenceText(payload) {
+            const reference = cachedReferencePayload(payload);
+            return reference ? JSON.stringify(reference) : "";
+        }
+
+        function rememberCachedReference(payload, result) {
+            if (!result) return null;
+            const reference = {
+                simpai_sketch_cached: true,
+                width: payload.width,
+                height: payload.height
+            };
+            if (result.image_ref) reference.image_ref = result.image_ref;
+            if (result.mask_ref) reference.mask_ref = result.mask_ref;
+            if (result.image_sha256) reference.image_sha256 = result.image_sha256;
+            if (result.mask_sha256) reference.mask_sha256 = result.mask_sha256;
+            if (!reference.image_ref && !reference.mask_ref) return null;
+            payloadCacheSnapshot = {
+                payload: cloneSketchPayload(payload),
+                reference
+            };
+            return reference;
+        }
+
+        async function ensureCachedPayload(payload, options = {}) {
+            if (!payload) return false;
+            const existingText = cachedReferenceText(payload);
+            if (existingText) {
+                writeInputPayload(existingText, payload, options.write ? options : { change: false });
+                return true;
+            }
+            const key = payloadCacheKey(payload);
+            if (payloadCacheTask && payloadCacheTaskKey === key) {
+                return payloadCacheTask;
+            }
+            payloadCacheTaskKey = key;
+            payloadCacheTask = postSketchCachePayload(payload)
+                .then((result) => {
+                    const reference = rememberCachedReference(payload, result);
+                    if (!reference) return false;
+                    if (sameSketchPayload(lastPayload, payload)) {
+                        writeInputPayload(JSON.stringify(reference), payload, { change: false });
+                    }
+                    return true;
+                })
+                .catch((err) => {
+                    console.warn("[SimpAI Sketch] Payload cache failed", err);
+                    return false;
+                })
+                .finally(() => {
+                    if (payloadCacheTaskKey === key) {
+                        payloadCacheTask = null;
+                        payloadCacheTaskKey = "";
+                    }
+                });
+            return payloadCacheTask;
         }
 
         function serialize(options = {}) {
@@ -1838,22 +1979,11 @@
                 internalWrite = false;
                 return;
             }
-            const payload = {
-                image: sourceImageDataUrl || bgCanvas.toDataURL("image/png"),
-                mask: maskCanvas.toDataURL("image/png"),
-                width,
-                height
-            };
-            lastPayload = payload;
-            const text = JSON.stringify(payload);
-            if (proxyImage.src !== payload.image) {
-                proxyImage.src = payload.image;
+            const payload = buildSketchPayload();
+            writeInputPayload(cachedReferenceText(payload) || JSON.stringify(payload), payload, options);
+            if (!cachedReferencePayload(payload)) {
+                ensureCachedPayload(payload);
             }
-            internalWrite = true;
-            setInputValue(input, text, options);
-            lastExternalValue = text;
-            lastWrittenValue = text;
-            internalWrite = false;
         }
 
         function markDirty() {
@@ -1866,8 +1996,12 @@
         }
 
         function flush(options = {}) {
-            if (!valueDirty && !options.force) return true;
+            if (!valueDirty && !options.force) {
+                if (options.cache && lastPayload) return ensureCachedPayload(lastPayload, { write: true });
+                return true;
+            }
             serialize(options);
+            if (options.cache && lastPayload) return ensureCachedPayload(lastPayload, { write: true });
             return true;
         }
 
@@ -1880,6 +2014,7 @@
             redoStack.length = 0;
             currentHistoryState = null;
             lastPayload = null;
+            payloadCacheSnapshot = null;
             bgCtx.clearRect(0, 0, width, height);
             maskCtx.clearRect(0, 0, width, height);
             proxyImage.removeAttribute("src");
@@ -1952,6 +2087,7 @@
             undoStack.length = 0;
             redoStack.length = 0;
             currentHistoryState = currentMaskDataUrl();
+            payloadCacheSnapshot = null;
             lastPayload = {
                 image: payload.image || sourceImageDataUrl,
                 mask: payload.mask || "",
@@ -1982,6 +2118,7 @@
                 undoStack.length = 0;
                 redoStack.length = 0;
                 currentHistoryState = currentMaskDataUrl();
+                payloadCacheSnapshot = null;
                 empty.style.display = "none";
                 updateStageDisplay();
                 serialize({ change: options.change !== false });
@@ -2668,16 +2805,25 @@
         window.SimpAISketch.flush = (target, options) => window.SimpAISketch.get(target)?.flush(options);
         window.SimpAISketch.flushAll = (options) => {
             let ok = true;
+            const pending = [];
             for (const sketch of Array.from(window.SimpAISketch.instances || [])) {
                 if (!sketch?.editor?.isConnected) {
                     window.SimpAISketch.instances.delete(sketch);
                     continue;
                 }
                 try {
-                    sketch.flush?.(options);
+                    const result = sketch.flush?.(options);
+                    if (result && typeof result.then === "function") {
+                        pending.push(result.catch(() => {
+                            ok = false;
+                        }));
+                    }
                 } catch {
                     ok = false;
                 }
+            }
+            if (pending.length) {
+                return Promise.all(pending).then(() => ok);
             }
             return ok;
         };
