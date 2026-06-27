@@ -725,6 +725,21 @@ class LlamaCppVLM:
         except Exception:
             pass
 
+    def _with_non_thinking_guard(self, system_msg):
+        handler_name = str(self.current_chat_handler_name or "")
+        if not handler_name or "Thinking" in handler_name:
+            return system_msg
+        if not any(name in handler_name for name in ("Qwen", "MiniCPM", "GLM")):
+            return system_msg
+        guard = (
+            "Do not output thinking, reasoning traces, chain-of-thought, analysis notes, "
+            "'Thinking Process' sections, or <think> blocks. Return only the final requested result."
+        )
+        system_msg = str(system_msg or "").strip()
+        if guard in system_msg:
+            return system_msg
+        return (system_msg + "\n" + guard).strip() if system_msg else guard
+
     def chat(self, image, prompt, conversation_id="default", system_prompt=None, save_state=True, max_history=24,
              max_tokens=1024, temperature=0.8, top_p=0.9, top_k=40, repetition_penalty=1.1, seed=-1):
         with self.lock:
@@ -803,6 +818,7 @@ class LlamaCppVLM:
             messages = []
             default_system_msg = "You are a helpful assistant. Follow instructions precisely. For any task (captioning, translation, expansion), output ONLY the result. Do not include any preamble, introduction, explanation, or conversational filler."
             system_msg = default_system_msg if system_prompt is None else str(system_prompt or "").strip()
+            system_msg = self._with_non_thinking_guard(system_msg)
             if system_msg:
                 messages.append({"role": "system", "content": system_msg})
 

@@ -38,7 +38,25 @@ ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
     "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
 )
-ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", "onnxruntime-gpu==1.27.0.dev20260511001")
+ORT_CUDA13_DEFAULT_PACKAGE = "onnxruntime-gpu==1.27.0.dev20260511001"
+ORT_CUDA13_DEFAULT_WHEEL_URL = (
+    "https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/"
+    "onnxruntime-gpu/onnxruntime_gpu-1.27.0.dev20260511001-cp313-cp313-win_amd64.whl"
+)
+
+def _default_ort_cuda13_wheel_url():
+    is_windows_cp313_amd64 = (
+        platform.system() == "Windows"
+        and sys.version_info[:2] == (3, 13)
+        and platform.machine().lower() in ("amd64", "x86_64")
+    )
+    return ORT_CUDA13_DEFAULT_WHEEL_URL if is_windows_cp313_amd64 else ""
+
+ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", ORT_CUDA13_DEFAULT_PACKAGE)
+ORT_CUDA13_WHEEL_URL = os.environ.get(
+    "ORT_CUDA13_WHEEL_URL",
+    _default_ort_cuda13_wheel_url() if "ORT_CUDA13_PACKAGE" not in os.environ else "",
+)
 ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
 
 OBSOLETE_CUSTOM_NODE_FOLDERS = ()
@@ -238,6 +256,19 @@ def _onnxruntime_cuda13_ready():
     has_cpu_ort_package = _installed_package_version("onnxruntime") is not None
     return not has_cpu_ort_package and cuda_build.startswith("13.") and "CUDAExecutionProvider" in providers
 
+def _onnxruntime_cuda13_install_attempts():
+    attempts = []
+    if ORT_CUDA13_WHEEL_URL:
+        attempts.append((
+            "ModelScope wheel",
+            f'"{python}" -s -m pip install --pre --no-deps --force-reinstall "{ORT_CUDA13_WHEEL_URL}"',
+        ))
+    attempts.append((
+        "ONNX Runtime nightly index",
+        f'"{python}" -s -m pip install --pre --no-deps --force-reinstall --index-url {ORT_CUDA13_INDEX_URL} {ORT_CUDA13_PACKAGE}',
+    ))
+    return attempts
+
 def install_onnxruntime_gpu_cuda13():
     info = _installed_onnxruntime_cuda_info()
     cuda_build = str(info.get("cuda_build") or "")
@@ -265,26 +296,36 @@ def install_onnxruntime_gpu_cuda13():
     except Exception as e:
         logger.warning(f"卸载旧 ONNX Runtime 包失败，将继续尝试安装 CUDA 13 版: {e}")
 
-    try:
-        run(
-            f'"{python}" -s -m pip install --pre --no-deps --index-url {ORT_CUDA13_INDEX_URL} {ORT_CUDA13_PACKAGE}',
-            "Installing ONNX Runtime GPU CUDA 13 nightly",
-            "Could not install ONNX Runtime GPU CUDA 13 nightly",
-            custom_env=_make_pip_env(),
-            live=True,
-        )
-    except Exception as e:
-        logger.error(f"安装 ONNX Runtime CUDA 13 nightly 失败: {e}")
-        return False
+    for source_name, command in _onnxruntime_cuda13_install_attempts():
+        try:
+            run(
+                command,
+                f"Installing ONNX Runtime GPU CUDA 13 from {source_name}",
+                f"Could not install ONNX Runtime GPU CUDA 13 from {source_name}",
+                custom_env=_make_pip_env(),
+                live=True,
+            )
+        except Exception as e:
+            logger.warning(f"安装 ONNX Runtime CUDA 13 来源失败：{source_name}: {e}")
+            continue
 
-    if not _onnxruntime_cuda13_ready():
+        if _onnxruntime_cuda13_ready():
+            logger.info(f"ONNX Runtime CUDA 13 已从 {source_name} 安装完成。")
+            return True
+
         installed = _installed_onnxruntime_cuda_info()
-        logger.error(
-            f"ONNX Runtime CUDA 13 nightly 安装后校验失败: version={installed.get('version')}, "
-            f"cuda_build={installed.get('cuda_build')}, providers={installed.get('providers')}"
+        logger.warning(
+            f"ONNX Runtime CUDA 13 来源校验未通过：{source_name}, "
+            f"version={installed.get('version')}, cuda_build={installed.get('cuda_build')}, "
+            f"providers={installed.get('providers')}"
         )
-        return False
-    return True
+
+    installed = _installed_onnxruntime_cuda_info()
+    logger.error(
+        f"ONNX Runtime CUDA 13 安装后校验失败: version={installed.get('version')}, "
+        f"cuda_build={installed.get('cuda_build')}, providers={installed.get('providers')}"
+    )
+    return False
 
 def check_base_environment():
     print(f"{now_string()} Python {sys.version}")

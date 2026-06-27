@@ -54,15 +54,13 @@ RANDOM_QUALITY_TAGS = [
     "masterpiece",
     "best_quality",
     "highres",
-    "absurdres",
-    "highly_detailed",
 ]
 
 RANDOM_STYLE_GROUPS = [
-    ["anime_style", "illustration", "clean_lineart"],
-    ["cinematic_lighting", "depth_of_field", "detailed_background"],
-    ["painterly", "soft_shading", "atmospheric_perspective"],
-    ["vibrant_colors", "sharp_focus", "rich_details"],
+    ["anime_style", "clean_lineart"],
+    ["cinematic_lighting", "depth_of_field"],
+    ["painterly", "soft_shading"],
+    ["vibrant_colors", "sharp_focus"],
 ]
 
 RANDOM_SUBJECT_PROFILES = [
@@ -275,7 +273,376 @@ RANDOM_SCENE_PROFILES = [
         ],
         "lookup_terms": ["bedroom", "coffee", "plants", "window"],
     },
+    {
+        "id": "festival_night",
+        "tags": ["festival", "night", "lantern", "crowd", "food_stall"],
+        "details": [
+            ["fireworks", "paper_lantern", "yakisoba"],
+            ["mask_stall", "goldfish_scooping", "banner"],
+            ["torii", "stone_steps", "hanging_lantern"],
+            ["cotton_candy", "wooden_booth", "crowd_blur"],
+        ],
+        "lighting": [
+            ["warm_lantern_light", "night_sky", "rim_lighting"],
+            ["fireworks", "colorful_light", "backlighting"],
+            ["soft_shadow", "glowing_sign", "blue_hour"],
+        ],
+        "lookup_terms": ["festival", "lantern", "fireworks", "food stall"],
+    },
+    {
+        "id": "train_station_morning",
+        "tags": ["train_station", "platform", "morning", "commute"],
+        "details": [
+            ["train", "ticket_gate", "signboard"],
+            ["bench", "vending_machine", "timetable"],
+            ["suitcase", "overpass", "sunbeam"],
+            ["railway_tracks", "distant_train", "motion_blur"],
+        ],
+        "lighting": [
+            ["morning_light", "soft_shadow", "clear_sky"],
+            ["overcast", "diffused_light", "muted_colors"],
+            ["backlighting", "light_rays", "warm_light"],
+        ],
+        "lookup_terms": ["train station", "platform", "suitcase", "commute"],
+    },
+    {
+        "id": "stage_performance",
+        "tags": ["stage", "spotlight", "audience", "concert"],
+        "details": [
+            ["microphone", "speaker", "confetti"],
+            ["stage_lights", "smoke_machine", "glowstick"],
+            ["curtains", "music_note", "backdrop"],
+            ["dance_floor", "sparkles", "crowd_blur"],
+        ],
+        "lighting": [
+            ["spotlight", "colorful_light", "high_contrast"],
+            ["rim_lighting", "stage_lights", "dark_background"],
+            ["glitter", "backlighting", "sharp_focus"],
+        ],
+        "lookup_terms": ["stage", "microphone", "concert", "spotlight"],
+    },
+    {
+        "id": "sci_fi_workshop",
+        "tags": ["laboratory", "workshop", "hologram", "monitor", "machinery"],
+        "details": [
+            ["control_panel", "floating_screen", "cable"],
+            ["robot_arm", "toolbox", "blue_glow"],
+            ["mechanical_parts", "schematic", "workbench"],
+            ["glass_wall", "server_rack", "warning_light"],
+        ],
+        "lighting": [
+            ["blue_light", "rim_lighting", "screen_glow"],
+            ["neon_light", "low_light", "high_contrast"],
+            ["cool_light", "sharp_focus", "reflected_light"],
+        ],
+        "lookup_terms": ["hologram", "workshop", "machinery", "control panel"],
+    },
+    {
+        "id": "sports_court",
+        "tags": ["sports", "court", "outdoors", "blue_sky"],
+        "details": [
+            ["basketball", "chain_link_fence", "water_bottle"],
+            ["running_track", "finish_line", "sports_bag"],
+            ["tennis_court", "racket", "net"],
+            ["soccer_field", "goal", "grass"],
+        ],
+        "lighting": [
+            ["sunny", "clear_sky", "sharp_shadow"],
+            ["golden_hour", "warm_light", "motion_blur"],
+            ["overcast", "diffused_light", "fresh_air"],
+        ],
+        "lookup_terms": ["sports", "basketball", "running", "court"],
+    },
+    {
+        "id": "art_studio",
+        "tags": ["art_studio", "easel", "canvas", "paint"],
+        "details": [
+            ["paintbrush", "palette", "apron"],
+            ["sketchbook", "pencil", "paper"],
+            ["clay_model", "shelf", "tool"],
+            ["window", "sunbeam", "paint_splatter"],
+        ],
+        "lighting": [
+            ["north_light", "soft_shadow", "warm_light"],
+            ["afternoon_light", "dust_particles", "calm"],
+            ["lamplight", "cozy", "shallow_depth_of_field"],
+        ],
+        "lookup_terms": ["art studio", "paintbrush", "easel", "sketchbook"],
+    },
 ]
+
+
+def _sfw_scene_profile(scene_id, tags, details, lighting, lookup_terms):
+    return {
+        "id": scene_id,
+        "tags": tags,
+        "details": details,
+        "lighting": lighting,
+        "lookup_terms": lookup_terms,
+    }
+
+
+RANDOM_SCENE_PROFILES.extend([
+    _sfw_scene_profile(
+        "airport_terminal",
+        ["airport", "terminal", "glass_wall", "luggage"],
+        [["departure_board", "suitcase", "ticket"], ["security_gate", "queue", "signboard"], ["large_window", "airplane", "runway"]],
+        [["morning_light", "glass_reflection", "clear_sky"], ["overcast", "diffused_light", "muted_colors"], ["night", "soft_light", "window_reflection"]],
+        ["airport terminal", "luggage", "departure board"],
+    ),
+    _sfw_scene_profile(
+        "subway_platform",
+        ["subway", "platform", "train", "underground"],
+        [["yellow_line", "tile_wall", "map"], ["turnstile", "ticket_gate", "crowd"], ["motion_blur", "arriving_train", "signboard"]],
+        [["fluorescent_light", "cool_light", "reflection"], ["dim_light", "high_contrast", "long_shadow"], ["neon_light", "depth_of_field", "blue_light"]],
+        ["subway platform", "train", "ticket gate"],
+    ),
+    _sfw_scene_profile(
+        "shopping_arcade",
+        ["shopping_arcade", "storefront", "crowd", "signboard"],
+        [["glass_roof", "shop_window", "mannequin"], ["escalator", "poster", "bag"], ["food_court", "table", "menu"]],
+        [["soft_indoor_light", "reflected_light", "clean"], ["evening", "warm_light", "glowing_sign"], ["skylight", "bright", "sharp_focus"]],
+        ["shopping arcade", "storefront", "escalator"],
+    ),
+    _sfw_scene_profile(
+        "old_town_alley",
+        ["old_town", "alley", "cobblestone", "building"],
+        [["flower_pot", "wooden_door", "window"], ["street_lamp", "bicycle", "stone_wall"], ["stairs", "awning", "shopfront"]],
+        [["golden_hour", "warm_light", "soft_shadow"], ["rain", "wet_ground", "reflection"], ["morning", "sunbeam", "calm"]],
+        ["old town alley", "cobblestone", "street lamp"],
+    ),
+    _sfw_scene_profile(
+        "rooftop_garden",
+        ["rooftop", "garden", "cityscape", "plants"],
+        [["railing", "flower_pot", "bench"], ["greenhouse", "water_tank", "stairs"], ["table", "parasol", "skyline"]],
+        [["sunset", "backlighting", "orange_sky"], ["blue_hour", "city_lights", "rim_lighting"], ["clear_sky", "soft_light", "wind"]],
+        ["rooftop garden", "cityscape", "plants"],
+    ),
+    _sfw_scene_profile(
+        "museum_gallery",
+        ["museum", "gallery", "painting", "marble_floor"],
+        [["frame", "bench", "spotlight"], ["sculpture", "pedestal", "rope_barrier"], ["large_hall", "skylight", "quiet"]],
+        [["gallery_light", "soft_shadow", "clean"], ["spotlight", "dark_background", "high_contrast"], ["skylight", "diffused_light", "calm"]],
+        ["museum gallery", "painting", "sculpture"],
+    ),
+    _sfw_scene_profile(
+        "classroom_afternoon",
+        ["classroom", "desk", "chalkboard", "window"],
+        [["school_desk", "notebook", "pencil"], ["curtains", "sunbeam", "chair"], ["bulletin_board", "clock", "book_stack"]],
+        [["afternoon_light", "warm_light", "dust_particles"], ["overcast", "diffused_light", "quiet"], ["sunset", "orange_light", "long_shadow"]],
+        ["classroom", "school desk", "chalkboard"],
+    ),
+    _sfw_scene_profile(
+        "kitchen_table",
+        ["kitchen", "table", "food", "window"],
+        [["cutting_board", "vegetables", "knife"], ["steam", "soup", "bowl"], ["apron", "sink", "tile_wall"]],
+        [["morning_light", "soft_shadow", "warm_light"], ["lamplight", "cozy", "shallow_depth_of_field"], ["sunbeam", "clean", "bright"]],
+        ["kitchen table", "food", "apron"],
+    ),
+    _sfw_scene_profile(
+        "greenhouse",
+        ["greenhouse", "plants", "glass_roof", "flowers"],
+        [["watering_can", "terracotta_pot", "vines"], ["orchid", "fern", "mist"], ["wooden_table", "seedling", "garden_tool"]],
+        [["sunbeam", "diffused_light", "warm_light"], ["mist", "soft_focus", "fresh"], ["rain", "window_reflection", "calm"]],
+        ["greenhouse", "plants", "watering can"],
+    ),
+    _sfw_scene_profile(
+        "aquarium_tunnel",
+        ["aquarium", "underwater", "fish", "glass_tunnel"],
+        [["shark", "coral", "blue_light"], ["jellyfish", "reflection", "visitor"], ["bubble", "water", "school_of_fish"]],
+        [["blue_light", "caustics", "soft_shadow"], ["glowing_jellyfish", "dark_background", "rim_lighting"], ["reflected_light", "dreamy", "depth_of_field"]],
+        ["aquarium", "jellyfish", "underwater"],
+    ),
+    _sfw_scene_profile(
+        "bamboo_forest",
+        ["bamboo_forest", "path", "greenery", "sunlight"],
+        [["bamboo", "stone_path", "fallen_leaves"], ["torii", "moss", "mist"], ["stream", "bridge", "fern"]],
+        [["morning", "dappled_sunlight", "soft_shadow"], ["fog", "diffused_light", "calm"], ["golden_hour", "warm_light", "wind"]],
+        ["bamboo forest", "stone path", "mist"],
+    ),
+    _sfw_scene_profile(
+        "snowy_mountain",
+        ["mountain", "snow", "pine_tree", "clouds"],
+        [["mountain_peak", "snowfield", "footprints"], ["cabin", "smoke", "frozen_lake"], ["cliff", "distant_mountains", "wind"]],
+        [["clear_sky", "bright_light", "sharp_shadow"], ["snowfall", "diffused_light", "soft_focus"], ["sunset", "pink_sky", "backlighting"]],
+        ["snowy mountain", "snow", "cabin"],
+    ),
+    _sfw_scene_profile(
+        "desert_oasis",
+        ["desert", "oasis", "sand", "palm_tree"],
+        [["water", "date_palm", "tent"], ["camel", "dune", "carpet"], ["ruins", "sun", "heat_haze"]],
+        [["sunset", "orange_sky", "long_shadow"], ["noon", "harsh_light", "clear_sky"], ["moonlight", "cool_light", "stars"]],
+        ["desert oasis", "sand dune", "palm tree"],
+    ),
+    _sfw_scene_profile(
+        "coral_reef",
+        ["coral_reef", "underwater", "fish", "sunlight"],
+        [["coral", "sea_turtle", "bubble"], ["reef", "tropical_fish", "seaweed"], ["sunbeam", "clear_water", "shell"]],
+        [["caustics", "blue_light", "sparkling_water"], ["sunlight", "soft_shadow", "clear"], ["deep_blue", "glowing", "dreamy"]],
+        ["coral reef", "sea turtle", "underwater"],
+    ),
+    _sfw_scene_profile(
+        "volcanic_landscape",
+        ["volcano", "lava", "rock", "smoke"],
+        [["lava_flow", "ash", "cracked_ground"], ["obsidian", "steam", "red_glow"], ["cliff", "embers", "dark_clouds"]],
+        [["red_light", "high_contrast", "rim_lighting"], ["smoke", "low_light", "dramatic"], ["sunset", "orange_sky", "backlighting"]],
+        ["volcanic landscape", "lava", "ash"],
+    ),
+    _sfw_scene_profile(
+        "waterfall_gorge",
+        ["waterfall", "gorge", "river", "rocks"],
+        [["mist", "rainbow", "moss"], ["wooden_bridge", "cliff", "fern"], ["pool", "wet_rocks", "spray"]],
+        [["sunbeam", "mist", "soft_light"], ["overcast", "diffused_light", "calm"], ["golden_hour", "warm_light", "sparkling_water"]],
+        ["waterfall", "gorge", "mist"],
+    ),
+    _sfw_scene_profile(
+        "autumn_park",
+        ["park", "autumn", "fallen_leaves", "bench"],
+        [["maple_leaf", "path", "street_lamp"], ["pond", "duck", "wooden_bridge"], ["bicycle", "scarf", "picnic"]],
+        [["golden_hour", "warm_light", "soft_shadow"], ["overcast", "muted_colors", "calm"], ["sunbeam", "falling_leaves", "gentle_wind"]],
+        ["autumn park", "fallen leaves", "bench"],
+    ),
+    _sfw_scene_profile(
+        "space_station",
+        ["space_station", "space", "window", "earth"],
+        [["airlock", "spacesuit", "control_panel"], ["solar_panel", "hatch", "floating"], ["observation_deck", "planet", "stars"]],
+        [["screen_glow", "blue_light", "rim_lighting"], ["earthlight", "dark_background", "soft_shadow"], ["warning_light", "high_contrast", "low_light"]],
+        ["space station", "spacesuit", "control panel"],
+    ),
+    _sfw_scene_profile(
+        "starship_bridge",
+        ["starship", "bridge", "control_panel", "space"],
+        [["captain_chair", "hologram", "monitor"], ["window", "stars", "planet"], ["console", "crew", "warning_light"]],
+        [["screen_glow", "blue_light", "sharp_focus"], ["red_alert", "high_contrast", "rim_lighting"], ["starlight", "dark_background", "cool_light"]],
+        ["starship bridge", "hologram", "monitor"],
+    ),
+    _sfw_scene_profile(
+        "lunar_base",
+        ["moon", "lunar_base", "space", "crater"],
+        [["dome", "rover", "antenna"], ["airlock", "spacesuit", "footprints"], ["earth", "solar_panel", "rock"]],
+        [["earthlight", "cool_light", "dark_sky"], ["sunrise", "long_shadow", "sharp_light"], ["blue_light", "rim_lighting", "clear"]],
+        ["lunar base", "moon", "rover"],
+    ),
+    _sfw_scene_profile(
+        "alien_market",
+        ["alien_market", "market", "neon_lights", "crowd"],
+        [["alien_vendor", "floating_sign", "stall"], ["crystal", "strange_fruit", "lantern"], ["hover_vehicle", "street", "glowing"]],
+        [["neon_light", "colorful_light", "reflected_light"], ["night", "rim_lighting", "mist"], ["screen_glow", "blue_light", "depth_of_field"]],
+        ["alien market", "neon lights", "crystal"],
+    ),
+    _sfw_scene_profile(
+        "robot_factory",
+        ["factory", "robot", "assembly_line", "machinery"],
+        [["robot_arm", "conveyor_belt", "sparks"], ["toolbox", "cable", "warning_sign"], ["metal_floor", "steam", "monitor"]],
+        [["industrial_light", "high_contrast", "sharp_focus"], ["orange_light", "sparks", "rim_lighting"], ["cool_light", "screen_glow", "metal_reflection"]],
+        ["robot factory", "assembly line", "machinery"],
+    ),
+    _sfw_scene_profile(
+        "alien_biodome",
+        ["alien_biodome", "glass_dome", "plants", "glowing"],
+        [["alien_flower", "pool", "mist"], ["floating_seed", "vines", "crystal"], ["research_station", "path", "blue_glow"]],
+        [["bioluminescence", "soft_light", "dreamy"], ["blue_light", "rim_lighting", "mist"], ["sunbeam", "glass_reflection", "calm"]],
+        ["alien biodome", "glowing plants", "crystal"],
+    ),
+    _sfw_scene_profile(
+        "arcane_library",
+        ["arcane_library", "bookshelf", "magic_circle", "candle"],
+        [["floating_book", "rune", "ladder"], ["spellbook", "crystal_ball", "desk"], ["stained_glass", "dust_particles", "old_books"]],
+        [["candlelight", "warm_light", "soft_shadow"], ["blue_glow", "magic_circle", "rim_lighting"], ["moonlight", "window", "mysterious_light"]],
+        ["arcane library", "floating book", "magic circle"],
+    ),
+    _sfw_scene_profile(
+        "floating_island",
+        ["floating_island", "sky", "clouds", "waterfall"],
+        [["ancient_tree", "bridge", "wind"], ["ruins", "crystal", "grass"], ["airship", "distant_islands", "sunlight"]],
+        [["sunlight", "god_rays", "clear_sky"], ["sunset", "orange_sky", "backlighting"], ["moonlight", "clouds", "soft_shadow"]],
+        ["floating island", "sky", "waterfall"],
+    ),
+    _sfw_scene_profile(
+        "dragon_cave",
+        ["cave", "dragon", "treasure", "crystal"],
+        [["gold", "gem", "rock"], ["stalactite", "torch", "smoke"], ["ancient_bone", "water", "glow"]],
+        [["torchlight", "warm_light", "dark_background"], ["crystal_glow", "blue_light", "rim_lighting"], ["red_light", "smoke", "dramatic"]],
+        ["dragon cave", "treasure", "crystal"],
+    ),
+    _sfw_scene_profile(
+        "sky_castle",
+        ["castle", "sky", "clouds", "fantasy"],
+        [["tower", "flag", "bridge"], ["balcony", "stained_glass", "garden"], ["airship", "waterfall", "distant_mountains"]],
+        [["sunrise", "golden_light", "clouds"], ["moonlight", "blue_light", "soft_shadow"], ["sunset", "backlighting", "orange_sky"]],
+        ["sky castle", "tower", "clouds"],
+    ),
+    _sfw_scene_profile(
+        "enchanted_garden",
+        ["enchanted_garden", "flowers", "glowing", "butterfly"],
+        [["mushroom", "fairy_light", "pond"], ["rose_arch", "fountain", "vines"], ["firefly", "grass", "sparkles"]],
+        [["soft_light", "glowing", "dreamy"], ["moonlight", "firefly", "blue_light"], ["morning", "dew", "sunbeam"]],
+        ["enchanted garden", "glowing flowers", "butterfly"],
+    ),
+    _sfw_scene_profile(
+        "crystal_cavern",
+        ["crystal_cavern", "cave", "glowing", "water"],
+        [["crystal", "underground_lake", "reflection"], ["stone_bridge", "stalactite", "mist"], ["geode", "blue_glow", "rock"]],
+        [["crystal_glow", "blue_light", "reflected_light"], ["low_light", "rim_lighting", "dark_background"], ["soft_light", "mist", "dreamy"]],
+        ["crystal cavern", "underground lake", "blue glow"],
+    ),
+    _sfw_scene_profile(
+        "dungeon_corridor",
+        ["dungeon", "corridor", "stone_wall", "torch"],
+        [["wooden_door", "chain", "barrel"], ["stairs", "shadow", "moss"], ["gate", "cobweb", "water"]],
+        [["torchlight", "warm_light", "long_shadow"], ["low_light", "dark_background", "high_contrast"], ["blue_light", "mist", "mysterious"]],
+        ["dungeon corridor", "torch", "stone wall"],
+    ),
+    _sfw_scene_profile(
+        "treasure_room",
+        ["treasure_room", "gold", "chest", "gem"],
+        [["treasure_chest", "coins", "jewel"], ["statue", "pillar", "torch"], ["map", "scroll", "key"]],
+        [["golden_light", "sparkles", "warm_light"], ["torchlight", "soft_shadow", "dark_background"], ["sunbeam", "dust_particles", "mysterious"]],
+        ["treasure room", "gold", "chest"],
+    ),
+    _sfw_scene_profile(
+        "airship_deck",
+        ["airship", "deck", "sky", "clouds"],
+        [["sail", "rope", "wooden_floor"], ["propeller", "railing", "wind"], ["map_table", "compass", "distant_mountains"]],
+        [["sunset", "backlighting", "orange_sky"], ["clear_sky", "bright_light", "wind"], ["storm_clouds", "dramatic", "high_contrast"]],
+        ["airship deck", "clouds", "compass"],
+    ),
+    _sfw_scene_profile(
+        "boss_arena",
+        ["arena", "ruins", "dramatic", "wide_shot"],
+        [["broken_pillar", "magic_circle", "cracked_floor"], ["torch", "banner", "stone_gate"], ["dust", "weapon", "storm_clouds"]],
+        [["dramatic_lighting", "high_contrast", "rim_lighting"], ["red_light", "smoke", "dark_background"], ["moonlight", "fog", "blue_light"]],
+        ["boss arena", "ruins", "magic circle"],
+    ),
+    _sfw_scene_profile(
+        "parade_street",
+        ["parade", "street", "crowd", "confetti"],
+        [["float", "banner", "balloon"], ["marching_band", "drum", "flag"], ["food_stall", "streamer", "smile"]],
+        [["sunny", "colorful_light", "sharp_focus"], ["golden_hour", "warm_light", "crowd_blur"], ["night", "lantern", "glowing_sign"]],
+        ["parade", "confetti", "balloon"],
+    ),
+    _sfw_scene_profile(
+        "wedding_garden",
+        ["wedding", "garden", "flowers", "arch"],
+        [["flower_arch", "chair", "ribbon"], ["cake", "table", "bouquet"], ["fountain", "path", "white_cloth"]],
+        [["soft_light", "warm_light", "bloom"], ["sunset", "golden_light", "backlighting"], ["overcast", "diffused_light", "calm"]],
+        ["wedding garden", "bouquet", "flower arch"],
+    ),
+    _sfw_scene_profile(
+        "market_bazaar",
+        ["market", "bazaar", "stall", "crowd"],
+        [["spice", "basket", "cloth"], ["fruit", "awning", "signboard"], ["lantern", "carpet", "ceramic"]],
+        [["warm_light", "sunbeam", "colorful"], ["evening", "lantern", "soft_shadow"], ["overcast", "diffused_light", "busy"]],
+        ["market bazaar", "spice", "fruit stall"],
+    ),
+    _sfw_scene_profile(
+        "tea_house",
+        ["tea_house", "tatami", "teacup", "window"],
+        [["tea_set", "low_table", "flowers"], ["shoji", "garden", "sunbeam"], ["kettle", "steam", "wooden_floor"]],
+        [["warm_light", "soft_shadow", "calm"], ["morning", "diffused_light", "peaceful"], ["rainy_day", "window_light", "muted_colors"]],
+        ["tea house", "teacup", "tatami"],
+    ),
+])
 
 RANDOM_COMPOSITION_GROUPS = {
     "character": [
@@ -300,6 +667,347 @@ RANDOM_ATMOSPHERE_GROUPS = [
     ["melancholy", "muted_colors", "lonely"],
     ["energetic", "motion_blur", "dynamic_pose"],
 ]
+
+RANDOM_SFW_THEME_PROFILES = [
+    {
+        "id": "cafe_daily_work",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["quiet_library", "cozy_room", "art_studio", "train_station_morning"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop"],
+        "tags": ["slice_of_life"],
+        "outfit": [["apron", "rolled_up_sleeves"], ["cardigan", "casual"], ["shirt", "vest"]],
+        "action": [["serving_food", "holding_tray"], ["pouring_coffee", "gentle_smile"], ["writing", "looking_down"]],
+        "interaction": [["talking", "smile"], ["looking_at_another", "laughing"], ["handing_object", "soft_smile"]],
+        "prop": [["coffee_cup", "dessert", "menu"], ["teapot", "book", "flower_vase"], ["notebook", "pen", "receipt"]],
+        "scene_detail": [["counter", "steam", "chalkboard_menu"], ["wooden_table", "chair", "warm_light"]],
+        "lookup_terms": ["coffee cup", "serving food", "slice of life"],
+    },
+    {
+        "id": "festival_outing",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["festival_night", "seaside_evening", "rainy_neon_street"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["festival"],
+        "outfit": [["yukata", "hair_ornament"], ["casual", "hoodie"], ["kimono", "wide_sleeves"]],
+        "action": [["holding_mask", "looking_at_viewer"], ["buying_food", "smile"], ["watching_fireworks", "looking_up"]],
+        "interaction": [["holding_hands", "laughing"], ["sharing_food", "smile"], ["walking_together", "crowd"]],
+        "prop": [["paper_lantern", "fox_mask", "food_stall"], ["cotton_candy", "balloon", "festival_fan"]],
+        "scene_detail": [["fireworks", "lantern", "night_sky"], ["stall", "banner", "crowd_blur"]],
+        "lookup_terms": ["festival", "yukata", "fireworks"],
+    },
+    {
+        "id": "fantasy_quest",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["fantasy_ruins", "sunlit_forest_path"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["fantasy", "adventure"],
+        "outfit": [["cloak", "boots", "belt"], ["armor", "cape"], ["traveling_clothes", "gloves"]],
+        "action": [["holding_map", "looking_forward"], ["casting_spell", "dynamic_pose"], ["reaching_out", "serious"]],
+        "interaction": [["pointing", "looking_at_another"], ["protective_stance", "determined"], ["team_pose", "smile"]],
+        "prop": [["map", "compass", "satchel"], ["staff", "magic_circle", "glowing_orb"], ["sword", "scabbard", "pouch"]],
+        "scene_detail": [["ancient_gate", "rune", "floating_particles"], ["campfire", "moss", "broken_pillar"]],
+        "lookup_terms": ["fantasy", "map", "magic circle"],
+    },
+    {
+        "id": "sci_fi_operator",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["sci_fi_workshop", "rainy_neon_street"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "style_light"],
+        "tags": ["science_fiction"],
+        "outfit": [["bodysuit", "jacket", "gloves"], ["pilot_suit", "headset"], ["lab_coat", "goggles"]],
+        "action": [["operating_console", "focused"], ["repairing_machine", "kneeling"], ["pointing_at_screen", "serious"]],
+        "interaction": [["discussing_plan", "looking_at_another"], ["passing_tool", "focused"], ["team_pose", "monitor"]],
+        "prop": [["hologram", "control_panel", "cable"], ["tablet_pc", "toolbox", "robot_arm"], ["blueprint", "mechanical_parts"]],
+        "scene_detail": [["screen_glow", "server_rack", "warning_light"], ["workbench", "sparks", "blue_glow"]],
+        "lookup_terms": ["hologram", "control panel", "pilot suit"],
+    },
+    {
+        "id": "idol_stage_show",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "duo"],
+        "scene_ids": ["stage_performance", "festival_night"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "style_light"],
+        "tags": ["idol", "performance"],
+        "outfit": [["idol_clothes", "frills", "hair_ribbon"], ["stage_outfit", "boots"], ["dress", "detached_sleeves"]],
+        "action": [["singing", "holding_microphone"], ["dancing", "dynamic_pose"], ["waving", "big_smile"]],
+        "interaction": [["duet", "looking_at_another"], ["group_pose", "smile"], ["reaching_out", "audience"]],
+        "prop": [["microphone", "glowstick", "confetti"], ["speaker", "stage_light", "music_note"]],
+        "scene_detail": [["spotlight", "stage", "audience"], ["curtains", "sparkles", "crowd_blur"]],
+        "lookup_terms": ["idol", "microphone", "stage"],
+    },
+    {
+        "id": "sports_training",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["sports_court", "sunlit_forest_path", "seaside_evening"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop"],
+        "tags": ["sports"],
+        "outfit": [["sportswear", "sneakers"], ["track_jacket", "shorts"], ["jersey", "knee_socks"]],
+        "action": [["running", "dynamic_pose"], ["jumping", "determined"], ["stretching", "smile"]],
+        "interaction": [["passing_ball", "looking_at_another"], ["high_five", "laughing"], ["team_pose", "energetic"]],
+        "prop": [["basketball", "water_bottle", "towel"], ["racket", "sports_bag"], ["soccer_ball", "goal"]],
+        "scene_detail": [["court_line", "fence", "blue_sky"], ["running_track", "finish_line", "motion_blur"]],
+        "lookup_terms": ["sportswear", "basketball", "running"],
+    },
+    {
+        "id": "travel_snapshot",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["train_station_morning", "seaside_evening", "rainy_neon_street", "festival_night"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["travel"],
+        "outfit": [["backpack", "jacket"], ["coat", "scarf"], ["casual", "sneakers"]],
+        "action": [["taking_photo", "camera"], ["checking_map", "looking_down"], ["waving", "smile"]],
+        "interaction": [["showing_photo", "laughing"], ["walking_together", "suitcase"], ["pointing", "looking_away"]],
+        "prop": [["camera", "suitcase", "map"], ["ticket", "phone", "backpack"], ["umbrella", "travel_bag"]],
+        "scene_detail": [["signboard", "platform", "sunbeam"], ["street_corner", "shopfront", "reflection"]],
+        "lookup_terms": ["camera", "suitcase", "travel"],
+    },
+    {
+        "id": "art_studio_session",
+        "weight": 2,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["art_studio", "quiet_library", "cozy_room"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["art"],
+        "outfit": [["apron", "rolled_up_sleeves"], ["cardigan", "casual"], ["shirt", "gloves"]],
+        "action": [["painting", "holding_brush"], ["sketching", "looking_down"], ["mixing_paint", "focused"]],
+        "interaction": [["showing_sketch", "smile"], ["teaching", "pointing"], ["looking_at_canvas", "thoughtful"]],
+        "prop": [["paintbrush", "palette", "canvas"], ["sketchbook", "pencil", "easel"], ["paint_tube", "rag", "jar"]],
+        "scene_detail": [["paint_splatter", "wooden_floor", "sunbeam"], ["shelf", "clay_model", "paper"]],
+        "lookup_terms": ["paintbrush", "easel", "sketchbook"],
+    },
+    {
+        "id": "animal_companion",
+        "weight": 2,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "animal_focus"],
+        "scene_ids": ["sunlit_forest_path", "cozy_room", "seaside_evening", "festival_night"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "prop", "scene"],
+        "tags": ["animal", "pet"],
+        "outfit": [["casual", "sneakers"], ["coat", "scarf"], ["apron"]],
+        "action": [["feeding_animal", "gentle_smile"], ["holding_pet", "smile"], ["playing", "laughing"]],
+        "interaction": [["petting_animal", "looking_down"], ["walking_dog", "leash"], ["sharing_food", "smile"]],
+        "prop": [["leash", "pet_bowl", "toy"], ["basket", "blanket", "ribbon"], ["treat", "small_bag"]],
+        "scene_detail": [["grass", "flowers", "sunlight"], ["sofa", "blanket", "window_light"]],
+        "lookup_terms": ["petting animal", "cat", "dog"],
+    },
+    {
+        "id": "landscape_weather",
+        "weight": 2,
+        "subject_ids": ["scenery", "animal_focus"],
+        "scene_ids": ["sunlit_forest_path", "seaside_evening", "rainy_neon_street", "fantasy_ruins"],
+        "association_max": 4,
+        "association_slots": ["scene", "prop", "style_light", "camera"],
+        "tags": ["environment"],
+        "outfit": [[]],
+        "action": [["wind", "falling_leaves"], ["rain", "ripples"], ["sunlight", "floating_particles"]],
+        "interaction": [[]],
+        "prop": [["bird", "butterfly", "flower"], ["boat", "rope", "lantern"], ["umbrella", "puddle", "reflection"]],
+        "scene_detail": [["distant_mountains", "clouds", "river"], ["waves", "seafoam", "sparkling_water"]],
+        "lookup_terms": ["scenery", "rain", "sunlight"],
+    },
+    {
+        "id": "still_life_corner",
+        "weight": 2,
+        "subject_ids": ["scenery", "animal_focus"],
+        "scene_ids": ["quiet_library", "cozy_room", "art_studio"],
+        "association_max": 4,
+        "association_slots": ["scene", "prop", "style_light", "camera"],
+        "tags": ["still_life"],
+        "outfit": [[]],
+        "action": [["sunbeam", "dust_particles"], ["steam", "soft_shadow"], ["falling_petals", "calm"]],
+        "interaction": [[]],
+        "prop": [["book", "coffee_cup", "flower_vase"], ["paintbrush", "palette", "sketchbook"], ["blanket", "plant", "chair"]],
+        "scene_detail": [["wooden_table", "window", "warm_light"], ["shelf", "paper", "small_lamp"]],
+        "lookup_terms": ["still life", "coffee cup", "flower vase"],
+    },
+    {
+        "id": "urban_architecture",
+        "weight": 2,
+        "subject_ids": ["scenery", "animal_focus"],
+        "scene_ids": ["rainy_neon_street", "train_station_morning", "sci_fi_workshop", "festival_night"],
+        "association_max": 4,
+        "association_slots": ["scene", "prop", "style_light", "camera"],
+        "tags": ["architecture"],
+        "outfit": [[]],
+        "action": [["rain", "reflection"], ["moving_train", "motion_blur"], ["crowd_blur", "glowing_sign"]],
+        "interaction": [[]],
+        "prop": [["signboard", "street_lamp", "umbrella"], ["ticket_gate", "bench", "vending_machine"], ["lantern", "banner", "stairs"]],
+        "scene_detail": [["vanishing_point", "leading_lines", "wet_ground"], ["platform", "overpass", "cityscape"]],
+        "lookup_terms": ["architecture", "street lamp", "train station"],
+    },
+]
+
+RANDOM_SFW_THEME_PROFILES.extend([
+    {
+        "id": "commuter_public_space",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["airport_terminal", "subway_platform", "shopping_arcade", "old_town_alley", "rooftop_garden"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["daily_life"],
+        "outfit": [["coat", "scarf"], ["jacket", "backpack"], ["casual", "sneakers"]],
+        "action": [["checking_phone", "looking_down"], ["waiting", "looking_away"], ["walking", "holding_bag"]],
+        "interaction": [["asking_directions", "smile"], ["walking_together", "talking"], ["pointing", "looking_at_another"]],
+        "prop": [["phone", "ticket", "bag"], ["suitcase", "coffee_cup", "map"], ["umbrella", "shopping_bag", "signboard"]],
+        "scene_detail": [["crowd_blur", "signboard", "reflection"], ["glass_wall", "bench", "large_window"]],
+        "lookup_terms": ["commute", "ticket", "shopping bag"],
+    },
+    {
+        "id": "market_food_walk",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["market_bazaar", "kitchen_table", "tea_house", "shopping_arcade", "festival_night"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["food", "market"],
+        "outfit": [["apron", "rolled_up_sleeves"], ["casual", "cardigan"], ["kimono", "hair_ornament"]],
+        "action": [["tasting_food", "smile"], ["cooking", "focused"], ["holding_cup", "gentle_smile"]],
+        "interaction": [["sharing_food", "laughing"], ["handing_object", "soft_smile"], ["talking", "looking_at_another"]],
+        "prop": [["bowl", "chopsticks", "steam"], ["basket", "fruit", "spice"], ["teacup", "kettle", "dessert"]],
+        "scene_detail": [["stall", "wooden_table", "menu"], ["steam", "warm_light", "flower_vase"]],
+        "lookup_terms": ["food stall", "teacup", "cooking"],
+    },
+    {
+        "id": "school_museum_visit",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["classroom_afternoon", "museum_gallery", "quiet_library", "arcane_library"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["study", "education"],
+        "outfit": [["school_uniform", "pleated_skirt"], ["shirt", "necktie"], ["cardigan", "loafers"]],
+        "action": [["reading", "looking_down"], ["taking_notes", "focused"], ["looking_at_painting", "thoughtful"]],
+        "interaction": [["discussing", "looking_at_another"], ["showing_book", "smile"], ["pointing", "curious"]],
+        "prop": [["notebook", "pencil", "book"], ["guidebook", "frame", "bench"], ["tablet_pc", "map", "ticket"]],
+        "scene_detail": [["chalkboard", "desk", "sunbeam"], ["painting", "sculpture", "spotlight"]],
+        "lookup_terms": ["classroom", "museum", "notebook"],
+    },
+    {
+        "id": "nature_expedition",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "animal_focus", "scenery"],
+        "scene_ids": ["bamboo_forest", "snowy_mountain", "desert_oasis", "volcanic_landscape", "waterfall_gorge", "autumn_park", "greenhouse"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene", "style_light"],
+        "tags": ["outdoors", "exploration"],
+        "outfit": [["hiking_boots", "backpack"], ["coat", "scarf"], ["traveling_clothes", "gloves"]],
+        "action": [["hiking", "looking_forward"], ["taking_photo", "camera"], ["resting", "smile"]],
+        "interaction": [["pointing", "looking_at_another"], ["helping_hand", "smile"], ["walking_together", "trail"]],
+        "prop": [["map", "compass", "water_bottle"], ["camera", "walking_stick", "bag"], ["flower", "leaf", "notebook"]],
+        "scene_detail": [["trail", "rocks", "distant_mountains"], ["mist", "sunbeam", "wind"]],
+        "lookup_terms": ["hiking", "compass", "waterfall"],
+    },
+    {
+        "id": "underwater_visit",
+        "weight": 2,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "animal_focus", "scenery"],
+        "scene_ids": ["aquarium_tunnel", "coral_reef", "seaside_evening"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "prop", "scene", "style_light"],
+        "tags": ["aquatic"],
+        "outfit": [["casual", "shorts"], ["sailor_collar", "ribbon"], ["swimsuit", "coverup"]],
+        "action": [["watching_fish", "smile"], ["pointing_up", "wonder"], ["floating", "relaxed"]],
+        "interaction": [["showing_fish", "laughing"], ["looking_at_another", "smile"], ["holding_hands", "blue_light"]],
+        "prop": [["fish", "bubble", "shell"], ["jellyfish", "camera", "glass"], ["coral", "seaweed", "water"]],
+        "scene_detail": [["blue_light", "caustics", "reflection"], ["glass_tunnel", "school_of_fish", "water"]],
+        "lookup_terms": ["aquarium", "coral reef", "jellyfish"],
+    },
+    {
+        "id": "space_expedition",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "scenery"],
+        "scene_ids": ["space_station", "starship_bridge", "lunar_base", "alien_market", "alien_biodome"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "style_light"],
+        "tags": ["space", "science_fiction"],
+        "outfit": [["spacesuit", "helmet"], ["pilot_suit", "gloves"], ["jacket", "headset"]],
+        "action": [["floating", "reaching_out"], ["operating_console", "focused"], ["exploring", "looking_forward"]],
+        "interaction": [["team_pose", "monitor"], ["passing_tool", "focused"], ["pointing_at_planet", "wonder"]],
+        "prop": [["helmet", "control_panel", "hologram"], ["rover", "antenna", "tablet_pc"], ["crystal", "sample_container", "toolbox"]],
+        "scene_detail": [["earth", "stars", "window"], ["airlock", "screen_glow", "warning_light"]],
+        "lookup_terms": ["spacesuit", "starship", "lunar base"],
+    },
+    {
+        "id": "machine_lab",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "scenery"],
+        "scene_ids": ["robot_factory", "sci_fi_workshop", "alien_biodome"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "style_light"],
+        "tags": ["technology", "machine"],
+        "outfit": [["lab_coat", "goggles"], ["mechanic_clothes", "gloves"], ["bodysuit", "jacket"]],
+        "action": [["repairing_machine", "focused"], ["holding_tool", "kneeling"], ["checking_screen", "serious"]],
+        "interaction": [["passing_tool", "looking_at_another"], ["discussing_plan", "monitor"], ["team_pose", "robot"]],
+        "prop": [["robot_arm", "toolbox", "cable"], ["wrench", "tablet_pc", "blueprint"], ["control_panel", "mechanical_parts", "sparks"]],
+        "scene_detail": [["assembly_line", "metal_floor", "steam"], ["workbench", "screen_glow", "warning_sign"]],
+        "lookup_terms": ["robot arm", "mechanic", "blueprint"],
+    },
+    {
+        "id": "fantasy_landmark",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "scenery", "animal_focus"],
+        "scene_ids": ["arcane_library", "floating_island", "dragon_cave", "sky_castle", "enchanted_garden", "crystal_cavern"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene", "style_light"],
+        "tags": ["fantasy", "magic"],
+        "outfit": [["cloak", "boots"], ["robe", "wide_sleeves"], ["armor", "cape"]],
+        "action": [["casting_spell", "dynamic_pose"], ["holding_lantern", "looking_forward"], ["reaching_out", "wonder"]],
+        "interaction": [["showing_map", "smile"], ["protective_stance", "determined"], ["looking_at_another", "curious"]],
+        "prop": [["staff", "spellbook", "magic_circle"], ["lantern", "map", "crystal"], ["sword", "shield", "satchel"]],
+        "scene_detail": [["rune", "floating_particles", "glowing"], ["tower", "waterfall", "clouds"]],
+        "lookup_terms": ["fantasy", "spellbook", "crystal cavern"],
+    },
+    {
+        "id": "dungeon_adventure",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo", "scenery"],
+        "scene_ids": ["dungeon_corridor", "treasure_room", "airship_deck", "boss_arena", "fantasy_ruins"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["adventure", "rpg"],
+        "outfit": [["adventurer", "cloak", "boots"], ["armor", "gloves"], ["traveling_clothes", "belt"]],
+        "action": [["holding_sword", "determined"], ["opening_chest", "surprised"], ["running", "dynamic_pose"]],
+        "interaction": [["team_pose", "serious"], ["pointing", "looking_at_another"], ["protective_stance", "determined"]],
+        "prop": [["sword", "shield", "torch"], ["treasure_chest", "map", "key"], ["rope", "compass", "scroll"]],
+        "scene_detail": [["stone_wall", "torch", "shadow"], ["gold", "pillar", "cracked_floor"]],
+        "lookup_terms": ["dungeon", "treasure chest", "sword"],
+    },
+    {
+        "id": "celebration_event",
+        "weight": 3,
+        "subject_ids": ["solo_girl", "solo_boy", "duo"],
+        "scene_ids": ["parade_street", "wedding_garden", "festival_night", "stage_performance", "market_bazaar"],
+        "association_max": 4,
+        "association_slots": ["pose_action", "expression", "clothing", "prop", "scene"],
+        "tags": ["celebration"],
+        "outfit": [["dress", "flower"], ["suit", "necktie"], ["yukata", "hair_ornament"]],
+        "action": [["waving", "big_smile"], ["holding_bouquet", "smile"], ["throwing_confetti", "laughing"]],
+        "interaction": [["holding_hands", "smile"], ["group_pose", "laughing"], ["dancing", "looking_at_another"]],
+        "prop": [["bouquet", "ribbon", "confetti"], ["balloon", "flag", "banner"], ["cake", "flower_arch", "lantern"]],
+        "scene_detail": [["crowd", "streamer", "colorful"], ["garden", "chair", "soft_light"]],
+        "lookup_terms": ["celebration", "bouquet", "parade"],
+    },
+])
+
+RANDOM_SFW_OPTIONAL_SLOT_CHANCES = {
+    "atmosphere": 0.7,
+    "style": 0.65,
+}
 
 RANDOM_BAD_LOOKUP_TAGS = {
     "mouth",
@@ -659,6 +1367,156 @@ RANDOM_PROMPT_NSFW_PROFILES = [
         "body_detail": [["pussy", "thighs"], ["nipples", "underboob"], ["wet_pussy", "cameltoe"]],
         "finish_detail": [["wet_pussy", "pussy_juice"], ["cum", "cum_on_clothes"], ["after_sex", "disheveled_clothes"]],
         "lighting": [["spotlight", "dark_background"], ["soft_lighting", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_love_hotel_pair",
+        "weight": 2,
+        "subject_id": "duo",
+        "character_chance": 0.6,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.25,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["sex", "love_hotel", "cum"],
+        "tags": ["1girl", "1boy", "sex", "love_hotel"],
+        "setting": [
+            ["love_hotel", "bed", "colored_lighting"],
+            ["hotel_room", "window", "city_lights"],
+            ["bathroom", "bathtub", "steam"],
+            ["karaoke_room", "sofa", "microphone"],
+            ["balcony", "night", "curtains"],
+        ],
+        "pose": [["cowgirl_position", "straddling"], ["sitting", "legs_apart"], ["lying", "legs_up"]],
+        "action": [["sex", "vaginal", "penetration"], ["panties_aside", "grabbing_hips", "penetration"], ["breast_grab", "kissing"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "heavy_breathing"], ["half-closed_eyes", "tears"]],
+        "body_detail": [["pussy", "penis", "wet_pussy"], ["cum", "cum_on_body", "nipples"]],
+        "finish_detail": [["cum", "cum_in_pussy", "cumdrip"], ["after_sex", "messy_hair", "cum_on_body"]],
+        "lighting": [["colored_lighting", "low_light"], ["city_lights", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_office_after_hours",
+        "weight": 2,
+        "subject_id": "duo",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.2,
+        "association_max": 2,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["office", "sex", "panties_aside"],
+        "tags": ["1girl", "1boy", "sex", "office"],
+        "setting": [
+            ["office", "desk", "night"],
+            ["meeting_room", "table", "window"],
+            ["storage_room", "shelf", "low_light"],
+            ["archive_room", "bookshelf", "desk"],
+            ["elevator", "mirror", "indoors"],
+        ],
+        "pose": [["bent_over", "looking_back"], ["sitting", "spread_legs"], ["standing", "against_wall"]],
+        "action": [["panties_aside", "penetration", "grabbing_hips"], ["sex", "vaginal", "desk"], ["shirt_lift", "breast_grab"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["heavy_breathing", "half-closed_eyes"], ["embarrassed", "tears"]],
+        "body_detail": [["pussy", "penis", "wet_pussy"], ["nipples", "thighs", "ass"]],
+        "finish_detail": [["cum", "cum_on_clothes"], ["after_sex", "disheveled_clothes"], ["cumdrip", "messy_hair"]],
+        "lighting": [["office_lighting", "low_light"], ["window_light", "city_lights"]],
+    },
+    {
+        "id": "dev_nsfw_public_tease",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.2,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["no_panties", "clothes_lift", "flashing"],
+        "tags": ["1girl", "solo", "no_panties", "clothes_lift"],
+        "setting": [
+            ["train_interior", "window", "handrail"],
+            ["elevator", "mirror", "indoors"],
+            ["rooftop", "railing", "cityscape"],
+            ["alley", "street_lamp", "night"],
+            ["festival", "lantern", "crowd_blur"],
+        ],
+        "pose": [["standing", "skirt_lift"], ["sitting", "spread_legs"], ["from_behind", "looking_back"]],
+        "action": [["clothes_lift", "flashing"], ["skirt_lift", "no_panties"], ["shirt_lift", "no_bra"]],
+        "expression": [["teasing_smile", "looking_at_viewer"], ["embarrassed", "blush"], ["open_mouth", "heavy_breathing"]],
+        "body_detail": [["pussy", "cameltoe"], ["nipples", "underboob"], ["thighs", "ass"]],
+        "finish_detail": [["wet_pussy", "pussy_juice"], ["after_sex", "disheveled_clothes"], ["cum", "cum_on_clothes"]],
+        "lighting": [["street_lamp", "low_light"], ["lantern_light", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_locker_room_wet",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["towel", "wet_clothes", "no_bra"],
+        "tags": ["1girl", "solo", "wet_clothes", "towel"],
+        "setting": [
+            ["locker_room", "locker", "bench"],
+            ["gym", "locker_room", "mirror"],
+            ["shower_room", "tile_floor", "steam"],
+            ["pool", "wet", "water"],
+            ["bathhouse", "steam", "towel"],
+        ],
+        "pose": [["standing", "towel"], ["sitting", "legs_apart"], ["leaning_forward", "looking_at_viewer"]],
+        "action": [["towel_lift", "no_bra"], ["wet_shirt", "clothes_lift"], ["panties_aside", "hand_between_legs"]],
+        "expression": [["blush", "open_mouth"], ["teasing_smile", "looking_at_viewer"], ["orgasm", "half-closed_eyes"]],
+        "body_detail": [["nipples", "erect_nipples"], ["pussy", "wet_pussy"], ["thighs", "underboob"]],
+        "finish_detail": [["wet_pussy", "pussy_juice"], ["cum", "cum_on_body"], ["after_sex", "messy_hair"]],
+        "lighting": [["steam", "diffused_light"], ["fluorescent_light", "soft_shadow"]],
+    },
+    {
+        "id": "dev_nsfw_outdoor_night",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.2,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["outdoors", "nude", "clothes_lift"],
+        "tags": ["1girl", "solo", "nude", "outdoors"],
+        "setting": [
+            ["beach", "night", "moonlight"],
+            ["forest", "moonlight", "grass"],
+            ["camping", "tent", "lantern"],
+            ["rooftop", "night", "railing"],
+            ["hot_spring", "steam", "rocks"],
+        ],
+        "pose": [["standing", "covering_breasts"], ["sitting", "spread_legs"], ["kneeling", "looking_at_viewer"]],
+        "action": [["clothes_lift", "breast_grab"], ["panties_aside", "touching_self"], ["nude", "covering"]],
+        "expression": [["embarrassed", "blush"], ["teasing_smile", "looking_at_viewer"], ["open_mouth", "heavy_breathing"]],
+        "body_detail": [["pussy", "nipples"], ["wet_pussy", "thighs"], ["underboob", "ass"]],
+        "finish_detail": [["cum", "cum_on_body"], ["wet_pussy", "pussy_juice"], ["after_sex", "messy_hair"]],
+        "lighting": [["moonlight", "rim_lighting"], ["lantern_light", "soft_shadow"]],
+    },
+    {
+        "id": "dev_nsfw_fantasy_private",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.25,
+        "association_max": 3,
+        "association_slots": ["pose", "expression", "body_detail", "prop", "clothing"],
+        "trigger_tags": ["fantasy", "nude", "magic_circle"],
+        "tags": ["1girl", "solo", "fantasy", "nude"],
+        "setting": [
+            ["shrine", "torii", "lantern"],
+            ["temple", "altar", "candle"],
+            ["ruins", "magic_circle", "glowing"],
+            ["greenhouse", "flowers", "vines"],
+            ["cave", "crystal", "water"],
+        ],
+        "pose": [["kneeling", "spread_legs"], ["standing", "clothes_lift"], ["sitting", "legs_apart"]],
+        "action": [["clothes_lift", "breast_grab"], ["panties_aside", "wet_pussy"], ["touching_self", "open_mouth"]],
+        "expression": [["orgasm", "open_mouth", "blush"], ["ahegao", "half-closed_eyes"], ["teasing_smile", "looking_at_viewer"]],
+        "body_detail": [["pussy", "nipples"], ["wet_pussy", "thighs"], ["underboob", "pubic_hair"]],
+        "finish_detail": [["cum", "cum_on_body"], ["wet_pussy", "pussy_juice"], ["after_sex", "disheveled_clothes"]],
+        "lighting": [["candlelight", "warm_light"], ["magic_circle", "blue_glow"]],
     },
 ]
 
@@ -1309,10 +2167,15 @@ def _lookup_prompt_tags(query, fallback_tags=None, source_mode="all", rng=None, 
     return result[:max(1, max_count)]
 
 
-def _random_prompt_association_tags(current_tags, rng, max_count=5):
+def _random_prompt_association_tags(current_tags, rng, max_count=5, allowed_slots=None):
     by_trigger = _random_prompt_association_rows()
     if not by_trigger:
         return []
+    allowed_slot_keys = {
+        _prompt_lookup_norm(slot)
+        for slot in allowed_slots or []
+        if _prompt_lookup_norm(slot)
+    }
     current_norms = {_prompt_lookup_norm(tag) for tag in current_tags if _prompt_lookup_norm(tag)}
     picked = []
     picked_slots = set()
@@ -1321,6 +2184,8 @@ def _random_prompt_association_tags(current_tags, rng, max_count=5):
         for row in by_trigger.get(trigger, [])[:18]:
             related = row.get("related")
             slot = row.get("slot")
+            if allowed_slot_keys and _prompt_lookup_norm(slot) not in allowed_slot_keys:
+                continue
             if not _random_prompt_related_tag_allowed(related, current_norms):
                 continue
             candidates.append(row)
@@ -1429,6 +2294,27 @@ def _pick_weighted_profile(rng, profiles):
     return weighted[-1][1]
 
 
+def _profile_id_matches(value, allowed_values):
+    allowed = {_prompt_lookup_norm(item) for item in allowed_values or [] if _prompt_lookup_norm(item)}
+    if not allowed:
+        return True
+    return _prompt_lookup_norm(value) in allowed
+
+
+def _pick_sfw_theme_profile(rng, subject_id, scene_id):
+    subject_matches = [
+        profile
+        for profile in RANDOM_SFW_THEME_PROFILES
+        if _profile_id_matches(subject_id, profile.get("subject_ids"))
+    ]
+    scene_matches = [
+        profile
+        for profile in subject_matches
+        if _profile_id_matches(scene_id, profile.get("scene_ids"))
+    ]
+    return _pick_weighted_profile(rng, scene_matches or subject_matches or RANDOM_SFW_THEME_PROFILES)
+
+
 def _extend_tag_group(tags, slots, slot_name, values):
     clean_values = [item for item in values or [] if _clean_text(item)]
     if not clean_values:
@@ -1437,9 +2323,14 @@ def _extend_tag_group(tags, slots, slot_name, values):
     slots.append({"slot": slot_name, "values": clean_values})
 
 
-def _random_prompt_lookup_terms(rng, subject, scene):
+def _random_prompt_lookup_terms(rng, subject, scene, theme=None):
     terms = []
-    for value in list(subject.get("lookup_terms") or []) + list(scene.get("lookup_terms") or []):
+    values = []
+    values.extend(subject.get("lookup_terms") or [])
+    values.extend(scene.get("lookup_terms") or [])
+    if isinstance(theme, dict):
+        values.extend(theme.get("lookup_terms") or [])
+    for value in values:
         clean = _clean_text(value)
         if clean and clean not in terms:
             terms.append(clean)
@@ -1516,6 +2407,7 @@ def compose_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None, 
     rng = random.Random(seed) if seed is not None else random.Random()
     subject = rng.choice(RANDOM_SUBJECT_PROFILES)
     scene = rng.choice(RANDOM_SCENE_PROFILES)
+    theme = _pick_sfw_theme_profile(rng, subject.get("id"), scene.get("id"))
     scenery_only = "no_humans" in subject.get("tags", [])
     composition_key = "scenery" if scenery_only else "character"
     picked_slots = []
@@ -1527,24 +2419,37 @@ def compose_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None, 
     _extend_tag_group(prompt_tags, picked_slots, "character", character_tags)
     _extend_tag_group(prompt_tags, picked_slots, "appearance", _pick_group(rng, subject.get("appearance")))
     _extend_tag_group(prompt_tags, picked_slots, "outfit", _pick_group(rng, subject.get("outfit")))
+    _extend_tag_group(prompt_tags, picked_slots, "theme", theme.get("tags"))
+    _extend_tag_group(prompt_tags, picked_slots, "theme_outfit", _pick_group(rng, theme.get("outfit")))
     _extend_tag_group(prompt_tags, picked_slots, "action", _pick_group(rng, subject.get("action")))
+    _extend_tag_group(prompt_tags, picked_slots, "theme_action", _pick_group(rng, theme.get("action")))
+    _extend_tag_group(prompt_tags, picked_slots, "interaction", _pick_group(rng, theme.get("interaction")))
     _extend_tag_group(prompt_tags, picked_slots, "setting", scene.get("tags"))
     _extend_tag_group(prompt_tags, picked_slots, "scene_detail", _pick_group(rng, scene.get("details")))
+    _extend_tag_group(prompt_tags, picked_slots, "theme_scene_detail", _pick_group(rng, theme.get("scene_detail")))
+    _extend_tag_group(prompt_tags, picked_slots, "prop", _pick_group(rng, theme.get("prop")))
     _extend_tag_group(prompt_tags, picked_slots, "lighting", _pick_group(rng, scene.get("lighting")))
     _extend_tag_group(prompt_tags, picked_slots, "composition", _pick_group(rng, RANDOM_COMPOSITION_GROUPS.get(composition_key)))
-    _extend_tag_group(prompt_tags, picked_slots, "atmosphere", _pick_group(rng, RANDOM_ATMOSPHERE_GROUPS))
-    _extend_tag_group(prompt_tags, picked_slots, "style", _pick_group(rng, RANDOM_STYLE_GROUPS))
+    if rng.random() <= _safe_float(RANDOM_SFW_OPTIONAL_SLOT_CHANCES.get("atmosphere"), 1.0):
+        _extend_tag_group(prompt_tags, picked_slots, "atmosphere", _pick_group(rng, RANDOM_ATMOSPHERE_GROUPS))
+    if rng.random() <= _safe_float(RANDOM_SFW_OPTIONAL_SLOT_CHANCES.get("style"), 1.0):
+        _extend_tag_group(prompt_tags, picked_slots, "style", _pick_group(rng, RANDOM_STYLE_GROUPS))
 
-    for term in _random_prompt_lookup_terms(rng, subject, scene):
+    for term in _random_prompt_lookup_terms(rng, subject, scene, theme):
         tags = _lookup_prompt_tags(term, source_mode=source_mode, rng=rng, max_count=1)
         if tags:
             lookup_terms.append(term)
             _extend_tag_group(prompt_tags, picked_slots, "danbooru_related", tags)
 
-    association_tags = _random_prompt_association_tags(prompt_tags, rng, max_count=5)
+    association_tags = _random_prompt_association_tags(
+        prompt_tags,
+        rng,
+        max_count=max(0, _safe_int(theme.get("association_max"), 5)),
+        allowed_slots=theme.get("association_slots"),
+    )
     _extend_tag_group(prompt_tags, picked_slots, "association_stats", association_tags)
 
-    prompt_tags.extend(RANDOM_QUALITY_TAGS)
+    _extend_tag_group(prompt_tags, picked_slots, "quality", RANDOM_QUALITY_TAGS)
 
     prompt = ", ".join(_dedupe_tags(prompt_tags))
     return {
@@ -1562,6 +2467,7 @@ def compose_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None, 
             "recipe": {
                 "subject": subject.get("id"),
                 "scene": scene.get("id"),
+                "theme": theme.get("id"),
                 "character": character_tags[:1],
             },
             "source": "local_prompt_recipe_danbooru_lookup",

@@ -181,6 +181,32 @@ def _superprompt_image_input(input_images):
     return input_images
 
 
+def _superprompt_prompt_from_json_object(data):
+    if not isinstance(data, dict):
+        return ""
+    for key in ("final_prompt", "prompt", "positive_prompt", "recommended_prompt", "Rewritten", "rewritten", "text"):
+        value = str(data.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _superprompt_extract_json_prompt(text):
+    source = str(text or "")
+    if "{" not in source:
+        return ""
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", source):
+        try:
+            data, _ = decoder.raw_decode(source, match.start())
+        except Exception:
+            continue
+        prompt = _superprompt_prompt_from_json_object(data)
+        if prompt:
+            return prompt
+    return ""
+
+
 def _superprompt_clean_output(text, fallback=""):
     output = str(text or "").strip()
     for prefix in getattr(VLM, "remove_prefixs", []):
@@ -189,17 +215,23 @@ def _superprompt_clean_output(text, fallback=""):
     if output.startswith("```"):
         output = re.sub(r"^```(?:json|text|prompt)?\s*", "", output, flags=re.I).strip()
         output = re.sub(r"\s*```$", "", output).strip()
-    if output.startswith("{") and output.endswith("}"):
-        try:
-            data = json.loads(output)
-            if isinstance(data, dict):
-                for key in ("final_prompt", "prompt", "Rewritten", "rewritten", "text"):
-                    value = str(data.get(key) or "").strip()
-                    if value:
-                        output = value
-                        break
-        except Exception:
-            pass
+    output = re.sub(r"(?is)<think\b[^>]*>.*?</think>", "", output).strip()
+    json_prompt = _superprompt_extract_json_prompt(output)
+    if json_prompt:
+        output = json_prompt
+    else:
+        label_matches = list(
+            re.finditer(
+                r"(?im)^\s*(?:final\s+prompt|positive\s+prompt|rewritten|output)\s*[:：]\s*",
+                output,
+            )
+        )
+        if label_matches:
+            output = output[label_matches[-1].end():].strip()
+        elif re.match(r"(?is)^\s*(?:thinking\s+process|analysis|reasoning|chain[-\s]*of[-\s]*thought)\s*[:：]", output):
+            return str(fallback or "").strip()
+        elif re.match(r"(?is)^\s*<think\b", output):
+            return str(fallback or "").strip()
     output = re.sub(
         r"(?is)^\s*(?:final\s+prompt|prompt|positive\s+prompt|rewritten|output)\s*[:：]\s*",
         "",

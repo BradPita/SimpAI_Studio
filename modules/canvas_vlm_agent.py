@@ -211,7 +211,7 @@ def _canvas_vlm_prompt_rewrite_required_docs(payload):
     if target_key in CANVAS_DANBOORU_TARGET_KEYS:
         return [VLM_DANBOORU_TAG_PROMPT_SKILL_FILE]
     if _canvas_is_natural_prompt_target_key(target_key):
-        return [VLM_NATURAL_PROMPT_ACTION_SKILL_FILE]
+        return [VLM_IMAGE_PROMPT_SKILL_FILE]
     return [VLM_IMAGE_PROMPT_SKILL_FILE]
 
 
@@ -253,7 +253,9 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
             for doc in docs
         )
         parts.append(
-            "Target prompt skill docs. Follow these rules when rewriting for the main WebUI SuperPrompt button:\n"
+            "Target prompt skill docs. Use these as target-language and prompt-content guidance only. "
+            "Ignore any action JSON schema or chat-card protocol mentioned in the docs; "
+            "the main WebUI SuperPrompt button still returns final prompt text only:\n"
             + skill_text
         )
     if (target_requires_anima or target_requires_danbooru) and str(prompt or "").strip():

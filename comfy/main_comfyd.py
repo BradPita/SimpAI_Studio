@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root)
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,7 +13,25 @@ ORT_CUDA13_INDEX_URL = os.environ.get(
     "ORT_CUDA13_INDEX_URL",
     "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
 )
-ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", "onnxruntime-gpu==1.27.0.dev20260511001")
+ORT_CUDA13_DEFAULT_PACKAGE = "onnxruntime-gpu==1.27.0.dev20260511001"
+ORT_CUDA13_DEFAULT_WHEEL_URL = (
+    "https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/libs/"
+    "onnxruntime-gpu/onnxruntime_gpu-1.27.0.dev20260511001-cp313-cp313-win_amd64.whl"
+)
+
+def _default_ort_cuda13_wheel_url():
+    is_windows_cp313_amd64 = (
+        platform.system() == "Windows"
+        and sys.version_info[:2] == (3, 13)
+        and platform.machine().lower() in ("amd64", "x86_64")
+    )
+    return ORT_CUDA13_DEFAULT_WHEEL_URL if is_windows_cp313_amd64 else ""
+
+ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", ORT_CUDA13_DEFAULT_PACKAGE)
+ORT_CUDA13_WHEEL_URL = os.environ.get(
+    "ORT_CUDA13_WHEEL_URL",
+    _default_ort_cuda13_wheel_url() if "ORT_CUDA13_PACKAGE" not in os.environ else "",
+)
 ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
 
 
@@ -118,6 +137,42 @@ def _onnxruntime_cuda13_ready():
     return not has_cpu_ort_package and cuda_build.startswith("13.") and "CUDAExecutionProvider" in providers
 
 
+def _onnxruntime_cuda13_install_commands():
+    commands = []
+    if ORT_CUDA13_WHEEL_URL:
+        commands.append((
+            "ModelScope wheel",
+            [
+                sys.executable,
+                "-s",
+                "-m",
+                "pip",
+                "install",
+                "--pre",
+                "--no-deps",
+                "--force-reinstall",
+                ORT_CUDA13_WHEEL_URL,
+            ],
+        ))
+    commands.append((
+        "ONNX Runtime nightly index",
+        [
+            sys.executable,
+            "-s",
+            "-m",
+            "pip",
+            "install",
+            "--pre",
+            "--no-deps",
+            "--force-reinstall",
+            "--index-url",
+            ORT_CUDA13_INDEX_URL,
+            ORT_CUDA13_PACKAGE,
+        ],
+    ))
+    return commands
+
+
 def install_onnxruntime_gpu_cuda13_for_comfyd():
     torch_version = _torch_version_noimport()
     if "+cu130" not in torch_version:
@@ -128,30 +183,23 @@ def install_onnxruntime_gpu_cuda13_for_comfyd():
 
     import subprocess
 
-    print(f"[Comfyd] Installing ONNX Runtime GPU CUDA 13 wheel: {ORT_CUDA13_PACKAGE}")
+    print("[Comfyd] Installing ONNX Runtime GPU CUDA 13.")
     subprocess.run(
         [sys.executable, "-s", "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"],
         check=False,
         env=_pip_env(),
     )
-    subprocess.run(
-        [
-            sys.executable,
-            "-s",
-            "-m",
-            "pip",
-            "install",
-            "--pre",
-            "--no-deps",
-            "--index-url",
-            ORT_CUDA13_INDEX_URL,
-            ORT_CUDA13_PACKAGE,
-        ],
-        check=False,
-        env=_pip_env(),
-    )
-    if not _onnxruntime_cuda13_ready():
-        print("[Comfyd] ONNX Runtime GPU CUDA 13 wheel is not ready after install.")
+    for source_name, command in _onnxruntime_cuda13_install_commands():
+        print(f"[Comfyd] Trying ONNX Runtime GPU CUDA 13 source: {source_name}")
+        result = subprocess.run(command, check=False, env=_pip_env())
+        if result.returncode != 0:
+            print(f"[Comfyd] ONNX Runtime GPU CUDA 13 source failed: {source_name}")
+            continue
+        if _onnxruntime_cuda13_ready():
+            print(f"[Comfyd] ONNX Runtime GPU CUDA 13 is ready from {source_name}.")
+            return None
+        print(f"[Comfyd] ONNX Runtime GPU CUDA 13 source is not ready after install: {source_name}")
+    print("[Comfyd] ONNX Runtime GPU CUDA 13 wheel is not ready after install.")
     return None
 
 

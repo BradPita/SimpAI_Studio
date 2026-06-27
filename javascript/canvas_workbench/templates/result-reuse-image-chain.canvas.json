@@ -230,14 +230,14 @@
         "defaults": {
           "base_model": "anima-base-v1.0.safetensors",
           "refiner_model": "None",
-          "clip_model": "Default (model)",
+          "clip_model": "qwen_3_06b_base.safetensors",
           "vae": "qwen_image_vae.safetensors",
           "loras": []
         },
         "overrides": {
           "base_model": "anima-base-v1.0.safetensors",
           "refiner_model": "None",
-          "clip_model": "Default (model)",
+          "clip_model": "qwen_3_06b_base.safetensors",
           "vae": "qwen_image_vae.safetensors",
           "loras": [
             {
