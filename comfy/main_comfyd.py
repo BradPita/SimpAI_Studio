@@ -8,6 +8,153 @@ os.chdir(target_dir)
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+ORT_CUDA13_INDEX_URL = os.environ.get(
+    "ORT_CUDA13_INDEX_URL",
+    "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
+)
+ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", "onnxruntime-gpu==1.27.0.dev20260511001")
+ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
+
+
+def _pip_env():
+    env = os.environ.copy()
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PIP_USER"] = "0"
+    env["PIP_PROGRESS_BAR"] = "raw"
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    return env
+
+
+def _torch_version_noimport():
+    try:
+        import importlib.util
+        torch_spec = importlib.util.find_spec("torch")
+        if torch_spec is None:
+            return ""
+        for folder in torch_spec.submodule_search_locations or []:
+            version_path = os.path.join(folder, "version.py")
+            if not os.path.isfile(version_path):
+                continue
+            spec = importlib.util.spec_from_file_location("simpai_torch_version", version_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return str(getattr(module, "__version__", ""))
+    except Exception:
+        return ""
+    return ""
+
+
+def _installed_package_version(package):
+    try:
+        import importlib.metadata
+        return importlib.metadata.version(package)
+    except Exception:
+        return None
+
+
+def _installed_onnxruntime_cuda_info():
+    import json
+    import re
+    import subprocess
+
+    code = r"""
+import contextlib
+import io
+import json
+
+info = {"version": None, "providers": [], "cuda_build": None, "debug": ""}
+try:
+    import onnxruntime as ort
+    info["version"] = getattr(ort, "__version__", None)
+    info["providers"] = list(ort.get_available_providers())
+    debug_buffer = io.StringIO()
+    with contextlib.redirect_stdout(debug_buffer), contextlib.redirect_stderr(debug_buffer):
+        try:
+            ort.print_debug_info()
+        except Exception as e:
+            print(f"print_debug_info failed: {e}")
+    info["debug"] = debug_buffer.getvalue()
+except Exception as e:
+    info["debug"] = f"import onnxruntime failed: {e}"
+print("SIMPAI_ORT_INFO=" + json.dumps(info, ensure_ascii=False))
+"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-s", "-X", "utf8", "-c", code],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_pip_env(),
+            timeout=60,
+        )
+    except Exception:
+        return {}
+
+    output = f"{result.stdout or ''}\n{result.stderr or ''}"
+    info = {}
+    for line in output.splitlines():
+        if not line.startswith(ORT_CUDA13_INFO_PREFIX):
+            continue
+        try:
+            info = json.loads(line[len(ORT_CUDA13_INFO_PREFIX):])
+        except Exception:
+            info = {}
+        break
+
+    debug_text = info.get("debug") or output
+    match = re.search(r"CUDA version used in build:\s*([0-9.]+)", debug_text)
+    if match:
+        info["cuda_build"] = match.group(1)
+    return info
+
+
+def _onnxruntime_cuda13_ready():
+    info = _installed_onnxruntime_cuda_info()
+    cuda_build = str(info.get("cuda_build") or "")
+    providers = info.get("providers") or []
+    has_cpu_ort_package = _installed_package_version("onnxruntime") is not None
+    return not has_cpu_ort_package and cuda_build.startswith("13.") and "CUDAExecutionProvider" in providers
+
+
+def install_onnxruntime_gpu_cuda13_for_comfyd():
+    torch_version = _torch_version_noimport()
+    if "+cu130" not in torch_version:
+        return None
+
+    if _onnxruntime_cuda13_ready():
+        return None
+
+    import subprocess
+
+    print(f"[Comfyd] Installing ONNX Runtime GPU CUDA 13 wheel: {ORT_CUDA13_PACKAGE}")
+    subprocess.run(
+        [sys.executable, "-s", "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"],
+        check=False,
+        env=_pip_env(),
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-s",
+            "-m",
+            "pip",
+            "install",
+            "--pre",
+            "--no-deps",
+            "--index-url",
+            ORT_CUDA13_INDEX_URL,
+            ORT_CUDA13_PACKAGE,
+        ],
+        check=False,
+        env=_pip_env(),
+    )
+    if not _onnxruntime_cuda13_ready():
+        print("[Comfyd] ONNX Runtime GPU CUDA 13 wheel is not ready after install.")
+    return None
+
+
 def install_requirements_sequential():
     requirements_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "requirements.txt")
     if not os.path.isfile(requirements_path):
@@ -103,6 +250,10 @@ if __name__ == "__main__":
         install_requirements_sequential()
     except Exception as e:
         print(f"[Comfyd] Requirements install step failed: {e}")
+    try:
+        install_onnxruntime_gpu_cuda13_for_comfyd()
+    except Exception as e:
+        print(f"[Comfyd] ONNX Runtime CUDA 13 install step failed: {e}")
 
 import comfy.options
 comfy.options.enable_args_parsing()

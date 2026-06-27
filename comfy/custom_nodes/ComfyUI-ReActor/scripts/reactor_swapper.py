@@ -1,8 +1,12 @@
 import glob
+import contextlib
 import ctypes
+import io
 import logging
 import os
+import re
 import shutil
+import sys
 from typing import List, Union
 
 import cv2
@@ -55,33 +59,103 @@ def _with_cpu_provider(provider):
     return [provider, "CPUExecutionProvider"]
 
 
-def _missing_windows_cuda12_dlls():
+_PORTABLE_CUDA_DLL_DIR_HANDLES = []
+_ADDED_PORTABLE_CUDA_DLL_DIRS = set()
+
+
+def _portable_cuda_dll_dirs():
+    candidates = []
+    torch_file = getattr(torch, "__file__", None)
+    if torch_file:
+        torch_dir = os.path.dirname(torch_file)
+        site_packages_dir = os.path.dirname(torch_dir)
+        candidates.append(os.path.join(torch_dir, "lib"))
+        nvidia_root = os.path.join(site_packages_dir, "nvidia")
+        candidates.extend(glob.glob(os.path.join(nvidia_root, "*", "bin")))
+        candidates.extend(glob.glob(os.path.join(nvidia_root, "*", "lib")))
+
+    python_root = os.path.dirname(sys.executable)
+    candidates.append(python_root)
+    candidates.append(os.path.join(python_root, "DLLs"))
+
+    result = []
+    seen = set()
+    for path in candidates:
+        normalized = os.path.normcase(os.path.abspath(path))
+        if normalized in seen or not os.path.isdir(path):
+            continue
+        seen.add(normalized)
+        result.append(path)
+    return result
+
+
+def _add_portable_cuda_dll_dirs():
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+    for dll_dir in _portable_cuda_dll_dirs():
+        normalized = os.path.normcase(os.path.abspath(dll_dir))
+        if normalized in _ADDED_PORTABLE_CUDA_DLL_DIRS:
+            continue
+        try:
+            _PORTABLE_CUDA_DLL_DIR_HANDLES.append(os.add_dll_directory(dll_dir))
+            _ADDED_PORTABLE_CUDA_DLL_DIRS.add(normalized)
+        except OSError as e:
+            logger.debug(f"Failed to add portable CUDA DLL directory {dll_dir}: {e}")
+
+
+def _onnxruntime_cuda_major():
+    try:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            onnxruntime.print_debug_info()
+        match = re.search(r"CUDA version used in build:\s*(\d+)", output.getvalue())
+        if match:
+            return match.group(1)
+    except Exception as e:
+        logger.debug(f"Failed to read ONNXRuntime CUDA build version: {e}")
+
+    torch_cuda = getattr(torch.version, "cuda", None)
+    if torch_cuda:
+        return str(torch_cuda).split(".", 1)[0]
+    return "12"
+
+
+def _portable_cuda_dll_exists(dll_name):
+    for dll_dir in _portable_cuda_dll_dirs():
+        dll_path = os.path.join(dll_dir, dll_name)
+        if not os.path.isfile(dll_path):
+            continue
+        try:
+            ctypes.WinDLL(dll_path)
+            return True
+        except OSError as e:
+            logger.debug(f"Failed to load portable CUDA DLL {dll_path}: {e}")
+    return False
+
+
+def _missing_windows_cuda_dlls():
     if os.name != "nt":
         return []
 
+    _add_portable_cuda_dll_dirs()
+    cuda_major = _onnxruntime_cuda_major()
     required_dlls = (
-        "cublasLt64_12.dll",
-        "cublas64_12.dll",
-        "cudart64_12.dll",
+        f"cublasLt64_{cuda_major}.dll",
+        f"cublas64_{cuda_major}.dll",
+        f"cudart64_{cuda_major}.dll",
     )
-    missing = []
-    for dll_name in required_dlls:
-        try:
-            ctypes.WinDLL(dll_name)
-        except OSError:
-            missing.append(dll_name)
-    return missing
+    return [dll_name for dll_name in required_dlls if not _portable_cuda_dll_exists(dll_name)]
 
 
 def _select_ort_providers():
     try:
         available = set(onnxruntime.get_available_providers())
         if torch.cuda.is_available() and "CUDAExecutionProvider" in available:
-            missing = _missing_windows_cuda12_dlls()
+            missing = _missing_windows_cuda_dlls()
             if not missing:
                 return _with_cpu_provider("CUDAExecutionProvider")
             logger.warning(
-                "ONNXRuntime CUDA provider disabled: missing %s. ReActor will use CPUExecutionProvider.",
+                "ONNXRuntime CUDA provider disabled: missing portable CUDA DLLs: %s. ReActor will use CPUExecutionProvider.",
                 ", ".join(missing),
             )
         elif torch.backends.mps.is_available() and "CoreMLExecutionProvider" in available:

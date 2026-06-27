@@ -16,6 +16,22 @@ global_csv = None
 current_model_name = None
 
 
+def _ort_providers():
+    available = set(ort.get_available_providers())
+    preferred = [
+        "CUDAExecutionProvider",
+        "DirectMLExecutionProvider",
+        "DmlExecutionProvider",
+        "ROCMExecutionProvider",
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    if os.environ.get("SIMPAI_WD14_ENABLE_TENSORRT") == "1":
+        preferred.insert(0, "TensorrtExecutionProvider")
+    providers = [provider for provider in preferred if provider in available]
+    return providers or ["CPUExecutionProvider"]
+
+
 def free_model():
     global global_model, global_csv, current_model_name
     if global_model is not None:
@@ -76,7 +92,7 @@ def default_interrogator(image, threshold=0.35, character_threshold=0.85, exclud
     if global_model is not None:
         model = global_model
     else:
-        model = InferenceSession(model_onnx_filename, providers=ort.get_available_providers())
+        model = InferenceSession(model_onnx_filename, providers=_ort_providers())
         global_model = model
 
     input = model.get_inputs()[0]

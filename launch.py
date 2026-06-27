@@ -34,6 +34,13 @@ root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root)
 os.chdir(root)
 
+ORT_CUDA13_INDEX_URL = os.environ.get(
+    "ORT_CUDA13_INDEX_URL",
+    "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/",
+)
+ORT_CUDA13_PACKAGE = os.environ.get("ORT_CUDA13_PACKAGE", "onnxruntime-gpu==1.27.0.dev20260511001")
+ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
+
 OBSOLETE_CUSTOM_NODE_FOLDERS = ()
 
 def cleanup_obsolete_custom_nodes():
@@ -167,6 +174,118 @@ def _installed_package_version(package):
         logger.debug(f"读取 {package} 已安装版本失败: {e}")
         return None
 
+def _installed_onnxruntime_cuda_info():
+    code = r"""
+import contextlib
+import io
+import json
+
+info = {"version": None, "providers": [], "cuda_build": None, "debug": ""}
+try:
+    import onnxruntime as ort
+    info["version"] = getattr(ort, "__version__", None)
+    info["providers"] = list(ort.get_available_providers())
+    debug_buffer = io.StringIO()
+    with contextlib.redirect_stdout(debug_buffer), contextlib.redirect_stderr(debug_buffer):
+        try:
+            ort.print_debug_info()
+        except Exception as e:
+            print(f"print_debug_info failed: {e}")
+    info["debug"] = debug_buffer.getvalue()
+except Exception as e:
+    info["debug"] = f"import onnxruntime failed: {e}"
+print("SIMPAI_ORT_INFO=" + json.dumps(info, ensure_ascii=False))
+"""
+    try:
+        result = subprocess.run(
+            [python, "-s", "-X", "utf8", "-c", code],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_make_pip_env(),
+            timeout=60,
+        )
+    except Exception as e:
+        logger.debug(f"检查 ONNX Runtime CUDA build 失败: {e}")
+        return {}
+
+    output = f"{result.stdout or ''}\n{result.stderr or ''}"
+    info = {}
+    for line in output.splitlines():
+        if not line.startswith(ORT_CUDA13_INFO_PREFIX):
+            continue
+        try:
+            info = json.loads(line[len(ORT_CUDA13_INFO_PREFIX):])
+        except Exception as e:
+            logger.debug(f"解析 ONNX Runtime CUDA 信息失败: {e}")
+        break
+
+    if not info:
+        logger.debug(f"无法读取 ONNX Runtime CUDA 信息: {output.strip()}")
+        return {}
+
+    debug_text = info.get("debug") or output
+    match = re.search(r"CUDA version used in build:\s*([0-9.]+)", debug_text)
+    if match:
+        info["cuda_build"] = match.group(1)
+    return info
+
+def _onnxruntime_cuda13_ready():
+    info = _installed_onnxruntime_cuda_info()
+    cuda_build = str(info.get("cuda_build") or "")
+    providers = info.get("providers") or []
+    has_cpu_ort_package = _installed_package_version("onnxruntime") is not None
+    return not has_cpu_ort_package and cuda_build.startswith("13.") and "CUDAExecutionProvider" in providers
+
+def install_onnxruntime_gpu_cuda13():
+    info = _installed_onnxruntime_cuda_info()
+    cuda_build = str(info.get("cuda_build") or "")
+    providers = info.get("providers") or []
+    has_cpu_ort_package = _installed_package_version("onnxruntime") is not None
+    if not has_cpu_ort_package and cuda_build.startswith("13.") and "CUDAExecutionProvider" in providers:
+        logger.info(f"ONNX Runtime CUDA 13 already installed: {info.get('version')} (CUDA build {cuda_build})")
+        return True
+    if has_cpu_ort_package:
+        logger.info("检测到 onnxruntime 与 onnxruntime-gpu 同时存在，将重装 ONNX Runtime GPU。")
+
+    logger.info(
+        f"安装 ONNX Runtime CUDA 13 nightly。当前版本: {info.get('version') or 'missing'}, "
+        f"CUDA build: {cuda_build or 'unknown'}, providers: {providers or 'unknown'}"
+    )
+
+    try:
+        run(
+            f'"{python}" -s -m pip uninstall -y onnxruntime onnxruntime-gpu',
+            "Removing old ONNX Runtime packages",
+            "Could not remove old ONNX Runtime packages",
+            custom_env=_make_pip_env(),
+            live=True,
+        )
+    except Exception as e:
+        logger.warning(f"卸载旧 ONNX Runtime 包失败，将继续尝试安装 CUDA 13 版: {e}")
+
+    try:
+        run(
+            f'"{python}" -s -m pip install --pre --no-deps --index-url {ORT_CUDA13_INDEX_URL} {ORT_CUDA13_PACKAGE}',
+            "Installing ONNX Runtime GPU CUDA 13 nightly",
+            "Could not install ONNX Runtime GPU CUDA 13 nightly",
+            custom_env=_make_pip_env(),
+            live=True,
+        )
+    except Exception as e:
+        logger.error(f"安装 ONNX Runtime CUDA 13 nightly 失败: {e}")
+        return False
+
+    if not _onnxruntime_cuda13_ready():
+        installed = _installed_onnxruntime_cuda_info()
+        logger.error(
+            f"ONNX Runtime CUDA 13 nightly 安装后校验失败: version={installed.get('version')}, "
+            f"cuda_build={installed.get('cuda_build')}, providers={installed.get('providers')}"
+        )
+        return False
+    return True
+
 def check_base_environment():
     print(f"{now_string()} Python {sys.version}")
     print(f"{now_string()} Comfyd version: {comfy_version.version}")
@@ -207,13 +326,14 @@ def check_base_environment():
 
     if torch.__version__ == '2.9.1+cu130':
         logger.info(f'当前环境：PyTorch 2.9.1+CUDA 13.0. 50系以上显卡支持Nvfp4模型加速推理.')
+        if not install_onnxruntime_gpu_cuda13():
+            logger.error("无法安装 ONNX Runtime CUDA 13 nightly，DWPose/ReActor 等 ONNX 节点可能降到 CPU。")
         update_pkgs = [
             ('comfyui-frontend-package', '1.45.19'),
             ('comfyui-workflow-templates', '0.10.7'),
             ('comfyui-embedded-docs', '0.5.5'),
             ('comfy-kitchen', '0.2.12'),
             ('comfy-aimdo', '0.4.10'),
-            ('onnxruntime-gpu', '1.25.1'),
             ('av', '17.0.0')
         ]
         for (update_pkg_name, update_pkg_version) in update_pkgs:

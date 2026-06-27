@@ -451,7 +451,7 @@
           },
           {
             "key": "scene_var_number3",
-            "label": "Reference video override FPS [16 recommended]",
+            "label": "Reference video override FPS",
             "type": "number",
             "default": 16,
             "visible": true,

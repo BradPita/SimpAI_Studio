@@ -15,6 +15,7 @@ colour-science
 download==0.3.5
 einops==0.8.0
 ftfy
+flatbuffers
 gradio==6.9.0
 httpx==0.28.1
 imageio-ffmpeg==0.6.0
@@ -38,8 +39,12 @@ open-clip-torch>=2.17.1
 omegaconf==2.3.0 #
 pydantic==2.12.2
 onnx>=1.14.0
-#onnxruntime==1.20.1 #
-onnxruntime-gpu==1.25.1
+# ONNX Runtime policy:
+# - Do not install onnxruntime/onnxruntime-gpu from requirements.txt.
+# - PyTorch cu130 uses launch.py to install the pinned CUDA 13 nightly wheel:
+#   onnxruntime-gpu==1.27.0.dev20260511001 with --no-deps.
+# - Runtime deps stay in this file, so protobuf remains pinned at 4.25.3.
+# - Custom cu12x environments must install their matching onnxruntime-gpu wheel manually.
 #onnx-graphsurgeon==0.3.27
 peft==0.17.1
 Pillow #==10.4.0 #
