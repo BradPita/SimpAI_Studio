@@ -220,6 +220,30 @@ def detect_unet_config(state_dict: dict, key_prefix: str) -> dict:
 
         return dit_config
 
+    if "{}txtfusion.projector.weight".format(key_prefix) in state_dict_keys:  # Krea 2
+        dit_config = {}
+        dit_config["image_model"] = "krea2"
+        head_dim = 128
+        first_weight = state_dict["{}first.weight".format(key_prefix)]
+        dit_config["features"] = int(first_weight.shape[0])
+        dit_config["channels"] = int(first_weight.shape[1]) // 4
+        dit_config["patch"] = 2
+        dit_config["layers"] = count_blocks(state_dict_keys, "{}blocks.".format(key_prefix) + "{}.")
+        dit_config["heads"] = int(state_dict["{}blocks.0.attn.wq.weight".format(key_prefix)].shape[0]) // head_dim
+        dit_config["kvheads"] = int(state_dict["{}blocks.0.attn.wk.weight".format(key_prefix)].shape[0]) // head_dim
+        dit_config["txtlayers"] = int(state_dict["{}txtfusion.projector.weight".format(key_prefix)].shape[1])
+        dit_config["txtdim"] = int(state_dict["{}txtfusion.layerwise_blocks.0.prenorm.scale".format(key_prefix)].shape[0])
+        text_q_key = "{}txtfusion.layerwise_blocks.0.attn.wq.weight".format(key_prefix)
+        text_k_key = "{}txtfusion.layerwise_blocks.0.attn.wk.weight".format(key_prefix)
+        if text_q_key in state_dict:
+            dit_config["txtheads"] = int(state_dict[text_q_key].shape[0]) // head_dim
+        if text_k_key in state_dict:
+            dit_config["txtkvheads"] = int(state_dict[text_k_key].shape[0]) // head_dim
+        tmlp_key = "{}tmlp.0.weight".format(key_prefix)
+        if tmlp_key in state_dict:
+            dit_config["tdim"] = int(state_dict[tmlp_key].shape[1])
+        return dit_config
+
     if "{}txt_norm.weight".format(key_prefix) in state_dict_keys:  # Qwen Image
         _qweight: bool = "{}transformer_blocks.0.attn.to_qkv.qweight".format(key_prefix) in state_dict_keys
         dit_config = {"nunchaku": _qweight}

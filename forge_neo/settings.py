@@ -21,13 +21,14 @@ class ForgeNeoSettingInfo:
     label_cn: str
 
 
-PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "lumina", "qwen", "sd", "xl", "zit")
+PRESET_ARCHES: tuple[str, ...] = ("anima", "flux", "klein", "krea2", "lumina", "qwen", "sd", "xl", "zit")
 PRESET_DISPLAY_NAMES: dict[str, str] = {arch: arch.upper() for arch in PRESET_ARCHES}
 PRESET_SAMPLERS: dict[str, str] = {
     "sd": "Euler a",
     "xl": "Euler a",
     "flux": "Euler",
     "klein": "Euler",
+    "krea2": "Euler",
     "qwen": "Euler",
     "lumina": "Res Multistep",
     "zit": "Euler",
@@ -38,6 +39,7 @@ PRESET_SCHEDULERS: dict[str, str] = {
     "xl": "Automatic",
     "flux": "Beta",
     "klein": "Beta",
+    "krea2": "Simple",
     "qwen": "Beta",
     "lumina": "Simple",
     "zit": "Beta",
@@ -48,6 +50,7 @@ PRESET_STEPS: dict[str, int] = {
     "xl": 24,
     "flux": 20,
     "klein": 4,
+    "krea2": 8,
     "qwen": 8,
     "lumina": 32,
     "zit": 9,
@@ -58,6 +61,7 @@ PRESET_CFG: dict[str, float] = {
     "xl": 4.5,
     "flux": 1.0,
     "klein": 1.0,
+    "krea2": 1.0,
     "qwen": 1.0,
     "lumina": 4.0,
     "zit": 1.0,

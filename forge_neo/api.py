@@ -242,7 +242,7 @@ SOURCE_PRESET_EMPTY_OPTION_SUFFIXES: tuple[str, ...] = (
     "i2i_dim1",
     "i2i_dim0",
 )
-SOURCE_PRESET_DCFG_EMPTY_OPTIONS: set[str] = {"xl", "flux", "lumina", "zit", "anima"}
+SOURCE_PRESET_DCFG_EMPTY_OPTIONS: set[str] = {"xl", "flux", "krea2", "lumina", "zit", "anima"}
 _MISSING_SOURCE_OPTION = object()
 _SIMPLEMODELS_INFO_CACHE: tuple[str, int, dict[str, Any]] | None = None
 _SIMPLEMODELS_INFO_CATALOG_ALIASES: dict[str, tuple[str, ...]] = {

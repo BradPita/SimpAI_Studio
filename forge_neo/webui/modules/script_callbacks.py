@@ -279,6 +279,10 @@ def ui_tabs_callback():
     res = []
 
     for c in ordered_callbacks('ui_tabs'):
+        script = os.path.normcase(str(getattr(c, 'script', '') or ''))
+        managed_civitai = os.path.normcase(os.path.join('forge_neo', 'webui', 'extensions', 'Stable-Diffusion-Webui-Civitai-Helper'))
+        if os.environ.get('FORGE_NEO_MANAGED_SOURCE_EXTENSION_TABS') == '1' and managed_civitai in script:
+            continue
         try:
             res += c.callback() or []
         except Exception:

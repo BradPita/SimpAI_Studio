@@ -7,9 +7,10 @@ class PresetArch(Enum):
     flux = 3  # Flux.1
     klein = 4  # Flux.2
     qwen = 5  # Qwen-Image
-    lumina = 6  # Lumina-Image-2.0
-    zit = 7  # Z-Image-Turbo
-    anima = 8  # Anima
+    krea2 = 6  # Krea 2
+    lumina = 7  # Lumina-Image-2.0
+    zit = 8  # Z-Image-Turbo
+    anima = 9  # Anima
 
     @staticmethod
     def choices() -> list[str]:
@@ -22,6 +23,7 @@ SAMPLERS = {
     PresetArch.flux: "Euler",
     PresetArch.klein: "Euler",
     PresetArch.qwen: "Euler",
+    PresetArch.krea2: "Euler",
     PresetArch.lumina: "Res Multistep",
     PresetArch.zit: "Euler",
     PresetArch.anima: "ER SDE",
@@ -33,6 +35,7 @@ SCHEDULERS = {
     PresetArch.flux: "Beta",
     PresetArch.klein: "Beta",
     PresetArch.qwen: "Beta",
+    PresetArch.krea2: "Simple",
     PresetArch.lumina: "Simple",
     PresetArch.zit: "Beta",
     PresetArch.anima: "Simple",
@@ -44,6 +47,7 @@ STEPS = {
     PresetArch.flux: 20,
     PresetArch.klein: 4,
     PresetArch.qwen: 8,
+    PresetArch.krea2: 8,
     PresetArch.lumina: 32,
     PresetArch.zit: 9,
     PresetArch.anima: 32,
@@ -55,6 +59,7 @@ CFG = {
     PresetArch.flux: 1.0,
     PresetArch.klein: 1.0,
     PresetArch.qwen: 1.0,
+    PresetArch.krea2: 1.0,
     PresetArch.lumina: 4.0,
     PresetArch.zit: 1.0,
     PresetArch.anima: 4.0,

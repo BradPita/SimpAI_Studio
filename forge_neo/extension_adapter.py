@@ -47,6 +47,7 @@ AUTO_PHOTOSHOP_EXTENSION = "Auto-Photoshop-StableDiffusion-Plugin"
 AESTHETIC_ENHANCEMENT_EXTENSION = "sd-webui-AestheticEnhancement"
 ASPECT_RATIO_HELPER_EXTENSION = "sd-webui-aspect-ratio-helper"
 CAMERA_ANGLE_SELECTOR_EXTENSION = "sd-webui-camera-angle-selector"
+CIVITAI_HELPER_EXTENSION = "Stable-Diffusion-Webui-Civitai-Helper"
 MULTIMODAL_MEDIA_EXTENSION = "sd-webui-multimodal-media"
 QWEN_VISION_CHAT_EXTENSION = "sd-webui-qwen-vision-chat"
 SAM_MATTING_EXTENSION = "sd-webui-sam-matting"
@@ -61,6 +62,7 @@ PRIORITY_EXTENSION_PROFILES = (DYNAMIC_PROMPTS_EXTENSION, WD14_TAGGER_EXTENSION,
 API_ROUTE_EXTENSION_PROFILES = (AUTO_PHOTOSHOP_EXTENSION,)
 UI_HELPER_EXTENSION_PROFILES = (ASPECT_RATIO_HELPER_EXTENSION,)
 UI_TAB_EXTENSION_PROFILES = (
+    CIVITAI_HELPER_EXTENSION,
     CAMERA_ANGLE_SELECTOR_EXTENSION,
     STORYBOARD_ASSISTANT_EXTENSION,
     AESTHETIC_ENHANCEMENT_EXTENSION,
@@ -603,6 +605,44 @@ CAMERA_ANGLE_SELECTOR_PROFILE = ForgeNeoExtensionProfile(
     ),
 )
 
+CIVITAI_HELPER_PROFILE = ForgeNeoExtensionProfile(
+    name=CIVITAI_HELPER_EXTENSION,
+    display_name="Civitai Helper",
+    family="model-metadata",
+    support_level="runtime-adapter",
+    adapter_scope="ui-tab",
+    remote_url="https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper.git",
+    repository_layout="standalone",
+    source_branch="main",
+    required_files=(
+        "scripts/civitai_helper.py",
+        "scripts/image_metadata.py",
+        "ch_lib/civitai.py",
+        "ch_lib/downloader.py",
+        "ch_lib/js_action_civitai.py",
+        "ch_lib/model.py",
+        "ch_lib/model_action_civitai.py",
+        "ch_lib/sections.py",
+        "browser/browser.py",
+        "browser/supported_models.py",
+        "browser/templates/container.html",
+        "javascript/civitai_helper.js",
+        "style.css",
+    ),
+    javascript_files=("javascript/civitai_helper.js",),
+    css_files=("style.css",),
+    routes=("/forge-neo/extensions/civitai-helper-status",),
+    source_callbacks=(
+        "script_callbacks.on_ui_settings(on_ui_settings)",
+        "script_callbacks.on_ui_tabs(on_ui_tabs)",
+        "script_callbacks.on_before_image_saved(add_resource_metadata)",
+    ),
+    notes=(
+        "Source extension provides Civitai scan, metadata, download and browser tabs.",
+        "Forge Neo keeps the source Gradio UI and adapts model paths plus Extra Networks card buttons for Gradio 6.",
+    ),
+)
+
 MULTIMODAL_MEDIA_PROFILE = ForgeNeoExtensionProfile(
     name=MULTIMODAL_MEDIA_EXTENSION,
     display_name="Multimodal Media",
@@ -890,6 +930,7 @@ PROMPT_EXTENSION_PROFILES = (TAGCOMPLETE_PROFILE, PROMPT_ALL_IN_ONE_PROFILE)
 API_ROUTE_EXTENSION_PROFILE_OBJECTS = (AUTO_PHOTOSHOP_PROFILE,)
 UI_HELPER_EXTENSION_PROFILE_OBJECTS = (ASPECT_RATIO_HELPER_PROFILE,)
 UI_TAB_EXTENSION_PROFILE_OBJECTS = (
+    CIVITAI_HELPER_PROFILE,
     CAMERA_ANGLE_SELECTOR_PROFILE,
     STORYBOARD_ASSISTANT_PROFILE,
     AESTHETIC_ENHANCEMENT_PROFILE,
@@ -1155,7 +1196,7 @@ def extension_javascript_paths() -> list[str]:
     active = active_prompt_extension_names()
     active_adapters = set(active_adapter_extension_names())
     paths: list[Path] = []
-    if active or STYLE_ORGANIZER_EXTENSION in active_adapters:
+    if active or STYLE_ORGANIZER_EXTENSION in active_adapters or CIVITAI_HELPER_EXTENSION in active_adapters:
         paths.append(BRIDGE_JS)
     if TAGCOMPLETE_EXTENSION in active:
         ext_dir = _extension_dir(TAGCOMPLETE_EXTENSION)
@@ -1171,6 +1212,8 @@ def extension_javascript_paths() -> list[str]:
         paths.append(ASPECT_RATIO_HELPER_JS)
     if CAMERA_ANGLE_SELECTOR_EXTENSION in active_adapters:
         paths.append(CAMERA_ANGLE_SELECTOR_JS)
+    if CIVITAI_HELPER_EXTENSION in active_adapters:
+        paths.append(_extension_dir(CIVITAI_HELPER_EXTENSION) / "javascript" / "civitai_helper.js")
     if STYLE_ORGANIZER_EXTENSION in active_adapters:
         ext_dir = _extension_dir(STYLE_ORGANIZER_EXTENSION)
         paths.append(ext_dir / "javascript" / "sg_prompt_utils.js")
@@ -1182,7 +1225,7 @@ def extension_css_paths() -> list[str]:
     active = active_prompt_extension_names()
     active_adapters = set(active_adapter_extension_names())
     paths: list[Path] = []
-    if active or STYLE_ORGANIZER_EXTENSION in active_adapters:
+    if active or STYLE_ORGANIZER_EXTENSION in active_adapters or CIVITAI_HELPER_EXTENSION in active_adapters:
         paths.append(BRIDGE_CSS)
     if PROMPT_ALL_IN_ONE_EXTENSION in active:
         paths.append(_extension_dir(PROMPT_ALL_IN_ONE_EXTENSION) / "style.css")
@@ -1192,6 +1235,8 @@ def extension_css_paths() -> list[str]:
         paths.append(ASPECT_RATIO_HELPER_CSS)
     if CAMERA_ANGLE_SELECTOR_EXTENSION in active_adapters:
         paths.append(CAMERA_ANGLE_SELECTOR_CSS)
+    if CIVITAI_HELPER_EXTENSION in active_adapters:
+        paths.append(_extension_dir(CIVITAI_HELPER_EXTENSION) / "style.css")
     if STYLE_ORGANIZER_EXTENSION in active_adapters:
         paths.append(_extension_dir(STYLE_ORGANIZER_EXTENSION) / "style.css")
     return [rel for path in paths if path.exists() for rel in [_relative_asset(path)] if rel]
@@ -1222,6 +1267,7 @@ def extension_adapter_manifest() -> dict[str, Any]:
         "auto_photoshop": auto_photoshop_status_payload(),
         "aspect_ratio_helper": aspect_ratio_helper_status_payload(),
         "camera_angle_selector": camera_angle_selector_status_payload(),
+        "civitai_helper": civitai_helper_status_payload(),
         "storyboard_assistant": storyboard_assistant_status_payload(),
         "aesthetic_enhancement": aesthetic_enhancement_status_payload(),
         "multimodal_media": multimodal_media_status_payload(),
@@ -1915,6 +1961,31 @@ def camera_angle_selector_status_payload() -> dict[str, Any]:
         "css": _relative_asset(CAMERA_ANGLE_SELECTOR_CSS) if CAMERA_ANGLE_SELECTOR_CSS.exists() else "",
         "config_route": "/forge-neo/extensions/camera-angle-selector-config",
         "config": camera_angle_selector_config_payload(),
+    }
+
+
+def _civitai_helper_root() -> Path:
+    return _extension_dir(CIVITAI_HELPER_EXTENSION)
+
+
+def civitai_helper_available() -> bool:
+    return _extension_enabled(CIVITAI_HELPER_EXTENSION) and _extension_profile_ready(CIVITAI_HELPER_EXTENSION)
+
+
+def civitai_helper_status_payload() -> dict[str, Any]:
+    root = _civitai_helper_root()
+    return {
+        "extension": CIVITAI_HELPER_EXTENSION,
+        "available": civitai_helper_available(),
+        "tab_ids": ["civitai_helper", "civitai_helper_browser"],
+        "script": str(root / "scripts" / "civitai_helper.py") if (root / "scripts" / "civitai_helper.py").is_file() else "",
+        "javascript": _relative_asset(root / "javascript" / "civitai_helper.js") if (root / "javascript" / "civitai_helper.js").is_file() else "",
+        "css": _relative_asset(root / "style.css") if (root / "style.css").is_file() else "",
+        "source_ui": {
+            "extension_dirname": CIVITAI_HELPER_EXTENSION,
+            "script": "scripts/civitai_helper.py",
+            "callback": "on_ui_tabs",
+        },
     }
 
 
@@ -2630,6 +2701,10 @@ def install_extension_adapter_routes(app: Any) -> None:
     @app.get("/forge-neo/extensions/camera-angle-selector-config")
     async def _forge_neo_camera_angle_selector_config():
         return camera_angle_selector_config_payload()
+
+    @app.get("/forge-neo/extensions/civitai-helper-status")
+    async def _forge_neo_civitai_helper_status():
+        return civitai_helper_status_payload()
 
     @app.get("/forge-neo/extensions/storyboard-assistant-status")
     async def _forge_neo_storyboard_assistant_status():

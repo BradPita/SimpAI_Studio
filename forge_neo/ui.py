@@ -35,6 +35,7 @@ from forge_neo.extension_adapter import (
     builtin_extension_available,
     camera_angle_selector_iframe_html,
     camera_angle_selector_available,
+    civitai_helper_available,
     dynamic_prompts_available,
     infinite_browsing_iframe_html,
     infinite_browsing_available,
@@ -390,6 +391,8 @@ UI_TAB_CHOICES = [
     "Extras",
     "PNG Info",
     "Checkpoint Merger",
+    "Civitai Helper",
+    "Civitai Helper Browser",
     "WD14 Tagger",
     "Infinite Browsing",
     "Camera Angle Selector",
@@ -1497,6 +1500,101 @@ def _create_camera_angle_selector_tab(state_value: Mapping[str, object]) -> None
             elem_id="forge_neo_camera_angle_selector_html",
             elem_classes=["forge-neo-camera-angle-selector-html"],
         )
+
+
+def _civitai_helper_source_i18n() -> dict[str, str]:
+    return {
+        "Civitai Helper": "Civitai 助手",
+        "Civitai Helper Browser": "Civitai 浏览器助手",
+        "### Scan Models for Civitai": "### 扫描并匹配 Civitai 模型记录",
+        "Model Types": "模型种类",
+        "Move models into category folders": "将模型移动到分类文件夹",
+        "Replace Old Metadata Formats*": "替换旧版元数据格式*",
+        "* [<a href=https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper/wiki/Metadata-Format-Changes>wiki</a>] Do not use this option if you have made changes with the metadata editor without backing up your data!!<br><br>": "* [<a href=https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper/wiki/Metadata-Format-Changes>wiki</a>] 如果你用元数据编辑器修改过模型信息且还没有备份，请勿使用此选项！！<br><br>",
+        "Scan": "扫描",
+        "Scanning takes time, just wait. Check console log for details": "扫描需要一些时间，请等待。详细信息见控制台日志。",
+        "### Get Model Info from Civitai by URL": "### 从 Civitai 链接获取模型信息",
+        "Use this when scanning can not find a local model on civitai": "无法通过扫描匹配本地模型信息时使用此功能。",
+        "Model Type": "模型种类",
+        "Only Show Models have no Info": "只显示缺少信息的模型",
+        "Model": "模型",
+        "Civitai URL": "Civitai 链接",
+        "Get Model Info from Civitai": "从 Civitai 获取模型信息",
+        "### Download Model": "### 下载模型",
+        "Single": "单次处理",
+        "Batch Download": "批量下载",
+        "**1. Add URL and retrieve Model Info**": "**1. 添加链接并获取模型信息**",
+        "Model URL or Model ID": "模型链接或模型 ID",
+        "Get Model Info by Civitai Url": "通过 Civitai 链接获取模型信息",
+        "**2. Pick Subfolder and Model Version**": "**2. 选择子文件夹和模型版本**",
+        "Model Name": "模型名称",
+        "Base Model": "基础模型",
+        "Model Version": "模型版本",
+        "Sub-folder": "子文件夹",
+        "Duplicate File Behavior": "重复文件行为",
+        "**Files**": "**文件**",
+        "Unhandled Files (Files that we don't know what to do with but will still downloaded with \"Download All Files\")": "未识别文件（启用“下载全部文件”时仍会下载这些文件）",
+        "Download All Files": "下载全部文件",
+        "Preview Image": "预览图像",
+        "Rename Model": "重命名模型",
+        "Model extension": "模型扩展名",
+        "3. Download Model": "3. 下载模型",
+        "Check Console log for Downloading Status": "下载状态见控制台日志。",
+        "Add to Batch Form": "添加到批量下载",
+        "### Add to Batch": "### 添加到批量下载",
+        "Model URL": "模型链接",
+        "Detect Model Type": "检测模型种类",
+        "All Files": "全部文件",
+        "All Versions": "全部版本",
+        "Subfolder": "子文件夹",
+        "Add to Batch": "添加到批量列表",
+        "Models to download": "待下载模型",
+        "Supports Model page URLs and Model Version page URLs.": "支持模型页面链接和模型版本页面链接。",
+        "Download Models": "下载模型",
+        "Additional info will be printed to the webui console output.": "更多信息会输出到 WebUI 控制台。",
+        "### Scan for duplicate models": "### 扫描重复模型",
+        "Use Hash from Metadata (May have false-positives but can be useful if you've pruned models)": "使用元数据中的 Hash（可能有误报，但对裁剪过的模型有帮助）",
+        "### Check models' new version": "### 检查模型新版本",
+        "Check New Version from Civitai": "从 Civitai 检查新版本",
+        "It takes time, just wait. Check console log for details": "检查需要一些时间，请等待。详细信息见控制台日志。",
+        "Download Model's new version": "下载模型新版本",
+        "# Browse and Search Civitai": "# 浏览和搜索 Civitai",
+        "Tip: You can save your choices as defaults by selecting the options you'd like and then going to `Settings -> Other -> Defaults` and hitting `Apply`!": "提示：选择想要的选项后，可以到 `设置 -> 其他 -> 默认值` 点击 `应用` 保存为默认值。",
+        "Query": "关键词",
+        "Tag": "标签",
+        "Model Age": "模型时间",
+        "Sort By": "排序方式",
+        "Base Model": "基础模型",
+        "Allow NSFW Models": "允许 NSFW 模型",
+        "Search": "搜索",
+        "Previous Page": "上一页",
+        "Next Page": "下一页",
+        "Search Results": "搜索结果",
+    }
+
+
+def _create_civitai_helper_tabs(
+    txt2img_prompt: gr.Textbox,
+    txt2img_negative_prompt: gr.Textbox,
+    img2img_prompt: gr.Textbox,
+    img2img_negative_prompt: gr.Textbox,
+    state_value: Mapping[str, object],
+) -> None:
+    render_source_extension_tab(
+        "Stable-Diffusion-Webui-Civitai-Helper",
+        "scripts/civitai_helper.py",
+        "on_ui_tabs",
+        visible=civitai_helper_available(),
+        require_flag=False,
+        prompt_components={
+            "txt2img_prompt": txt2img_prompt,
+            "txt2img_negative_prompt": txt2img_negative_prompt,
+            "img2img_prompt": img2img_prompt,
+            "img2img_negative_prompt": img2img_negative_prompt,
+            "lang": state_value.get("__lang", getattr(args_manager.args, "language", "cn")),
+            "source_i18n": _civitai_helper_source_i18n(),
+        },
+    )
 
 
 def _aesthetic_enhancement_refresh_clicked():
@@ -10648,6 +10746,7 @@ def _wire_batch_edit_controls(controls: dict[str, object], state: gr.State) -> N
 
 
 def create_app() -> gr.Blocks:
+    os.environ["FORGE_NEO_MANAGED_SOURCE_EXTENSION_TABS"] = "1"
     state_value = _initial_state()
     default_preset = initial_preset()
     model_choices = initial_model_choices(default_preset)
@@ -13116,6 +13215,7 @@ def create_app() -> gr.Blocks:
                         outputs=[merger_result, merger_recipe_json, merger_status],
                         show_progress=False,
                     )
+                _create_civitai_helper_tabs(prompt, negative_prompt, img_prompt, img_negative, state_value)
                 create_dynamic_prompts_wildcards_tab(visible=dynamic_prompts_available(), lang=state_value["__lang"])
                 _create_wd14_tagger_tab(state)
                 _create_infinite_browsing_tab(state_value)

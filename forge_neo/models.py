@@ -13,7 +13,7 @@ SOURCE_BRANCH = "neo"
 SOURCE_COMMIT = "bfa6f820"
 SOURCE_LICENSE = "AGPL-3.0"
 
-UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "lumina", "zit", "anima"]
+UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "krea2", "lumina", "zit", "anima"]
 FORGE_NEO_LOCAL_CONFIG_KEYS = {"forge_preset"}
 LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "NF4", "None"]
 MODEL_EXTENSIONS = {".pth", ".ckpt", ".bin", ".safetensors", ".fooocus.patch", ".patch", ".gguf", ".pt", ".onnx"}
@@ -155,6 +155,7 @@ PRESET_DEFAULTS = {
     "flux": {"steps": 20, "width": 1152, "height": 896, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "klein": {"steps": 4, "width": 1152, "height": 896, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "qwen": {"steps": 8, "width": 1328, "height": 1328, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
+    "krea2": {"steps": 8, "width": 832, "height": 1216, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Simple"},
     "lumina": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "Res Multistep", "scheduler": "Simple"},
     "zit": {"steps": 9, "width": 1024, "height": 1024, "cfg_scale": 1.0, "sampler": "Euler", "scheduler": "Beta"},
     "anima": {"steps": 32, "width": 1024, "height": 1024, "cfg_scale": 4.0, "sampler": "ER SDE", "scheduler": "Simple"},
@@ -166,6 +167,7 @@ PRESET_ENGINE = {
     "flux": "Flux",
     "klein": "Flux",
     "qwen": "Qwen",
+    "krea2": "Krea2",
     "lumina": "Flux",
     "zit": "Z-image",
     "anima": "SDXL",
@@ -180,6 +182,7 @@ SIMPAI_PRESET_MODEL_FILES = {
     "flux": "Flux1-dev.json",
     "klein": "Flux2-Klein.json",
     "qwen": "Qwen2512.json",
+    "krea2": "Krea2-Turbo.json",
     "zit": "Z-imageT.json",
     "anima": "Anima.json",
 }

@@ -12,6 +12,7 @@
     "infinite-browsing",
     "Auto-Photoshop-StableDiffusion-Plugin",
     "sd-webui-aspect-ratio-helper",
+    "Stable-Diffusion-Webui-Civitai-Helper",
     "sd-webui-camera-angle-selector",
     "sd-webui-Storyboard-Assistant",
     "sd-webui-AestheticEnhancement",
@@ -44,6 +45,7 @@
     "sd-webui-aspect-ratio-helper"
   ],
   "ui_tab_profiles": [
+    "Stable-Diffusion-Webui-Civitai-Helper",
     "sd-webui-camera-angle-selector",
     "sd-webui-Storyboard-Assistant",
     "sd-webui-AestheticEnhancement",
@@ -197,6 +199,21 @@
       "source_branch": "main",
       "source_commit": "0909671",
       "source_commit_date": "2025-02-20 15:03:31 +0000"
+    },
+    {
+      "id": "Stable-Diffusion-Webui-Civitai-Helper",
+      "display_name": "Civitai Helper",
+      "family": "model-metadata",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "Stable-Diffusion-Webui-Civitai-Helper",
+      "adapter_scope": "ui-tab",
+      "remote_url": "https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/Stable-Diffusion-Webui-Civitai-Helper",
+      "source_branch": "main",
+      "source_commit": "",
+      "source_commit_date": ""
     },
     {
       "id": "sd-webui-camera-angle-selector",
@@ -811,6 +828,56 @@
       "notes": [
         "Source extension injects aspect-ratio helper UI and JavaScript.",
         "Forge Neo uses a dedicated Gradio 6 JavaScript adapter for forge_neo_width and forge_neo_img2img_width."
+      ]
+    },
+    {
+      "name": "Stable-Diffusion-Webui-Civitai-Helper",
+      "display_name": "Civitai Helper",
+      "family": "model-metadata",
+      "support_level": "runtime-adapter",
+      "extension_dirname": "Stable-Diffusion-Webui-Civitai-Helper",
+      "adapter_scope": "ui-tab",
+      "remote_url": "https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper.git",
+      "repository_layout": "standalone",
+      "repository_subdir": "",
+      "install_dir": "forge_neo/webui/extensions/Stable-Diffusion-Webui-Civitai-Helper",
+      "source_branch": "main",
+      "source_commit": "",
+      "source_commit_date": "",
+      "required_files": [
+        "scripts/civitai_helper.py",
+        "scripts/image_metadata.py",
+        "ch_lib/civitai.py",
+        "ch_lib/downloader.py",
+        "ch_lib/js_action_civitai.py",
+        "ch_lib/model.py",
+        "ch_lib/model_action_civitai.py",
+        "ch_lib/sections.py",
+        "browser/browser.py",
+        "browser/supported_models.py",
+        "browser/templates/container.html",
+        "javascript/civitai_helper.js",
+        "style.css"
+      ],
+      "javascript_files": [
+        "javascript/civitai_helper.js"
+      ],
+      "css_files": [
+        "style.css"
+      ],
+      "runtime_files": [],
+      "routes": [
+        "/forge-neo/extensions/civitai-helper-status"
+      ],
+      "source_routes": [],
+      "source_callbacks": [
+        "script_callbacks.on_ui_settings(on_ui_settings)",
+        "script_callbacks.on_ui_tabs(on_ui_tabs)",
+        "script_callbacks.on_before_image_saved(add_resource_metadata)"
+      ],
+      "notes": [
+        "Source extension provides Civitai scan, metadata, download and browser tabs.",
+        "Forge Neo keeps the source Gradio UI and adapts model paths plus Extra Networks card buttons for Gradio 6."
       ]
     },
     {

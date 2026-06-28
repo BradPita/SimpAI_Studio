@@ -65,6 +65,13 @@ class Qwen3_4BConfig:
 
 
 @dataclass
+class Qwen3VL_4BConfig(Qwen3_4BConfig):
+    max_position_embeddings: int = 262144
+    rope_theta: float = 5000000.0
+    rope_dims = [24, 20, 20]
+
+
+@dataclass
 class Qwen3_8BConfig:
     vocab_size: int = 151936
     hidden_size: int = 4096
@@ -552,6 +559,21 @@ class Qwen3_4B(BaseLlama, nn.Module):
     def __init__(self, config_dict):
         super().__init__()
         config = Qwen3_4BConfig()
+
+        _config_dict = asdict(config)
+        for key, value in _config_dict.items():
+            if key in config_dict:
+                assert value == config_dict[key]
+
+        self.num_layers = config.num_hidden_layers
+
+        self.model = Llama2_(config)
+
+
+class Qwen3VL_4B(BaseLlama, nn.Module):
+    def __init__(self, config_dict):
+        super().__init__()
+        config = Qwen3VL_4BConfig()
 
         _config_dict = asdict(config)
         for key, value in _config_dict.items():

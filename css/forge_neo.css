@@ -4780,61 +4780,69 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     order: 5;
 }
 
-#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_wd14_tagger_tab-button {
-    order: 16;
-}
-
-#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_infinite_browsing_tab-button {
+#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_civitai_helper-button {
     order: 6;
 }
 
+#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_civitai_helper_browser-button {
+    order: 7;
+}
+
+#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_wd14_tagger_tab-button {
+    order: 19;
+}
+
+#forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_infinite_browsing_tab-button {
+    order: 8;
+}
+
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_camera_angle_selector_tab-button {
-    order: 9;
+    order: 11;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_storyboard_assistant_tab-button,
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_storyboard_tab-button {
-    order: 8;
+    order: 10;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_aesthetic_enhancement_tab-button,
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_aesthetic_enhancement_tab-button {
-    order: 7;
+    order: 9;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_multimodal_media_tab-button {
-    order: 10;
+    order: 12;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_Vision_Chat_Tab-button,
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_qwen_vision_chat_tab-button {
-    order: 11;
+    order: 13;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_sam_matting_tab-button {
-    order: 12;
+    order: 14;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_see_through_tab-button {
-    order: 17;
+    order: 20;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_trellis2_3d_generator-button,
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_trellis2_tab-button {
-    order: 13;
+    order: 15;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #tab_sddp-wildcard-manager-button,
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] button[aria-controls="tab_sddp-wildcard-manager"] {
-    order: 14;
+    order: 16;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_settings_tab-button {
-    order: 14;
+    order: 17;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_extensions_tab-button {
-    order: 15;
+    order: 18;
 }
 
 #forge_neo_root #tab_sddp-wildcard-manager .forge-neo-wildcards-manager {
