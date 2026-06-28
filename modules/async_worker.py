@@ -48,6 +48,12 @@ def _positive_int(value):
     return result if result > 0 else None
 
 
+def _normalize_prompt_text(text):
+    if text is None:
+        return ""
+    return str(text).replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _parse_resolution_pair(value):
     if value is None:
         return None
@@ -182,6 +188,7 @@ class AsyncTask:
         self.yields = []
         self.results = []
         from modules.flags import Performance, MetadataScheme, ip_list, disabled, task_class_mapping, default_vae, default_clip
+        from modules.lora_params import sync_loras_to_params_backend
         from modules.util import get_enabled_loras
         import uuid
         import args_manager
@@ -194,7 +201,6 @@ class AsyncTask:
         import logging
         from enhanced.logger import format_name
 
-        normalize_lines = lambda text: re.sub(r'[\r\n]+', ' ', text)
         logger = logging.getLogger(format_name(__name__))
         regen_manifest.ensure_api_params_backend_arg(api_params)
         backend_args = getattr(api_params, 'backend_args', None)
@@ -224,8 +230,8 @@ class AsyncTask:
 
         args.reverse()
         self.generate_image_grid = args.pop()
-        self.prompt = normalize_lines(args.pop())
-        self.negative_prompt = args.pop()
+        self.prompt = _normalize_prompt_text(args.pop())
+        self.negative_prompt = _normalize_prompt_text(args.pop())
         self.style_selections = args.pop()
 
         self.performance_selection = Performance(args.pop())
@@ -384,18 +390,12 @@ class AsyncTask:
             self.params_backend['upscale_model'] = self.upscale_model_name
 
         if len(self.loras) > 0:
-            for i, (lora_name, lora_strength) in enumerate(self.loras):
-                if lora_name == 'None':
-                    self.params_backend.update({
-                        f"lora_{i+1}": 'placeholder.safetensors',
-                        f"lora_{i+1}_strength": 0.0,
-                    })
-                else:
-                    lora_name = str(lora_name).replace("\\", os.sep).replace("/", os.sep).lstrip(os.sep)
-                    self.params_backend.update({
-                        f"lora_{i+1}": lora_name,
-                        f"lora_{i+1}_strength": lora_strength,
-                    })
+            sync_loras_to_params_backend(
+                self.params_backend,
+                self.loras,
+                modules.config.default_max_lora_number,
+                lora_filenames=modules.config.lora_filenames,
+            )
 
         if self.task_class != 'Fooocus':
             is_custom_vae = self.vae_name not in (None, '', default_vae, 'auto')
@@ -565,6 +565,7 @@ def worker():
     from modules.util import (remove_empty_str, join_prompts, HWC3, resize_image, get_image_shape_ceil, set_image_shape_ceil,
                               get_shape_ceil, resample_image, erode_or_dilate, parse_lora_references_from_prompt,
                               apply_wildcards)
+    from modules.lora_params import sync_loras_to_params_backend
     from modules.upscaler import perform_upscale
     from modules.flags import Performance
     from modules.meta_parser import get_metadata_parser, MetadataParser
@@ -1316,8 +1317,13 @@ def worker():
 
     def process_prompt(async_task, prompt, negative_prompt, base_model_additional_loras, image_number, disable_seed_increment, use_expansion, use_style,
                        use_synthetic_refiner, current_progress, advance_progress=False):
-        prompts = remove_empty_str([safe_str(p) for p in prompt.splitlines()], default='')
-        negative_prompts = remove_empty_str([safe_str(p) for p in negative_prompt.splitlines()], default='')
+        preserve_prompt_newlines = async_task.task_class in flags.comfy_classes
+        if preserve_prompt_newlines:
+            prompts = remove_empty_str([safe_str(prompt)], default='')
+            negative_prompts = remove_empty_str([safe_str(negative_prompt)], default='')
+        else:
+            prompts = remove_empty_str([safe_str(p) for p in prompt.splitlines()], default='')
+            negative_prompts = remove_empty_str([safe_str(p) for p in negative_prompt.splitlines()], default='')
         prompt = prompts[0]
         negative_prompt = negative_prompts[0]
         if prompt == '':
@@ -1330,7 +1336,15 @@ def worker():
                                                               async_task.performance_selection)
         loras, prompt = parse_lora_references_from_prompt(prompt, async_task.loras,
                                                           modules.config.default_max_lora_number,
-                                                          lora_filenames=lora_filenames)
+                                                          lora_filenames=lora_filenames,
+                                                          preserve_lora_slots=async_task.task_class in flags.comfy_classes)
+        if async_task.task_class in flags.comfy_classes:
+            sync_loras_to_params_backend(
+                async_task.params_backend,
+                loras,
+                modules.config.default_max_lora_number,
+                lora_filenames=lora_filenames,
+            )
         loras += async_task.performance_loras
         if advance_progress:
             current_progress += 1
@@ -1368,7 +1382,11 @@ def worker():
                     if s == random_style_name:
                         s = get_random_style(task_rng)
                         task_styles[j] = s
-                    p, n, style_has_placeholder = apply_style(s, positive=task_prompt)
+                    p, n, style_has_placeholder = apply_style(
+                        s,
+                        positive=task_prompt,
+                        preserve_positive_newlines=preserve_prompt_newlines,
+                    )
                     if style_has_placeholder:
                         placeholder_replaced = True
                     positive_basic_workloads = positive_basic_workloads + p

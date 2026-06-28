@@ -659,11 +659,8 @@ def is_json(data: str) -> bool:
 
 
 def get_filname_by_stem(lora_name, filenames: List[str]) -> str | None:
-    for filename in filenames:
-        path = Path(filename)
-        if lora_name == path.stem:
-            return filename
-    return None
+    from modules.lora_params import resolve_lora_filename
+    return resolve_lora_filename(lora_name, filenames)
 
 
 def get_file_from_folder_list(name, folders):
@@ -695,7 +692,7 @@ def get_enabled_loras(loras: list, remove_none=True) -> list:
 
 def parse_lora_references_from_prompt(prompt: str, loras: List[Tuple[AnyStr, float]], loras_limit: int = 8,
                                       skip_file_check=False, prompt_cleanup=True, deduplicate_loras=True,
-                                      lora_filenames=None) -> tuple[List[Tuple[AnyStr, float]], str]:
+                                      lora_filenames=None, preserve_lora_slots=False) -> tuple[List[Tuple[AnyStr, float]], str]:
     # prevent unintended side effects when returning without detection
     loras = loras.copy()
 
@@ -736,6 +733,10 @@ def parse_lora_references_from_prompt(prompt: str, loras: List[Tuple[AnyStr, flo
 
     if len(new_loras) == 0:
         return loras, cleaned_prompt
+
+    if preserve_lora_slots:
+        from modules.lora_params import merge_loras_preserving_slots
+        return merge_loras_preserving_slots(loras, new_loras, loras_limit, deduplicate=deduplicate_loras), cleaned_prompt
 
     updated_loras = []
     for lora in loras + new_loras:

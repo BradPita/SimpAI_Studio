@@ -60,9 +60,13 @@ def get_random_style(rng: Random) -> str:
     return rng.choice(list(styles.items()))[0]
 
 
-def apply_style(style, positive):
+def apply_style(style, positive, preserve_positive_newlines=False):
     p, n = styles[style]
-    return p.replace('{prompt}', positive).splitlines(), n.splitlines(), '{prompt}' in p
+    style_has_placeholder = '{prompt}' in p
+    positive_text = p.replace('{prompt}', positive)
+    if preserve_positive_newlines and style_has_placeholder:
+        return [positive_text], n.splitlines(), style_has_placeholder
+    return positive_text.splitlines(), n.splitlines(), style_has_placeholder
 
 
 def get_words(arrays, total_mult, index):
