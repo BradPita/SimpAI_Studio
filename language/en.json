@@ -543,5 +543,9 @@
     "LTX2.3 Text-to-Video": "LTX2.3 Text-to-Video",
     "LTX2.3 Text-to-Video [Optional audio input]": "LTX2.3 Text-to-Video [Optional audio input]",
     "LTX2.3 Text+Audio to Video": "LTX2.3 Text+Audio to Video",
-    "LTX2.3 Text+Audio to Video [Audio required]": "LTX2.3 Text+Audio to Video [Audio required]"
+    "LTX2.3 Text+Audio to Video [Audio required]": "LTX2.3 Text+Audio to Video [Audio required]",
+    "Wan-SCAIL2-SAM3": "Wan-SCAIL2-SAM3",
+    "Wan-SCAIL2-SAM3\u2B07": "Wan-SCAIL2-SAM3\u2B07",
+    "Wan-SCAIL2 + SAM3 Manual Mask Tools": "Wan-SCAIL2 + SAM3 Manual Mask Tools",
+    "Wan-SCAIL2-SAM3 Character Replacement": "Wan-SCAIL2-SAM3 Character Replacement"
 }

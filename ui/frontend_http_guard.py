@@ -14,6 +14,7 @@ _H11_DATA_GUARD_SENTINEL = "_simpai_frontend_h11_data_guard"
 _H11_DATA_ORIGINAL_ATTR = "_simpai_original_data_received"
 _PROACTOR_ACCEPT_GUARD_SENTINEL = "_simpai_frontend_threaded_accept_guard"
 _PROACTOR_ACCEPT_ORIGINAL_ATTR = "_simpai_original_accept"
+_ASYNCIO_CONNECTION_RESET_FILTER_SENTINEL = "_simpai_frontend_asyncio_connection_reset_filter"
 _PROTOCOL_WARNING_COUNTS: dict[str, int] = {}
 _FRONTEND_HTTP_GUARD_CONFIG = {"host": "127.0.0.1", "port": ""}
 
@@ -154,7 +155,36 @@ def classify_frontend_invalid_http_bytes(data: bytes) -> str:
 def _should_log_protocol_warning(kind: str) -> tuple[bool, int]:
     count = _PROTOCOL_WARNING_COUNTS.get(kind, 0) + 1
     _PROTOCOL_WARNING_COUNTS[kind] = count
-    return count <= 3 or count % 20 == 0, count
+    return count == 1 or count % 100 == 0, count
+
+
+def _is_benign_windows_proactor_connection_reset(record: logging.LogRecord) -> bool:
+    message = str(record.getMessage())
+    if "_call_connection_lost" not in message:
+        return False
+
+    exc = record.exc_info[1] if record.exc_info else None
+    if not isinstance(exc, ConnectionResetError):
+        return "ConnectionResetError" in message and "WinError 10054" in message
+
+    winerror = getattr(exc, "winerror", None)
+    errno = getattr(exc, "errno", None)
+    args = {str(arg) for arg in getattr(exc, "args", ())}
+    return winerror == 10054 or errno == 10054 or "10054" in args or "WinError 10054" in message
+
+
+class FrontendAsyncioConnectionResetFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not _is_benign_windows_proactor_connection_reset(record)
+
+
+def configure_asyncio_connection_reset_filter() -> None:
+    logger = logging.getLogger("asyncio")
+    if getattr(logger, _ASYNCIO_CONNECTION_RESET_FILTER_SENTINEL, False):
+        return
+
+    logger.addFilter(FrontendAsyncioConnectionResetFilter())
+    setattr(logger, _ASYNCIO_CONNECTION_RESET_FILTER_SENTINEL, True)
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -259,7 +289,8 @@ def patch_uvicorn_h11_protocol_probe(host: str | None = None, port: int | str | 
                 logging.getLogger("uvicorn.error").warning(
                     "[SimpAI-frontHTTP] %s reached the HTTP-only Gradio frontend port. "
                     "Open %s and bypass proxy/HTTPS upgrade for %s. "
-                    "检测到 %s 打到 HTTP 前端端口，请使用 HTTP 地址，并为对应地址关闭代理或 HTTPS 自动升级。client=%s server=%s %s count=%s",
+                    "Further identical protocol mismatch logs are throttled. "
+                    "检测到 %s 打到 HTTP 前端端口，请使用 HTTP 地址，并为对应地址关闭代理或 HTTPS 自动升级；同类提示已限频。client=%s server=%s %s count=%s",
                     kind,
                     url,
                     bypass_hint,
@@ -279,6 +310,7 @@ def configure_frontend_http_guard(host: str | None = None, port: int | str | Non
     ensure_loopback_no_proxy(extra_hosts=[host])
     _FRONTEND_HTTP_GUARD_CONFIG["host"] = host or "127.0.0.1"
     _FRONTEND_HTTP_GUARD_CONFIG["port"] = str(port or "")
+    configure_asyncio_connection_reset_filter()
     patch_windows_proactor_accept_threaded(host, port)
     patch_uvicorn_h11_protocol_probe(host, port)
     logger = logging.getLogger("uvicorn.error")

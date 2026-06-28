@@ -1,0 +1,2 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
+wan_scail2_sam3_replacement,Wan-SCAIL2-SAM3 Character Replacement,positive_prompt,replace,SAM3 character replacement,SAM3角色替换,"Replace the masked person in the driving video with the reference character. Preserve the original camera motion, lighting, background context, and natural body movement. Keep the reference character identity consistent across frames.","SAM3|角色替换|手动遮罩|身份一致",120

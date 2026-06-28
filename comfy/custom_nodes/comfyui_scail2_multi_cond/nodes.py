@@ -11,6 +11,7 @@ import torch
 
 CATEGORY = "SCAIL-2/Scheduled"
 MAX_REFERENCES = 8
+MIN_FINAL_CHUNK_FRAMES = 33
 DEFAULT_PLAN = """# frames | reference | prompt | negative | boundary_overlap
 49 | 1 | first segment prompt | |
 121 | 2 | second segment prompt | | 1
@@ -142,6 +143,15 @@ def _normalize_overlap(value: int, max_chunk_frames: int) -> int:
     if requested <= 0:
         return 0
     return min(_floor_to_4n_plus_1(requested), 33, int(max_chunk_frames) - 4)
+
+
+def _extend_short_final_chunk_length(length: int, max_chunk_frames: int, *, is_final_tail: bool, has_previous: bool) -> int:
+    if not is_final_tail or not has_previous:
+        return int(length)
+    target = min(int(max_chunk_frames), MIN_FINAL_CHUNK_FRAMES)
+    if int(length) >= target:
+        return int(length)
+    return _ceil_to_4n_plus_1(target)
 
 
 def _parse_plan_input(segment_plan: str) -> list[dict[str, Any]]:
@@ -280,9 +290,10 @@ def _build_chunk_plan(segments: list[dict[str, Any]], max_chunk_frames: int, ove
     last_segment_reference = None
     chunk_index = 0
     chunks: list[dict[str, Any]] = []
-    for segment in segments:
+    for segment_position, segment in enumerate(segments):
         remaining = int(segment["frames"])
         segment_kept = 0
+        is_final_segment = segment_position == len(segments) - 1
         is_reference_change_segment = (
             last_segment_reference is not None and int(segment["reference"]) != int(last_segment_reference)
         )
@@ -309,6 +320,12 @@ def _build_chunk_plan(segments: list[dict[str, Any]], max_chunk_frames: int, ove
             if length > max_chunk_frames:
                 length = max_chunk_frames
                 wanted_keep = length if not use_previous else length - effective_overlap
+            length = _extend_short_final_chunk_length(
+                length,
+                max_chunk_frames,
+                is_final_tail=is_final_segment and wanted_keep == remaining,
+                has_previous=use_previous,
+            )
             if wanted_keep <= 0:
                 raise RuntimeError("overlap_frames leaves no room for new frames.")
             chunks.append(
@@ -1031,10 +1048,11 @@ class SCAIL2ScheduledLongVideo:
         chunk_summaries: list[dict[str, Any]] = []
         last_segment_reference = None
 
-        for segment in segments:
+        for segment_position, segment in enumerate(segments):
             remaining = int(segment["frames"])
             segment_kept = 0
             segment_reference = int(segment["reference"])
+            is_final_segment = segment_position == len(segments) - 1
             is_reference_change_segment = (
                 last_segment_reference is not None and segment_reference != int(last_segment_reference)
             )
@@ -1069,6 +1087,12 @@ class SCAIL2ScheduledLongVideo:
                 if length > max_chunk_frames:
                     length = max_chunk_frames
                     wanted_keep = length if not has_previous else length - actual_overlap
+                length = _extend_short_final_chunk_length(
+                    length,
+                    max_chunk_frames,
+                    is_final_tail=is_final_segment and wanted_keep == remaining,
+                    has_previous=has_previous,
+                )
                 if wanted_keep <= 0:
                     raise RuntimeError("overlap_frames leaves no room for new frames.")
                 video_frame_offset = int(produced)

@@ -217,6 +217,7 @@ PRESET_STORE_ORDER = [
     "Wan-Swap",
     "Wan-Outpaint",
     "Wan-SCAIL2",
+    "Wan-SCAIL2-SAM3",
     "Wan-Remover",
     "InfiniteTalk",
     "InfiniteTalk-AV2V",
