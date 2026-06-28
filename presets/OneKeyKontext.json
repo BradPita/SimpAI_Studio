@@ -206,7 +206,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "checkpoints,flux1-dev-kontext_fp8_scaled.safetensors,11904640136,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/checkpoints/flux1-dev-kontext_fp8_scaled.safetensors",
+        "diffusion_models,flux1-dev-kontext_fp8_scaled.safetensors,11904640136,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/checkpoints/flux1-dev-kontext_fp8_scaled.safetensors",
         "clip,clip_l.safetensors,246144152,0,",
         "text_encoders,t5xxl_fp8_e4m3fn.safetensors,4893934904,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors",
         "loras,flux1-turbo.safetensors,694082424,0,",
