@@ -61,6 +61,8 @@
     let activeSession = null;
     let sourcePreviewRequestSeq = 0;
     let initialSourcePreviewLoaded = false;
+    let modalScrollGuardsActive = false;
+    let modalTouchPoint = null;
 
     function getLangSource() {
         const state = window.simpleaiTopbarSystemParams || window.topbarLastSystemParams || {};
@@ -78,6 +80,85 @@
         if (window.SimpAII18n?.t) return window.SimpAII18n.t(en, cn, getLangSource());
         if (UTILS.t) return UTILS.t(en, cn, getLangSource());
         return isEnglish() ? en : (cn || en);
+    }
+
+    function eventTargetElement(target) {
+        if (!target) return null;
+        if (target.nodeType === 1) return target;
+        return target.parentElement || null;
+    }
+
+    function canModalScrollAxis(node, axis, delta) {
+        if (!node || !delta) return false;
+        const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+        const overflow = axis === 'y' ? `${style?.overflowY || ''} ${style?.overflow || ''}` : `${style?.overflowX || ''} ${style?.overflow || ''}`;
+        if (!/(auto|scroll|overlay)/i.test(overflow)) return false;
+        const max = axis === 'y' ? node.scrollHeight - node.clientHeight : node.scrollWidth - node.clientWidth;
+        if (max <= 1) return false;
+        const position = axis === 'y' ? node.scrollTop : node.scrollLeft;
+        return delta < 0 ? position > 0 : position < max - 1;
+    }
+
+    function findModalScrollTarget(target, modal, deltaX, deltaY) {
+        const dialog = modal?.querySelector?.('.sai-lpe-modal');
+        let node = eventTargetElement(target);
+        while (node && dialog?.contains(node)) {
+            if (canModalScrollAxis(node, 'y', deltaY) || canModalScrollAxis(node, 'x', deltaX)) return node;
+            if (node === dialog) break;
+            node = node.parentElement;
+        }
+        return null;
+    }
+
+    function containModalWheel(event) {
+        if (!activeModal || !activeModal.contains(event.target)) return;
+        const scroller = findModalScrollTarget(event.target, activeModal, Number(event.deltaX || 0), Number(event.deltaY || 0));
+        if (!scroller) event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function containModalTouchStart(event) {
+        if (!activeModal || !activeModal.contains(event.target)) return;
+        const touch = event.touches?.[0] || null;
+        modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+        event.stopPropagation();
+    }
+
+    function containModalTouchMove(event) {
+        if (!activeModal || !activeModal.contains(event.target)) return;
+        const touch = event.touches?.[0] || null;
+        const deltaX = modalTouchPoint && touch ? modalTouchPoint.x - touch.clientX : 0;
+        const deltaY = modalTouchPoint && touch ? modalTouchPoint.y - touch.clientY : 0;
+        modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : modalTouchPoint;
+        const scroller = findModalScrollTarget(event.target, activeModal, deltaX, deltaY);
+        if (!scroller) event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function resetModalTouchPoint(event) {
+        if (activeModal && activeModal.contains(event.target)) event.stopPropagation();
+        modalTouchPoint = null;
+    }
+
+    function bindModalScrollGuards() {
+        if (modalScrollGuardsActive) return;
+        modalScrollGuardsActive = true;
+        document.addEventListener('wheel', containModalWheel, { capture: true, passive: false });
+        document.addEventListener('touchstart', containModalTouchStart, { capture: true, passive: true });
+        document.addEventListener('touchmove', containModalTouchMove, { capture: true, passive: false });
+        document.addEventListener('touchend', resetModalTouchPoint, true);
+        document.addEventListener('touchcancel', resetModalTouchPoint, true);
+    }
+
+    function unbindModalScrollGuards() {
+        if (!modalScrollGuardsActive) return;
+        modalScrollGuardsActive = false;
+        document.removeEventListener('wheel', containModalWheel, true);
+        document.removeEventListener('touchstart', containModalTouchStart, true);
+        document.removeEventListener('touchmove', containModalTouchMove, true);
+        document.removeEventListener('touchend', resetModalTouchPoint, true);
+        document.removeEventListener('touchcancel', resetModalTouchPoint, true);
+        modalTouchPoint = null;
     }
 
     function tr(pair) {
@@ -145,13 +226,13 @@
         const style = document.createElement('style');
         style.id = 'liveportrait_expression_editor_styles';
         style.textContent = `
-.sai-lpe-backdrop{position:fixed;inset:0;z-index:99980;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.56);backdrop-filter:blur(8px);padding:18px}
-.sai-lpe-modal{width:min(1360px,calc(100vw - 28px));max-height:calc(100vh - 32px);display:grid;grid-template-rows:auto 1fr auto;background:color-mix(in srgb,var(--body-background-fill, #111827) 94%,#101014);color:var(--body-text-color,#f7f7f8);border:1px solid color-mix(in srgb,var(--border-color-primary,#3f3f46) 70%,#ffffff 10%);border-radius:8px;box-shadow:0 28px 90px rgba(0,0,0,.42);overflow:hidden}
+.sai-lpe-backdrop{position:fixed;inset:0;z-index:99980;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.56);backdrop-filter:blur(8px);padding:18px;overscroll-behavior:contain}
+.sai-lpe-modal{width:min(1360px,calc(100vw - 28px));max-height:calc(100vh - 32px);display:grid;grid-template-rows:auto 1fr auto;background:color-mix(in srgb,var(--body-background-fill, #111827) 94%,#101014);color:var(--body-text-color,#f7f7f8);border:1px solid color-mix(in srgb,var(--border-color-primary,#3f3f46) 70%,#ffffff 10%);border-radius:8px;box-shadow:0 28px 90px rgba(0,0,0,.42);overflow:hidden;overscroll-behavior:contain}
 .sai-lpe-header,.sai-lpe-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
 .sai-lpe-footer{border-top:1px solid rgba(255,255,255,.08);border-bottom:0;justify-content:flex-end}
 .sai-lpe-title{display:flex;align-items:center;gap:10px;font-weight:650;font-size:15px}
 .sai-lpe-title i{color:var(--button-primary-background-fill,#f97316)}
-.sai-lpe-body{display:grid;grid-template-columns:minmax(500px,.95fr) minmax(360px,1.05fr);gap:16px;min-height:0;overflow:auto;padding:16px}
+.sai-lpe-body{display:grid;grid-template-columns:minmax(500px,.95fr) minmax(360px,1.05fr);gap:16px;min-height:0;overflow:auto;padding:16px;overscroll-behavior:contain}
 .sai-lpe-body>*{min-width:0;max-width:100%;box-sizing:border-box}
 .sai-lpe-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .sai-lpe-section{border:1px solid color-mix(in srgb,var(--border-color-primary,#3f3f46) 78%,transparent);border-radius:8px;background:color-mix(in srgb,var(--block-background-fill,#24262b) 92%,#050608);padding:12px;min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden}
@@ -169,8 +250,10 @@
 .sai-lpe-part-btn[aria-pressed="true"]{border-color:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 72%,#fff);background:color-mix(in srgb,var(--block-background-fill,#24262b) 72%,var(--button-primary-background-fill,#f97316));color:var(--button-primary-text-color,#fff7ed)}
 .sai-lpe-part-btn:disabled,.sai-lpe-icon-btn:disabled{opacity:.55;cursor:not-allowed}
 .sai-lpe-preview-pane{display:grid;grid-template-rows:auto minmax(240px,1fr) auto;gap:10px;min-width:0;max-width:100%;min-height:0;border:1px solid color-mix(in srgb,var(--border-color-primary,#3f3f46) 70%,transparent);border-radius:8px;background:color-mix(in srgb,var(--block-background-fill,#24262b) 86%,#050608);padding:12px;box-sizing:border-box;overflow:hidden}
-.sai-lpe-image-frame{width:100%;max-width:100%;min-width:0;min-height:260px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;display:grid;place-items:center;background:rgba(0,0,0,.18);overflow:hidden;box-sizing:border-box;contain:layout paint}
-.sai-lpe-image-frame img{max-width:100% !important;max-height:100% !important;width:auto !important;height:auto !important;object-fit:contain;display:block}
+.sai-lpe-image-frame{width:100%;max-width:100%;min-width:0;min-height:260px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;display:grid;place-items:center;background:rgba(0,0,0,.18);overflow:auto;box-sizing:border-box;contain:layout paint;overscroll-behavior:contain;scrollbar-gutter:stable both-edges}
+.sai-lpe-image-frame img{max-width:100% !important;max-height:100% !important;width:auto !important;height:auto !important;object-fit:contain;object-position:center center;display:block}
+.sai-lpe-image-frame.is-long-image{place-items:start center}
+.sai-lpe-image-frame.is-long-image img{width:100% !important;height:auto !important;max-height:none !important;object-position:center top}
 .sai-lpe-image-frame span{font-size:13px;color:color-mix(in srgb,currentColor 68%,transparent);text-align:center;padding:12px}
 .sai-lpe-status{font-size:12px;line-height:1.45;color:color-mix(in srgb,currentColor 76%,transparent);min-height:18px}
 .sai-lpe-status.is-error{color:#fb7185}
@@ -454,17 +537,35 @@
         return document.body || document.documentElement;
     }
 
+    function updatePreviewImageFit(img) {
+        const frame = img?.closest?.('.sai-lpe-image-frame');
+        if (!frame) return;
+        frame.classList.remove('is-long-image');
+        frame.scrollTop = 0;
+        frame.scrollLeft = 0;
+        if (!img || img.hidden || !img.naturalWidth || !img.naturalHeight) return;
+        const frameWidth = Math.max(0, frame.clientWidth - 2);
+        const frameHeight = Math.max(0, frame.clientHeight - 2);
+        const scaledHeight = frameWidth > 0 ? (img.naturalHeight / img.naturalWidth) * frameWidth : 0;
+        if (frameHeight > 0 && scaledHeight > frameHeight * 1.12) frame.classList.add('is-long-image');
+    }
+
     function setPreviewImage(dataUrl) {
         if (!activeModal) return;
         const img = activeModal.querySelector('[data-lpe-preview-img]');
         const empty = activeModal.querySelector('[data-lpe-preview-empty]');
+        const frame = activeModal.querySelector('.sai-lpe-image-frame');
         if (img) {
+            img.onload = () => updatePreviewImageFit(img);
             if (dataUrl) {
                 img.src = dataUrl;
                 img.hidden = false;
+                requestAnimationFrame(() => updatePreviewImageFit(img));
             } else {
                 img.removeAttribute('src');
                 img.hidden = true;
+                frame?.classList.remove('is-long-image');
+                frame?.scrollTo?.(0, 0);
             }
         }
         if (empty) empty.hidden = !!dataUrl;
@@ -854,6 +955,7 @@
         if (activeModal && activeModal.parentElement) activeModal.remove();
         activeModal = null;
         activeSession = null;
+        unbindModalScrollGuards();
         return true;
     }
 
@@ -867,6 +969,7 @@
         const opts = options || {};
         activeModal = createModal(opts);
         resolveModalMount(opts).appendChild(activeModal);
+        bindModalScrollGuards();
         loadInitialSourcePreview();
         checkResources({ preserveReadyStatus: true });
         return true;
