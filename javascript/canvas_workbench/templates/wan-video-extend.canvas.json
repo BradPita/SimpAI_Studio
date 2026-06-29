@@ -451,14 +451,6 @@
             "interactive": true
           },
           {
-            "key": "scene_switch_option2",
-            "label": "Force Select Resolution",
-            "type": "checkbox",
-            "default": false,
-            "visible": true,
-            "interactive": true
-          },
-          {
             "key": "scene_aspect_ratio",
             "label": "Aspect Ratio",
             "type": "choice",
@@ -482,7 +474,6 @@
             "defaults": {
               "scene_var_number": 5,
               "scene_switch_option1": false,
-              "scene_switch_option2": false,
               "scene_aspect_ratio": "origin|Original",
               "prompt": ""
             },
@@ -701,7 +692,6 @@
         "seed_random": true,
         "image_seed": 0,
         "scene_switch_option1": false,
-        "scene_switch_option2": false,
         "scene_video_duration": 5
       },
       "status": "idle",

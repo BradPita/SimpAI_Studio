@@ -26,7 +26,7 @@
             "theme": [
                 "LivePortrait Expression"
             ],
-            "theme_title": "LivePortrait Expression [Upload image1 to Source; optional reference image2]",
+            "theme_title": "LivePortrait Expression [Upload left image to Source; optional reference right image]",
             "director_capability": {
                 "image_policy": "required",
                 "audio_policy": "forbidden",

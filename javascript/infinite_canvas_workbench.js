@@ -7383,6 +7383,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             showToast(t('LivePortrait Exp node could not be created.', '无法创建 LivePortrait Exp 节点。'));
             return null;
         }
+        node.collapsed = false;
         createLivePortraitExpressionImageEdge(target.id, node.id, 'source', { silent: true });
         selectedNodeId = node.id;
         selectedNodeIds = new Set([node.id]);
@@ -18673,7 +18674,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function isGaussianStudioImageSource(node) {
         if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return !!node.asset;
+        if (node.type === 'image') return true;
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return !!WORKBENCH_GAUSSIAN_STUDIO_NODE.isSource?.(node, gaussianStudioNodeContext());
         if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
@@ -18686,7 +18687,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function isLivePortraitExpressionImageSource(node) {
         if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return !!node.asset;
+        if (node.type === 'image') return true;
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
         if (node.type === 'liveportrait_expression') return !!WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.isSource?.(node, livePortraitExpressionNodeContext());
@@ -20428,7 +20429,7 @@ ${actions}
 
     function isImageCompareSource(node) {
         if (!node || isNodeIgnored(node)) return false;
-        if (node.type === 'image') return !!node.asset;
+        if (node.type === 'image') return true;
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
         if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
@@ -23068,6 +23069,20 @@ ${actions}
                 createImageNodeForImageInput(node, 'vlm', vlmImageHandle.getAttribute('data-vlm-image-in') || 'image_1', vlmImageHandle);
                 return;
             }
+            const maskSourceHandle = evt.target.closest('[data-mask-source-in]');
+            if (maskSourceHandle && node.type === 'mask') {
+                evt.preventDefault();
+                evt.stopPropagation();
+                createImageNodeForImageInput(node, 'mask_source', 'source', maskSourceHandle);
+                return;
+            }
+            const compareImageHandle = evt.target.closest('[data-compare-image-in]');
+            if (compareImageHandle && node.type === 'compare') {
+                evt.preventDefault();
+                evt.stopPropagation();
+                createImageNodeForImageInput(node, 'compare', compareImageHandle.getAttribute('data-compare-image-in') || 'a', compareImageHandle);
+                return;
+            }
             const configInterface = evt.target.closest('[data-config-interface]');
             if (!configInterface || !['preset', 'classic'].includes(node.type)) return;
             evt.preventDefault();
@@ -23538,8 +23553,8 @@ ${actions}
                 openResultAssetContextMenu(node, index, evt.clientX, evt.clientY);
                 return;
             }
-            const imageMedia = evt.target.closest('.sai-image-node-media,[data-image-drop-zone]');
-            if (imageMedia && node.type === 'image' && !evt.target.closest('.sai-node-head')) {
+            const imageMedia = evt.target.closest('.sai-image-node-media,[data-image-drop-zone],.sai-result-media,.sai-pose-studio-media,.sai-gaussian-studio-media,.sai-liveportrait-expression-media');
+            if (imageMedia && (node.type === 'image' || ['pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type) || isCanvasAgentImageTarget(node)) && !evt.target.closest('.sai-node-head')) {
                 openImageMediaContextMenu(node, evt.clientX, evt.clientY);
                 return;
             }
@@ -27245,21 +27260,35 @@ ${renderGenerationMetadataInspectorSection(node)}
     }
 
     function openImageMediaContextMenu(node, x, y) {
-        const hasImage = !!getNodeImageSrc(node);
+        const hasImage = node?.type === 'image' ? !!getNodeImageSrc(node) : isCanvasAgentImageTarget(node);
         const quickTools = canvasAgentQuickTools().map(tool => ({
             label: tool.label,
             icon: tool.icon,
             action: () => runCanvasAgentQuickTool(tool.key, { targetNodeId: node.id }),
             disabled: !hasImage
         }));
-        openContextMenu(x, y, [
+        const items = [
             ...quickTools,
             { separator: true },
-            { label: t('View image', '查看图像'), icon: 'fa-magnifying-glass-plus', action: () => openImageViewer(node), disabled: !hasImage },
-            { label: t('Replace image', '替换图片'), icon: 'fa-arrows-rotate', action: () => replaceNodeImage(node) },
-            { label: t('Edit in Sketch', 'Sketch 编辑'), icon: 'fa-pen-ruler', action: () => openSketchForNode(node), disabled: !hasImage },
-            { label: t('Paint Mask', '绘制遮罩'), icon: 'fa-paintbrush', action: () => openMaskEditor(node), disabled: !hasImage }
-        ]);
+            { label: t('View image', '查看图像'), icon: 'fa-magnifying-glass-plus', action: () => openAssetViewer(getNodeLayerForgeAsset(node), node?.title || 'Image'), disabled: !hasImage },
+            { label: t('Edit in Sketch', 'Sketch 编辑'), icon: 'fa-pen-ruler', action: () => openSketchForNode(node), disabled: !hasImage }
+        ];
+        if (node?.type === 'pose_studio') {
+            items.push({ label: t('Open Pose Studio', '打开 Pose Studio'), icon: 'fa-person', action: () => openPoseStudioEditor(node) });
+        }
+        if (node?.type === 'gaussian_studio') {
+            items.push({ label: t('Open Gaussian Studio', '打开 Gaussian Studio'), icon: 'fa-cube', action: () => openGaussianStudioEditor(node) });
+        }
+        if (node?.type === 'liveportrait_expression') {
+            items.push({ label: t('Open LivePortrait Exp', '打开 LivePortrait Exp'), icon: 'fa-face-smile', action: () => openLivePortraitExpressionEditor(node) });
+        }
+        if (['image', 'result'].includes(node?.type)) {
+            items.push({ label: t('Replace image', '替换图片'), icon: 'fa-arrows-rotate', action: () => replaceNodeImage(node) });
+        }
+        if (node?.type === 'image') {
+            items.push({ label: t('Paint Mask', '绘制遮罩'), icon: 'fa-paintbrush', action: () => openMaskEditor(node), disabled: !hasImage });
+        }
+        openContextMenu(x, y, items);
     }
 
     function openVideoMediaContextMenu(node, x, y) {
@@ -32385,6 +32414,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         }
         const existingId = kind === 'vlm'
             ? targetNode.image_inputs?.[slot || 'image_1']
+            : kind === 'compare'
+            ? targetNode.inputs?.[['a', 'b'].includes(slot) ? slot : 'a']
             : kind === 'liveportrait_expression_source'
             ? targetNode.liveportrait_expression?.source_node_id || targetNode.input_node_id
             : kind === 'liveportrait_expression_reference'
@@ -32402,6 +32433,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             ? t('Reference', '参考图')
             : kind === 'gaussian_studio'
             ? t('Reference', '参考图')
+            : kind === 'mask_source'
+            ? t('Source', '来源图')
+            : kind === 'compare'
+            ? `Compare ${String(['a', 'b'].includes(slot) ? slot : 'a').toUpperCase()}`
             : kind === 'liveportrait_expression_source'
             ? t('Source', '源图')
             : kind === 'liveportrait_expression_reference'
@@ -32410,6 +32445,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         pushHistory('Add input image node');
         const imageNode = createEmptyImageNodeForInput(targetNode, label, handle);
         if (kind === 'vlm') createVlmImageEdge(imageNode.id, targetNode.id, slot, { silent: true });
+        else if (kind === 'mask_source') createMaskImageEdge(imageNode.id, targetNode.id, { silent: true });
+        else if (kind === 'compare') createCompareImageEdge(imageNode.id, targetNode.id, slot, { silent: true });
         else if (kind === 'pose_studio') createPoseStudioReferenceEdge(imageNode.id, targetNode.id, { silent: true });
         else if (kind === 'gaussian_studio') createGaussianStudioReferenceEdge(imageNode.id, targetNode.id, { silent: true });
         else if (kind === 'liveportrait_expression_source' || kind === 'liveportrait_expression_reference') createLivePortraitExpressionImageEdge(imageNode.id, targetNode.id, slot || (kind === 'liveportrait_expression_reference' ? 'reference' : 'source'), { silent: true });
@@ -33042,7 +33079,16 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     }
 
     function getNodeImageSrc(node) {
-        return WORKBENCH_MEDIA_VIEWERS.getNodeImageSrc(node);
+        const src = WORKBENCH_MEDIA_VIEWERS.getNodeImageSrc(node);
+        if (src) return src;
+        const asset = node?.type === 'pose_studio'
+            ? node.pose_studio?.output_asset
+            : node?.type === 'gaussian_studio'
+            ? (node.gaussian_studio?.render_asset || node.gaussian_studio?.output_asset)
+            : node?.type === 'liveportrait_expression'
+            ? node.liveportrait_expression?.output_asset
+            : null;
+        return asset ? assetDisplaySrc(asset) : '';
     }
 
     function openImageViewer(node) {
@@ -42022,7 +42068,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     function getNodeLayerForgeAsset(node) {
         if (!node) return null;
         if (node.type === 'result') return getSelectedResultAsset(node) || node.preview || null;
-        return node.asset || null;
+        return node.asset
+            || (node.type === 'pose_studio' ? node.pose_studio?.output_asset : null)
+            || (node.type === 'gaussian_studio' ? (node.gaussian_studio?.render_asset || node.gaussian_studio?.output_asset) : null)
+            || (node.type === 'liveportrait_expression' ? node.liveportrait_expression?.output_asset : null)
+            || null;
     }
 
     function transferOutgoingMediaEdgesToReplacement(sourceNode, replacementNode) {
@@ -42184,7 +42234,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     }
 
     async function openSketchForNode(node) {
-        if (!node || !['image', 'result', 'mask'].includes(node.type)) return;
+        if (!node || !['image', 'result', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return;
         const ready = await ensureWorkbenchLazyRuntime(
             'customSketch',
             () => typeof window.SimpAIWorkbenchSketchAdapter?.open === 'function',

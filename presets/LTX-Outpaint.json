@@ -49,7 +49,8 @@
                 "scene_var_number4",
                 "sam3_input_video",
                 "sam3_mask_video",
-                "scene_var_number"
+                "scene_var_number",
+                "scene_switch_option2"
             ],
             "task_method": {
                 "LTX-Outpaint": "ltx2.3_outpaint_cn"
@@ -102,10 +103,6 @@
             "switch_option1_title": "Use override FPS and Interpolate Frames",
             "switch_option1": {
                 "LTX-Outpaint": false
-            },
-            "switch_option2_title": "Force Select Resolution",
-            "switch_option2": {
-                "LTX-Outpaint": true
             },
             "switch_option3_title": "Original Audio / Generate Audio",
             "switch_option3": {
