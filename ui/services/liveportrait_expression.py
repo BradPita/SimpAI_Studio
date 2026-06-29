@@ -286,6 +286,68 @@ def _image_source_to_tensor(value):
     return torch.from_numpy(array).unsqueeze(0)
 
 
+def _image_source_to_rgb_array(value):
+    raw = _decode_source_to_bytes(value)
+    if not raw:
+        return None
+    import numpy as np
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(raw)).convert("RGB")
+    return np.asarray(image), image.width, image.height
+
+
+def _face_bbox_text(value):
+    if isinstance(value, dict):
+        try:
+            return json.dumps(value, separators=(",", ":"))
+        except Exception:
+            return ""
+    if isinstance(value, (list, tuple)):
+        try:
+            return json.dumps(list(value), separators=(",", ":"))
+        except Exception:
+            return ""
+    text = str(value or "").strip()
+    return text
+
+
+def _selected_face_bbox(payload, params, payload_key, param_key):
+    if isinstance(payload, dict):
+        direct = _face_bbox_text(payload.get(payload_key))
+        if direct:
+            return direct
+    if isinstance(params, dict):
+        return _face_bbox_text(params.get(param_key))
+    return ""
+
+
+def _face_payload(box, confidence, width, height, index, selected=False):
+    x1, y1, x2, y2 = [float(value) for value in box]
+    x1, x2 = sorted((max(0.0, min(float(width), x1)), max(0.0, min(float(width), x2))))
+    y1, y2 = sorted((max(0.0, min(float(height), y1)), max(0.0, min(float(height), y2))))
+    box_w = max(0.0, x2 - x1)
+    box_h = max(0.0, y2 - y1)
+    normalized = {
+        "x": x1 / width if width else 0,
+        "y": y1 / height if height else 0,
+        "width": box_w / width if width else 0,
+        "height": box_h / height if height else 0,
+    }
+    return {
+        "index": index,
+        "label": str(index + 1),
+        "x": x1,
+        "y": y1,
+        "width": box_w,
+        "height": box_h,
+        "confidence": float(confidence or 0),
+        "normalized": normalized,
+        "bbox": json.dumps(normalized, separators=(",", ":")),
+        "selected": bool(selected),
+    }
+
+
 def _tensor_to_data_url(tensor):
     import numpy as np
     from PIL import Image
@@ -302,6 +364,76 @@ def _tensor_to_data_url(tensor):
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def detect_faces(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    status = resource_status(payload)
+    face_missing = [
+        item for item in status.get("files", [])
+        if item.get("category") == "ultralytics" and not item.get("ok")
+    ]
+    if face_missing:
+        return {
+            "ok": False,
+            "error": "Face detector resource is missing.",
+            "code": "face_detector_missing",
+            "status": status,
+            "missing": face_missing,
+        }
+
+    image_info = _image_source_to_rgb_array(_value_from_payload(payload, "source_image", "source_image_data_url", "image_data_url"))
+    if image_info is None:
+        return {"ok": False, "error": "Source image is required.", "code": "source_image_required", "status": status}
+    image_rgb, width, height = image_info
+
+    try:
+        _register_model_dirs()
+        nodes = _load_advanced_liveportrait_nodes()
+        model = nodes.g_engine.get_detect_model()
+        pred = model(image_rgb, conf=0.7, device="")
+        boxes = pred[0].boxes.xyxy.cpu().numpy() if pred and pred[0].boxes is not None else []
+        confs = pred[0].boxes.conf.cpu().numpy() if pred and pred[0].boxes is not None and pred[0].boxes.conf is not None else []
+    except Exception as err:
+        return {
+            "ok": False,
+            "error": "Face detection failed.",
+            "details": f"{type(err).__name__}: {err}",
+            "code": "face_detection_failed",
+            "status": status,
+        }
+
+    raw_faces = []
+    for idx, box in enumerate(boxes):
+        x1, y1, x2, y2 = [float(value) for value in box]
+        if x2 - x1 < 8 or y2 - y1 < 8:
+            continue
+        confidence = float(confs[idx]) if idx < len(confs) else 0.0
+        raw_faces.append((box, confidence))
+    raw_faces.sort(key=lambda item: ((float(item[0][0]) + float(item[0][2])) / 2.0, float(item[0][1])))
+    default_index = -1
+    if raw_faces:
+        center_x = float(width) / 2.0
+        default_candidates = [
+            item_index for item_index, item in enumerate(raw_faces)
+            if float(item[0][2]) - float(item[0][0]) >= 30
+        ] or list(range(len(raw_faces)))
+        default_index = min(
+            default_candidates,
+            key=lambda item_index: abs(center_x - ((float(raw_faces[item_index][0][0]) + float(raw_faces[item_index][0][2])) / 2.0)),
+        )
+    faces = [
+        _face_payload(box, confidence, width, height, index, selected=(index == default_index))
+        for index, (box, confidence) in enumerate(raw_faces)
+    ]
+    return {
+        "ok": True,
+        "faces": faces,
+        "default_index": default_index,
+        "width": int(width),
+        "height": int(height),
+        "status": status,
+    }
 
 
 def _render_expression(payload):
@@ -330,6 +462,8 @@ def _render_expression(payload):
             "params": params,
         }
     reference_tensor = _image_source_to_tensor(_value_from_payload(payload, "reference_image", "reference_image_data_url", "sample_image"))
+    source_face_bbox = _selected_face_bbox(payload, params, "source_face_bbox", "source_face_bbox")
+    reference_face_bbox = _selected_face_bbox(payload, params, "reference_face_bbox", "reference_face_bbox")
 
     _register_model_dirs()
     nodes = _load_advanced_liveportrait_nodes()
@@ -355,6 +489,8 @@ def _render_expression(payload):
             params["crop_factor"],
             src_image=source_tensor,
             sample_image=reference_tensor,
+            src_face_bbox=source_face_bbox,
+            sample_face_bbox=reference_face_bbox,
         )
 
     output_tensor = None
@@ -381,6 +517,8 @@ def _render_expression(payload):
         "image_data_url": image_data_url,
         "expression_image": {"data_url": image_data_url},
         "params": params,
+        "source_face_bbox": source_face_bbox,
+        "reference_face_bbox": reference_face_bbox,
         "status": status,
         "ui_images": ui_images,
     }

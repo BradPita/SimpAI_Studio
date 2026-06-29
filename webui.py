@@ -10984,6 +10984,18 @@ async def liveportrait_expression_status_endpoint(payload: dict = Body(default={
         traceback.print_exc()
         return JSONResponse({"ok": False, "error": "LivePortrait Expression Status Error", "details": str(e)}, status_code=500)
 
+@app.post("/liveportrait-expression/faces")
+async def liveportrait_expression_faces_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.detect_faces(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": "LivePortrait Expression Face Detection Error", "details": str(e)}, status_code=500)
+
 @app.post("/liveportrait-expression/preview")
 async def liveportrait_expression_preview_endpoint(payload: dict = Body(...)):
     try:

@@ -160,6 +160,14 @@
         "4",
         15
       ],
+      "src_face_bbox": [
+        "4",
+        16
+      ],
+      "sample_face_bbox": [
+        "4",
+        17
+      ],
       "src_image": [
         "2",
         0

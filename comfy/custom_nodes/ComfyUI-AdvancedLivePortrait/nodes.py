@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import numpy as np
 import torch
 import cv2
@@ -52,6 +53,45 @@ def rgb_crop_batch(rgbs, region):
     return rgbs[:, region[1]:region[3], region[0]:region[2]]
 def get_rgb_size(rgb):
     return rgb.shape[1], rgb.shape[0]
+def read_face_bbox(face_bbox, image_w, image_h):
+    if face_bbox is None or face_bbox == "":
+        return None
+    data = face_bbox
+    if isinstance(face_bbox, str):
+        try:
+            data = json.loads(face_bbox)
+        except Exception:
+            return None
+    try:
+        if isinstance(data, dict):
+            if all(key in data for key in ("x", "y", "width", "height")):
+                x1 = float(data.get("x") or 0)
+                y1 = float(data.get("y") or 0)
+                x2 = x1 + float(data.get("width") or 0)
+                y2 = y1 + float(data.get("height") or 0)
+            elif all(key in data for key in ("x1", "y1", "x2", "y2")):
+                x1 = float(data.get("x1") or 0)
+                y1 = float(data.get("y1") or 0)
+                x2 = float(data.get("x2") or 0)
+                y2 = float(data.get("y2") or 0)
+            else:
+                return None
+        elif isinstance(data, (list, tuple)) and len(data) >= 4:
+            x1, y1, x2, y2 = [float(data[i] or 0) for i in range(4)]
+        else:
+            return None
+    except Exception:
+        return None
+    if max(abs(x1), abs(y1), abs(x2), abs(y2)) <= 1.5:
+        x1 *= image_w
+        x2 *= image_w
+        y1 *= image_h
+        y2 *= image_h
+    x1, x2 = sorted((max(0.0, min(float(image_w), x1)), max(0.0, min(float(image_w), x2))))
+    y1, y2 = sorted((max(0.0, min(float(image_h), y1)), max(0.0, min(float(image_h), y2))))
+    if x2 - x1 < 8 or y2 - y1 < 8:
+        return None
+    return [x1, y1, x2, y2]
 def create_transform_matrix(x, y, s_x, s_y):
     return np.float32([[s_x, 0, x], [0, s_y, y]])
 
@@ -222,23 +262,26 @@ class LP_Engine:
         pred = detect_model(image_rgb, conf=0.7, device="")
         return pred[0].boxes.xyxy.cpu().numpy()
 
-    def detect_face(self, image_rgb, crop_factor, sort = True):
-        bboxes = self.get_face_bboxes(image_rgb)
+    def detect_face(self, image_rgb, crop_factor, sort = True, face_bbox = None):
         w, h = get_rgb_size(image_rgb)
 
         print(f"w, h:{w, h}")
 
-        cx = w / 2
-        min_diff = w
-        best_box = None
-        for x1, y1, x2, y2 in bboxes:
-            bbox_w = x2 - x1
-            if bbox_w < 30: continue
-            diff = abs(cx - (x1 + bbox_w / 2))
-            if diff < min_diff:
-                best_box = [x1, y1, x2, y2]
-                print(f"diff, min_diff, best_box:{diff, min_diff, best_box}")
-                min_diff = diff
+        best_box = read_face_bbox(face_bbox, w, h)
+        if best_box is None:
+            bboxes = self.get_face_bboxes(image_rgb)
+            cx = w / 2
+            min_diff = w
+            for x1, y1, x2, y2 in bboxes:
+                bbox_w = x2 - x1
+                if bbox_w < 30: continue
+                diff = abs(cx - (x1 + bbox_w / 2))
+                if diff < min_diff:
+                    best_box = [x1, y1, x2, y2]
+                    print(f"diff, min_diff, best_box:{diff, min_diff, best_box}")
+                    min_diff = diff
+        else:
+            print(f"selected face bbox:{best_box}")
 
         if best_box == None:
             print("Failed to detect face!!")
@@ -350,14 +393,14 @@ class LP_Engine:
             self.mask_img = cv2.imread(path, cv2.IMREAD_COLOR)
         return self.mask_img
 
-    def crop_face(self, img_rgb, crop_factor):
-        crop_region = self.detect_face(img_rgb, crop_factor)
+    def crop_face(self, img_rgb, crop_factor, face_bbox = None):
+        crop_region = self.detect_face(img_rgb, crop_factor, face_bbox=face_bbox)
         face_region, is_changed = self.calc_face_region(crop_region, get_rgb_size(img_rgb))
         face_img = rgb_crop(img_rgb, face_region)
         if is_changed: face_img = self.expand_img(face_img, crop_region)
         return face_img
 
-    def prepare_source(self, source_image, crop_factor, is_video = False, tracking = False):
+    def prepare_source(self, source_image, crop_factor, is_video = False, tracking = False, face_bbox = None):
         print("Prepare source...")
         engine = self.get_pipeline()
         source_image_np = (source_image * 255).byte().numpy()
@@ -366,7 +409,7 @@ class LP_Engine:
         psi_list = []
         for img_rgb in source_image_np:
             if tracking or len(psi_list) == 0:
-                crop_region = self.detect_face(img_rgb, crop_factor)
+                crop_region = self.detect_face(img_rgb, crop_factor, face_bbox=face_bbox)
                 face_region, is_changed = self.calc_face_region(crop_region, get_rgb_size(img_rgb))
 
                 s_x = (face_region[2] - face_region[0]) / 512.
@@ -835,6 +878,8 @@ class ExpressionEditor:
         self.sample_image = None
         self.src_image = None
         self.crop_factor = None
+        self.src_face_bbox = None
+        self.sample_face_bbox = None
 
     @classmethod
     def INPUT_TYPES(s):
@@ -866,6 +911,8 @@ class ExpressionEditor:
 
             "optional": {"src_image": ("IMAGE",), "motion_link": ("EDITOR_LINK",),
                          "sample_image": ("IMAGE",), "add_exp": ("EXP_DATA",),
+                         "src_face_bbox": ("STRING", {"default": "", "multiline": False}),
+                         "sample_face_bbox": ("STRING", {"default": "", "multiline": False}),
             },
         }
 
@@ -882,17 +929,21 @@ class ExpressionEditor:
     # OUTPUT_IS_LIST = (False,)
 
     def run(self, rotate_pitch, rotate_yaw, rotate_roll, blink, eyebrow, wink, pupil_x, pupil_y, aaa, eee, woo, smile,
-            src_ratio, sample_ratio, sample_parts, crop_factor, src_image=None, sample_image=None, motion_link=None, add_exp=None):
+            src_ratio, sample_ratio, sample_parts, crop_factor, src_image=None, sample_image=None, motion_link=None, add_exp=None,
+            src_face_bbox="", sample_face_bbox=""):
         rotate_yaw = -rotate_yaw
+        src_face_bbox = str(src_face_bbox or "").strip()
+        sample_face_bbox = str(sample_face_bbox or "").strip()
 
         new_editor_link = None
         if motion_link != None:
             self.psi = motion_link[0]
             new_editor_link = motion_link.copy()
         elif src_image != None:
-            if id(src_image) != id(self.src_image) or self.crop_factor != crop_factor:
+            if id(src_image) != id(self.src_image) or self.crop_factor != crop_factor or self.src_face_bbox != src_face_bbox:
                 self.crop_factor = crop_factor
-                self.psi = g_engine.prepare_source(src_image, crop_factor)
+                self.src_face_bbox = src_face_bbox
+                self.psi = g_engine.prepare_source(src_image, crop_factor, face_bbox=src_face_bbox)
                 self.src_image = src_image
             new_editor_link = []
             new_editor_link.append(self.psi)
@@ -911,10 +962,11 @@ class ExpressionEditor:
         es = ExpressionSet()
 
         if sample_image != None:
-            if id(self.sample_image) != id(sample_image):
+            if id(self.sample_image) != id(sample_image) or self.sample_face_bbox != sample_face_bbox:
                 self.sample_image = sample_image
+                self.sample_face_bbox = sample_face_bbox
                 d_image_np = (sample_image * 255).byte().numpy()
-                d_face = g_engine.crop_face(d_image_np[0], 1.7)
+                d_face = g_engine.crop_face(d_image_np[0], 1.7, face_bbox=sample_face_bbox)
                 i_d = g_engine.prepare_src_image(d_face)
                 self.d_info = pipeline.get_kp_info(i_d)
                 self.d_info['exp'][0, 5, 0] = 0

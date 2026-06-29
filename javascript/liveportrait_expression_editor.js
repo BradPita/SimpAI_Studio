@@ -63,6 +63,7 @@
     let initialSourcePreviewLoaded = false;
     let modalScrollGuardsActive = false;
     let modalTouchPoint = null;
+    let faceDetectionRequestSeq = 0;
 
     function getLangSource() {
         const state = window.simpleaiTopbarSystemParams || window.topbarLastSystemParams || {};
@@ -250,11 +251,17 @@
 .sai-lpe-part-btn[aria-pressed="true"]{border-color:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 72%,#fff);background:color-mix(in srgb,var(--block-background-fill,#24262b) 72%,var(--button-primary-background-fill,#f97316));color:var(--button-primary-text-color,#fff7ed)}
 .sai-lpe-part-btn:disabled,.sai-lpe-icon-btn:disabled{opacity:.55;cursor:not-allowed}
 .sai-lpe-preview-pane{display:grid;grid-template-rows:auto minmax(240px,1fr) auto;gap:10px;min-width:0;max-width:100%;min-height:0;border:1px solid color-mix(in srgb,var(--border-color-primary,#3f3f46) 70%,transparent);border-radius:8px;background:color-mix(in srgb,var(--block-background-fill,#24262b) 86%,#050608);padding:12px;box-sizing:border-box;overflow:hidden}
-.sai-lpe-image-frame{width:100%;max-width:100%;min-width:0;min-height:260px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;display:grid;place-items:center;background:rgba(0,0,0,.18);overflow:auto;box-sizing:border-box;contain:layout paint;overscroll-behavior:contain;scrollbar-gutter:stable both-edges}
-.sai-lpe-image-frame img{max-width:100% !important;max-height:100% !important;width:auto !important;height:auto !important;object-fit:contain;object-position:center center;display:block}
+.sai-lpe-image-frame{width:100%;max-width:100%;min-width:0;min-height:260px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;display:grid;place-items:center;background:rgba(0,0,0,.18);overflow:auto;box-sizing:border-box;contain:layout paint;overscroll-behavior:contain;scrollbar-gutter:stable both-edges;position:relative}
+.sai-lpe-image-stage{position:relative;display:inline-block;line-height:0;max-width:100%;max-height:100%}
+.sai-lpe-image-stage img{max-width:100% !important;max-height:100% !important;width:auto !important;height:auto !important;object-fit:contain;object-position:center center;display:block}
 .sai-lpe-image-frame.is-long-image{place-items:start center}
+.sai-lpe-image-frame.is-long-image .sai-lpe-image-stage{width:100%;max-height:none}
 .sai-lpe-image-frame.is-long-image img{width:100% !important;height:auto !important;max-height:none !important;object-position:center top}
-.sai-lpe-image-frame span{font-size:13px;color:color-mix(in srgb,currentColor 68%,transparent);text-align:center;padding:12px}
+.sai-lpe-face-layer{position:absolute;inset:0;pointer-events:none}
+.sai-lpe-face-box{position:absolute;border:2px solid color-mix(in srgb,var(--button-primary-background-fill,#f97316) 84%,#ffffff 12%);background:rgba(0,0,0,.16);color:#ffffff;border-radius:6px;min-width:24px;min-height:24px;display:flex;align-items:flex-start;justify-content:flex-start;padding:0;cursor:pointer;pointer-events:auto;box-shadow:0 0 0 1px rgba(0,0,0,.55),0 8px 18px rgba(0,0,0,.26)}
+.sai-lpe-face-box span{font-size:11px;line-height:18px;min-width:18px;height:18px;padding:0 5px;border-radius:0 0 6px 0;background:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 82%,#000 12%);color:#fff}
+.sai-lpe-face-box[aria-pressed="true"]{border-color:#ffffff;background:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 22%,transparent);box-shadow:0 0 0 2px var(--button-primary-background-fill,#f97316),0 10px 24px rgba(0,0,0,.3)}
+.sai-lpe-image-frame>[data-lpe-preview-empty]{font-size:13px;color:color-mix(in srgb,currentColor 68%,transparent);text-align:center;padding:12px}
 .sai-lpe-status{font-size:12px;line-height:1.45;color:color-mix(in srgb,currentColor 76%,transparent);min-height:18px}
 .sai-lpe-status.is-error{color:#fb7185}
 .sai-lpe-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -272,6 +279,9 @@
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-section,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-preview-pane{background:var(--lpe-canvas-surface);border-color:color-mix(in srgb,var(--lpe-canvas-border) 86%,transparent)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-image-frame{background:rgba(0,0,0,.2);border-color:color-mix(in srgb,var(--lpe-canvas-border) 72%,transparent)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-row input[type=range],.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-toggle input{accent-color:var(--lpe-canvas-accent)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box{border-color:color-mix(in srgb,var(--lpe-canvas-accent) 84%,#ffffff 12%)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box span{background:var(--lpe-canvas-accent)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box[aria-pressed="true"]{box-shadow:0 0 0 2px var(--lpe-canvas-accent),0 10px 24px rgba(0,0,0,.3)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-row input[type=number]{background:color-mix(in srgb,var(--lpe-canvas-panel) 76%,#000);border-color:color-mix(in srgb,var(--lpe-canvas-border) 86%,#ffffff 8%)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-btn,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-part-btn{background:color-mix(in srgb,var(--lpe-canvas-surface) 82%,#ffffff 6%);border-color:color-mix(in srgb,var(--lpe-canvas-border) 88%,#ffffff 8%)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn:hover,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn:focus-visible{border-color:color-mix(in srgb,var(--lpe-canvas-accent) 74%,#ffffff 18%);color:var(--lpe-canvas-text)}
@@ -311,18 +321,96 @@
         return params;
     }
 
+    function normalizeFaceBBox(value) {
+        let data = value;
+        if (typeof data === 'string') {
+            data = safeJsonParse(data);
+        }
+        if (!data || typeof data !== 'object') return null;
+        let x;
+        let y;
+        let width;
+        let height;
+        if (Array.isArray(data) && data.length >= 4) {
+            const x1 = Number(data[0]);
+            const y1 = Number(data[1]);
+            const x2 = Number(data[2]);
+            const y2 = Number(data[3]);
+            x = Math.min(x1, x2);
+            y = Math.min(y1, y2);
+            width = Math.abs(x2 - x1);
+            height = Math.abs(y2 - y1);
+        } else if ('x' in data && 'y' in data && 'width' in data && 'height' in data) {
+            x = Number(data.x);
+            y = Number(data.y);
+            width = Number(data.width);
+            height = Number(data.height);
+        } else if ('x1' in data && 'y1' in data && 'x2' in data && 'y2' in data) {
+            const x1 = Number(data.x1);
+            const y1 = Number(data.y1);
+            const x2 = Number(data.x2);
+            const y2 = Number(data.y2);
+            x = Math.min(x1, x2);
+            y = Math.min(y1, y2);
+            width = Math.abs(x2 - x1);
+            height = Math.abs(y2 - y1);
+        } else {
+            return null;
+        }
+        if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+        if (Math.max(Math.abs(x), Math.abs(y), Math.abs(width), Math.abs(height)) > 1.5) return null;
+        const nx = clamp(x, 0, 1);
+        const ny = clamp(y, 0, 1);
+        const nw = clamp(width, 0, 1 - nx);
+        const nh = clamp(height, 0, 1 - ny);
+        if (nw <= 0 || nh <= 0) return null;
+        return { x: nx, y: ny, width: nw, height: nh };
+    }
+
+    function faceBBoxText(value) {
+        const box = normalizeFaceBBox(value);
+        if (!box) return '';
+        return JSON.stringify({
+            x: Number(box.x.toFixed(6)),
+            y: Number(box.y.toFixed(6)),
+            width: Number(box.width.toFixed(6)),
+            height: Number(box.height.toFixed(6))
+        });
+    }
+
+    function faceBBoxKey(value) {
+        const box = normalizeFaceBBox(value);
+        if (!box) return '';
+        return [box.x, box.y, box.width, box.height].map((number) => Number(number).toFixed(5)).join(',');
+    }
+
+    function faceSelectionFromStateValue(raw, options) {
+        const opts = options || {};
+        const parsed = safeJsonParse(raw);
+        const params = parsed.params && typeof parsed.params === 'object' ? parsed.params : {};
+        return {
+            source_face_bbox: normalizeFaceBBox(opts.sourceFaceBBox || opts.source_face_bbox || parsed.source_face_bbox || params.source_face_bbox),
+            reference_face_bbox: normalizeFaceBBox(opts.referenceFaceBBox || opts.reference_face_bbox || parsed.reference_face_bbox || params.reference_face_bbox)
+        };
+    }
+
     function storedParams(options) {
         const opts = options || {};
         return paramsFromStateValue(opts.expressionState || opts.state || readBridgeValue('scene_additional_prompt_2'), opts.params);
     }
 
     function statePayload(params) {
-        return {
+        const payload = {
             version: '1',
             feature: 'LivePortrait Exp',
             params: Object.assign({}, params || readParams()),
             updated_at: new Date().toISOString()
         };
+        const sourceFaceBBox = faceBBoxText(activeSession?.faceSelection?.source_face_bbox);
+        const referenceFaceBBox = faceBBoxText(activeSession?.faceSelection?.reference_face_bbox);
+        if (sourceFaceBBox) payload.source_face_bbox = safeJsonParse(sourceFaceBBox);
+        if (referenceFaceBBox) payload.reference_face_bbox = safeJsonParse(referenceFaceBBox);
+        return payload;
     }
 
     function writeScenePromptState(params) {
@@ -341,6 +429,7 @@
                 activeSession.onStateChange({
                     params: Object.assign({}, params),
                     expression_state: activeSession.expressionState,
+                    face_selection: Object.assign({}, activeSession.faceSelection || {}),
                     updated_at: payload.updated_at
                 });
             }
@@ -379,7 +468,7 @@
         activeModal.querySelectorAll('[data-lpe-action]').forEach((button) => {
             if (button.getAttribute('data-lpe-action') !== 'close') button.disabled = !!busy;
         });
-        activeModal.querySelectorAll('[data-lpe-param], [data-lpe-auto-preview], [data-lpe-reset-param], [data-lpe-sample-part]').forEach((control) => {
+        activeModal.querySelectorAll('[data-lpe-param], [data-lpe-auto-preview], [data-lpe-reset-param], [data-lpe-sample-part], [data-lpe-face-index]').forEach((control) => {
             control.disabled = !!busy;
         });
         if (message) setStatus(message);
@@ -481,12 +570,17 @@
         const opts = options || {};
         injectStyles();
         const params = storedParams(opts);
+        const faceSelection = faceSelectionFromStateValue(opts.expressionState || opts.state || readBridgeValue('scene_additional_prompt_2'), opts);
         activeSession = Object.assign({
             context: 'scene_preset',
             params,
+            faceSelection,
+            sourceFaces: [],
+            sourceFaceFingerprint: '',
             expressionState: JSON.stringify(statePayload(params))
         }, opts, {
-            params
+            params,
+            faceSelection
         });
         writeActiveState(params);
         const modal = document.createElement('div');
@@ -501,7 +595,10 @@
     <div>${renderControls(params)}</div>
     <aside class="sai-lpe-preview-pane">
       <div class="sai-lpe-status" data-lpe-status>${escapeHtml(t('Input Image 1 is source. Input Image 2 can provide reference expression.', '输入图 1 是源人脸，输入图 2 可作为参考表情。'))}</div>
-      <div class="sai-lpe-image-frame"><img data-lpe-preview-img alt="" hidden><span data-lpe-preview-empty>${escapeHtml(t('Preview appears here', '预览会显示在这里'))}</span></div>
+      <div class="sai-lpe-image-frame">
+        <div class="sai-lpe-image-stage" data-lpe-image-stage hidden><img data-lpe-preview-img alt="" hidden><div class="sai-lpe-face-layer" data-lpe-face-layer hidden></div></div>
+        <span data-lpe-preview-empty>${escapeHtml(t('Preview appears here', '预览会显示在这里'))}</span>
+      </div>
       <div class="sai-lpe-actions">
         <label class="sai-lpe-toggle"><input type="checkbox" data-lpe-auto-preview checked><span>${escapeHtml(t('Auto Preview', '自动预览'))}</span></label>
         <button type="button" class="sai-lpe-btn" data-lpe-action="status"><i class="fa-solid fa-list-check"></i><span>${escapeHtml(t('Check Resources', '检查资源'))}</span></button>
@@ -537,17 +634,122 @@
         return document.body || document.documentElement;
     }
 
+    function sourceImageFingerprint(source) {
+        const dataUrl = String(source?.dataUrl || '');
+        if (!dataUrl) return '';
+        return `${Number(source?.width || 0)}x${Number(source?.height || 0)}:${dataUrl.length}:${dataUrl.slice(0, 96)}`;
+    }
+
+    function renderFaceBoxes(facesOverride) {
+        if (!activeModal) return;
+        const layer = activeModal.querySelector('[data-lpe-face-layer]');
+        const img = activeModal.querySelector('[data-lpe-preview-img]');
+        if (!layer) return;
+        const faces = Array.isArray(facesOverride) ? facesOverride : (activeSession?.sourceFaces || []);
+        if (!faces.length || !img || img.hidden || !img.getAttribute('src')) {
+            layer.innerHTML = '';
+            layer.hidden = true;
+            return;
+        }
+        const selectedKey = faceBBoxKey(activeSession?.faceSelection?.source_face_bbox);
+        layer.innerHTML = faces.map((face, index) => {
+            const box = normalizeFaceBBox(face?.normalized || face?.bbox);
+            if (!box) return '';
+            const pressed = selectedKey && selectedKey === faceBBoxKey(box);
+            const style = [
+                `left:${(box.x * 100).toFixed(4)}%`,
+                `top:${(box.y * 100).toFixed(4)}%`,
+                `width:${(box.width * 100).toFixed(4)}%`,
+                `height:${(box.height * 100).toFixed(4)}%`
+            ].join(';');
+            const label = face?.label || String(index + 1);
+            return `<button type="button" class="sai-lpe-face-box" style="${style}" data-lpe-face-index="${index}" aria-pressed="${pressed ? 'true' : 'false'}" title="${escapeHtml(t('Select face', '选择人脸'))} ${escapeHtml(label)}"><span>${escapeHtml(label)}</span></button>`;
+        }).join('');
+        layer.hidden = !layer.innerHTML;
+    }
+
+    function selectSourceFace(index, options) {
+        if (!activeSession || previewRunning) return false;
+        const faces = activeSession.sourceFaces || [];
+        const face = faces[Number(index)];
+        const box = normalizeFaceBBox(face?.normalized || face?.bbox);
+        if (!box) return false;
+        activeSession.faceSelection = Object.assign({}, activeSession.faceSelection || {}, { source_face_bbox: box });
+        writeActiveState(readParams());
+        renderFaceBoxes();
+        markPreviewDirty();
+        const label = face?.label || String(Number(index) + 1);
+        if (!options?.quiet) setStatus(t(`Selected face ${label}.`, `已选择第 ${label} 张脸。`));
+        if (isAutoPreviewEnabled()) requestAutoPreview('source_face');
+        return true;
+    }
+
+    async function loadSourceFaces(source, options) {
+        const opts = options || {};
+        if (!activeSession) return null;
+        const fingerprint = sourceImageFingerprint(source);
+        if (!fingerprint) {
+            activeSession.sourceFaces = [];
+            activeSession.sourceFaceFingerprint = '';
+            renderFaceBoxes([]);
+            return null;
+        }
+        if (activeSession.sourceFaceFingerprint === fingerprint && Array.isArray(activeSession.sourceFaces)) {
+            renderFaceBoxes();
+            return activeSession.sourceFaces;
+        }
+        const requestId = ++faceDetectionRequestSeq;
+        activeSession.sourceFaceFingerprint = fingerprint;
+        activeSession.sourceFaces = [];
+        renderFaceBoxes([]);
+        const data = await postJson('/liveportrait-expression/faces', {
+            source_image: source.dataUrl,
+            source_size: { width: source.width, height: source.height }
+        });
+        if (requestId !== faceDetectionRequestSeq || !activeModal || !activeSession) return null;
+        if (!data?.ok) {
+            if (!opts.quiet) setStatus(data?.details || data?.error || t('Face detection failed.', '人脸检测失败。'), true);
+            return null;
+        }
+        const faces = Array.isArray(data.faces) ? data.faces.map((face) => Object.assign({}, face, {
+            normalized: normalizeFaceBBox(face.normalized || face.bbox)
+        })).filter((face) => face.normalized) : [];
+        activeSession.sourceFaces = faces;
+        if (!faces.length) {
+            activeSession.faceSelection = Object.assign({}, activeSession.faceSelection || {}, { source_face_bbox: null });
+            writeActiveState(readParams());
+            renderFaceBoxes([]);
+            if (!opts.quiet) setStatus(t('No face detected in the source image.', '源图未检测到人脸。'), true);
+            return faces;
+        }
+        const selectedKey = faceBBoxKey(activeSession.faceSelection?.source_face_bbox);
+        let selectedIndex = faces.findIndex((face) => selectedKey && selectedKey === faceBBoxKey(face.normalized));
+        if (selectedIndex < 0) selectedIndex = Math.max(0, Math.min(faces.length - 1, Number(data.default_index || 0)));
+        activeSession.faceSelection = Object.assign({}, activeSession.faceSelection || {}, {
+            source_face_bbox: normalizeFaceBBox(faces[selectedIndex].normalized)
+        });
+        writeActiveState(readParams());
+        renderFaceBoxes();
+        if (!opts.quiet && faces.length > 1) {
+            setStatus(t(`Detected ${faces.length} faces. Selected face ${selectedIndex + 1}.`, `检测到 ${faces.length} 张脸，已选择第 ${selectedIndex + 1} 张。`));
+        }
+        return faces;
+    }
+
     function updatePreviewImageFit(img) {
         const frame = img?.closest?.('.sai-lpe-image-frame');
+        const stage = img?.closest?.('[data-lpe-image-stage]');
         if (!frame) return;
         frame.classList.remove('is-long-image');
         frame.scrollTop = 0;
         frame.scrollLeft = 0;
+        if (stage) stage.hidden = !!(img?.hidden);
         if (!img || img.hidden || !img.naturalWidth || !img.naturalHeight) return;
         const frameWidth = Math.max(0, frame.clientWidth - 2);
         const frameHeight = Math.max(0, frame.clientHeight - 2);
         const scaledHeight = frameWidth > 0 ? (img.naturalHeight / img.naturalWidth) * frameWidth : 0;
         if (frameHeight > 0 && scaledHeight > frameHeight * 1.12) frame.classList.add('is-long-image');
+        renderFaceBoxes();
     }
 
     function setPreviewImage(dataUrl) {
@@ -555,17 +757,21 @@
         const img = activeModal.querySelector('[data-lpe-preview-img]');
         const empty = activeModal.querySelector('[data-lpe-preview-empty]');
         const frame = activeModal.querySelector('.sai-lpe-image-frame');
+        const stage = activeModal.querySelector('[data-lpe-image-stage]');
         if (img) {
             img.onload = () => updatePreviewImageFit(img);
             if (dataUrl) {
                 img.src = dataUrl;
                 img.hidden = false;
+                if (stage) stage.hidden = false;
                 requestAnimationFrame(() => updatePreviewImageFit(img));
             } else {
                 img.removeAttribute('src');
                 img.hidden = true;
+                if (stage) stage.hidden = true;
                 frame?.classList.remove('is-long-image');
                 frame?.scrollTo?.(0, 0);
+                renderFaceBoxes([]);
             }
         }
         if (empty) empty.hidden = !!dataUrl;
@@ -695,6 +901,7 @@
             setStatus(activeSession?.context === 'canvas'
                 ? t('Source image loaded. Preview will render the expression result.', '源图已加载。点击预览会生成表情结果。')
                 : t('Source image loaded from Input Image 1. Preview will render the expression result.', '已从输入图 1 加载源图。点击预览会生成表情结果。'));
+            await loadSourceFaces(source);
         }
         return source;
     }
@@ -706,6 +913,9 @@
         const reference = activeSession?.context === 'canvas'
             ? await readOptionImage('canvas_reference', 'referenceDataUrl', 'referenceSrc', 'referenceAsset', 'referenceSize')
             : await readSceneImage('scene_input_image2');
+        await loadSourceFaces(source, { quiet: true });
+        const sourceFaceBBox = faceBBoxText(activeSession?.faceSelection?.source_face_bbox);
+        const referenceFaceBBox = faceBBoxText(activeSession?.faceSelection?.reference_face_bbox);
         return {
             expression_state: JSON.stringify(expressionPayload),
             params,
@@ -713,6 +923,8 @@
             reference_image: reference.dataUrl,
             source_size: { width: source.width, height: source.height },
             reference_size: { width: reference.width, height: reference.height },
+            source_face_bbox: sourceFaceBBox,
+            reference_face_bbox: referenceFaceBBox,
             project_id: activeSession?.projectId || 'default',
             node_id: activeSession?.nodeId || activeSession?.node?.id || '',
             source_asset: activeSession?.sourceAsset || null,
@@ -793,6 +1005,9 @@
             image_data_url: result.image_data_url,
             expression_image: result.expression_image || { data_url: result.image_data_url },
             params: readParams(),
+            expression_state: JSON.stringify(statePayload(readParams())),
+            source_face_bbox: faceBBoxText(activeSession?.faceSelection?.source_face_bbox),
+            reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
             reference_size: result.reference_size || {}
         };
         setBridgeValue('liveportrait_expression_scene_target', 'scene_input_image1');
@@ -822,6 +1037,8 @@
                 reference_image: reference.dataUrl,
                 source_size: { width: source.width, height: source.height },
                 reference_size: { width: reference.width, height: reference.height },
+                source_face_bbox: faceBBoxText(activeSession?.faceSelection?.source_face_bbox),
+                reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
                 source_asset: activeSession?.sourceAsset || null,
                 reference_asset: activeSession?.referenceAsset || null
             });
@@ -889,6 +1106,12 @@
 
     function bindModal(modal) {
         modal.addEventListener('click', (event) => {
+            const faceButton = event.target.closest?.('[data-lpe-face-index]');
+            if (faceButton) {
+                event.preventDefault();
+                selectSourceFace(faceButton.getAttribute('data-lpe-face-index'));
+                return;
+            }
             const resetButton = event.target.closest?.('[data-lpe-reset-param]');
             if (resetButton) {
                 event.preventDefault();
@@ -947,6 +1170,7 @@
     function closeActiveModal() {
         previewRequestSeq += 1;
         sourcePreviewRequestSeq += 1;
+        faceDetectionRequestSeq += 1;
         lastPreview = null;
         previewRunning = false;
         previewRunningRequestId = 0;

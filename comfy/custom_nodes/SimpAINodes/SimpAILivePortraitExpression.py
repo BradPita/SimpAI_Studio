@@ -39,6 +39,8 @@ RETURN_ORDER = (
     "sample_ratio",
     "sample_parts",
     "crop_factor",
+    "source_face_bbox",
+    "reference_face_bbox",
 )
 
 SAMPLE_PART_ALIASES = {
@@ -112,12 +114,43 @@ def _coerce_sample_parts(value):
     return SAMPLE_PART_ALIASES.get(key, "OnlyExpression")
 
 
+def _coerce_face_bbox(value):
+    if value is None or value == "":
+        return ""
+    data = value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        try:
+            data = json.loads(text)
+        except Exception:
+            return ""
+    if isinstance(data, dict):
+        if all(key in data for key in ("x", "y", "width", "height")):
+            out = {key: data.get(key) for key in ("x", "y", "width", "height")}
+        elif all(key in data for key in ("x1", "y1", "x2", "y2")):
+            out = {key: data.get(key) for key in ("x1", "y1", "x2", "y2")}
+        else:
+            return ""
+    elif isinstance(data, (list, tuple)) and len(data) >= 4:
+        out = [data[0], data[1], data[2], data[3]]
+    else:
+        return ""
+    try:
+        return json.dumps(out, separators=(",", ":"))
+    except Exception:
+        return ""
+
+
 def parse_liveportrait_expression_state(value):
     data = _read_json_object(value)
     parsed = {}
     for key, (default, minimum, maximum) in FLOAT_SPECS.items():
         parsed[key] = _coerce_float(_lookup_value(data, key), default, minimum, maximum)
     parsed["sample_parts"] = _coerce_sample_parts(_lookup_value(data, "sample_parts"))
+    parsed["source_face_bbox"] = _coerce_face_bbox(_lookup_value(data, "source_face_bbox"))
+    parsed["reference_face_bbox"] = _coerce_face_bbox(_lookup_value(data, "reference_face_bbox"))
     parsed["version"] = str(data.get("version") or "1")
     return parsed
 
@@ -153,6 +186,8 @@ class LivePortraitExpressionParams:
         "FLOAT",
         SAMPLE_PARTS,
         "FLOAT",
+        "STRING",
+        "STRING",
     )
     RETURN_NAMES = RETURN_ORDER
     FUNCTION = "parse"
