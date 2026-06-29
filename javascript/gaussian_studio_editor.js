@@ -1251,7 +1251,7 @@
         setSceneBridgeStatus(t('Checking Input Image 1...', '正在检查 Input Image 1...'), false);
         const ref = await captureSceneReference();
         if (!ref.src && !ref.dataUrl) {
-            setSceneBridgeStatus(t('Upload Input Image 1 before opening Gaussian Studio.', '请先上传 Input Image 1，再打开 Gaussian Studio。'), true);
+            setSceneBridgeStatus(t('Upload Reference Image before opening Gaussian Studio.', '请先上传参考图片(2)，再打开 Gaussian Studio。'), true);
             return null;
         }
         setSceneBridgeStatus(t('Input Image 1 ready. Opening Gaussian Studio...', 'Input Image 1 已就绪，正在打开 Gaussian Studio...'), false);

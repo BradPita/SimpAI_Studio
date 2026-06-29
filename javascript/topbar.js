@@ -5248,6 +5248,7 @@ function syncSceneUploadImageLabels(isScene, hidden) {
 }
 
 const GAUSSIAN_STUDIO_SCENE_STATUS_TEXT = "Input Image 1 reference -> Gaussian Studio -> Canvas output";
+const LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT = "Source Image 1 -> Reference Image 2 -> Expression output";
 
 let gaussianStudioSceneInputGuardBound = false;
 
@@ -5329,6 +5330,43 @@ function setGaussianStudioSceneImageMode(active, langSource) {
             node.classList.remove("sai-gaussian-studio-output-slot");
             delete node.dataset.saiGaussianRole;
             node.removeAttribute("aria-disabled");
+            node.removeAttribute("title");
+        });
+    }
+}
+
+function setLivePortraitExpressionSceneImageMode(active, langSource) {
+    const app = gradioApp();
+    const row = (app && app.getElementById ? app.getElementById("scene_input_images") : null) || document.getElementById("scene_input_images");
+    const source = (app && app.getElementById ? app.getElementById("scene_input_image1") : null) || document.getElementById("scene_input_image1");
+    const reference = (app && app.getElementById ? app.getElementById("scene_input_image2") : null) || document.getElementById("scene_input_image2");
+    const host = (app && app.getElementById ? app.getElementById("liveportrait_expression_scene_control") : null) || document.getElementById("liveportrait_expression_scene_control");
+    const status = host && host.querySelector ? host.querySelector("[data-liveportrait-expression-scene-status]") : null;
+    if (row) {
+        row.classList.toggle("sai-liveportrait-expression-image-flow", !!active);
+        row.dataset.saiLiveportraitExpressionActive = active ? "1" : "0";
+    }
+    if (active) {
+        if (source) {
+            source.dataset.saiLiveportraitRole = "source";
+            source.setAttribute("title", topbarTranslateText("Upload the source face to Input Image 1."));
+        }
+        if (reference) {
+            reference.dataset.saiLiveportraitRole = "reference";
+            reference.setAttribute("title", topbarTranslateText("Optional reference expression image for Input Image 2."));
+        }
+        if (status) {
+            const current = String(status.textContent || "").trim();
+            if (status.dataset.saiLiveportraitDefaultStatus === "1" || !current) {
+                status.dataset.saiLiveportraitDefaultStatus = "1";
+                status.textContent = topbarTranslateText(LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT);
+                status.classList.remove("is-error");
+            }
+        }
+    } else {
+        [source, reference].forEach((node) => {
+            if (!node) return;
+            delete node.dataset.saiLiveportraitRole;
             node.removeAttribute("title");
         });
     }
@@ -5428,6 +5466,8 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const showPoseStudio = !!(isScene && (themeText.includes("pose") || taskText.includes("pose")) && !hidden.has("pose_studio"));
     const gaussianMarkers = ["gaussian", "3dgs", "splat", "sharp"];
     const showGaussianStudio = !!(isScene && gaussianMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("gaussian_studio"));
+    const liveportraitMarkers = ["liveportrait", "advancedliveportrait"];
+    const showLivePortraitExpression = !!(isScene && liveportraitMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("liveportrait_expression"));
     setSceneAuxControlVisible("camera_control_accordion", showCamera);
     setSceneAuxControlVisible("anglelight_control_accordion", showLight);
     setSceneAuxControlVisible("style_transfer_accordion", showStyle);
@@ -5436,12 +5476,17 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     }
     setSceneAuxControlVisible("pose_studio", showPoseStudio);
     setSceneAuxControlVisible("gaussian_studio", showGaussianStudio);
+    setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
     setGaussianStudioSceneImageMode(showGaussianStudio, langSource);
+    setLivePortraitExpressionSceneImageMode(showLivePortraitExpression, langSource);
     if (!showPoseStudio && window.SimpAIPoseStudioEditor?.closeScenePreset) {
         try { window.SimpAIPoseStudioEditor.closeScenePreset(); } catch (e) {}
     }
     if (!showGaussianStudio && window.SimpAIGaussianStudioEditor?.closeScenePreset) {
         try { window.SimpAIGaussianStudioEditor.closeScenePreset(); } catch (e) {}
+    }
+    if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
+        try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}
     }
 }
 

@@ -3724,6 +3724,23 @@ with shared.gradio_root:
                             gaussian_studio_scene_state = gr.Textbox(value="", visible="hidden", elem_id="gaussian_studio_scene_state", elem_classes=["sai-gradio-hidden-bridge"])
                             gaussian_studio_scene_apply_btn = gr.Button("Gaussian Studio Apply", visible="hidden", elem_id="gaussian_studio_scene_apply_btn", elem_classes=["sai-gradio-hidden-bridge"])
 
+                        with gr.Group(visible=True, elem_id="liveportrait_expression", elem_classes=['simpai-mounted-hidden', 'sai-liveportrait-expression-scene-entry']) as liveportrait_expression:
+                            gr.HTML(
+                                value="""
+<div id="liveportrait_expression_scene_control" class="sai-liveportrait-expression-scene-control" data-liveportrait-expression-scene-open tabindex="0">
+  <button type="button" class="sai-liveportrait-expression-scene-open" data-liveportrait-expression-scene-open title="Open LivePortrait Expression">
+    <i class="fa-solid fa-face-smile"></i><span>LivePortrait Expression</span>
+  </button>
+  <small data-liveportrait-expression-scene-status data-sai-liveportrait-default-status="1">Source Image 1 -> Reference Image 2 -> Expression output</small>
+</div>
+""",
+                                elem_id="liveportrait_expression_scene_control_html",
+                            )
+                            liveportrait_expression_scene_payload = gr.Textbox(value="", visible="hidden", elem_id="liveportrait_expression_scene_payload", elem_classes=["sai-gradio-hidden-bridge"])
+                            liveportrait_expression_scene_target = gr.Textbox(value="scene_input_image1", visible="hidden", elem_id="liveportrait_expression_scene_target", elem_classes=["sai-gradio-hidden-bridge"])
+                            liveportrait_expression_scene_state = gr.Textbox(value="", visible="hidden", elem_id="liveportrait_expression_scene_state", elem_classes=["sai-gradio-hidden-bridge"])
+                            liveportrait_expression_scene_apply_btn = gr.Button("LivePortrait Expression Apply", visible="hidden", elem_id="liveportrait_expression_scene_apply_btn", elem_classes=["sai-gradio-hidden-bridge"])
+
                         scene_video = gr.Video(label="Video (Upload)", visible=True, sources=["upload"], height=400, elem_id="scene_video", elem_classes=['simpai-mounted-hidden'])
                         scene_video_placeholder = gr.HTML('<div style="height: 400px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888; font-size: 16px;"><span>Hide When Generating...</span></div>', visible=False, elem_id="scene_video_placeholder")
                         scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=300, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
@@ -3914,6 +3931,77 @@ with shared.gradio_root:
                         ).then(
                             lambda: None,
                             js='async()=>{try{if(window.SimpAIGaussianStudioEditor?.syncSceneCanvasFromBridge) await window.SimpAIGaussianStudioEditor.syncSceneCanvasFromBridge(); if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_input_image1","gaussian_studio"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI Gaussian Studio] scene bridge refresh failed", e);}}',
+                            queue=False,
+                            show_progress=False,
+                        )
+
+                        def apply_liveportrait_expression_scene_image(payload, target):
+                            target = str(target or "scene_input_image1").strip()
+                            target = target if target in ("scene_input_image1", "scene_input_image2") else "scene_input_image1"
+                            data = {}
+                            if isinstance(payload, dict):
+                                data = payload
+                            elif isinstance(payload, str) and payload.strip():
+                                try:
+                                    data = json.loads(payload)
+                                except Exception:
+                                    data = {}
+
+                            def normalize_source(value):
+                                text = str(value or "").strip()
+                                if not text:
+                                    return ""
+                                if text.startswith("/file="):
+                                    try:
+                                        from urllib.parse import unquote
+                                        return unquote(text[len("/file="):])
+                                    except Exception:
+                                        return text[len("/file="):]
+                                return text
+
+                            def collect_sources(obj):
+                                if not isinstance(obj, dict):
+                                    return []
+                                sources = []
+                                for key in ("image_data_url", "data_url", "path", "output_path", "preview_url"):
+                                    if obj.get(key):
+                                        sources.append(normalize_source(obj.get(key)))
+                                for key in ("render_asset", "asset_ref", "expression_image"):
+                                    sources.extend(collect_sources(obj.get(key)))
+                                return sources
+
+                            image_value = None
+                            image_source = ""
+                            for source in collect_sources(data):
+                                image_value = util.normalize_gradio_image_value(source, image_mode="RGBA")
+                                if image_value is not None:
+                                    image_source = source
+                                    break
+
+                            state_payload = {
+                                "ok": image_value is not None,
+                                "slot": target,
+                                "source": image_source,
+                                "params": data.get("params") or data.get("expression_state") or {},
+                                "reference_size": data.get("reference_size") or {},
+                                "applied_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            }
+                            state_json = json.dumps(state_payload, ensure_ascii=False)
+                            if image_value is None:
+                                return skip_component_update(), skip_component_update(), state_json
+                            if target == "scene_input_image1":
+                                return gr_update(value=image_value), skip_component_update(), state_json
+                            return skip_component_update(), gr_update(value=image_value), state_json
+
+                        liveportrait_expression_scene_apply_btn.click(
+                            apply_liveportrait_expression_scene_image,
+                            inputs=[liveportrait_expression_scene_payload, liveportrait_expression_scene_target],
+                            outputs=[scene_input_image1, scene_input_image2, liveportrait_expression_scene_state],
+                            queue=False,
+                            show_progress=False,
+                        ).then(
+                            lambda: None,
+                            js='()=>{try{if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_input_image1","liveportrait_expression"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI LivePortrait Expression] scene bridge refresh failed", e);}}',
                             queue=False,
                             show_progress=False,
                         )
@@ -4968,7 +5056,7 @@ with shared.gradio_root:
                             event = event.then(
                                 switch_scene_theme_safe,
                                 inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme],
-                                outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:],
+                                outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:],
                                 queue=False,
                                 show_progress=False,
                             )
@@ -8352,14 +8440,14 @@ with shared.gradio_root:
         reset_preset_layout = [params_backend, advanced_checkbox, performance_selection, scheduler_name, sampler_name, input_image_checkbox, prompt_panel_checkbox, enhance_checkbox, base_model, refiner_model, overwrite_step, guidance_scale, negative_prompt, preset_instruction, identity_dialog] + image_input_panel_ctrls + lora_ctrls
         reset_preset_func_names = ["output_format", "inpaint_advanced_masking_checkbox", "mixing_image_prompt_and_vary_upscale", "mixing_image_prompt_and_inpaint", "backfill_prompt", "translation_methods", "input_image_checkbox", "quick_enhance"]
         reset_preset_func = [output_format, inpaint_advanced_masking_checkbox, mixing_image_prompt_and_vary_upscale, mixing_image_prompt_and_inpaint, backfill_prompt, translation_methods, input_image_checkbox, quick_enhance]
-        scene_frontend_ctrls = [prompt_internal_panel, random_button, super_prompter, disable_intermediate_results, image_tools_checkbox, scene_panel, scene_theme, camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:] + [sam3_input_video, sam3_original_video_path, sam3_mask_video, sam3_trim_payload] + [generate_button, load_parameter_button]
+        scene_frontend_ctrls = [prompt_internal_panel, random_button, super_prompter, disable_intermediate_results, image_tools_checkbox, scene_panel, scene_theme, camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:] + [sam3_input_video, sam3_original_video_path, sam3_mask_video, sam3_trim_payload] + [generate_button, load_parameter_button]
         if util.simpai_ui_trace_enabled():
             try:
                 logger.info(
                     "[UI-TRACE] scene_frontend_ctrls.index | "
-                    f"camera=7, anglelight=8, style=9, sam3=10, pose_studio=11, gaussian_studio=12, scene_resolution_accordion=13, "
-                    f"scene_resolution_checkbox=14, scene_resolution_html=15, scene_video=42, scene_reference_video=43, scene_audio=44, "
-                    f"sam3_input=45, sam3_original=46, sam3_mask=47, sam3_trim=48, len={len(scene_frontend_ctrls)}"
+                    f"camera=7, anglelight=8, style=9, sam3=10, pose_studio=11, gaussian_studio=12, liveportrait_expression=13, scene_resolution_accordion=14, "
+                    f"scene_resolution_checkbox=15, scene_resolution_html=16, scene_video=43, scene_reference_video=44, scene_audio=45, "
+                    f"sam3_input=46, sam3_original=47, sam3_mask=48, sam3_trim=49, len={len(scene_frontend_ctrls)}"
                 )
             except Exception:
                 pass
@@ -9334,9 +9422,9 @@ with shared.gradio_root:
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 
         scene_theme.select(switch_scene_theme_select, inputs=state_topbar, outputs=state_topbar, queue=False, show_progress=False) \
-                   .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
+                   .then(switch_scene_theme_safe, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme], outputs=[camera_control_accordion, anglelight_control_accordion, style_transfer_accordion, sam3_video_mask_accordion, pose_studio, gaussian_studio, liveportrait_expression, scene_resolution_override_accordion, scene_use_resolution_override_checkbox, scene_resolution_override] + scene_params[1:], queue=False, show_progress=False) \
                    .then(modules.meta_parser.switch_scene_theme_standard_generation_defaults, inputs=[state_topbar, scene_theme], outputs=[overwrite_step], queue=False, show_progress=False) \
-                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
+                   .then(fn=lambda state, theme: None, inputs=[state_topbar, scene_theme], js="(state, theme)=>{try{if(window.SimpAIPoseStudioEditor?.closeScenePreset) window.SimpAIPoseStudioEditor.closeScenePreset(); if(window.SimpAIGaussianStudioEditor?.closeScenePreset) window.SimpAIGaussianStudioEditor.closeScenePreset(); if(window.SimpAILivePortraitExpressionEditor?.closeScenePreset) window.SimpAILivePortraitExpressionEditor.closeScenePreset(); if(typeof reconcileSceneAuxControls==='function') reconcileSceneAuxControls(state, theme); if(typeof syncResolutionControlWidgets==='function') syncResolutionControlWidgets();}catch(e){console.warn('[UI-TRACE] scene_aux_reconcile_failed', e);}}", queue=False, show_progress=False) \
                    .then(lambda: None, js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_theme");}catch(e){console.warn("[UI-TRACE] scene_theme_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False) \
                    .then(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=True) \
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
@@ -10300,6 +10388,7 @@ import modules.canvas_workbench_timeline as canvas_workbench_timeline
 import modules.model_browser_service as model_browser_service
 import ui.services.pose_studio as pose_studio_service
 import ui.services.gaussian_studio as gaussian_studio_service
+import ui.services.liveportrait_expression as liveportrait_expression_service
 from modules.ui_gradio_extensions import ensure_tag_cart_custom_tags_path, webpath
 
 _matting_lock = threading.Lock()
@@ -10383,6 +10472,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/tag_cart.js"),
         webpath("javascript/pose_studio_editor.js"),
         webpath("javascript/gaussian_studio_editor.js"),
+        webpath("javascript/liveportrait_expression_editor.js"),
         webpath("javascript/canvas_workbench/registry.js"),
         webpath("javascript/canvas_workbench/vlm_chat.js"),
         webpath("javascript/canvas_workbench/canvas_agent.js"),
@@ -10407,6 +10497,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/nodes/sam3_video_mask_node.js"),
         webpath("javascript/canvas_workbench/nodes/pose_studio_node.js"),
         webpath("javascript/canvas_workbench/nodes/gaussian_studio_node.js"),
+        webpath("javascript/canvas_workbench/nodes/liveportrait_expression_node.js"),
         webpath("javascript/canvas_workbench/nodes/qwen_tts_node.js"),
         webpath("javascript/canvas_workbench/nodes/director_timeline_node.js"),
         webpath("javascript/canvas_workbench/nodes/style_selector_node.js"),
@@ -10878,6 +10969,44 @@ async def gaussian_studio_canvas_export_endpoint(payload: dict = Body(...)):
         import traceback
         traceback.print_exc()
         return JSONResponse({"ok": False, "error": "Gaussian Studio Export Error", "details": str(e)}, status_code=500)
+
+@app.post("/liveportrait-expression/status")
+async def liveportrait_expression_status_endpoint(payload: dict = Body(default={})):
+    try:
+        if payload is None:
+            payload = {}
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.resource_status(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": "LivePortrait Expression Status Error", "details": str(e)}, status_code=500)
+
+@app.post("/liveportrait-expression/preview")
+async def liveportrait_expression_preview_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.preview(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": "LivePortrait Expression Preview Error", "details": str(e)}, status_code=500)
+
+@app.post("/liveportrait-expression/canvas/export")
+async def liveportrait_expression_canvas_export_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse({"ok": False, "error": "Bad Request", "details": "Payload must be an object."}, status_code=400)
+        result = await run_in_threadpool(lambda: liveportrait_expression_service.export_image(payload))
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"ok": False, "error": "LivePortrait Expression Export Error", "details": str(e)}, status_code=500)
 
 @app.post("/model-browser/delete")
 async def model_browser_delete_endpoint(payload: dict = Body(...)):

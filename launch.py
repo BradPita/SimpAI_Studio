@@ -375,7 +375,10 @@ def check_base_environment():
             ('comfyui-embedded-docs', '0.5.5'),
             ('comfy-kitchen', '0.2.12'),
             ('comfy-aimdo', '0.4.10'),
-            ('av', '17.0.0')
+            ('av', '17.0.0'),
+            ('lmdb', '2.2.1'),
+            ('shtab', '1.8.0'),
+            ('tyro', '0.8.5')
         ]
         for (update_pkg_name, update_pkg_version) in update_pkgs:
             if not is_installed_version(update_pkg_name, update_pkg_version):

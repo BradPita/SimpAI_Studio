@@ -2462,21 +2462,21 @@ reset_layout_scene_outputs_len = 0
 # Local indexes inside webui.py scene_frontend_ctrls. Preset switches should
 # not carry uploaded media from the previous preset into hidden scene controls.
 SCENE_PRESET_SWITCH_CLEAR_OUTPUTS = {
-    16: "scene_canvas_image",
-    17: "scene_input_image1",
-    18: "scene_input_image2",
-    19: "scene_input_image3",
-    20: "scene_input_image4",
-    42: "scene_video",
-    43: "scene_reference_video",
-    44: "scene_audio",
-    45: "sam3_input_video",
-    46: "sam3_original_video_path",
-    47: "sam3_mask_video",
-    48: "sam3_trim_payload",
+    17: "scene_canvas_image",
+    18: "scene_input_image1",
+    19: "scene_input_image2",
+    20: "scene_input_image3",
+    21: "scene_input_image4",
+    43: "scene_video",
+    44: "scene_reference_video",
+    45: "scene_audio",
+    46: "sam3_input_video",
+    47: "sam3_original_video_path",
+    48: "sam3_mask_video",
+    49: "sam3_trim_payload",
 }
 SCENE_PRESET_SWITCH_CLEAR_VALUES = {
-    48: "",
+    49: "",
 }
 
 def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpaint_mode, comfyd_active_checkbox, bar_button = None, include_scene_outputs=True):

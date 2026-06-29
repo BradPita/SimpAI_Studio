@@ -12996,6 +12996,34 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     background: rgba(249, 115, 22, 0.13);
 }
 
+.sai-canvas-node-liveportrait_expression .sai-node-kind {
+    color: #fdba74;
+    border-color: rgba(249, 115, 22, 0.42);
+    background: rgba(249, 115, 22, 0.13);
+}
+
+.sai-liveportrait-expression-input-row {
+    border-color: rgba(249, 115, 22, 0.22);
+    background: rgba(249, 115, 22, 0.07);
+}
+
+.sai-liveportrait-expression-input-row b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sai-liveportrait-expression-media {
+    min-height: 230px;
+}
+
+.sai-liveportrait-expression-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain !important;
+}
+
 .sai-pose-studio-reference-row b {
     min-width: 0;
     overflow: hidden;

@@ -530,6 +530,7 @@ paths_model_patches = get_dir_or_set_default('path_model_patches', f'{path_model
 paths_grounding_dino = get_dir_or_set_default('path_grounding_dino', f'{path_models_root}/grounding-dino', True)
 paths_detection = get_dir_or_set_default('path_detection', f'{path_models_root}/detection', True)
 paths_ultralytics = get_dir_or_set_default('path_ultralytics', f'{path_models_root}/ultralytics', True)
+paths_liveportrait = get_dir_or_set_default('path_liveportrait', f'{path_models_root}/liveportrait', True)
 paths_bbox = get_dir_or_set_default('path_bbox', f'{path_models_root}/ultralytics/bbox', True)
 paths_segm = get_dir_or_set_default('path_segm', f'{path_models_root}/ultralytics/segm', True)
 paths_diffusion_models = get_dir_or_set_default('path_diffusion_models', f'{path_models_root}/diffusion_models', True)
@@ -576,6 +577,7 @@ model_cata_map = {
     'grounding-dino': paths_grounding_dino,
     'detection': paths_detection,
     'ultralytics': paths_ultralytics,
+    'liveportrait': paths_liveportrait,
     'bbox': paths_bbox,
     'segm': paths_segm,
     'diffusion_models': paths_unet + paths_diffusion_models + paths_checkpoints,
@@ -627,6 +629,7 @@ MODEL_ROOT_CATEGORY_FOLDERS = {
     'lsnet': ('lsnet',),
     'optical_flow': ('optical_flow',),
     'ultralytics': ('ultralytics',),
+    'liveportrait': ('liveportrait',),
     'bbox': ('ultralytics/bbox',),
     'segm': ('ultralytics/segm',),
     'LLM': ('LLM', 'llm'),

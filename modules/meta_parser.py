@@ -39,7 +39,7 @@ re_imagesize = re.compile(r"^(\d+)x(\d+)$")
 SCENE_OPTIONAL_INPUT_IMAGE_SLOTS = ("scene_input_image3", "scene_input_image4")
 SCENE_OPTIONAL_VIDEO_SLOTS = ("scene_reference_video",)
 SCENE_INPUT_IMAGE_SLOTS = ("scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
-SCENE_AUX_OUTPUT_COUNT = 9
+SCENE_AUX_OUTPUT_COUNT = 10
 SCENE_PRIMARY_OUTPUT_COUNT = 29
 SCENE_SWITCH_OUTPUT_COUNT = SCENE_AUX_OUTPUT_COUNT + SCENE_PRIMARY_OUTPUT_COUNT
 
@@ -212,6 +212,8 @@ def get_scene_aux_control_updates(scenes, theme):
     show_pose = bool(("pose" in theme_l or "pose" in task_method_l) and "pose_studio" not in hidden)
     gaussian_markers = ("gaussian", "3dgs", "splat", "sharp")
     show_gaussian = bool((any(marker in theme_l for marker in gaussian_markers) or any(marker in task_method_l for marker in gaussian_markers)) and "gaussian_studio" not in hidden)
+    liveportrait_markers = ("liveportrait", "advancedliveportrait")
+    show_liveportrait = bool((any(marker in theme_l for marker in liveportrait_markers) or any(marker in task_method_l for marker in liveportrait_markers)) and "liveportrait_expression" not in hidden)
     return [
         gr_update(open=show_camera),
         gr_update(open=show_light),
@@ -219,6 +221,7 @@ def get_scene_aux_control_updates(scenes, theme):
         gr_update(open=show_sam3),
         gr_update(visible=show_pose),
         gr_update(visible=show_gaussian),
+        gr_update(visible=show_liveportrait),
     ]
 
 def get_layout_visible_inter_loras_with_choices(visible, inter, max_number, lora_choices):

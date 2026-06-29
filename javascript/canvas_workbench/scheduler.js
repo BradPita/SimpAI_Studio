@@ -31,6 +31,12 @@
             const hasAsset = !!(asset.path || asset.output_path || asset.preview_url || asset.data_url || asset.thumb || asset.asset_id || asset.asset_relative_path || asset.relative_path);
             return hasAsset && (!mime || mime.startsWith('image/'));
         }
+        if (node.type === 'liveportrait_expression') {
+            const asset = node.asset || node.liveportrait_expression?.output_asset || {};
+            const mime = String(asset.mime || '').toLowerCase();
+            const hasAsset = !!(asset.path || asset.output_path || asset.preview_url || asset.data_url || asset.thumb || asset.asset_id || asset.asset_relative_path || asset.relative_path);
+            return hasAsset && (!mime || mime.startsWith('image/'));
+        }
         if (node.type === 'result') {
             if (node.source?.stale || node.producer?.stale) return false;
             if (node.source?.refreshing || node.producer?.refreshing) return false;

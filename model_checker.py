@@ -108,7 +108,7 @@ MODEL_SCAN_CATEGORIES = [
     'geometry_estimation', 'optical_flow', 'safety_checker',
     'layer_model', 'pulid', 'insightface', 'prompt_expansion', 'fooocus_expansion',
     'gemma3', 'jina_clip', 'rembg', 'birefnet', 'sam3', 'sam3dbody', 'sharp', 'sams', 'qwen-tts',
-    'latent_upscale_models', 'hunyuan_foley',
+    'latent_upscale_models', 'hunyuan_foley', 'liveportrait',
 ]
 
 MODEL_ROOT_CATEGORY_FOLDERS = {
@@ -126,6 +126,7 @@ MODEL_ROOT_CATEGORY_FOLDERS = {
     "lsnet": ("lsnet",),
     "optical_flow": ("optical_flow",),
     "ultralytics": ("ultralytics",),
+    "liveportrait": ("liveportrait",),
     "bbox": ("ultralytics/bbox",),
     "segm": ("ultralytics/segm",),
     "kaloscope": ("lsnet/kaloscope", "kaloscope"),
@@ -349,6 +350,7 @@ def load_model_paths():
                                 if isinstance(config.get("path_diffusion_models"), list)
                                 else [config.get("path_diffusion_models") or os.path.join(simplemodels_root, "diffusion_models")])],
             "ultralytics": _config_paths(config, "path_ultralytics", os.path.join(simplemodels_root, "ultralytics")),
+            "liveportrait": _config_paths(config, "path_liveportrait", os.path.join(simplemodels_root, "liveportrait")),
             "bbox": _config_paths(config, "path_bbox", os.path.join(simplemodels_root, "ultralytics", "bbox")),
             "segm": _config_paths(config, "path_segm", os.path.join(simplemodels_root, "ultralytics", "segm")),
             "SDPose_OOD": [os.path.join(simplemodels_root, "SDPose_OOD")],
@@ -412,6 +414,7 @@ def load_model_paths():
             "detection": [os.path.join(simplemodels_root, "detection")],
             "diffusion_models": [os.path.join(simplemodels_root, "diffusion_models")],
             "ultralytics": [os.path.join(simplemodels_root, "ultralytics")],
+            "liveportrait": [os.path.join(simplemodels_root, "liveportrait")],
             "bbox": [os.path.join(simplemodels_root, "ultralytics", "bbox")],
             "segm": [os.path.join(simplemodels_root, "ultralytics", "segm")],
             "SDPose_OOD": [os.path.join(simplemodels_root, "SDPose_OOD")],
@@ -2897,6 +2900,18 @@ packages = {'base_package': {'id': 1,
                              'upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth,https://huggingface.co/Kim2091/AnimeSharp/resolve/main/4x-AnimeSharp.pth'],
                    'info_links': ['https://modelscope.cn/models/krea/Krea-2-Turbo'],
                    'preset_sample': []},
+ 'liveportrait_exp_package': {'id': 46,
+                              'name': '[46]LivePortrait Exp表情编辑模型包|显存需求：★★ 速度：★★★',
+                              'note': 'LivePortrait Exp单图表情编辑模型包，包含LivePortrait核心模型和人脸检测模型',
+                              'files': ['liveportrait,appearance_feature_extractor.safetensors,3361936,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/appearance_feature_extractor.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/appearance_feature_extractor.safetensors',
+                                        'liveportrait,motion_extractor.safetensors,112496256,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/motion_extractor.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/motion_extractor.safetensors',
+                                        'liveportrait,warping_module.safetensors,182158564,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/warping_module.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/warping_module.safetensors',
+                                        'liveportrait,spade_generator.safetensors,221771768,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/spade_generator.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/spade_generator.safetensors',
+                                        'liveportrait,stitching_retargeting_module.safetensors,911836,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/stitching_retargeting_module.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/stitching_retargeting_module.safetensors',
+                                        'ultralytics,face_yolov8n.pt,6230011,0,https://www.modelscope.cn/models/Bingsu/adetailer/resolve/master/face_yolov8n.pt,https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt'],
+                              'info_links': ['https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/files',
+                                             'https://github.com/PowerHouseMan/ComfyUI-AdvancedLivePortrait'],
+                              'preset_sample': []},
 }
 MANUAL_DOWNLOAD_MAP = {
 }

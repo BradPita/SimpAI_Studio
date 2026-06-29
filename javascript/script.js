@@ -508,6 +508,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             describeVlmChat: ['Describe Chat', 'Describe Chat'],
             poseStudio: ['Pose Studio', 'Pose Studio'],
             gaussianStudio: ['Gaussian Studio', 'Gaussian Studio'],
+            livePortraitExpression: ['LivePortrait Expression', 'LivePortrait Expression'],
             tagCart: ['Tag Cart', '标签选择器'],
             layerForge: ['LayerForge', 'LayerForge'],
             customSketch: ['Sketch', 'Sketch'],
@@ -866,11 +867,13 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     document.addEventListener('click', (event) => {
         replayClickAfterLazyLoad('describeVlmChat', event, '#describe_vlm_chat_button, #describe_vlm_chat_button button, .describe-vlm-chat-entry')
             || replayClickAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
-            || replayClickAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]');
+            || replayClickAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
+            || replayClickAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]');
     }, true);
     document.addEventListener('keydown', (event) => {
         replayKeydownAfterLazyLoad('poseStudio', event, '[data-pose-studio-scene-open]')
-            || replayKeydownAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]');
+            || replayKeydownAfterLazyLoad('gaussianStudio', event, '[data-gaussian-studio-scene-open]')
+            || replayKeydownAfterLazyLoad('livePortraitExpression', event, '[data-liveportrait-expression-scene-open]');
     }, true);
     document.addEventListener('pointerover', scheduleLayerForgeLazyFromPointer, { capture: true, passive: true });
     document.addEventListener('pointerout', cancelLayerForgeLazyHover, { capture: true, passive: true });
@@ -2545,6 +2548,8 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'style_transfer_accordion', group: 'scene-aux' },
         { id: 'sam3_video_mask_accordion', group: 'scene-aux' },
         { id: 'pose_studio', group: 'scene-aux' },
+        { id: 'gaussian_studio', group: 'scene-aux' },
+        { id: 'liveportrait_expression', group: 'scene-aux' },
     ]);
 
     function normalizeChoice(value) {
@@ -2776,6 +2781,17 @@ document.addEventListener("DOMContentLoaded", function() {
         setVisible('pose_studio', showPoseStudio);
         if (!showPoseStudio && window.SimpAIPoseStudioEditor?.closeScenePreset) {
             try { window.SimpAIPoseStudioEditor.closeScenePreset(); } catch (e) {}
+        }
+        const gaussianMarkers = ['gaussian', '3dgs', 'splat', 'sharp'];
+        const showGaussianStudio = gaussianMarkers.some((marker) => themeLower.includes(marker) || taskMethodLower.includes(marker)) && !disvisible.has('gaussian_studio');
+        setVisible('gaussian_studio', showGaussianStudio);
+        if (!showGaussianStudio && window.SimpAIGaussianStudioEditor?.closeScenePreset) {
+            try { window.SimpAIGaussianStudioEditor.closeScenePreset(); } catch (e) {}
+        }
+        const showLivePortraitExpression = (themeLower.includes('liveportrait') || taskMethodLower.includes('liveportrait') || taskMethodLower.includes('advancedliveportrait')) && !disvisible.has('liveportrait_expression');
+        setVisible('liveportrait_expression', showLivePortraitExpression);
+        if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
+            try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}
         }
 
         [

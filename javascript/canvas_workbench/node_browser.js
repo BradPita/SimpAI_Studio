@@ -35,6 +35,7 @@
             sam3_video_mask: 'fa-crosshairs',
             pose_studio: 'fa-person',
             gaussian_studio: 'fa-cube',
+            liveportrait_expression: 'fa-face-smile',
             qwen_tts_voice_design: 'fa-microphone-lines',
             qwen_tts_voice_clone: 'fa-wave-square',
             qwen_tts_custom_voice: 'fa-user',

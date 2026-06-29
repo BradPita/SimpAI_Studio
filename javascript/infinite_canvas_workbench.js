@@ -24,6 +24,7 @@
     const WORKBENCH_SAM3_VIDEO_MASK_NODE = window.SimpAICanvasWorkbenchSam3VideoMaskNode || {};
     const WORKBENCH_POSE_STUDIO_NODE = window.SimpAICanvasWorkbenchPoseStudioNode || {};
     const WORKBENCH_GAUSSIAN_STUDIO_NODE = window.SimpAICanvasWorkbenchGaussianStudioNode || {};
+    const WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE = window.SimpAICanvasWorkbenchLivePortraitExpressionNode || {};
     const WORKBENCH_QWEN_TTS_NODE = window.SimpAICanvasWorkbenchQwenTtsNode || {};
     const WORKBENCH_DIRECTOR_TIMELINE_NODE = window.SimpAICanvasWorkbenchDirectorTimelineNode || {};
     const WORKBENCH_STYLE_SELECTOR_NODE = window.SimpAICanvasWorkbenchStyleSelectorNode || {};
@@ -113,6 +114,10 @@
     const CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET || 'LTX-Outpaint';
     const CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET || 'Wan-Remover';
     const CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET || 'Bernini-VideoEdit';
+    const CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET || 'ReActor-FaceSwap';
+    const CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME || 'ReActor Face Swap';
+    const CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET || 'Wan-SCAIL2';
+    const CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME || 'Character Motion Transfer';
     const CANVAS_AGENT_DEFAULT_VIDEO_UPSCALE_PRESET = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_VIDEO_UPSCALE_PRESET || 'Nvidia-VSR';
     const CANVAS_AGENT_DEFAULT_AUDIO_PRESET_QUEUE = WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_DEFAULT_AUDIO_PRESET_QUEUE || [];
     const CANVAS_AGENT_PROMPT_REWRITE_TIMEOUT_MS = Math.max(5000, Number(WORKBENCH_CANVAS_AGENT.CANVAS_AGENT_PROMPT_REWRITE_TIMEOUT_MS || 25000));
@@ -252,6 +257,10 @@
         videoOutpaintPreset: CANVAS_AGENT_DEFAULT_VIDEO_OUTPAINT_PRESET,
         videoErasePreset: CANVAS_AGENT_DEFAULT_VIDEO_ERASE_PRESET,
         videoReplacePreset: CANVAS_AGENT_DEFAULT_VIDEO_REPLACE_PRESET,
+        videoFaceSwapPreset: CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET,
+        videoFaceSwapTheme: CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME,
+        videoMotionTransferPreset: CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET,
+        videoMotionTransferTheme: CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME,
         videoEditQuickToolDefaultMigrated: false,
         videoUpscalePreset: CANVAS_AGENT_DEFAULT_VIDEO_UPSCALE_PRESET,
         outpaintUpPercent: 15,
@@ -1726,7 +1735,7 @@
             const asset = getSelectedResultAsset(node);
             return assetMediaKind(asset);
         }
-        if (node.type === 'image' || node.type === 'mask' || node.type === 'pose_studio' || node.type === 'gaussian_studio') return 'image';
+        if (node.type === 'image' || node.type === 'mask' || node.type === 'pose_studio' || node.type === 'gaussian_studio' || node.type === 'liveportrait_expression') return 'image';
         if (node.type === 'video' || node.type === 'sam3_video_mask') return 'video';
         if (node.type === 'audio') return 'audio';
         return '';
@@ -2504,6 +2513,7 @@
     ${sideButton('add-sam3-video-mask', 'fa-wand-magic-sparkles', t('Add SAM3 video mask node', '添加 SAM3 视频遮罩节点'))}
     ${sideButton('add-pose-studio', 'fa-person', t('Add Pose Studio node', '添加 Pose Studio 节点'))}
     ${sideButton('add-gaussian-studio', 'fa-cube', t('Add Gaussian Studio node', '添加 Gaussian Studio 节点'))}
+    ${sideButton('add-liveportrait-expression', 'fa-face-smile', t('Add LivePortrait Exp node', '添加 LivePortrait Exp 节点'))}
     ${sideButton('add-compare', 'sai-compare-glyph', t('Add image compare node', '添加图像对比节点'))}
     ${sideButton('add-timeline', 'fa-clapperboard', t('Add media timeline', '添加媒体时间线'))}
     ${sideButton('add-output', 'fa-circle-dot', t('Add output node', '添加输出节点'))}
@@ -4061,6 +4071,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             case 'add-gaussian-studio':
                 addGaussianStudioNode(viewportCenterWorld());
                 break;
+            case 'add-liveportrait-expression':
+                addLivePortraitExpressionNode(viewportCenterWorld());
+                break;
             case 'add-compare':
                 addCompareNode(viewportCenterWorld());
                 break;
@@ -4309,6 +4322,10 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         next.videoOutpaintPreset = normalizePresetName(next.videoOutpaintPreset || CANVAS_AGENT_DEFAULT_SETTINGS.videoOutpaintPreset);
         next.videoErasePreset = normalizePresetName(next.videoErasePreset || CANVAS_AGENT_DEFAULT_SETTINGS.videoErasePreset);
         next.videoReplacePreset = normalizePresetName(next.videoReplacePreset || CANVAS_AGENT_DEFAULT_SETTINGS.videoReplacePreset);
+        next.videoFaceSwapPreset = normalizePresetName(next.videoFaceSwapPreset || CANVAS_AGENT_DEFAULT_SETTINGS.videoFaceSwapPreset);
+        next.videoFaceSwapTheme = String(next.videoFaceSwapTheme || CANVAS_AGENT_DEFAULT_SETTINGS.videoFaceSwapTheme || '').trim();
+        next.videoMotionTransferPreset = normalizePresetName(next.videoMotionTransferPreset || CANVAS_AGENT_DEFAULT_SETTINGS.videoMotionTransferPreset);
+        next.videoMotionTransferTheme = String(next.videoMotionTransferTheme || CANVAS_AGENT_DEFAULT_SETTINGS.videoMotionTransferTheme || '').trim();
         const oldVideoEditQuickToolDefault = normalizePresetName('Wan-Animate');
         const skipVideoEditDefaultMigration = !!project?.settings?.__template_source;
         if (!skipVideoEditDefaultMigration && next.videoEditQuickToolDefaultMigrated !== true && next.videoReplacePreset === oldVideoEditQuickToolDefault) {
@@ -4445,6 +4462,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         if (node.type === 'image') return nodeHasViewableImage(node);
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
+        if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
         if (node.type === 'result') {
             const asset = getSelectedResultAsset(node);
             return !!asset && assetMediaKind(asset) === 'image' && nodeHasViewableImage({ type: 'image', asset });
@@ -5038,6 +5056,7 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             { key: 'erase', label: t('Erase', '擦除'), icon: 'fa-eraser' },
             { key: 'replace', label: t('Replace', '替换'), icon: 'fa-wand-magic-sparkles' },
             { key: 'style_transfer', label: t('Style Transfer', '风格转换'), icon: 'fa-palette' },
+            { key: 'liveportrait_expression', label: t('Expression', '表情编辑'), icon: 'fa-face-smile' },
             { key: 'upscale', label: t('Upscale', '放大'), icon: 'fa-magnifying-glass-plus' }
         ];
     }
@@ -5710,9 +5729,10 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         if (!decision || !decision.form || typeof decision.form !== 'object') return;
         const promptKey = decision.promptField || 'prompt';
         if (!promptKey || !decision.promptPresetField) return;
-        const entry = findCanvasAgentPresetEntryByAlias(presetName);
+        const route = decodeCanvasAgentVideoToolChoice(presetName);
+        const entry = findCanvasAgentPresetEntryByAlias(route.preset || presetName);
         if (!entry) return;
-        const nextPrompt = canvasAgentPresetDefaultPrompt(entry, decision.promptFallback || '');
+        const nextPrompt = canvasAgentPresetDefaultPromptForTheme(entry, route.theme || '', decision.promptFallback || '');
         if (!nextPrompt) return;
         const currentPrompt = String(decision.form[promptKey] || '').trim();
         const autoPrompt = String(decision.promptAutoValue || '').trim();
@@ -5835,6 +5855,88 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             });
         }
         return canvasAgentPresetDecisionOptions(selectedEntry);
+    }
+
+    function encodeCanvasAgentVideoToolChoice(preset, theme) {
+        return `${normalizePresetName(preset || '')}::theme::${String(theme || '').trim()}`;
+    }
+
+    function decodeCanvasAgentVideoToolChoice(value) {
+        const raw = String(value || '').trim();
+        const parts = raw.split('::theme::');
+        return {
+            preset: normalizePresetName(parts[0] || raw),
+            theme: String(parts.length > 1 ? parts.slice(1).join('::theme::') : '').trim()
+        };
+    }
+
+    function canvasAgentVideoQuickToolCandidateSpecs(key) {
+        const specs = {
+            face_swap: [
+                { preset: 'ReActor-FaceSwap', theme: 'ReActor Face Swap', label: 'ReActor-FaceSwap / ReActor Face Swap' },
+                { preset: 'Wan-Swap', theme: 'Wan-Animate Face Swap', label: 'Wan-Swap / Wan-Animate Face Swap' }
+            ],
+            motion_transfer: [
+                { preset: 'Wan-SCAIL2', theme: 'Character Motion Transfer', label: 'Wan-SCAIL2 / Character Motion Transfer' },
+                { preset: 'Wan-Swap', theme: 'Wan-Animate Motion Transfer', label: 'Wan-Swap / Wan-Animate Motion Transfer' }
+            ]
+        };
+        return specs[key] || [];
+    }
+
+    function canvasAgentVideoQuickToolChoiceFromSettings(key) {
+        const settings = getCanvasAgentSettings();
+        if (key === 'face_swap') return encodeCanvasAgentVideoToolChoice(settings.videoFaceSwapPreset, settings.videoFaceSwapTheme);
+        if (key === 'motion_transfer') return encodeCanvasAgentVideoToolChoice(settings.videoMotionTransferPreset, settings.videoMotionTransferTheme);
+        const spec = canvasAgentVideoQuickToolSpec(key);
+        return encodeCanvasAgentVideoToolChoice(settings[spec?.presetSetting] || spec?.defaultPreset || '', spec?.defaultTheme || '');
+    }
+
+    function canvasAgentVideoQuickToolChoiceLabel(choice) {
+        const decoded = typeof choice === 'object' ? choice : decodeCanvasAgentVideoToolChoice(choice);
+        return [decoded.preset, decoded.theme].filter(Boolean).join(' / ');
+    }
+
+    function canvasAgentVideoQuickToolChoiceOptions(key, selectedChoice) {
+        const rows = [];
+        const add = (preset, theme, label) => {
+            const value = encodeCanvasAgentVideoToolChoice(preset, theme);
+            if (!decodeCanvasAgentVideoToolChoice(value).preset || rows.some(item => item.value === value)) return;
+            rows.push({ value, label: label || canvasAgentVideoQuickToolChoiceLabel(value) });
+        };
+        const selected = decodeCanvasAgentVideoToolChoice(selectedChoice || canvasAgentVideoQuickToolChoiceFromSettings(key));
+        add(selected.preset, selected.theme, canvasAgentVideoQuickToolChoiceLabel(selected));
+        canvasAgentVideoQuickToolCandidateSpecs(key).forEach(item => add(item.preset, item.theme, item.label));
+        return rows;
+    }
+
+    function canvasAgentVideoQuickToolChoiceOptionHtml(key, selectedChoice) {
+        const selected = selectedChoice || canvasAgentVideoQuickToolChoiceFromSettings(key);
+        const rows = canvasAgentVideoQuickToolChoiceOptions(key, selected);
+        return rows.map(item => `<option value="${escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('');
+    }
+
+    function resolveCanvasAgentVideoQuickToolChoice(key, choiceValue) {
+        const spec = canvasAgentVideoQuickToolSpec(key);
+        const decoded = decodeCanvasAgentVideoToolChoice(choiceValue || canvasAgentVideoQuickToolChoiceFromSettings(key));
+        const fallback = canvasAgentVideoQuickToolCandidateSpecs(key)[0] || {};
+        const presetName = decoded.preset || spec?.defaultPreset || fallback.preset || '';
+        const entry = findCanvasAgentPresetEntryByAlias(presetName);
+        const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes : [];
+        const wantedTheme = decoded.theme || spec?.defaultTheme || fallback.theme || '';
+        const theme = themes.includes(wantedTheme) ? wantedTheme : (wantedTheme || entry?.schema?.default_theme || themes[0] || '');
+        return {
+            entry,
+            preset: presetName,
+            theme,
+            value: encodeCanvasAgentVideoToolChoice(presetName, theme)
+        };
+    }
+
+    function canvasAgentPresetDefaultPromptForTheme(entry, theme, fallback) {
+        if (!entry) return fallback || '';
+        const promptSource = theme ? createCanvasAgentPresetProbeNode(entry, { sceneTheme: theme }) : entry;
+        return canvasAgentPresetDefaultPrompt(promptSource, fallback);
     }
 
     function canvasAgentPresetQueueConfig(kind) {
@@ -7226,6 +7328,73 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         showToast(t('Pick a reference image for {tool}.', '请选择 {tool} 的参考图。').replace('{tool}', spec?.label || t('Quick tool', '快捷工具')));
     }
 
+    function startCanvasAgentVideoReferencePickForTool(target, spec) {
+        if (target && isCanvasAgentVideoTarget(target)) {
+            addCanvasAgentReferenceFromNode(target, { silent: true });
+            selectedNodeId = target.id;
+            selectedNodeIds = new Set([target.id]);
+            selectedEdgeId = null;
+        }
+        canvasAgentState.expanded = true;
+        canvasAgentState.pickReference = true;
+        setCanvasAgentMessage(t('{tool} needs a reference image. Click an image or image result node to add it as Ref, then use the tool again.', '{tool} 需要参考图。点击图像或图像结果节点加入 Ref，然后再次使用工具。').replace('{tool}', spec?.label || t('Video quick tool', '视频快捷工具')));
+        showToast(t('Pick an image reference for {tool}.', '请选择 {tool} 的图片参考。').replace('{tool}', spec?.label || t('Video quick tool', '视频快捷工具')));
+        renderCanvasAgentPanel();
+    }
+
+    function getCanvasAgentVideoQuickToolImageReferences(target) {
+        return normalizeCanvasAgentReferences()
+            .filter(ref => ref.kind === 'image')
+            .map(ref => canvasAgentReferenceNode(ref))
+            .filter(node => node && node.id !== target?.id && isCanvasAgentImageTarget(node))
+            .slice(0, 1);
+    }
+
+    function canvasAgentConnectVideoQuickToolImageReference(generator, videoSlot, imageNode) {
+        if (!generator || !imageNode) return '';
+        const refSlot = canvasAgentReferenceUploadSlotForGenerator(generator, videoSlot)
+            || canvasAgentUploadSlotsForNode(generator)
+                .filter(slot => !isCanvasAgentMaskSlot(slot) && getUploadSlotMediaKind(slot.key) === 'image')
+                .find(slot => slot.key !== videoSlot && canNodeConnectToUploadSlot(imageNode, slot.key))?.key
+            || '';
+        if (!refSlot) return '';
+        createUploadEdge(imageNode.id, generator.id, refSlot, { silent: true });
+        return refSlot;
+    }
+
+    function runCanvasAgentLivePortraitExpressionQuickTool(target, spec) {
+        if (!target || !isCanvasAgentImageTarget(target)) {
+            showToast(t('Select or attach a main image first.', '请先选择或挂载一张主图'));
+            return null;
+        }
+        revealCanvasAgentPanelForToolCard();
+        const sourceRect = getNodeRect(target);
+        const nodeSize = defaultNodeSize('liveportrait_expression') || { w: 420, h: 600 };
+        const base = sourceRect
+            ? { x: Math.round(sourceRect.x + sourceRect.w + 140), y: Math.round(sourceRect.y) }
+            : viewportCenterWorld();
+        const world = findOpenNodePosition(base, nodeSize, { keepVisible: false });
+        const node = markCanvasAgentCreatedNode(addLivePortraitExpressionNode(world, {
+            render: false,
+            toast: false,
+            source: { kind: 'canvas_agent_created', created_at: nowIso(), agent_tool: 'liveportrait_expression' }
+        }));
+        if (!node) {
+            showToast(t('LivePortrait Exp node could not be created.', '无法创建 LivePortrait Exp 节点。'));
+            return null;
+        }
+        createLivePortraitExpressionImageEdge(target.id, node.id, 'source', { silent: true });
+        selectedNodeId = node.id;
+        selectedNodeIds = new Set([node.id]);
+        selectedEdgeId = null;
+        selectedGroupId = null;
+        mutate({ inspector: true });
+        setCanvasAgentMessage(t('LivePortrait Exp is ready. The source image is connected and the editor is opening.', 'LivePortrait Exp 已就绪，源图已连接，正在打开编辑面板。'));
+        showToast(t('LivePortrait Exp source connected.', 'LivePortrait Exp 源图已连接。'));
+        window.setTimeout(() => openLivePortraitExpressionEditor(node), 80);
+        return node;
+    }
+
     function canvasAgentQuickToolSpec(key) {
         const specs = {
             outpaint: {
@@ -7260,6 +7429,13 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 presetSetting: 'styleTransferPreset',
                 defaultPreset: 'StyleTransfer+',
                 prompt: t('Convert this image with a selected visual style.', '使用选中的视觉风格转换这张图。'),
+                autoRun: false,
+                createOnly: true
+            },
+            liveportrait_expression: {
+                label: t('Expression Edit', '表情编辑'),
+                prompt: t('Edit the portrait expression with LivePortrait Exp.', '使用 LivePortrait Exp 编辑人像表情。'),
+                nodeTool: 'liveportrait_expression',
                 autoRun: false,
                 createOnly: true
             },
@@ -7314,6 +7490,28 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                 icon: 'fa-wand-magic-sparkles',
                 prompt: t('Edit this video while preserving temporal consistency.', '编辑这段视频并保持时序一致。'),
                 animateRequiresMask: true,
+                autoRun: true
+            },
+            face_swap: {
+                label: t('Video Face Swap', '视频换脸'),
+                presetSetting: 'videoFaceSwapPreset',
+                defaultPreset: CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_PRESET,
+                defaultTheme: CANVAS_AGENT_DEFAULT_VIDEO_FACE_SWAP_THEME,
+                icon: 'fa-face-smile',
+                prompt: t('Swap the face in this video with the reference face while preserving motion and source audio.', '使用参考脸替换视频中的人脸，并保留动作和源音频。'),
+                routeChoices: true,
+                wantsReference: true,
+                autoRun: true
+            },
+            motion_transfer: {
+                label: t('Motion Transfer', '动作迁移'),
+                presetSetting: 'videoMotionTransferPreset',
+                defaultPreset: CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_PRESET,
+                defaultTheme: CANVAS_AGENT_DEFAULT_VIDEO_MOTION_TRANSFER_THEME,
+                icon: 'fa-person-running',
+                prompt: t('Transfer the driving video motion to the reference character while keeping identity consistent.', '把驱动视频动作迁移到参考角色，并保持身份一致。'),
+                routeChoices: true,
+                wantsReference: true,
                 autoRun: true
             },
             upscale: {
@@ -7410,6 +7608,8 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             { key: 'video_outpaint', label: t('V-Outpaint', '视频扩图'), icon: 'fa-expand' },
             { key: 'video_erase', label: t('V-Erase', '视频擦除'), icon: 'fa-eraser' },
             { key: 'video_replace', label: t('Video Edit', '视频编辑'), icon: 'fa-wand-magic-sparkles' },
+            { key: 'video_face_swap', label: t('V-Face Swap', '视频换脸'), icon: 'fa-face-smile' },
+            { key: 'video_motion_transfer', label: t('Motion Transfer', '动作迁移'), icon: 'fa-person-running' },
             { key: 'video_upscale', label: t('V-Upscale', '视频放大'), icon: 'fa-magnifying-glass-plus' }
         ];
     }
@@ -7439,59 +7639,92 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             showToast(t('Select a video clip first.', '请先选中一个视频片段'));
             return;
         }
-        const initialPresetName = canvasAgentVideoQuickToolPresetName(videoToolKey);
-        const entry = findCanvasAgentPresetEntryByAlias(initialPresetName);
+        const initialChoice = spec.routeChoices ? resolveCanvasAgentVideoQuickToolChoice(videoToolKey, canvasAgentVideoQuickToolChoiceFromSettings(videoToolKey)) : null;
+        const initialPresetName = initialChoice?.preset || canvasAgentVideoQuickToolPresetName(videoToolKey);
+        const entry = initialChoice?.entry || findCanvasAgentPresetEntryByAlias(initialPresetName);
         if (!entry) {
             showToast(t('Video quick tool preset is unavailable: {preset}', '视频快捷工具 preset 不可用：{preset}').replace('{preset}', initialPresetName || spec.label));
             return;
         }
+        const initialTheme = initialChoice?.theme || '';
         const initialRequiresMask = canvasAgentVideoQuickToolRequiresSam3Mask(videoToolKey, entry, spec);
+        const imageRefs = getCanvasAgentVideoQuickToolImageReferences(target);
+        const missingRequiredReference = !!spec.wantsReference && !imageRefs.length;
         const agentPrompt = String(canvasAgentState.input || '').trim();
         const promptFromPreset = !agentPrompt;
-        const prompt = agentPrompt || canvasAgentPresetDefaultPrompt(entry, spec.prompt);
+        const prompt = agentPrompt || canvasAgentPresetDefaultPromptForTheme(entry, initialTheme, spec.prompt);
         const decisionForm = {
             preset: normalizePresetName(entry.name || entry.display_name || ''),
+            route: initialChoice?.value || encodeCanvasAgentVideoToolChoice(entry.name || entry.display_name || initialPresetName, initialTheme),
             prompt
         };
         const ok = await askCanvasAgentDecision({
-            title: (spec.autoRun || initialRequiresMask) ? t('Start video quick tool?', '开始视频快捷工具？') : t('Create video quick tool node?', '创建视频快捷工具节点？'),
-            message: initialRequiresMask
+            title: missingRequiredReference
+                ? t('Reference image required', '需要参考图')
+                : ((spec.autoRun || initialRequiresMask) ? t('Start video quick tool?', '开始视频快捷工具？') : t('Create video quick tool node?', '创建视频快捷工具节点？')),
+            message: missingRequiredReference
+                ? t('{tool} needs a reference image. Pick an image Ref first, or create the node and connect the reference manually.', '{tool} 需要参考图。先选择图像 Ref，或只创建节点后手动连接参考图。').replace('{tool}', spec.label)
+                : initialRequiresMask
                 ? t('{tool} needs a mask. Agent will create and connect the node, then wait for manual mask editing.', '{tool} 需要蒙版。Agent 会创建并连接节点，然后等待手动绘制蒙版。').replace('{tool}', spec.label)
                 : t('Agent will use {tool}, connect the selected video, and submit this prompt.', 'Agent 将使用 {tool}，连接当前视频，并提交以下提示词。').replace('{tool}', spec.label),
             form: decisionForm,
             fields: [
-                { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(entry) },
+                spec.routeChoices
+                    ? { key: 'route', label: t('Target route', '目标路线'), options: canvasAgentVideoQuickToolChoiceOptions(videoToolKey, decisionForm.route) }
+                    : { key: 'preset', label: t('Target preset', '目标 preset'), options: canvasAgentPresetDecisionOptions(entry) },
                 canvasAgentPromptDecisionField()
             ],
             promptField: 'prompt',
-            promptPresetField: 'preset',
+            promptPresetField: spec.routeChoices ? 'route' : 'preset',
             promptFallback: spec.prompt,
             promptAutoValue: promptFromPreset ? prompt : '',
             promptEdited: !promptFromPreset,
             facts: [
                 { label: t('Action', '动作'), value: spec.label },
                 { label: t('Preset', '预设'), value: entry.display_name || entry.name || initialPresetName },
+                initialTheme ? { label: t('Theme', '主题'), value: initialTheme } : null,
                 { label: t('Source', '源'), value: canvasAgentShortNodeLabel(target) },
+                imageRefs.length ? { label: t('Image refs', '图片参考'), value: String(imageRefs.length) } : null,
+                spec.wantsReference && !imageRefs.length ? { label: t('Reference', '参考图'), value: t('Recommended before manual run', '建议在手动运行前补充') } : null,
                 initialRequiresMask ? { label: t('Mask', '蒙版'), value: 'SAM3' } : null
             ].filter(Boolean),
             details: prompt,
             note: initialRequiresMask
                 ? t('Animate presets use SAM3 mask workflow. Bernini VideoEdit runs as a direct video edit.', 'Animate preset 使用 SAM3 蒙版工作流；Bernini VideoEdit 会直接作为视频编辑运行。')
                 : t('Choose an Animate preset only when you need the SAM3 mask workflow.', '只有需要 SAM3 蒙版工作流时才选择 Animate preset。'),
-            actions: [
+            actions: missingRequiredReference ? [
+                { value: 'pick-reference', label: t('Pick Ref', '选择 Ref'), icon: 'fa-crosshairs', primary: true },
+                { value: 'create-node', label: t('Create node only', '只创建节点'), icon: 'fa-plus' },
+                { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
+            ] : [
                 { value: 'continue', label: initialRequiresMask ? t('Create SAM3 workflow', '创建 SAM3 工作流') : (spec.autoRun ? t('Start', '开始') : t('Create node', '创建节点')), icon: initialRequiresMask ? 'fa-wand-magic-sparkles' : (spec.autoRun ? 'fa-play' : 'fa-plus'), primary: true },
                 { value: 'cancel', label: t('Cancel', '取消'), icon: 'fa-xmark' }
             ]
         });
-        if (ok !== 'continue') {
+        if (ok === 'pick-reference') {
+            startCanvasAgentVideoReferencePickForTool(target, spec);
+            return;
+        }
+        if (ok !== 'continue' && ok !== 'create-node') {
             setCanvasAgentMessage(t('Video quick tool cancelled.', '视频快捷工具已取消。'));
             return;
         }
+        const createOnlyBecauseReferenceMissing = missingRequiredReference && ok === 'create-node';
         const finalPrompt = canvasAgentPromptFromDecision(decisionForm, prompt);
-        const finalEntry = findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+        const finalChoice = spec.routeChoices ? resolveCanvasAgentVideoQuickToolChoice(videoToolKey, decisionForm.route) : null;
+        if (spec.routeChoices && !finalChoice?.entry) {
+            const selectedRoute = decodeCanvasAgentVideoToolChoice(decisionForm.route);
+            const selectedLabel = canvasAgentVideoQuickToolChoiceLabel(selectedRoute) || spec.label;
+            showToast(t('Video quick tool preset is unavailable: {preset}', '视频快捷工具 preset 不可用：{preset}').replace('{preset}', selectedLabel));
+            setCanvasAgentMessage(t('{route} is not available. Refresh ready presets or choose another route.', '{route} 当前不可用。请刷新可用 preset 或选择其他路线。').replace('{route}', selectedLabel));
+            return;
+        }
+        const finalEntry = finalChoice?.entry || findCanvasAgentPresetEntryByAlias(decisionForm.preset) || entry;
+        const finalTheme = finalChoice?.theme || '';
         const finalRequiresMask = canvasAgentVideoQuickToolRequiresSam3Mask(videoToolKey, finalEntry, spec);
         const node = markCanvasAgentCreatedNode(addPresetNode(finalEntry, canvasAgentWorkflowPresetPosition(target), {
             collapsed: true,
+            sceneTheme: finalTheme,
             source: { kind: 'canvas_agent_created', created_at: nowIso() }
         }));
         applyCanvasAgentPromptToGenerator(node, finalPrompt);
@@ -7501,7 +7734,23 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             || uploadSlots[0]?.key
             || '';
         if (videoSlot) createUploadEdge(target.id, node.id, videoSlot, { silent: true });
+        const refSlot = canvasAgentConnectVideoQuickToolImageReference(node, videoSlot, imageRefs[0]);
         applyCanvasAgentResolutionToGenerator(node);
+        if (createOnlyBecauseReferenceMissing) {
+            const referenceNode = createCanvasAgentReferencePlaceholderForGenerator(node, videoSlot, videoToolKey, spec);
+            const workflowNodes = [referenceNode, node].filter(Boolean);
+            const group = createCanvasAgentWorkflowGroup(workflowNodes, `${spec.label} workflow`);
+            selectedNodeId = referenceNode?.id || node.id;
+            selectedNodeIds = new Set(workflowNodes.map(item => item.id));
+            selectedEdgeId = null;
+            selectedGroupId = group?.id || selectedGroupId;
+            mutate({ inspector: true });
+            centerCanvasAgentWorkflow(workflowNodes);
+            setCanvasAgentMessage(referenceNode
+                ? t('{tool} node and reference image input created. Upload or connect the reference image before running.', '{tool} 节点和参考图输入已创建。运行前请上传或连接参考图。').replace('{tool}', spec.label)
+                : t('{tool} node created, but no free image reference slot was found.', '{tool} 节点已创建，但没有找到空闲图片参考槽。').replace('{tool}', spec.label));
+            return;
+        }
         selectedNodeId = node.id;
         selectedNodeIds = new Set([node.id]);
         selectedEdgeId = null;
@@ -7525,7 +7774,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             preset: node.title || node.preset?.display_name || node.preset?.name || '',
             model: t('Direct prompt', '直接提示词')
         });
-        setCanvasAgentMessage(t('Submitted {tool}.', '已提交 {tool}。').replace('{tool}', spec.label));
+        setCanvasAgentMessage(refSlot
+            ? t('Submitted {tool} with image reference.', '已提交 {tool}，并连接图片参考。').replace('{tool}', spec.label)
+            : t('Submitted {tool}.', '已提交 {tool}。').replace('{tool}', spec.label));
         await runPresetNode(node, {
             agentWorkflowTitle: `${t('Agent video quick tool', 'Agent 视频快捷工具')}: ${spec.label}`
         });
@@ -10643,6 +10894,10 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             revealCanvasAgentPanelForToolCard();
             showOutpaintOverlay(target.id);
             renderCanvasAgentPanel();
+            return;
+        }
+        if (toolKey === 'liveportrait_expression') {
+            runCanvasAgentLivePortraitExpressionQuickTool(target, spec);
             return;
         }
         const extraImageRefs = getCanvasAgentExtraImageReferences()
@@ -14791,6 +15046,7 @@ ${[0, 1, 2].map((index) => {
         if (node.type === 'sam3_video_mask') return renderSam3VideoMaskNodeHtml(node);
         if (node.type === 'pose_studio') return renderPoseStudioNodeHtml(node);
         if (node.type === 'gaussian_studio') return renderGaussianStudioNodeHtml(node);
+        if (node.type === 'liveportrait_expression') return renderLivePortraitExpressionNodeHtml(node);
         if (isQwenTtsNode(node)) return renderQwenTtsNodeHtml(node);
         return renderImageNodeHtml(node);
     }
@@ -14840,6 +15096,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'sam3_video_mask') return 'SAM3';
         if (node.type === 'pose_studio') return t('Pose', '姿势');
         if (node.type === 'gaussian_studio') return '3DGS';
+        if (node.type === 'liveportrait_expression') return t('Live Exp', '表情');
         if (node.type === 'wildcards_helper') return t('Wildcards', '通配符');
         return String(node.type || 'Node').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
     }
@@ -14853,6 +15110,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'style_selector') return 'fa-palette';
         if (node.type === 'pose_studio') return 'fa-person';
         if (node.type === 'gaussian_studio') return 'fa-cube';
+        if (node.type === 'liveportrait_expression') return 'fa-face-smile';
         if (['text', 'translation', 'tag_cart', 'wildcards_helper', 'vlm'].includes(node.type)) return 'fa-align-left';
         if (node.type === 'config') return configIconForKind(node.config_kind);
         if (node.type === 'compare') return 'fa-code-compare';
@@ -14908,6 +15166,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'style_selector') return node.style_selector?.selected_name || 'Style prompt';
         if (node.type === 'pose_studio') return node.asset ? 'Pose image' : 'Pose Studio';
         if (node.type === 'gaussian_studio') return node.asset ? 'Gaussian render' : 'Gaussian Studio';
+        if (node.type === 'liveportrait_expression') return node.asset ? 'Expression image' : 'LivePortrait Exp';
         if (node.type === 'config') return node.config_kind || 'config';
         return readAssetInfo(overviewNodeAsset(node) || {}).slice(0, 2).join(' / ') || overviewNodeKindLabel(node);
     }
@@ -14934,6 +15193,8 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (port.kind === 'sam3_video') return 'data-sam3-video-in';
         if (port.kind === 'pose_reference') return 'data-pose-studio-reference-in';
         if (port.kind === 'gaussian_reference') return 'data-gaussian-studio-reference-in';
+        if (port.kind === 'liveportrait_source') return 'data-liveportrait-expression-source-in';
+        if (port.kind === 'liveportrait_reference') return 'data-liveportrait-expression-reference-in';
         if (port.kind === 'qwen_tts_audio') return `data-qwen-tts-audio-in="${slot}"`;
         if (port.kind === 'director_media') return `data-director-media-in="${slot}"`;
         if (port.kind === 'director_media_group') return `data-director-media-group-in="${slot}"`;
@@ -14964,6 +15225,10 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         else if (node.type === 'sam3_video_mask') add('sam3_video', 'source', t('Video source', '视频来源'));
         else if (node.type === 'pose_studio') add('pose_reference', 'reference', t('Reference image', '参考图'));
         else if (node.type === 'gaussian_studio') add('gaussian_reference', 'reference', t('Reference image', '参考图'));
+        else if (node.type === 'liveportrait_expression') {
+            add('liveportrait_source', 'source', t('Source image', '源图'));
+            add('liveportrait_reference', 'reference', t('Reference expression', '参考表情'));
+        }
         else if (isQwenTtsNode(node)) qwenTtsAudioInputSlots(node).forEach(slot => add('qwen_tts_audio', slot.key, slot.label || slot.key));
         else if (isDirectorTimelineNode(node)) {
             const groups = Array.isArray(WORKBENCH_DIRECTOR_TIMELINE_NODE.MEDIA_KIND_GROUPS)
@@ -14988,6 +15253,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'batch_any') return batchAnyPortKind(node);
         if (node.type === 'pose_studio') return 'image';
         if (node.type === 'gaussian_studio') return 'image';
+        if (node.type === 'liveportrait_expression') return 'image';
         if (node.type === 'video' || node.type === 'sam3_video_mask') return 'video';
         if (node.type === 'audio') return 'audio';
         if (node.type === 'result') return 'result';
@@ -15243,7 +15509,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
             }
             return node?.type === 'video' || (node?.type === 'result' && mime.startsWith('video/'));
         }
-        return node?.type === 'image' || node?.type === 'mask' || node?.type === 'pose_studio' || node?.type === 'gaussian_studio' || (node?.type === 'result' && (!mime || mime.startsWith('image/')));
+        return node?.type === 'image' || node?.type === 'mask' || node?.type === 'pose_studio' || node?.type === 'gaussian_studio' || node?.type === 'liveportrait_expression' || (node?.type === 'result' && (!mime || mime.startsWith('image/')));
     }
 
     function canPresetOutputConnectToUploadSlot(presetNode, slotKey) {
@@ -16804,14 +17070,14 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'result' && asset) return assetMediaKind(asset);
         if (node.type === 'video') return 'video';
         if (node.type === 'audio') return 'audio';
-        if (['image', 'mask', 'pose_studio', 'gaussian_studio'].includes(node.type)) return 'image';
+        if (['image', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return 'image';
         return '';
     }
 
     function isBatchAnySourceNode(node) {
         if (!node || isNodeIgnored(node)) return false;
         if (node.type !== 'batch_any' && isTextOutputNode(node)) return true;
-        if (!['image', 'result', 'video', 'audio', 'mask', 'pose_studio', 'gaussian_studio'].includes(node.type)) return false;
+        if (!['image', 'result', 'video', 'audio', 'mask', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(node.type)) return false;
         return !!batchAnySourceAsset(node) && !!batchAnySourceMediaKind(node);
     }
 
@@ -18410,6 +18676,20 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         if (node.type === 'image') return !!node.asset;
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return !!WORKBENCH_GAUSSIAN_STUDIO_NODE.isSource?.(node, gaussianStudioNodeContext());
+        if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
+        if (node.type === 'result') {
+            const asset = getSelectedResultAsset(node);
+            return !!asset && assetMediaKind(asset) === 'image';
+        }
+        return false;
+    }
+
+    function isLivePortraitExpressionImageSource(node) {
+        if (!node || isNodeIgnored(node)) return false;
+        if (node.type === 'image') return !!node.asset;
+        if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
+        if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
+        if (node.type === 'liveportrait_expression') return !!WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.isSource?.(node, livePortraitExpressionNodeContext());
         if (node.type === 'result') {
             const asset = getSelectedResultAsset(node);
             return !!asset && assetMediaKind(asset) === 'image';
@@ -18422,6 +18702,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
             project,
             projectId: project.id || PROJECT_ID,
             assetDisplaySrc,
+            canvasOverlayHost,
             defaultNodeSize,
             detectWorkbenchTheme,
             ensureWorkbenchFormFieldNames,
@@ -18528,6 +18809,43 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function renderGaussianStudioNodeHtml(node) {
         return WORKBENCH_GAUSSIAN_STUDIO_NODE.renderNodeHtml(node, gaussianStudioNodeContext());
+    }
+
+    function livePortraitExpressionNodeContext() {
+        return {
+            project,
+            projectId: project.id || PROJECT_ID,
+            assetDisplaySrc,
+            defaultNodeSize,
+            detectWorkbenchTheme,
+            ensureWorkbenchFormFieldNames,
+            getNode,
+            getSelectedResultAsset,
+            isLivePortraitExpressionImageSource,
+            isNodeIgnored,
+            isNodeLocked,
+            mediaAspectStyle,
+            mutate,
+            notConnectedText,
+            placeNodeAvoidingOverlap,
+            portHintText,
+            pushHistory,
+            readAssetInfo,
+            renderNodeStateBadges,
+            scheduleSave,
+            serializeAssetSourceForRun,
+            setSelectedNode: (id) => {
+                selectedNodeId = id || null;
+                selectedNodeIds = new Set(id ? [id] : []);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+            },
+            showToast
+        };
+    }
+
+    function renderLivePortraitExpressionNodeHtml(node) {
+        return WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderNodeHtml(node, livePortraitExpressionNodeContext());
     }
 
     function styleSelectorNodeContext() {
@@ -20113,6 +20431,7 @@ ${actions}
         if (node.type === 'image') return !!node.asset;
         if (node.type === 'pose_studio') return isPoseStudioImageSource(node);
         if (node.type === 'gaussian_studio') return isGaussianStudioImageSource(node);
+        if (node.type === 'liveportrait_expression') return isLivePortraitExpressionImageSource(node);
         if (node.type === 'result') {
             const asset = getSelectedResultAsset(node);
             return !!asset && assetMediaKind(asset) === 'image';
@@ -22226,15 +22545,17 @@ ${actions}
             const sam3VideoInHandle = evt.target.closest('[data-sam3-video-in]');
             const poseReferenceInHandle = evt.target.closest('[data-pose-studio-reference-in]');
             const gaussianReferenceInHandle = evt.target.closest('[data-gaussian-studio-reference-in]');
+            const livePortraitSourceInHandle = evt.target.closest('[data-liveportrait-expression-source-in]');
+            const livePortraitReferenceInHandle = evt.target.closest('[data-liveportrait-expression-reference-in]');
             const qwenTtsAudioInHandle = evt.target.closest('[data-qwen-tts-audio-in]');
             const directorMediaInHandle = evt.target.closest('[data-director-media-in]');
             const directorMediaGroupInHandle = evt.target.closest('[data-director-media-group-in]');
             const compareImageInHandle = evt.target.closest('[data-compare-image-in]');
             const batchAnyInHandle = evt.target.closest('[data-batch-any-in]');
             const timelineMediaInHandle = evt.target.closest('[data-timeline-media-in], [data-timeline-track-in]');
-            if (inHandle || configInHandle || resultInHandle || textInHandle || textNodeInHandle || translationTextInHandle || tagCartTextInHandle || wd14ImageInHandle || vlmImageInHandle || maskSourceInHandle || sam3VideoInHandle || poseReferenceInHandle || gaussianReferenceInHandle || qwenTtsAudioInHandle || directorMediaInHandle || directorMediaGroupInHandle || compareImageInHandle || batchAnyInHandle || timelineMediaInHandle) {
+            if (inHandle || configInHandle || resultInHandle || textInHandle || textNodeInHandle || translationTextInHandle || tagCartTextInHandle || wd14ImageInHandle || vlmImageInHandle || maskSourceInHandle || sam3VideoInHandle || poseReferenceInHandle || gaussianReferenceInHandle || livePortraitSourceInHandle || livePortraitReferenceInHandle || qwenTtsAudioInHandle || directorMediaInHandle || directorMediaGroupInHandle || compareImageInHandle || batchAnyInHandle || timelineMediaInHandle) {
                 evt.preventDefault();
-                handleInputHandlePointerDown(node, evt, inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle);
+                handleInputHandlePointerDown(node, evt, inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, livePortraitSourceInHandle, livePortraitReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle);
                 return;
             }
             const compareStage = evt.target.closest('.sai-compare-stage');
@@ -22701,6 +23022,20 @@ ${actions}
                 createImageNodeForImageInput(node, 'gaussian_studio', 'reference', gaussianReferenceHandle);
                 return;
             }
+            const livePortraitSourceHandle = evt.target.closest('[data-liveportrait-expression-source-in]');
+            if (livePortraitSourceHandle && node.type === 'liveportrait_expression') {
+                evt.preventDefault();
+                evt.stopPropagation();
+                createImageNodeForImageInput(node, 'liveportrait_expression_source', 'source', livePortraitSourceHandle);
+                return;
+            }
+            const livePortraitReferenceHandle = evt.target.closest('[data-liveportrait-expression-reference-in]');
+            if (livePortraitReferenceHandle && node.type === 'liveportrait_expression') {
+                evt.preventDefault();
+                evt.stopPropagation();
+                createImageNodeForImageInput(node, 'liveportrait_expression_reference', 'reference', livePortraitReferenceHandle);
+                return;
+            }
             if (node.type === 'pose_studio' && !isInteractiveTarget(evt.target)) {
                 evt.preventDefault();
                 evt.stopPropagation();
@@ -22711,6 +23046,12 @@ ${actions}
                 evt.preventDefault();
                 evt.stopPropagation();
                 openGaussianStudioEditor(node);
+                return;
+            }
+            if (node.type === 'liveportrait_expression' && !isInteractiveTarget(evt.target)) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                openLivePortraitExpressionEditor(node);
                 return;
             }
             const wd14ImageHandle = evt.target.closest('[data-wd14-image-in]');
@@ -24380,6 +24721,12 @@ ${actions}
             const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-gaussian-studio-reference-in]`);
             if (measured) return measured;
         }
+        if (node.type === 'liveportrait_expression' && edgeType === 'image') {
+            const liveSlot = slot === 'reference' ? 'reference' : 'source';
+            const selector = liveSlot === 'reference' ? 'data-liveportrait-expression-reference-in' : 'data-liveportrait-expression-source-in';
+            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [${selector}]`);
+            if (measured) return measured;
+        }
         if (node.type === 'sam3_video_mask' && edgeType === 'media') {
             const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-sam3-video-in]`);
             if (measured) return measured;
@@ -24502,6 +24849,7 @@ ${actions}
         else if (node.type === 'sam3_video_mask') html = renderSam3VideoMaskInspector(node);
         else if (node.type === 'pose_studio') html = WORKBENCH_POSE_STUDIO_NODE.renderInspector(node, poseStudioNodeContext());
         else if (node.type === 'gaussian_studio') html = WORKBENCH_GAUSSIAN_STUDIO_NODE.renderInspector(node, gaussianStudioNodeContext());
+        else if (node.type === 'liveportrait_expression') html = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderInspector(node, livePortraitExpressionNodeContext());
         else if (isQwenTtsNode(node)) html = WORKBENCH_QWEN_TTS_NODE.renderInspector(node, qwenTtsNodeContext());
         else html = renderImageInspector(node);
         inspector.innerHTML = renderNodeAppearanceInspector(node) + html;
@@ -24544,6 +24892,7 @@ ${actions}
   <button type="button" data-canvas-action="add-style-selector"><i class="fa-solid fa-palette"></i><span>${escapeHtml(t('Add style', '添加风格'))}</span></button>
   <button type="button" data-canvas-action="add-pose-studio"><i class="fa-solid fa-person-walking"></i><span>${escapeHtml(t('Add pose', '添加姿势'))}</span></button>
   <button type="button" data-canvas-action="add-gaussian-studio"><i class="fa-solid fa-cube"></i><span>${escapeHtml(t('Add 3DGS', '添加 3DGS'))}</span></button>
+  <button type="button" data-canvas-action="add-liveportrait-expression"><i class="fa-solid fa-face-smile"></i><span>${escapeHtml(t('Add Live Exp', '添加表情'))}</span></button>
   <button type="button" data-canvas-action="add-note"><i class="fa-solid fa-note-sticky"></i><span>${escapeHtml(t('Add note', '添加提示贴'))}</span></button>
   <button type="button" data-canvas-action="add-group"><i class="fa-solid fa-object-group"></i><span>${escapeHtml(t('Add group', '添加分组'))}</span></button>
   <button type="button" data-canvas-action="add-compare">${renderIconHtml('sai-compare-glyph')}<span>${escapeHtml(t('Add compare', '添加对比'))}</span></button>
@@ -26031,7 +26380,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         document.addEventListener('pointerup', stopConnection, true);
     }
 
-    function handleInputHandlePointerDown(node, evt, inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle) {
+    function handleInputHandlePointerDown(node, evt, inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, livePortraitSourceInHandle, livePortraitReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle) {
         if (!node) return;
         if (inHandle && (node.type === 'preset' || node.type === 'classic')) {
             const slot = inHandle.getAttribute('data-handle-in');
@@ -26162,6 +26511,16 @@ ${renderGenerationMetadataInspectorSection(node)}
                 else renderAll();
             }
         }
+        if ((livePortraitSourceInHandle || livePortraitReferenceInHandle) && node.type === 'liveportrait_expression') {
+            const slot = livePortraitReferenceInHandle ? 'reference' : 'source';
+            const edge = project.edges.find(item => item.type === 'image' && item.to === node.id && item.slot === slot);
+            if (edge) {
+                const fromNode = getNode(edge.from);
+                deleteEdge(edge.id, { render: false });
+                if (fromNode) startConnection(fromNode, evt);
+                else renderAll();
+            }
+        }
         if (qwenTtsAudioInHandle && isQwenTtsNode(node)) {
             const slot = qwenTtsAudioInHandle.getAttribute('data-qwen-tts-audio-in') || '';
             const edge = project.edges.find(item => item.type === 'media' && item.to === node.id && item.slot === slot);
@@ -26248,6 +26607,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             if (snapTarget.kind === 'sam3_video') createSam3VideoMaskEdge(connectState.from, snapTarget.toId);
             if (snapTarget.kind === 'pose_reference') createPoseStudioReferenceEdge(connectState.from, snapTarget.toId);
             if (snapTarget.kind === 'gaussian_reference') createGaussianStudioReferenceEdge(connectState.from, snapTarget.toId);
+            if (snapTarget.kind === 'liveportrait_source' || snapTarget.kind === 'liveportrait_reference') createLivePortraitExpressionImageEdge(connectState.from, snapTarget.toId, snapTarget.slot);
             if (snapTarget.kind === 'qwen_tts_audio') createQwenTtsAudioEdge(connectState.from, snapTarget.toId, snapTarget.slot);
             if (snapTarget.kind === 'director_media') createDirectorTimelineMediaEdge(connectState.from, snapTarget.toId, snapTarget.slot);
             if (snapTarget.kind === 'director_media_group') createDirectorTimelineMediaEdge(connectState.from, snapTarget.toId, '', { kind: snapTarget.slot });
@@ -26286,6 +26646,8 @@ ${renderGenerationMetadataInspectorSection(node)}
             '[data-sam3-video-in]',
             '[data-pose-studio-reference-in]',
             '[data-gaussian-studio-reference-in]',
+            '[data-liveportrait-expression-source-in]',
+            '[data-liveportrait-expression-reference-in]',
             '[data-qwen-tts-audio-in]',
             '[data-director-media-in]',
             '[data-director-media-group-in]',
@@ -26330,6 +26692,8 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (handle.hasAttribute('data-sam3-video-in')) return { kind: 'sam3_video', toId, slot: 'source', handle };
         if (handle.hasAttribute('data-pose-studio-reference-in')) return { kind: 'pose_reference', toId, slot: 'reference', handle };
         if (handle.hasAttribute('data-gaussian-studio-reference-in')) return { kind: 'gaussian_reference', toId, slot: 'reference', handle };
+        if (handle.hasAttribute('data-liveportrait-expression-source-in')) return { kind: 'liveportrait_source', toId, slot: 'source', handle };
+        if (handle.hasAttribute('data-liveportrait-expression-reference-in')) return { kind: 'liveportrait_reference', toId, slot: 'reference', handle };
         if (handle.hasAttribute('data-qwen-tts-audio-in')) return { kind: 'qwen_tts_audio', toId, slot: handle.getAttribute('data-qwen-tts-audio-in') || '', handle };
         if (handle.hasAttribute('data-director-media-in')) return { kind: 'director_media', toId, slot: handle.getAttribute('data-director-media-in') || '', handle };
         if (handle.hasAttribute('data-director-media-group-in')) return { kind: 'director_media_group', toId, slot: handle.getAttribute('data-director-media-group-in') || '', handle };
@@ -26367,6 +26731,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (target.kind === 'sam3_video') return isSam3VideoMaskSource(from) && to.type === 'sam3_video_mask';
         if (target.kind === 'pose_reference') return to.type === 'pose_studio' && (isPoseStudioImageSource(from) || isImageProducingPresetNode(from));
         if (target.kind === 'gaussian_reference') return (isGaussianStudioImageSource(from) || isImageProducingPresetNode(from)) && to.type === 'gaussian_studio';
+        if (target.kind === 'liveportrait_source' || target.kind === 'liveportrait_reference') return to.type === 'liveportrait_expression' && (isLivePortraitExpressionImageSource(from) || isImageProducingPresetNode(from));
         if (target.kind === 'qwen_tts_audio') return isQwenTtsAudioSource(from) && isQwenTtsNode(to);
         if (target.kind === 'director_media') return isDirectorTimelineNode(to) && isDirectorMediaSourceForSlot(from, target.slot);
         if (target.kind === 'director_media_group') return isDirectorTimelineNode(to) && directorMediaSourceKind(from) === target.slot;
@@ -26418,7 +26783,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (node.type === 'batch_any' && isBatchAnySourceNode(from)) {
             const item = addSourceNodeToBatchAny(from, node, { history: false, render: false, select: false, toast: false });
             if (item) message = t('and added {name} as a batch item', '并已把 {name} 加入批量素材').replace('{name}', item.name || from.id);
-        } else if ((node.type === 'preset' || node.type === 'classic') && (['image', 'result', 'video', 'audio', 'pose_studio', 'gaussian_studio'].includes(from.type) || (from.type === 'batch_any' && batchAnyMediaKind(from) && batchAnyMediaKind(from) !== 'text'))) {
+        } else if ((node.type === 'preset' || node.type === 'classic') && (['image', 'result', 'video', 'audio', 'pose_studio', 'gaussian_studio', 'liveportrait_expression'].includes(from.type) || (from.type === 'batch_any' && batchAnyMediaKind(from) && batchAnyMediaKind(from) !== 'text'))) {
             const slots = node.type === 'classic' ? getVisibleClassicUploadSlots(node) : getVisibleUploadSlots(node);
             const slot = slots.find(item => !node.upload_slots?.[item.key] && canNodeConnectToUploadSlot(from, item.key))
                 || slots.find(item => canNodeConnectToUploadSlot(from, item.key));
@@ -26453,6 +26818,18 @@ ${renderGenerationMetadataInspectorSection(node)}
             node.input_node_id = from.id;
             node.status = Object.assign({}, node.status || {}, { state: 'ready', message: 'Reference image connected.' });
             message = 'connected to Gaussian Studio reference';
+        } else if (isImageProducingPresetNode(from) && node.type === 'liveportrait_expression') {
+            const resultNode = createPresetToLivePortraitExpressionImageBridgeEdge(from.id, node.id, 'source', { silent: true, render: false, select: false });
+            if (resultNode) {
+                message = t('and inserted a Result bridge into LivePortrait Exp source', '并已插入 Result 桥接到 LivePortrait Exp 源图');
+            }
+        } else if (isLivePortraitExpressionImageSource(from) && node.type === 'liveportrait_expression') {
+            project.edges = project.edges.filter(edge => !(edge.type === 'image' && edge.to === node.id && edge.slot === 'source'));
+            project.edges.push({ id: uid('edge'), type: 'image', from: from.id, to: node.id, slot: 'source' });
+            node.liveportrait_expression = Object.assign({}, node.liveportrait_expression || {}, { source_node_id: from.id });
+            node.input_node_id = from.id;
+            node.status = Object.assign({}, node.status || {}, { state: 'ready', message: 'Source image connected.' });
+            message = 'connected to LivePortrait Exp source';
         } else if (isVlmMediaSource(from) && node.type === 'vlm') {
             const chatMode = (node.params?.mode || 'single') === 'chat';
             if (chatMode && !['image', 'result'].includes(from.type)) {
@@ -26773,6 +27150,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                     { label: t('Add SAM3 Video Mask node', '添加 SAM3 视频遮罩节点'), icon: 'fa-film', search: 'sam3 video mask masking segment 添加 视频遮罩 视频蒙版 分割', action: () => addSam3VideoMaskNode(targetWorld) },
                     { label: t('Add Pose Studio node', '添加 Pose Studio 节点'), icon: 'fa-person', search: 'pose studio openpose reference body posture 添加 姿势 姿态 骨架 参考图', action: () => addPoseStudioNode(targetWorld) },
                     { label: t('Add Gaussian Studio node', '添加 Gaussian Studio 节点'), icon: 'fa-cube', search: 'gaussian studio 3dgs sharp splat ply rotate view 添加 高斯 三维 视角', action: () => addGaussianStudioNode(targetWorld) },
+                    { label: t('Add LivePortrait Exp node', '添加 LivePortrait Exp 节点'), icon: 'fa-face-smile', search: 'liveportrait expression face smile edit reference 添加 表情 编辑 参考表情', action: () => addLivePortraitExpressionNode(targetWorld) },
                     { label: t('Add image compare node', '添加图像对比节点'), icon: 'sai-compare-glyph', search: 'image compare comparison diff 添加 图像对比 比较 差异', action: () => addCompareNode(targetWorld) },
                     { label: t('Add Director Timeline', '添加导演时间轴'), icon: 'fa-timeline', search: 'director timeline easy media prompt_override shot storyboard 添加 导演 时间轴 分镜', action: () => addDirectorTimelineNode(targetWorld) },
                     { label: t('Add media timeline', '添加媒体时间线'), icon: 'fa-clapperboard', search: 'media timeline video edit clips 添加 媒体时间线 时间线 视频 剪辑', action: () => addTimelineNode(targetWorld) }
@@ -27510,6 +27888,10 @@ ${renderGenerationMetadataInspectorSection(node)}
             items.push({ label: t('Open Gaussian Studio', '打开 Gaussian Studio'), icon: 'fa-cube', action: () => openGaussianStudioEditor(node) });
             items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
         }
+        if (node.type === 'liveportrait_expression') {
+            items.push({ label: t('Open LivePortrait Exp', '打开 LivePortrait Exp'), icon: 'fa-face-smile', action: () => openLivePortraitExpressionEditor(node) });
+            items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
+        }
         if (node.type === 'result') {
             items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => node.type === 'result' ? openAssetViewer(getSelectedResultAsset(node), node.title || 'Result') : openImageViewer(node), disabled: !(node.type === 'result' ? getSelectedResultAsset(node) : node.asset) });
             if (isCanvasAgentImageTarget(node)) {
@@ -27925,6 +28307,8 @@ ${renderGenerationMetadataInspectorSection(node)}
       <label><span>${escapeHtml(t('Video outpaint preset', '视频扩图 preset'))}</span><select data-canvas-agent-setting="videoOutpaintPreset" ${readyCount ? '' : 'disabled'}>${canvasAgentPresetOptionHtml(settings.videoOutpaintPreset)}</select></label>
       <label><span>${escapeHtml(t('Video erase preset', '视频擦除 preset'))}</span><select data-canvas-agent-setting="videoErasePreset" ${readyCount ? '' : 'disabled'}>${canvasAgentPresetOptionHtml(settings.videoErasePreset)}</select></label>
       <label><span>${escapeHtml(t('Video edit preset', '视频编辑 preset'))}</span><select data-canvas-agent-setting="videoReplacePreset" ${readyCount ? '' : 'disabled'}>${canvasAgentPresetOptionHtml(settings.videoReplacePreset)}</select></label>
+      <label><span>${escapeHtml(t('Video face swap route', '视频换脸路线'))}</span><select data-canvas-agent-setting="videoFaceSwapChoice">${canvasAgentVideoQuickToolChoiceOptionHtml('face_swap', canvasAgentVideoQuickToolChoiceFromSettings('face_swap'))}</select></label>
+      <label><span>${escapeHtml(t('Motion transfer route', '动作迁移路线'))}</span><select data-canvas-agent-setting="videoMotionTransferChoice">${canvasAgentVideoQuickToolChoiceOptionHtml('motion_transfer', canvasAgentVideoQuickToolChoiceFromSettings('motion_transfer'))}</select></label>
       <label><span>${escapeHtml(t('Video upscale preset', '视频放大 preset'))}</span><select data-canvas-agent-setting="videoUpscalePreset" ${readyCount ? '' : 'disabled'}>${canvasAgentPresetOptionHtml(settings.videoUpscalePreset, { entries: canvasAgentVideoUpscalePresetEntries(settings.videoUpscalePreset) })}</select></label>
     </section>
     <section class="sai-settings-section">
@@ -28032,6 +28416,22 @@ ${renderGenerationMetadataInspectorSection(node)}
                 customApiFormat: provider.format || 'openai_compatible',
                 customSupportsImages: provider.supportsImages !== false,
                 customApiCollapsed: false
+            });
+            return;
+        }
+        if (key === 'videoFaceSwapChoice') {
+            const route = decodeCanvasAgentVideoToolChoice(value);
+            setCanvasAgentSettingsPatch({
+                videoFaceSwapPreset: route.preset || CANVAS_AGENT_DEFAULT_SETTINGS.videoFaceSwapPreset,
+                videoFaceSwapTheme: route.theme || CANVAS_AGENT_DEFAULT_SETTINGS.videoFaceSwapTheme
+            });
+            return;
+        }
+        if (key === 'videoMotionTransferChoice') {
+            const route = decodeCanvasAgentVideoToolChoice(value);
+            setCanvasAgentSettingsPatch({
+                videoMotionTransferPreset: route.preset || CANVAS_AGENT_DEFAULT_SETTINGS.videoMotionTransferPreset,
+                videoMotionTransferTheme: route.theme || CANVAS_AGENT_DEFAULT_SETTINGS.videoMotionTransferTheme
             });
             return;
         }
@@ -31985,6 +32385,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         }
         const existingId = kind === 'vlm'
             ? targetNode.image_inputs?.[slot || 'image_1']
+            : kind === 'liveportrait_expression_source'
+            ? targetNode.liveportrait_expression?.source_node_id || targetNode.input_node_id
+            : kind === 'liveportrait_expression_reference'
+            ? targetNode.liveportrait_expression?.reference_node_id || targetNode.reference_node_id
             : targetNode.input_node_id;
         const existingNode = existingId ? getNode(existingId) : null;
         if (existingNode) {
@@ -31998,12 +32402,17 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             ? t('Reference', '参考图')
             : kind === 'gaussian_studio'
             ? t('Reference', '参考图')
+            : kind === 'liveportrait_expression_source'
+            ? t('Source', '源图')
+            : kind === 'liveportrait_expression_reference'
+            ? t('Reference Expression', '参考表情')
             : 'Image';
         pushHistory('Add input image node');
         const imageNode = createEmptyImageNodeForInput(targetNode, label, handle);
         if (kind === 'vlm') createVlmImageEdge(imageNode.id, targetNode.id, slot, { silent: true });
         else if (kind === 'pose_studio') createPoseStudioReferenceEdge(imageNode.id, targetNode.id, { silent: true });
         else if (kind === 'gaussian_studio') createGaussianStudioReferenceEdge(imageNode.id, targetNode.id, { silent: true });
+        else if (kind === 'liveportrait_expression_source' || kind === 'liveportrait_expression_reference') createLivePortraitExpressionImageEdge(imageNode.id, targetNode.id, slot || (kind === 'liveportrait_expression_reference' ? 'reference' : 'source'), { silent: true });
         else createWd14ImageEdge(imageNode.id, targetNode.id, { silent: true });
         selectedNodeId = imageNode.id;
         selectedNodeIds = new Set([imageNode.id]);
@@ -35858,6 +36267,23 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return node;
     }
 
+    function addLivePortraitExpressionNode(world, options) {
+        const opts = options || {};
+        const node = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), livePortraitExpressionNodeContext());
+        if (!node) return null;
+        const autoMessage = completePendingConnectionToNode(node);
+        selectedNodeId = node.id;
+        selectedNodeIds = new Set([node.id]);
+        selectedEdgeId = null;
+        selectedGroupId = null;
+        if (opts.render !== false) mutate();
+        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'LivePortrait Exp'} node added, ${autoMessage}` : t('LivePortrait Exp node added', '已添加 LivePortrait Exp 节点'));
+        return node;
+    }
+
     function addQwenTtsNode(mode, world, options) {
         if (typeof WORKBENCH_QWEN_TTS_NODE.createNode !== 'function') {
             showToast('Qwen TTS canvas node is not loaded.');
@@ -36729,6 +37155,92 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return resultNode;
     }
 
+    function findOrCreateLivePortraitExpressionBridgeResultNode(fromPreset, liveNode, slot) {
+        const targetSlot = slot === 'reference' ? 'reference' : 'source';
+        const existing = project.edges
+            .filter(edge => edge.type === 'generate' && edge.from === fromPreset.id)
+            .map(edge => getNode(edge.to))
+            .find(node => node?.type === 'result' && project.edges.some(edge => edge.type === 'image' && edge.from === node.id && edge.to === liveNode.id && edge.slot === targetSlot));
+        if (existing) return existing;
+        const size = defaultNodeSize('result');
+        const fromRect = getNodeRect(fromPreset);
+        const toRect = getNodeRect(liveNode);
+        const mid = {
+            x: Math.round((fromRect.x + fromRect.w + toRect.x) / 2 - size.w / 2),
+            y: Math.round((fromRect.y + toRect.y) / 2)
+        };
+        const node = {
+            id: uid('result'),
+            type: 'result',
+            x: mid.x,
+            y: mid.y,
+            w: size.w,
+            h: size.h,
+            title: `${fromPreset.title || 'Preset'} Output`,
+            producer: { preset_node_id: fromPreset.id, run_id: null, task_id: null, expected_media_kind: 'image' },
+            status: {
+                state: 'reserved',
+                queue_position: null,
+                step: 0,
+                total_steps: 0,
+                percent: 0,
+                message: `Auto bridge for ${liveNode.title || 'LivePortrait Exp'} ${targetSlot}.`
+            },
+            preview: null,
+            asset: null,
+            source: {
+                kind: 'auto_bridge',
+                downstream_liveportrait_expression_id: liveNode.id,
+                downstream_slot: targetSlot,
+                expected_media_kind: 'image'
+            }
+        };
+        placeNodeAvoidingOverlap(node, mid, { excludeIds: [fromPreset.id, liveNode.id] });
+        project.nodes.push(node);
+        return node;
+    }
+
+    function createPresetToLivePortraitExpressionImageBridgeEdge(fromId, toId, slot, options) {
+        const from = getNode(fromId);
+        const to = getNode(toId);
+        const targetSlot = slot === 'reference' ? 'reference' : 'source';
+        const opts = options || {};
+        if (!from || !to || !isImageProducingPresetNode(from) || to.type !== 'liveportrait_expression') {
+            showToast(t('Preset output media type does not match LivePortrait Exp input.', 'Preset 输出类型与 LivePortrait Exp 输入不匹配'));
+            return null;
+        }
+        if (isNodeLocked(from) || isNodeLocked(to)) {
+            showToast('Locked nodes cannot change connections');
+            return null;
+        }
+        if (!opts.silent) pushHistory('Connect preset output to LivePortrait Exp');
+        const resultNode = findOrCreateLivePortraitExpressionBridgeResultNode(from, to, targetSlot);
+        project.edges = project.edges.filter(edge => !(edge.type === 'image' && edge.to === toId && edge.slot === targetSlot));
+        ensureGenerateEdge(fromId, resultNode.id);
+        project.edges.push({
+            id: uid('edge'),
+            type: 'image',
+            from: resultNode.id,
+            to: toId,
+            slot: targetSlot
+        });
+        to.liveportrait_expression = Object.assign({}, to.liveportrait_expression || {});
+        if (targetSlot === 'reference') {
+            to.reference_node_id = resultNode.id;
+            to.liveportrait_expression.reference_node_id = resultNode.id;
+        } else {
+            to.input_node_id = resultNode.id;
+            to.liveportrait_expression.source_node_id = resultNode.id;
+        }
+        to.status = Object.assign({}, to.status || {}, { state: 'ready', message: targetSlot === 'reference' ? 'Reference result bridge connected.' : 'Source result bridge connected.' });
+        selectedEdgeId = null;
+        if (opts.select !== false) selectedNodeId = resultNode.id;
+        if (opts.render === false || opts.silent) return resultNode;
+        mutate();
+        showToast(t('Preset output connected to LivePortrait Exp via Result bridge.', 'Preset 输出已通过 Result 桥接到 LivePortrait Exp'));
+        return resultNode;
+    }
+
     function createConfigEdge(fromId, toId, kind, options) {
         const from = getNode(fromId);
         const to = getNode(toId);
@@ -37013,6 +37525,46 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         if (options && options.silent) return;
         mutate();
         showToast('Gaussian Studio reference connected');
+    }
+
+    function createLivePortraitExpressionImageEdge(fromId, toId, slot, options) {
+        const from = getNode(fromId);
+        const to = getNode(toId);
+        const targetSlot = slot === 'reference' ? 'reference' : 'source';
+        if (from && to && ['preset', 'classic'].includes(from.type)) {
+            return createPresetToLivePortraitExpressionImageBridgeEdge(fromId, toId, targetSlot, options);
+        }
+        if (!from || !to || !isLivePortraitExpressionImageSource(from) || to.type !== 'liveportrait_expression') {
+            showToast(t('LivePortrait Exp inputs only accept image/result nodes', 'LivePortrait Exp 输入只接受图像 / 结果节点'));
+            return;
+        }
+        if (isNodeLocked(from) || isNodeLocked(to)) {
+            showToast('Locked nodes cannot change connections');
+            return;
+        }
+        if (!options || !options.silent) pushHistory('Connect LivePortrait Exp image input');
+        project.edges = project.edges.filter(edge => !(edge.type === 'image' && edge.to === toId && edge.slot === targetSlot));
+        project.edges.push({
+            id: uid('edge'),
+            type: 'image',
+            from: fromId,
+            to: toId,
+            slot: targetSlot
+        });
+        to.liveportrait_expression = Object.assign({}, to.liveportrait_expression || {});
+        if (targetSlot === 'reference') {
+            to.reference_node_id = fromId;
+            to.liveportrait_expression.reference_node_id = fromId;
+        } else {
+            to.input_node_id = fromId;
+            to.liveportrait_expression.source_node_id = fromId;
+        }
+        to.status = Object.assign({}, to.status || {}, { state: 'ready', message: targetSlot === 'reference' ? 'Reference expression connected.' : 'Source image connected.' });
+        selectedEdgeId = null;
+        selectedNodeId = toId;
+        if (options && options.silent) return;
+        mutate();
+        showToast(targetSlot === 'reference' ? t('LivePortrait Exp reference connected', 'LivePortrait Exp 参考表情已连接') : t('LivePortrait Exp source connected', 'LivePortrait Exp 源图已连接'));
     }
 
     function createQwenTtsAudioEdge(fromId, toId, slot, options) {
@@ -37721,6 +38273,17 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         );
         if (!ready) return null;
         return WORKBENCH_GAUSSIAN_STUDIO_NODE.openEditor(node, gaussianStudioNodeContext());
+    }
+
+    async function openLivePortraitExpressionEditor(node) {
+        const ready = await ensureWorkbenchLazyRuntime(
+            'livePortraitExpression',
+            () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
+            t('Loading LivePortrait Exp...', '正在加载 LivePortrait Exp...'),
+            t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。')
+        );
+        if (!ready) return null;
+        return WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.openEditor(node, livePortraitExpressionNodeContext());
     }
 
     function qwenTtsResultBasePosition(node) {
@@ -41965,6 +42528,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             openPoseStudioEditor(node);
         } else if (action === 'edit-gaussian-studio' && node.type === 'gaussian_studio') {
             openGaussianStudioEditor(node);
+        } else if (action === 'edit-liveportrait-expression' && node.type === 'liveportrait_expression') {
+            openLivePortraitExpressionEditor(node);
         } else if (action === 'edit-mask-asset' && node.type === 'mask') {
             openSketchForNode(node);
         } else if (action === 'view-image') {
@@ -43901,6 +44466,19 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 node.input_node_id = null;
                 node.status = Object.assign({}, node.status || {}, { state: 'idle', message: 'Reference image removed.' });
             }
+            if (node.type === 'liveportrait_expression') {
+                node.liveportrait_expression = Object.assign({}, node.liveportrait_expression || {});
+                if (idSet.has(node.input_node_id) || idSet.has(node.liveportrait_expression.source_node_id)) {
+                    node.input_node_id = null;
+                    node.liveportrait_expression.source_node_id = '';
+                    node.status = Object.assign({}, node.status || {}, { state: 'idle', message: 'Source image removed.' });
+                }
+                if (idSet.has(node.reference_node_id) || idSet.has(node.liveportrait_expression.reference_node_id)) {
+                    node.reference_node_id = null;
+                    node.liveportrait_expression.reference_node_id = '';
+                    node.status = Object.assign({}, node.status || {}, { state: 'idle', message: 'Reference expression removed.' });
+                }
+            }
             if (isQwenTtsNode(node) && node.audio_inputs) {
                 let removed = false;
                 Object.keys(node.audio_inputs).forEach((slot) => {
@@ -44014,6 +44592,19 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             if (target?.type === 'gaussian_studio' && edge.slot === 'reference' && target.input_node_id === edge.from) {
                 target.input_node_id = null;
                 target.status = Object.assign({}, target.status || {}, { state: 'idle', message: 'Reference image disconnected.' });
+            }
+            if (target?.type === 'liveportrait_expression') {
+                target.liveportrait_expression = Object.assign({}, target.liveportrait_expression || {});
+                if (edge.slot === 'source' && (target.input_node_id === edge.from || target.liveportrait_expression.source_node_id === edge.from)) {
+                    target.input_node_id = null;
+                    target.liveportrait_expression.source_node_id = '';
+                    target.status = Object.assign({}, target.status || {}, { state: 'idle', message: 'Source image disconnected.' });
+                }
+                if (edge.slot === 'reference' && (target.reference_node_id === edge.from || target.liveportrait_expression.reference_node_id === edge.from)) {
+                    target.reference_node_id = null;
+                    target.liveportrait_expression.reference_node_id = '';
+                    target.status = Object.assign({}, target.status || {}, { state: 'idle', message: 'Reference expression disconnected.' });
+                }
             }
         }
         if (edge && edge.type === 'media') {
@@ -44174,6 +44765,17 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             node.gaussian_studio = Object.assign({}, node.gaussian_studio || {}, { reference_asset: null });
             node.status = Object.assign({}, node.status || {}, { state: node.asset ? 'finished' : 'idle', message: node.asset ? 'Gaussian render ready.' : 'Open Gaussian Studio to build a view.' });
         }
+        if (node.type === 'liveportrait_expression') {
+            node.input_node_id = null;
+            node.reference_node_id = null;
+            node.liveportrait_expression = Object.assign({}, node.liveportrait_expression || {}, {
+                source_node_id: '',
+                reference_node_id: '',
+                source_asset: null,
+                reference_asset: null
+            });
+            node.status = Object.assign({}, node.status || {}, { state: node.asset ? 'finished' : 'idle', message: node.asset ? 'Expression image ready.' : 'Connect a source image, then edit expression.' });
+        }
         if (node.type === 'vlm') {
             node.image_inputs = {};
             node.chat = { messages: [], updated_at: nowIso() };
@@ -44305,6 +44907,17 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         } else if (edge.type === 'image' && isPoseStudioImageSource(from) && to.type === 'pose_studio') {
             to.input_node_id = from.id;
             to.status = Object.assign({}, to.status || {}, { state: 'ready', message: 'Reference image connected.' });
+        } else if (edge.type === 'image' && isLivePortraitExpressionImageSource(from) && to.type === 'liveportrait_expression') {
+            const slot = edge.slot === 'reference' ? 'reference' : 'source';
+            to.liveportrait_expression = Object.assign({}, to.liveportrait_expression || {});
+            if (slot === 'reference') {
+                to.reference_node_id = from.id;
+                to.liveportrait_expression.reference_node_id = from.id;
+            } else {
+                to.input_node_id = from.id;
+                to.liveportrait_expression.source_node_id = from.id;
+            }
+            to.status = Object.assign({}, to.status || {}, { state: 'ready', message: slot === 'reference' ? 'Reference expression connected.' : 'Source image connected.' });
         } else if (edge.type === 'image' && isVlmMediaSource(from) && to.type === 'vlm') {
             const slot = VLM_IMAGE_SLOTS.some(item => item.key === edge.slot) ? edge.slot : 'image_1';
             to.image_inputs = Object.assign({}, to.image_inputs || {}, { [slot]: from.id });
@@ -44644,6 +45257,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         addPresetNode: (entry, world) => addPresetNode(entry || {}, world || viewportCenterWorld()),
         addPoseStudioNode: (world, options) => addPoseStudioNode(world || viewportCenterWorld(), options || {}),
         addGaussianStudioNode: (world, options) => addGaussianStudioNode(world || viewportCenterWorld(), options || {}),
+        addLivePortraitExpressionNode: (world, options) => addLivePortraitExpressionNode(world || viewportCenterWorld(), options || {}),
         addDirectorTimelineNode: (world, options) => addDirectorTimelineNode(world || viewportCenterWorld(), options || {}),
         connectUploadEdge: (fromId, toId, slot, options) => connectUploadEdgeApi(fromId, toId, slot, options || {}),
         addQwenTtsNode: (mode, world, options) => addQwenTtsNode(mode || 'voice_design', world || viewportCenterWorld(), options || {}),

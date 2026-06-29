@@ -83,6 +83,7 @@ SimpAI UI guide skill:
   - For seamless outpainting / image-edge expansion (无缝扩图 / 边缘拓展), recommend OneKey-Outpaint first. It uses the Flux1.Fill model for general-purpose image boundary extension across subjects, and is often used to change composition, change aspect ratio, or add missing surrounding elements.
 - Face, body, pose, and camera:
   - For face swap on still images, recommend Swapface or Swap+.
+  - For expression editing on still portraits, recommend LivePortrait Exp. It edits face rotation, eyes, mouth, smile, and optional reference-expression strength; treat it as an expression editor, not an identity face-swap route.
   - For pose transfer or pose-driven edits, recommend OneKeyPose, QwenPose, Flux2-KleinPose, or SDPose depending on the selected preset family.
   - For camera angle / multi-view control, recommend QwenMultiAngle; for product or character three-view sheets, recommend OneKeyKontext IP 3-View.
   - For Gaussian blur cleanup or detail-oriented Qwen edits, recommend QwenGaussian / QwenEdit+ when relevant.
@@ -92,9 +93,10 @@ SimpAI UI guide skill:
   - For text-to-video, recommend Wan(T2V); for image-to-video, recommend Wan(I2V); for video extension, recommend Wan-Extent or Dasiwa-Extent for anime.
   - For video outpainting / expanding video frame boundaries, recommend Wan-Outpaint.
   - For video object/person/face replacement with masks, recommend Wan-Animate with SAM3; for video removal/inpainting, recommend Wan-Remover with SAM3.
-  - For motion transfer, character replacement, pose-following, or reusing a reference motion, recommend Wan-SCAIL2 or Wan-Swap motion transfer depending on whether identity/face replacement is involved. Wan-SCAIL2 separates the modes into two themes: Character Motion Transfer and Character Replacement.
+  - For video face swap, recommend ReActor-FaceSwap / ReActor Face Swap for a direct source-face-index workflow with a reference face image and source video. Offer Wan-Swap / Wan-Animate Face Swap when the user wants the Animate-style multimodal face-replacement route.
+  - For motion transfer, character replacement, pose-following, or reusing a reference motion, recommend Wan-SCAIL2 or Wan-Swap motion transfer depending on whether identity/face replacement is involved. Wan-SCAIL2 separates the modes into two themes: Character Motion Transfer and Character Replacement; use Wan-Swap / Wan-Animate Motion Transfer as the Animate-style alternative.
   - For Bernini-R video routes, recommend Bernini-MultiI2V for multi-reference image-to-video and Bernini-VideoEdit for video editing with optional image references and Duration limit.
-  - For face replacement in video, recommend Wan-Swap.
+  - For face replacement in video, recommend ReActor-FaceSwap first for the ReActor route, or Wan-Swap when the Animate-style route fits better.
   - Wan video routes have strong consistency, many specialized extensions, and strong directed workflows, but T2V/I2V duration is limited and VRAM requirements are high.
   - LTX2.3 is better when the user needs more flexible duration, dynamic VRAM use, or text/audio multimodal video input/output. It can still consume a lot of system RAM.
   - LTX-Outpaint is a specialized IC-LoRA-enhanced video outpaint route.

@@ -203,11 +203,13 @@ def javascript_html():
     canvas_workbench_sam3_video_mask_node_path = webpath('javascript/canvas_workbench/nodes/sam3_video_mask_node.js')
     canvas_workbench_pose_studio_node_path = webpath('javascript/canvas_workbench/nodes/pose_studio_node.js')
     canvas_workbench_gaussian_studio_node_path = webpath('javascript/canvas_workbench/nodes/gaussian_studio_node.js')
+    canvas_workbench_liveportrait_expression_node_path = webpath('javascript/canvas_workbench/nodes/liveportrait_expression_node.js')
     canvas_workbench_qwen_tts_node_path = webpath('javascript/canvas_workbench/nodes/qwen_tts_node.js')
     canvas_workbench_director_timeline_node_path = webpath('javascript/canvas_workbench/nodes/director_timeline_node.js')
     canvas_workbench_style_selector_node_path = webpath('javascript/canvas_workbench/nodes/style_selector_node.js')
     pose_studio_editor_path = webpath('javascript/pose_studio_editor.js')
     gaussian_studio_editor_path = webpath('javascript/gaussian_studio_editor.js')
+    liveportrait_expression_editor_path = webpath('javascript/liveportrait_expression_editor.js')
     canvas_workbench_sketch_adapter_path = webpath('javascript/canvas_workbench/sketch_adapter.js')
     infinite_canvas_workbench_path = webpath('javascript/infinite_canvas_workbench.js')
     tag_cart_path = webpath('javascript/tag_cart.js') 
@@ -268,6 +270,7 @@ def javascript_html():
             canvas_workbench_sam3_video_mask_node_path,
             canvas_workbench_pose_studio_node_path,
             canvas_workbench_gaussian_studio_node_path,
+            canvas_workbench_liveportrait_expression_node_path,
             canvas_workbench_qwen_tts_node_path,
             canvas_workbench_director_timeline_node_path,
             canvas_workbench_style_selector_node_path,
@@ -302,6 +305,14 @@ def javascript_html():
                 ],
                 'js': [
                     gaussian_studio_editor_path,
+                ],
+            },
+            'livePortraitExpression': {
+                'css': [
+                    infinite_canvas_workbench_css_path,
+                ],
+                'js': [
+                    liveportrait_expression_editor_path,
                 ],
             },
             'tagCart': {

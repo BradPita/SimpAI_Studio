@@ -191,7 +191,10 @@
         const opts = options || {};
         const asset = node.type === 'result' && typeof opts.getSelectedResultAsset === 'function'
             ? opts.getSelectedResultAsset(node)
-            : (node.asset || (node.type === 'pose_studio' ? node.pose_studio?.output_asset : null) || {});
+            : (node.asset
+                || (node.type === 'pose_studio' ? node.pose_studio?.output_asset : null)
+                || (node.type === 'liveportrait_expression' ? node.liveportrait_expression?.output_asset : null)
+                || {});
         const cloneValue = typeof opts.cloneValue === 'function' ? opts.cloneValue : ((value, fallback) => value ?? fallback);
         return {
             node_id: node.id,

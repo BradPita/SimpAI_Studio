@@ -7556,6 +7556,7 @@ html.simpai-preset-nav-active #style_transfer_accordion,
 html.simpai-preset-nav-active #sam3_video_mask_accordion,
 html.simpai-preset-nav-active #pose_studio,
 html.simpai-preset-nav-active #gaussian_studio,
+html.simpai-preset-nav-active #liveportrait_expression,
 html.simpai-preset-nav-active #scene_resolution_override_accordion {
     display: none !important;
     min-height: 0 !important;
@@ -7586,6 +7587,7 @@ html.simpai-preset-nav-active #style_transfer_accordion > *,
 html.simpai-preset-nav-active #sam3_video_mask_accordion > *,
 html.simpai-preset-nav-active #pose_studio > *,
 html.simpai-preset-nav-active #gaussian_studio > *,
+html.simpai-preset-nav-active #liveportrait_expression > *,
 html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     display: none !important;
 }
@@ -7606,6 +7608,10 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 
 #scene_input_images.sai-gaussian-studio-image-flow {
     grid-template-columns: minmax(0, 1fr) !important;
+}
+
+#scene_input_images.sai-liveportrait-expression-image-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }
 
 #scene_canvas.sai-gaussian-studio-output-slot {
@@ -7952,6 +7958,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #sam3_video_mask_accordion,
 #pose_studio,
 #gaussian_studio,
+#liveportrait_expression,
 #scene_batch_accordion,
 #scene_resolution_override_accordion {
     width: 100% !important;
@@ -7989,6 +7996,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #sam3_video_mask_accordion > *,
 #pose_studio > *,
 #gaussian_studio > *,
+#liveportrait_expression > *,
 #scene_batch_accordion > *,
 #scene_resolution_override_accordion > * {
     max-width: 100% !important;
@@ -8013,7 +8021,13 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #gaussian_studio > div,
 #gaussian_studio .form,
 #gaussian_studio .block,
-#gaussian_studio .wrap {
+#gaussian_studio .wrap,
+#liveportrait_expression > .form,
+#liveportrait_expression > .block,
+#liveportrait_expression > div,
+#liveportrait_expression .form,
+#liveportrait_expression .block,
+#liveportrait_expression .wrap {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;
@@ -8065,6 +8079,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #sam3_video_mask_accordion summary,
 #pose_studio summary,
 #gaussian_studio summary,
+#liveportrait_expression summary,
 #scene_batch_accordion summary,
 #scene_resolution_override_accordion summary,
 #scene_director_accordion summary,
@@ -8081,6 +8096,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #sam3_video_mask_accordion [role="button"],
 #pose_studio [role="button"],
 #gaussian_studio [role="button"],
+#liveportrait_expression [role="button"],
 #scene_batch_accordion [role="button"],
 #scene_resolution_override_accordion [role="button"],
 #scene_director_accordion [role="button"],
@@ -8098,6 +8114,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #sam3_video_mask_accordion .wrap,
 #pose_studio .wrap,
 #gaussian_studio .wrap,
+#liveportrait_expression .wrap,
 #scene_batch_accordion .wrap,
 #scene_resolution_override_accordion .wrap,
 #scene_director_accordion .wrap,
@@ -8108,6 +8125,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #sam3_video_mask_accordion .block,
 #pose_studio .block,
 #gaussian_studio .block,
+#liveportrait_expression .block,
 #scene_batch_accordion .block,
 #scene_resolution_override_accordion .block,
 #scene_director_accordion .block,
@@ -8153,6 +8171,32 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+}
+
+#scene_input_images.sai-liveportrait-expression-image-flow #scene_input_image1 {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 46%, var(--border-color-primary, #4b5563)) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 88%, var(--button-primary-background-fill, #f97316)) !important;
+    box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill, #f97316) 32%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill, #f97316) 14%, transparent) !important;
+}
+
+#scene_input_images.sai-liveportrait-expression-image-flow #scene_input_image2 {
+    border-color: var(--border-color-primary, #4b5563) !important;
+    background: var(--input-background-fill, var(--block-background-fill, #24262b)) !important;
+    box-shadow: none !important;
+}
+
+#scene_input_images.sai-liveportrait-expression-image-flow #scene_input_image1.simpai-native-image-drag-over {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 74%, #ffffff) !important;
+    box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--button-primary-background-fill, #f97316) 58%, transparent),
+        0 0 0 2px color-mix(in srgb, var(--button-primary-background-fill, #f97316) 24%, transparent) !important;
+}
+
+#scene_input_images.sai-liveportrait-expression-image-flow #scene_input_image2.simpai-native-image-drag-over {
+    border-color: color-mix(in srgb, var(--border-color-primary, #4b5563) 72%, #ffffff) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-color-primary, #4b5563) 48%, transparent) !important;
 }
 
 html.simpai-scene-director-mode-enabled #scene_director_accordion.block {
@@ -9606,6 +9650,166 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
 }
 
 #gaussian_studio_scene_control [data-gaussian-studio-scene-status].is-error {
+    color: #fca5a5 !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry > *,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .styler,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .html-container,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .prose,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .contain,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .padded,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .form,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .block,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .wrap,
+#liveportrait_expression_scene_control_html,
+#liveportrait_expression_scene_control_html > *,
+#liveportrait_expression_scene_control_html > .prose,
+#liveportrait_expression_scene_control_html .prose,
+#liveportrait_expression_scene_control_html .html-container,
+#liveportrait_expression_scene_control_html .styler,
+#liveportrait_expression_scene_control_html .block {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry {
+    margin: 8px 0 12px !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry :where(div, section, article):not(#liveportrait_expression_scene_control):not(.sai-liveportrait-expression-scene-control) {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry :where(.styler, .html-container, .prose, .block, .wrap, .contain, .padded) {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+#liveportrait_expression_scene_control_html p {
+    margin: 0 !important;
+}
+
+.gradio-container .gr-group:has(> .styler > #liveportrait_expression_scene_control_html),
+.gradio-container .styler:has(> #liveportrait_expression_scene_control_html) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+.gradio-container .gr-group:has(> .styler > #liveportrait_expression_scene_control_html) {
+    margin: 8px 0 12px !important;
+}
+
+#liveportrait_expression_scene_control.sai-liveportrait-expression-scene-control {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: stretch !important;
+    gap: 6px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    overflow: hidden !important;
+    isolation: isolate !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open,
+#liveportrait_expression_scene_control .sai-liveportrait-expression-scene-open,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 16px !important;
+    display: inline-flex !important;
+    position: relative !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 9px !important;
+    border: 1px solid color-mix(in srgb, var(--button-primary-background-fill, #f97316) 46%, var(--border-color-primary, #4b5563)) !important;
+    border-radius: 8px !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 88%, var(--button-primary-background-fill, #f97316)) !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    overflow: hidden !important;
+    clip-path: inset(0 round 8px) !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+    cursor: pointer !important;
+    transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open::before,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open::after,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open]::before,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open]::after {
+    display: none !important;
+    content: none !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open:hover,
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open:focus-visible,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open]:hover,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open]:focus-visible {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 72%, #ffffff) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 78%, var(--button-primary-background-fill, #f97316)) !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    filter: none !important;
+    transform: none !important;
+    outline: none !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+#liveportrait_expression.sai-liveportrait-expression-scene-entry .sai-liveportrait-expression-scene-open i,
+#liveportrait_expression_scene_control button[data-liveportrait-expression-scene-open] i {
+    width: 22px !important;
+    height: 22px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    color: #ffffff !important;
+    background: var(--button-primary-background-fill, #f97316) !important;
+    font-size: 13px !important;
+}
+
+#liveportrait_expression_scene_control [data-liveportrait-expression-scene-status] {
+    width: 100% !important;
+    min-height: 18px !important;
+    display: block !important;
+    color: var(--body-text-color-subdued, #aab4c8) !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    text-align: center !important;
+}
+
+#liveportrait_expression_scene_control [data-liveportrait-expression-scene-status].is-error {
     color: #fca5a5 !important;
 }
 
