@@ -2485,6 +2485,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     if bar_button is not None:
         state_params.update({"bar_button": bar_button})
         state_params["preset_store"] = False
+    regen_params_loaded = bool(state_params.pop("__regen_params_loaded", False)) if bar_button is not None else False
 
     prev_engine_type = state_params.get("engine_type", None)
     prev_user_did = None
@@ -2509,7 +2510,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
         and 'bar_button' in state_params.keys()
         and state_params["__preset"] == state_params['bar_button']
     )
-    if '__preset' not in state_params.keys() or 'bar_button' not in state_params.keys() or (same_preset and layout_initialized):
+    if '__preset' not in state_params.keys() or 'bar_button' not in state_params.keys() or (same_preset and layout_initialized and not regen_params_loaded):
         state_params["__preset_switched"] = False
         comparison_default = [skip_update() for _ in range(5)]
         nav_updates = refresh_nav_bars(state_params)

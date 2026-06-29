@@ -876,6 +876,7 @@ def reset_params_by_image_meta(metadata, state_params, is_generating, inpaint_mo
         if manifest is None:
             logger.info("Regen metadata path: legacy fallback did not find a matching preset.")
     parsed_parameters = _apply_regen_manifest(parsed_parameters, state_params, manifest)
+    state_params["__regen_params_loaded"] = True
 
     #config_preset = config.try_get_preset_content(state_params["__preset"], state_params["user"].get_did())
     #preset_prepared = meta_parser.parse_meta_from_preset(config_preset)

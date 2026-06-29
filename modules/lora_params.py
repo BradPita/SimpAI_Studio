@@ -21,6 +21,11 @@ def _drop_lora_extension(name):
     return name
 
 
+def _has_lora_extension(name):
+    _, ext = os.path.splitext(normalize_lora_model_name(name))
+    return ext.casefold() in _LORA_EXTENSIONS
+
+
 def _lora_lookup_key(name):
     return normalize_lora_model_name(name).casefold()
 
@@ -142,10 +147,12 @@ def sync_loras_to_params_backend(params_backend: dict, loras: list, max_lora_num
         if lora_filenames is not None:
             resolved_lora_name = resolve_lora_filename(lora_name, lora_filenames)
             if resolved_lora_name is None:
-                params_backend[key] = PLACEHOLDER_LORA_NAME
-                params_backend[strength_key] = 0.0
-                continue
-            lora_name = resolved_lora_name
+                if not _has_lora_extension(lora_name):
+                    params_backend[key] = PLACEHOLDER_LORA_NAME
+                    params_backend[strength_key] = 0.0
+                    continue
+            else:
+                lora_name = resolved_lora_name
 
         try:
             lora_strength = float(lora_strength)
