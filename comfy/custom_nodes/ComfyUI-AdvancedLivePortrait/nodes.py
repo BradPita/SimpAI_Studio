@@ -691,7 +691,7 @@ class Command:
         self.keep = keep
 
 crop_factor_default = 1.7
-crop_factor_min = 1.5
+crop_factor_min = 1.0
 crop_factor_max = 2.5
 
 class AdvancedLivePortrait:
@@ -895,8 +895,8 @@ class ExpressionEditor:
                 "blink": ("FLOAT", {"default": 0, "min": -20, "max": 5, "step": 0.5, "display": display}),
                 "eyebrow": ("FLOAT", {"default": 0, "min": -10, "max": 15, "step": 0.5, "display": display}),
                 "wink": ("FLOAT", {"default": 0, "min": 0, "max": 25, "step": 0.5, "display": display}),
-                "pupil_x": ("FLOAT", {"default": 0, "min": -15, "max": 15, "step": 0.5, "display": display}),
-                "pupil_y": ("FLOAT", {"default": 0, "min": -15, "max": 15, "step": 0.5, "display": display}),
+                "pupil_x": ("FLOAT", {"default": 0, "min": -45, "max": 45, "step": 0.5, "display": display}),
+                "pupil_y": ("FLOAT", {"default": 0, "min": -60, "max": 60, "step": 0.5, "display": display}),
                 "aaa": ("FLOAT", {"default": 0, "min": -30, "max": 120, "step": 1, "display": display}),
                 "eee": ("FLOAT", {"default": 0, "min": -20, "max": 15, "step": 0.2, "display": display}),
                 "woo": ("FLOAT", {"default": 0, "min": -20, "max": 15, "step": 0.2, "display": display}),

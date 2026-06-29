@@ -25,8 +25,8 @@
                 ['blink', 'Blink', '眨眼', 0, -20, 5, 0.5],
                 ['eyebrow', 'Eyebrow', '眉毛', 0, -10, 15, 0.5],
                 ['wink', 'Wink', '单眼眨眼', 0, 0, 25, 0.5],
-                ['pupil_x', 'Pupil X', '瞳孔左右', 0, -15, 15, 0.5],
-                ['pupil_y', 'Pupil Y', '瞳孔上下', 0, -15, 15, 0.5]
+                ['pupil_x', 'Pupil X', '瞳孔左右', 0, -45, 45, 0.5],
+                ['pupil_y', 'Pupil Y', '瞳孔上下', 0, -60, 60, 0.5]
             ]
         },
         {
@@ -43,7 +43,7 @@
             items: [
                 ['src_ratio', 'Source Ratio', '源表情保留', 1, 0, 1, 0.01],
                 ['sample_ratio', 'Reference Strength', '参考强度', 1, -0.2, 1.2, 0.01],
-                ['crop_factor', 'Crop Factor', '裁剪范围', 1.7, 1.5, 2.5, 0.1]
+                ['crop_factor', 'Crop Factor', '裁剪范围', 1.7, 1.0, 2.5, 0.05]
             ]
         }
     ];
@@ -64,6 +64,7 @@
     let modalScrollGuardsActive = false;
     let modalTouchPoint = null;
     let faceDetectionRequestSeq = 0;
+    let cropOverlayTimer = 0;
 
     function getLangSource() {
         const state = window.simpleaiTopbarSystemParams || window.topbarLastSystemParams || {};
@@ -258,9 +259,15 @@
 .sai-lpe-image-frame.is-long-image .sai-lpe-image-stage{width:100%;max-height:none}
 .sai-lpe-image-frame.is-long-image img{width:100% !important;height:auto !important;max-height:none !important;object-position:center top}
 .sai-lpe-face-layer{position:absolute;inset:0;pointer-events:none}
-.sai-lpe-face-box{position:absolute;border:2px solid color-mix(in srgb,var(--button-primary-background-fill,#f97316) 84%,#ffffff 12%);background:rgba(0,0,0,.16);color:#ffffff;border-radius:6px;min-width:24px;min-height:24px;display:flex;align-items:flex-start;justify-content:flex-start;padding:0;cursor:pointer;pointer-events:auto;box-shadow:0 0 0 1px rgba(0,0,0,.55),0 8px 18px rgba(0,0,0,.26)}
-.sai-lpe-face-box span{font-size:11px;line-height:18px;min-width:18px;height:18px;padding:0 5px;border-radius:0 0 6px 0;background:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 82%,#000 12%);color:#fff}
-.sai-lpe-face-box[aria-pressed="true"]{border-color:#ffffff;background:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 22%,transparent);box-shadow:0 0 0 2px var(--button-primary-background-fill,#f97316),0 10px 24px rgba(0,0,0,.3)}
+.sai-lpe-face-box{position:absolute;border:1px solid color-mix(in srgb,var(--button-primary-background-fill,#f97316) 76%,#ffffff 10%);background:transparent;color:#ffffff;border-radius:6px;min-width:22px;min-height:22px;display:flex;align-items:flex-start;justify-content:flex-start;padding:0;cursor:pointer;pointer-events:auto;opacity:.46;box-shadow:0 0 0 1px rgba(0,0,0,.38)}
+.sai-lpe-face-box:hover,.sai-lpe-face-box:focus-visible{opacity:.95;outline:none}
+.sai-lpe-face-box span{font-size:11px;line-height:17px;min-width:17px;height:17px;padding:0 5px;border-radius:0 0 6px 0;background:color-mix(in srgb,var(--button-primary-background-fill,#f97316) 82%,#000 12%);color:#fff;opacity:0}
+.sai-lpe-image-frame:hover .sai-lpe-face-box span,.sai-lpe-face-box:hover span,.sai-lpe-face-box:focus-visible span,.sai-lpe-face-box[aria-pressed="true"] span{opacity:1}
+.sai-lpe-face-box[aria-pressed="true"]{border-color:var(--button-primary-background-fill,#f97316);background:rgba(0,0,0,.03);opacity:.86;box-shadow:0 0 0 1px rgba(0,0,0,.42),0 0 0 2px color-mix(in srgb,var(--button-primary-background-fill,#f97316) 70%,transparent)}
+.sai-lpe-crop-box{position:absolute;border:1px dashed #34d399;background:rgba(52,211,153,.04);box-shadow:0 0 0 1px rgba(0,0,0,.28);pointer-events:none;border-radius:4px;opacity:0;transition:opacity .14s ease}
+.sai-lpe-crop-box span{position:absolute;left:0;top:0;transform:translateY(-100%);font-size:11px;line-height:18px;padding:0 6px;border-radius:4px 4px 0 0;background:#047857;color:#ffffff;white-space:nowrap;opacity:0}
+.sai-lpe-image-frame:hover .sai-lpe-crop-box,.sai-lpe-image-frame.is-crop-active .sai-lpe-crop-box{opacity:.78}
+.sai-lpe-image-frame:hover .sai-lpe-crop-box span,.sai-lpe-image-frame.is-crop-active .sai-lpe-crop-box span{opacity:1}
 .sai-lpe-image-frame>[data-lpe-preview-empty]{font-size:13px;color:color-mix(in srgb,currentColor 68%,transparent);text-align:center;padding:12px}
 .sai-lpe-status{font-size:12px;line-height:1.45;color:color-mix(in srgb,currentColor 76%,transparent);min-height:18px}
 .sai-lpe-status.is-error{color:#fb7185}
@@ -281,7 +288,9 @@
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-row input[type=range],.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-toggle input{accent-color:var(--lpe-canvas-accent)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box{border-color:color-mix(in srgb,var(--lpe-canvas-accent) 84%,#ffffff 12%)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box span{background:var(--lpe-canvas-accent)}
-.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box[aria-pressed="true"]{box-shadow:0 0 0 2px var(--lpe-canvas-accent),0 10px 24px rgba(0,0,0,.3)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-face-box[aria-pressed="true"]{box-shadow:0 0 0 1px rgba(0,0,0,.42),0 0 0 2px color-mix(in srgb,var(--lpe-canvas-accent) 70%,transparent)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-crop-box{border-color:color-mix(in srgb,var(--lpe-canvas-accent) 82%,#ffffff 14%);background:color-mix(in srgb,var(--lpe-canvas-accent) 8%,transparent)}
+.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-crop-box span{background:var(--lpe-canvas-accent)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-row input[type=number]{background:color-mix(in srgb,var(--lpe-canvas-panel) 76%,#000);border-color:color-mix(in srgb,var(--lpe-canvas-border) 86%,#ffffff 8%)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-btn,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-part-btn{background:color-mix(in srgb,var(--lpe-canvas-surface) 82%,#ffffff 6%);border-color:color-mix(in srgb,var(--lpe-canvas-border) 88%,#ffffff 8%)}
 .sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn:hover,.sai-lpe-backdrop[data-liveportrait-expression-context="canvas"] .sai-lpe-icon-btn:focus-visible{border-color:color-mix(in srgb,var(--lpe-canvas-accent) 74%,#ffffff 18%);color:var(--lpe-canvas-text)}
@@ -640,6 +649,84 @@
         return `${Number(source?.width || 0)}x${Number(source?.height || 0)}:${dataUrl.length}:${dataUrl.slice(0, 96)}`;
     }
 
+    function sourceCropBoxForFace(faceBox) {
+        const box = normalizeFaceBBox(faceBox);
+        const img = activeModal?.querySelector?.('[data-lpe-preview-img]');
+        const imageWidth = Number(img?.naturalWidth || 0);
+        const imageHeight = Number(img?.naturalHeight || 0);
+        if (!box || imageWidth <= 0 || imageHeight <= 0) return null;
+        const cropFactor = clamp(readParams().crop_factor, 1.0, 2.5);
+        const x1 = box.x * imageWidth;
+        const y1 = box.y * imageHeight;
+        const bboxWidth = box.width * imageWidth;
+        const bboxHeight = box.height * imageHeight;
+        let cropSize = Math.max(bboxWidth * cropFactor, bboxHeight * cropFactor);
+        const kernelX = Math.trunc(x1 + bboxWidth / 2);
+        const kernelY = Math.trunc(y1 + bboxHeight / 2);
+        let newX1 = Math.trunc(kernelX - cropSize / 2);
+        let newX2 = Math.trunc(kernelX + cropSize / 2);
+        let newY1 = Math.trunc(kernelY - cropSize / 2);
+        let newY2 = Math.trunc(kernelY + cropSize / 2);
+        if (newX1 < 0) {
+            newX2 -= newX1;
+            newX1 = 0;
+        } else if (imageWidth < newX2) {
+            newX1 -= (newX2 - imageWidth);
+            newX2 = imageWidth;
+            if (newX1 < 0) {
+                newX2 -= newX1;
+                newX1 = 0;
+            }
+        }
+        if (newY1 < 0) {
+            newY2 -= newY1;
+            newY1 = 0;
+        } else if (imageHeight < newY2) {
+            newY1 -= (newY2 - imageHeight);
+            newY2 = imageHeight;
+            if (newY1 < 0) {
+                newY2 -= newY1;
+                newY1 = 0;
+            }
+        }
+        if (imageWidth < newX2 && imageHeight < newY2) {
+            const overMin = Math.min(newX2 - imageWidth, newY2 - imageHeight);
+            newX2 -= overMin;
+            newY2 -= overMin;
+        }
+        const visibleX1 = clamp(newX1, 0, imageWidth);
+        const visibleY1 = clamp(newY1, 0, imageHeight);
+        const visibleX2 = clamp(newX2, 0, imageWidth);
+        const visibleY2 = clamp(newY2, 0, imageHeight);
+        if (visibleX2 <= visibleX1 || visibleY2 <= visibleY1) return null;
+        return {
+            x: visibleX1 / imageWidth,
+            y: visibleY1 / imageHeight,
+            width: (visibleX2 - visibleX1) / imageWidth,
+            height: (visibleY2 - visibleY1) / imageHeight
+        };
+    }
+
+    function boxStyle(box) {
+        return [
+            `left:${(box.x * 100).toFixed(4)}%`,
+            `top:${(box.y * 100).toFixed(4)}%`,
+            `width:${(box.width * 100).toFixed(4)}%`,
+            `height:${(box.height * 100).toFixed(4)}%`
+        ].join(';');
+    }
+
+    function showCropOverlayTemporarily() {
+        const frame = activeModal?.querySelector?.('.sai-lpe-image-frame');
+        if (!frame) return;
+        frame.classList.add('is-crop-active');
+        if (cropOverlayTimer) window.clearTimeout(cropOverlayTimer);
+        cropOverlayTimer = window.setTimeout(() => {
+            frame.classList.remove('is-crop-active');
+            cropOverlayTimer = 0;
+        }, 1400);
+    }
+
     function renderFaceBoxes(facesOverride) {
         if (!activeModal) return;
         const layer = activeModal.querySelector('[data-lpe-face-layer]');
@@ -652,18 +739,16 @@
             return;
         }
         const selectedKey = faceBBoxKey(activeSession?.faceSelection?.source_face_bbox);
-        layer.innerHTML = faces.map((face, index) => {
+        const cropBox = sourceCropBoxForFace(activeSession?.faceSelection?.source_face_bbox);
+        const cropHtml = cropBox
+            ? `<div class="sai-lpe-crop-box" style="${boxStyle(cropBox)}" title="${escapeHtml(t('Actual crop range', '实际裁剪范围'))}"><span>${escapeHtml(t('Crop', '裁剪范围'))}</span></div>`
+            : '';
+        layer.innerHTML = cropHtml + faces.map((face, index) => {
             const box = normalizeFaceBBox(face?.normalized || face?.bbox);
             if (!box) return '';
             const pressed = selectedKey && selectedKey === faceBBoxKey(box);
-            const style = [
-                `left:${(box.x * 100).toFixed(4)}%`,
-                `top:${(box.y * 100).toFixed(4)}%`,
-                `width:${(box.width * 100).toFixed(4)}%`,
-                `height:${(box.height * 100).toFixed(4)}%`
-            ].join(';');
             const label = face?.label || String(index + 1);
-            return `<button type="button" class="sai-lpe-face-box" style="${style}" data-lpe-face-index="${index}" aria-pressed="${pressed ? 'true' : 'false'}" title="${escapeHtml(t('Select face', '选择人脸'))} ${escapeHtml(label)}"><span>${escapeHtml(label)}</span></button>`;
+            return `<button type="button" class="sai-lpe-face-box" style="${boxStyle(box)}" data-lpe-face-index="${index}" aria-pressed="${pressed ? 'true' : 'false'}" title="${escapeHtml(t('Select face', '选择人脸'))} ${escapeHtml(label)}"><span>${escapeHtml(label)}</span></button>`;
         }).join('');
         layer.hidden = !layer.innerHTML;
     }
@@ -677,6 +762,7 @@
         activeSession.faceSelection = Object.assign({}, activeSession.faceSelection || {}, { source_face_bbox: box });
         writeActiveState(readParams());
         renderFaceBoxes();
+        showCropOverlayTemporarily();
         markPreviewDirty();
         const label = face?.label || String(Number(index) + 1);
         if (!options?.quiet) setStatus(t(`Selected face ${label}.`, `已选择第 ${label} 张脸。`));
@@ -1085,6 +1171,8 @@
 
     function handleParamChange(reason) {
         writeActiveState(readParams());
+        renderFaceBoxes();
+        if (String(reason || '').includes('crop_factor')) showCropOverlayTemporarily();
         markPreviewDirty();
         if (isAutoPreviewEnabled()) {
             requestAutoPreview(reason);
@@ -1095,6 +1183,8 @@
 
     function recordParamDraft(source) {
         writeActiveState(readParams());
+        renderFaceBoxes();
+        if (source?.getAttribute?.('data-lpe-param') === 'crop_factor') showCropOverlayTemporarily();
         markPreviewDirty();
         if (isAutoPreviewEnabled()) {
             const isRange = String(source?.type || '').toLowerCase() === 'range';
@@ -1171,6 +1261,8 @@
         previewRequestSeq += 1;
         sourcePreviewRequestSeq += 1;
         faceDetectionRequestSeq += 1;
+        if (cropOverlayTimer) window.clearTimeout(cropOverlayTimer);
+        cropOverlayTimer = 0;
         lastPreview = null;
         previewRunning = false;
         previewRunningRequestId = 0;
