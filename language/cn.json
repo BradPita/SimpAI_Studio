@@ -1065,6 +1065,7 @@
   "LTX2.3 Text+Audio to Video [Audio required]": "LTX2.3文+音频生视频 [必须上传音频]",
   "LTX2.3 Video Audio Generator [Upload video]": "LTX2.3视频配音工具 [上传视频]",
   "Video analysis size [px, higher = slower]": "视频分析尺寸 [像素，越高越慢]",
+  "Use Gemma3 12B for video analysis": "使用 Gemma3 12B 分析视频",
   "Video to Audio": "视频配音",
   "Bernini Multi-Image to Video": "Bernini多图生视频",
   "Bernini Image Edit": "Bernini图片编辑",

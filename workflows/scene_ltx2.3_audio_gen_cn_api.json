@@ -127,7 +127,7 @@
   "121": {
     "inputs": {
       "text": [
-        "199",
+        "226",
         0
       ],
       "clip": [
@@ -385,60 +385,65 @@
   },
   "196": {
     "inputs": {
-      "preset_prompt": "Empty - Nothing",
-      "custom_prompt": [
+      "prompt": [
         "217",
         0
       ],
+      "frame_count": [
+        "225",
+        1
+      ],
       "system_prompt": "# [System Prompt] LTX-2 视频解析与对白音效提示词架构师\n\n## Role\n你是一名 LTX-2 视频解析专家、电影音效设计师和对白音频导演。你的任务是分析用户上传的视频画面和用户 prompt，把它重写成适合 LTX-2 AudioGen 的单段提示词，用于生成与视频同步的环境声、动作声、空间声和必要的人物对白。\n\n## Core Task\n1. 识别视频里的主体、环境、运动、镜头和情绪。\n2. 设计与画面同步的环境声、脚步、衣物、雨声、水声、碰撞声等声音元素。\n3. 如果用户 prompt 提供对白或台词，必须把这些台词作为画面内人物说话内容保留下来。\n4. 最终只输出一段可直接给 LTX-2 使用的 prompt，不要解释，不要列清单。\n\n## Writing Rules (Hard Constraints)\n* **Single Paragraph**: 输出必须是一段连续文本，不要项目符号，不要标题。\n* **Output Language**: 画面、镜头、动作和声音设计用英文描述；用户提供的对白必须保持原始语言和原始文字。\n* **Dialogue Detection**: 如果用户 prompt 出现说、说道、说：、男人说、男孩说、女人说、女孩说、爸爸说、妈妈说、says, said, speaks, dialogue, line, 或引号中的句子，就视为用户明确要求加入对白。\n* **Dialogue Preservation**: 用户提供的每一句对白都必须原样保留，包括说话人、标点、引号和顺序。禁止翻译、改写、删减、概括、重排或替换对白。\n* **Dialogue Rendering**: 被保留的对白是画面内人物自然说话，不是字幕、旁白、歌词、歌唱、屏幕文字或背景音乐。\n* **No Extra Dialogue**: 不要发明新台词。用户没有提供对白时，只描述环境声和动作声。\n* **Voice Direction**: 有对白时，描述说话人的声线、距离、情绪和与画面动作的同步关系，但不要改变对白原文。\n* **No Music By Default**: 除非用户明确要求音乐，否则禁止加入 background music, BGM, singing, song, melody。\n* **Motion And Sound Sync**: 声音必须跟画面动作同步，避免泛泛描述。\n\n## Output Shape\nStart with the original video situation in English, then describe motion and synchronized sound effects. If dialogue is provided, include every original dialogue line exactly as written inside the paragraph, then describe how the voices sit in the scene with rain, footsteps, room tone, distance, and emotion.\n\n## Execution\nRead the uploaded video and the user prompt, then output only the final LTX-2 AudioGen prompt.",
-      "inference_mode": "video",
-      "max_frames": 48,
-      "max_size": 256,
-      "seed": [
-        "221",
-        0
-      ],
-      "force_offload": false,
-      "save_states": false,
-      "llama_model": [
-        "197",
-        0
-      ],
-      "images": [
-        "202",
-        0
-      ]
+      "thinking": false
     },
-    "class_type": "llama_cpp_instruct_adv",
+    "class_type": "SimpAIQwen3VLVideoPrompt",
     "_meta": {
-      "title": "Llama-cpp Instruct"
+      "title": "SimpAI Qwen3VL Video Prompt"
     }
   },
   "197": {
     "inputs": {
-      "model": "Huihui-Qwen3.5-9B-abliterated\\Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf",
-      "mmproj": "Huihui-Qwen3.5-9B-abliterated\\Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf",
-      "chat_handler": "Qwen3.5",
-      "n_ctx": 8192,
-      "vram_limit": -1,
-      "image_min_tokens": 0,
-      "image_max_tokens": 0
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
     },
-    "class_type": "llama_cpp_model_loader",
+    "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Llama-cpp Model Loader"
+      "title": "Qwen3VL CLIP Loader"
     }
   },
   "199": {
     "inputs": {
-      "any": [
-        "196",
+      "prompt": [
+        "230",
+        0
+      ],
+      "max_length": 512,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.45,
+      "sampling_mode.top_k": 40,
+      "sampling_mode.top_p": 0.9,
+      "sampling_mode.min_p": 0.02,
+      "sampling_mode.repetition_penalty": 1.08,
+      "sampling_mode.seed": [
+        "221",
+        0
+      ],
+      "sampling_mode.presence_penalty": 0,
+      "thinking": false,
+      "use_default_template": false,
+      "clip": [
+        "229",
+        0
+      ],
+      "image": [
+        "225",
         0
       ]
     },
-    "class_type": "llama_cpp_unload_model",
+    "class_type": "TextGenerate",
     "_meta": {
-      "title": "Llama-cpp Unload Model"
+      "title": "Generate Text"
     }
   },
   "200": {
@@ -827,6 +832,104 @@
     "class_type": "VAELoader",
     "_meta": {
       "title": "Tiny VAE (for sampler previews)"
+    }
+  },
+  "225": {
+    "inputs": {
+      "video": [
+        "202",
+        0
+      ],
+      "mode": "practical",
+      "source_fps": [
+        "128",
+        0
+      ],
+      "sample_fps": 2,
+      "max_frames": 48,
+      "max_side": 480,
+      "include_last_frame": true
+    },
+    "class_type": "SimpAIVLMVideoFrames",
+    "_meta": {
+      "title": "SimpAI VLM Video Frames"
+    }
+  },
+  "226": {
+    "inputs": {
+      "text": [
+        "199",
+        0
+      ],
+      "label": "LTX2.3 AudioGen VLM prompt"
+    },
+    "class_type": "SimpAIConsoleText",
+    "_meta": {
+      "title": "Print VLM Prompt"
+    }
+  },
+  "227": {
+    "inputs": {
+      "prompt": [
+        "217",
+        0
+      ],
+      "system_prompt": "# [System Prompt] LTX-2 视频解析与对白音效提示词架构师\n\n## Role\n你是一名 LTX-2 视频解析专家、电影音效设计师和对白音频导演。你的任务是分析用户上传的视频画面和用户 prompt，把它重写成适合 LTX-2 AudioGen 的单段提示词，用于生成与视频同步的环境声、动作声、空间声和必要的人物对白。\n\n## Core Task\n1. 识别视频里的主体、环境、运动、镜头和情绪。\n2. 设计与画面同步的环境声、脚步、衣物、雨声、水声、碰撞声等声音元素。\n3. 如果用户 prompt 提供对白或台词，必须把这些台词作为画面内人物说话内容保留下来。\n4. 最终只输出一段可直接给 LTX-2 使用的 prompt，不要解释，不要列清单。\n\n## Writing Rules (Hard Constraints)\n* **Single Paragraph**: 输出必须是一段连续文本，不要项目符号，不要标题。\n* **Output Language**: 画面、镜头、动作和声音设计用英文描述；用户提供的对白必须保持原始语言和原始文字。\n* **Dialogue Detection**: 如果用户 prompt 出现说、说道、说：、男人说、男孩说、女人说、女孩说、爸爸说、妈妈说、says, said, speaks, dialogue, line, 或引号中的句子，就视为用户明确要求加入对白。\n* **Dialogue Preservation**: 用户提供的每一句对白都必须原样保留，包括说话人、标点、引号和顺序。禁止翻译、改写、删减、概括、重排或替换对白。\n* **Dialogue Rendering**: 被保留的对白是画面内人物自然说话，不是字幕、旁白、歌词、歌唱、屏幕文字或背景音乐。\n* **No Extra Dialogue**: 不要发明新台词。用户没有提供对白时，只描述环境声和动作声。\n* **Voice Direction**: 有对白时，描述说话人的声线、距离、情绪和与画面动作的同步关系，但不要改变对白原文。\n* **No Music By Default**: 除非用户明确要求音乐，否则禁止加入 background music, BGM, singing, song, melody。\n* **Motion And Sound Sync**: 声音必须跟画面动作同步，避免泛泛描述。\n\n## Output Shape\nStart with the original video situation in English, then describe motion and synchronized sound effects. If dialogue is provided, include every original dialogue line exactly as written inside the paragraph, then describe how the voices sit in the scene with rain, footsteps, room tone, distance, and emotion.\n\n## Execution\nRead the uploaded video and the user prompt, then output only the final LTX-2 AudioGen prompt."
+    },
+    "class_type": "SimpAIGemma3VLMPrompt",
+    "_meta": {
+      "title": "SimpAI Gemma3 VLM Prompt"
+    }
+  },
+  "228": {
+    "inputs": {
+      "clip_name": "gemma_3_12B_it_fpmixed.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Gemma3 12B VLM CLIP Loader"
+    }
+  },
+  "229": {
+    "inputs": {
+      "boolean": [
+        "217",
+        20
+      ],
+      "on_true": [
+        "228",
+        0
+      ],
+      "on_false": [
+        "197",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select VLM CLIP"
+    }
+  },
+  "230": {
+    "inputs": {
+      "boolean": [
+        "217",
+        20
+      ],
+      "on_true": [
+        "227",
+        0
+      ],
+      "on_false": [
+        "196",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Select VLM Prompt"
     }
   }
 }

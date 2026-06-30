@@ -2158,6 +2158,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
                 "switch_option1",
                 False,
             )
+        ltx23_audio_gen_task = "ltx2.3_audio_gen" in scene_task_method_l
         scene_audio_required = (
             ("infinitetalk" in scene_task_method_l)
             or ("ltx2.3" in scene_task_method_l and scene_audio_policy == "required")
@@ -2165,6 +2166,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             or ("ltx2.3_ta2v" in scene_task_method_l)
             or (
                 "ltx2.3" in scene_task_method_l
+                and not ltx23_audio_gen_task
                 and not scene_audio_policy
                 and bool(scene_switch_option1_effective)
             )
