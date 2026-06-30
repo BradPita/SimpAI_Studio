@@ -63,7 +63,10 @@
         0
       ],
       "steps": 30,
-      "cfg": 4,
+      "cfg": [
+        "275",
+        0
+      ],
       "sampler_name": [
         "91",
         30
@@ -72,7 +75,10 @@
         "91",
         31
       ],
-      "denoise": 0.9,
+      "denoise": [
+        "268",
+        0
+      ],
       "model": [
         "37",
         0
@@ -449,7 +455,8 @@
       "clip_type": 1,
       "negative_prompt": "",
       "sampler": "dpmpp_2m_sde_gpu",
-      "scheduler": "karras"
+      "scheduler": "karras",
+      "video_duration": 0
     },
     "class_type": "SceneInput",
     "_meta": {
@@ -491,7 +498,7 @@
     "inputs": {
       "separator": ",",
       "prompt1": [
-        "91",
+        "271",
         0
       ],
       "prompt2": [
@@ -653,7 +660,7 @@
         0
       ],
       "on_false": [
-        "243",
+        "272",
         0
       ]
     },
@@ -1027,6 +1034,153 @@
     "class_type": "easy imageSize",
     "_meta": {
       "title": "ImageSize"
+    }
+  },
+  "266": {
+    "inputs": {
+      "value": 0.9
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "Preset light denoise"
+    }
+  },
+  "267": {
+    "inputs": {
+      "value": 0.85
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "Manual colored light denoise"
+    }
+  },
+  "268": {
+    "inputs": {
+      "boolean": [
+        "252",
+        0
+      ],
+      "on_true": [
+        "266",
+        0
+      ],
+      "on_false": [
+        "267",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Manual mask denoise switch"
+    }
+  },
+  "269": {
+    "inputs": {
+      "invert_mask": false,
+      "blend_mode": "soft light",
+      "opacity": 45,
+      "background_image": [
+        "57",
+        0
+      ],
+      "layer_image": [
+        "261",
+        0
+      ],
+      "layer_mask": [
+        "244",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: ImageBlend V2",
+    "_meta": {
+      "title": "Manual colored light restore"
+    }
+  },
+  "270": {
+    "inputs": {
+      "boolean": [
+        "252",
+        0
+      ],
+      "on_true": [
+        "57",
+        0
+      ],
+      "on_false": [
+        "269",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Final relight output switch"
+    }
+  },
+  "271": {
+    "inputs": {
+      "value": [
+        "91",
+        0
+      ],
+      "trim_empty_lines": true
+    },
+    "class_type": "CodeableString",
+    "_meta": {
+      "title": "Codeable String"
+    }
+  },
+  "272": {
+    "inputs": {
+      "image": [
+        "261",
+        0
+      ],
+      "blur_radius": 96,
+      "intensity": 1.25,
+      "gamma": 0.85
+    },
+    "class_type": "SceneRelightLightMap",
+    "_meta": {
+      "title": "Manual brush light map"
+    }
+  },
+  "273": {
+    "inputs": {
+      "value": 4
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "Preset light cfg"
+    }
+  },
+  "274": {
+    "inputs": {
+      "value": 1.15
+    },
+    "class_type": "easy float",
+    "_meta": {
+      "title": "Manual light low cfg"
+    }
+  },
+  "275": {
+    "inputs": {
+      "boolean": [
+        "252",
+        0
+      ],
+      "on_true": [
+        "273",
+        0
+      ],
+      "on_false": [
+        "274",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "Manual light cfg switch"
     }
   }
 }

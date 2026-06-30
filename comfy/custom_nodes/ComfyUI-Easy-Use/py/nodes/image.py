@@ -828,6 +828,36 @@ class imageConcat:
 
 # 图片背景移除
 from ..libs.utils import get_local_filepath, easySave, install_package
+
+def _iter_easyuse_rembg_dirs():
+  dirs = []
+  try:
+    dirs.extend(folder_paths.get_folder_paths("rembg"))
+  except Exception:
+    pass
+  dirs.append(REMBG_DIR)
+
+  result = []
+  seen = set()
+  for dirname in dirs:
+    if not dirname:
+      continue
+    normalized = os.path.normpath(dirname)
+    key = os.path.normcase(os.path.abspath(normalized))
+    if key in seen:
+      continue
+    seen.add(key)
+    result.append(normalized)
+  return result
+
+def _find_easyuse_rembg_14_model():
+  for filename in ("RMBG-1.4.pth", os.path.join("RMBG-1.4", "model.pth"), "model.pth"):
+    for dirname in _iter_easyuse_rembg_dirs():
+      model_path = os.path.join(dirname, filename)
+      if os.path.exists(model_path):
+        return model_path
+  return None
+
 class imageRemBg:
   @classmethod
   def INPUT_TYPES(self):
@@ -911,7 +941,9 @@ class imageRemBg:
       else:
         model_url = REMBG_MODELS[rem_mode]['model_url']
         suffix = model_url.split(".")[-1]
-        model_path = get_local_filepath(model_url, REMBG_DIR, rem_mode+'.'+suffix)
+        model_path = _find_easyuse_rembg_14_model()
+        if model_path is None:
+          model_path = get_local_filepath(model_url, REMBG_DIR, rem_mode+'.'+suffix)
         net = BriaRMBG()
         net.load_state_dict(torch.load(model_path, map_location=device))
         net.to(device)

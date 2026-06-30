@@ -34,6 +34,7 @@ def _normalize_sketch_textbox_kwargs(kwargs):
     normalized = dict(kwargs)
     brush_color = normalized.pop("brush_color", "#FFFFFF")
     brush_radius = _normalize_brush_radius(normalized.pop("brush_radius", None))
+    preserve_mask_color = bool(normalized.pop("preserve_mask_color", False))
     canvas_height = normalized.pop("height", None)
     canvas_width = normalized.pop("width", None)
     normalized.setdefault("lines", 1)
@@ -52,7 +53,9 @@ def _normalize_sketch_textbox_kwargs(kwargs):
     normalized["elem_classes"].append(f"simpai-sketch-radius-{int(brush_radius)}")
     if isinstance(brush_color, str):
         normalized["elem_classes"].append(f"simpai-sketch-brush-{brush_color.strip('#')}")
-    return normalized, brush_color, brush_radius, canvas_height, canvas_width
+    if preserve_mask_color:
+        normalized["elem_classes"].append("simpai-sketch-preserve-mask-color")
+    return normalized, brush_color, brush_radius, preserve_mask_color, canvas_height, canvas_width
 
 
 def _sketch_textbox_get_config(self):
@@ -63,6 +66,7 @@ def _sketch_textbox_get_config(self):
         "height": self.canvas_height,
         "width": self.canvas_width,
         "image_mode": self.image_mode,
+        "preserve_mask_color": self.preserve_mask_color,
     }
     return config
 
@@ -81,7 +85,7 @@ def _sketch_textbox_preprocess(self, payload):
     image_source = sketch_cache.resolve_payload_source(data, "image")
     mask_source = sketch_cache.resolve_payload_source(data, "mask")
     image = _decode_data_url_to_value(image_source, self.image_type, self.image_mode)
-    mask = _decode_mask_data_url_to_value(mask_source, self.image_type)
+    mask = _decode_mask_data_url_to_value(mask_source, self.image_type, self.preserve_mask_color)
     if image is None and mask is None:
         return None
     return {"image": image, "mask": mask}
@@ -127,6 +131,7 @@ def _attach_simpai_sketch_bridge(
     image_mode,
     brush_color,
     brush_radius,
+    preserve_mask_color,
     canvas_height,
     canvas_width,
 ):
@@ -134,6 +139,7 @@ def _attach_simpai_sketch_bridge(
     component.image_mode = image_mode
     component.brush_color = brush_color
     component.brush_radius = brush_radius
+    component.preserve_mask_color = preserve_mask_color
     component.canvas_height = canvas_height
     component.canvas_width = canvas_width
     component.get_config = MethodType(_sketch_textbox_get_config, component)
@@ -168,10 +174,16 @@ def _decode_data_url_to_value(data_url: str | None, image_type: str, image_mode:
     return np.array(image)
 
 
-def _decode_mask_data_url_to_value(data_url: str | None, image_type: str):
+def _decode_mask_data_url_to_value(data_url: str | None, image_type: str, preserve_color: bool = False):
     image = _decode_data_url_to_pil(data_url, "RGBA")
     if image is None:
         return None
+    if preserve_color:
+        if image_type == "pil":
+            return image
+        if image_type == "filepath":
+            return None
+        return np.array(image)
     alpha = np.array(image.getchannel("A"))
     mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
     mask_rgb = np.repeat(mask[:, :, None], 3, axis=2)
@@ -206,7 +218,7 @@ def _create_gradio6_sketch_image(*args, **kwargs):
     normalized = dict(kwargs)
     image_type = normalized.pop("type", "numpy")
     image_mode = normalized.pop("image_mode", "RGBA")
-    normalized, brush_color, brush_radius, canvas_height, canvas_width = _normalize_sketch_textbox_kwargs(normalized)
+    normalized, brush_color, brush_radius, preserve_mask_color, canvas_height, canvas_width = _normalize_sketch_textbox_kwargs(normalized)
     component = gr.Textbox(*args, **normalized)
     return _attach_simpai_sketch_bridge(
         component,
@@ -214,6 +226,7 @@ def _create_gradio6_sketch_image(*args, **kwargs):
         image_mode=image_mode,
         brush_color=brush_color,
         brush_radius=brush_radius,
+        preserve_mask_color=preserve_mask_color,
         canvas_height=canvas_height,
         canvas_width=canvas_width,
     )

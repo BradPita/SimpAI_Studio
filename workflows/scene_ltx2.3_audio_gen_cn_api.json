@@ -380,7 +380,7 @@
     },
     "class_type": "DualCLIPLoader",
     "_meta": {
-      "title": "DualCLIPLoader"
+      "title": "clip_model"
     }
   },
   "196": {
@@ -889,7 +889,7 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Gemma3 12B VLM CLIP Loader"
+      "title": "clip_model"
     }
   },
   "229": {

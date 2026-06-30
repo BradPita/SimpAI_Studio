@@ -2550,6 +2550,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'pose_studio', group: 'scene-aux' },
         { id: 'gaussian_studio', group: 'scene-aux' },
         { id: 'liveportrait_expression', group: 'scene-aux' },
+        { id: 'relight_light_control', group: 'scene-aux' },
     ]);
 
     function normalizeChoice(value) {
@@ -2801,6 +2802,12 @@ document.addEventListener("DOMContentLoaded", function() {
         if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
             try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}
         }
+        const showRelightLight = (themeLower.includes('relight') || taskMethodLower.includes('relight')) && !disvisible.has('relight_light_control');
+        setVisible('relight_light_control', showRelightLight);
+        if (showRelightLight && typeof window.syncRelightLightControl === 'function') {
+            window.syncRelightLightControl(params || {});
+        }
+        const relightHiddenControls = new Set(showRelightLight ? ['scene_var_number'] : []);
 
         [
             'scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4',
@@ -2812,7 +2819,7 @@ document.addEventListener("DOMContentLoaded", function() {
             'scene_switch_option3', 'scene_switch_option4', 'scene_video',
             'scene_reference_video', 'scene_audio'
         ].forEach((id) => {
-            setVisible(id, !disvisible.has(id));
+            setVisible(id, !disvisible.has(id) && !relightHiddenControls.has(id));
         });
         try { window.SimpAISketch?.releaseHidden?.(); } catch (e) {}
     }

@@ -6955,6 +6955,131 @@ html.simpai-gallery-frost-enabled .sai-media-browser-node .sai-media-browser-mai
     padding: 0;
 }
 
+.sai-canvas-relight-light-control {
+    display: grid;
+    gap: 8px;
+    margin: 0 8px;
+    padding: 10px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--sai-canvas-surface) 86%, #000 14%);
+}
+
+.sai-inspector-section .sai-canvas-relight-light-control {
+    margin: 0;
+}
+
+.sai-canvas-relight-light-head {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sai-canvas-relight-light-title {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--sai-canvas-text);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+}
+
+.sai-canvas-relight-light-current {
+    flex: 0 0 auto;
+    max-width: 45%;
+    overflow: hidden;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--sai-canvas-accent) 44%, transparent);
+    border-radius: 8px;
+    color: var(--sai-canvas-text);
+    background: color-mix(in srgb, var(--sai-canvas-accent) 18%, transparent);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sai-canvas-relight-light-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.sai-canvas-relight-light-button {
+    min-width: 0;
+    min-height: 44px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 5px 6px;
+    border: 1px solid var(--sai-canvas-border);
+    border-radius: 8px;
+    color: var(--sai-canvas-text);
+    background: var(--sai-canvas-panel);
+    cursor: pointer;
+}
+
+.sai-canvas-relight-light-button > span[aria-hidden="true"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 18px;
+    font-size: 20px;
+    line-height: 20px;
+    font-weight: 800;
+}
+
+.sai-canvas-relight-light-button small {
+    overflow: hidden;
+    max-width: 100%;
+    color: var(--sai-canvas-muted);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sai-canvas-relight-light-button:hover,
+.sai-canvas-relight-light-button:focus-visible,
+.sai-canvas-relight-light-button.is-selected {
+    border-color: color-mix(in srgb, var(--sai-canvas-accent) 72%, #fff);
+    color: var(--sai-canvas-text);
+    background: color-mix(in srgb, var(--sai-canvas-accent) 24%, var(--sai-canvas-panel));
+    outline: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sai-canvas-accent) 36%, transparent);
+}
+
+.sai-canvas-relight-light-button:hover small,
+.sai-canvas-relight-light-button:focus-visible small,
+.sai-canvas-relight-light-button.is-selected small {
+    color: var(--sai-canvas-text);
+}
+
+.sai-canvas-relight-light-button.sai-canvas-relight-light-random {
+    grid-column: 1 / -1;
+    min-height: 34px;
+    flex-direction: row;
+    gap: 8px;
+}
+
+.sai-canvas-relight-light-button.sai-canvas-relight-light-random i {
+    color: var(--sai-canvas-accent);
+    font-size: 12px;
+}
+
+.sai-canvas-relight-light-button.sai-canvas-relight-light-random small {
+    font-size: 13px;
+    line-height: 18px;
+}
+
 .sai-preset-slot span em {
     display: inline;
     margin-left: 4px;

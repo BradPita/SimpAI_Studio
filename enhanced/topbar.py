@@ -1987,7 +1987,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         if 'scene_switch_option4' in disvisible:
             scene_switch_option4 = None
 
-        scene_canvas_image = util.normalize_gradio_sketch_value(scene_canvas_image)
+        scene_canvas_image = util.normalize_gradio_sketch_value(scene_canvas_image, preserve_mask_color=True)
         scene_input_image1 = util.normalize_gradio_image_value(scene_input_image1, image_mode="RGBA")
         scene_input_image2 = util.normalize_gradio_image_value(scene_input_image2, image_mode="RGBA")
         scene_input_image3 = util.normalize_gradio_image_value(scene_input_image3, image_mode="RGBA")
@@ -2467,21 +2467,21 @@ reset_layout_scene_outputs_len = 0
 # Local indexes inside webui.py scene_frontend_ctrls. Preset switches should
 # not carry uploaded media from the previous preset into hidden scene controls.
 SCENE_PRESET_SWITCH_CLEAR_OUTPUTS = {
-    17: "scene_canvas_image",
-    18: "scene_input_image1",
-    19: "scene_input_image2",
-    20: "scene_input_image3",
-    21: "scene_input_image4",
-    43: "scene_video",
-    44: "scene_reference_video",
-    45: "scene_audio",
-    46: "sam3_input_video",
-    47: "sam3_original_video_path",
-    48: "sam3_mask_video",
-    49: "sam3_trim_payload",
+    18: "scene_canvas_image",
+    19: "scene_input_image1",
+    20: "scene_input_image2",
+    21: "scene_input_image3",
+    22: "scene_input_image4",
+    44: "scene_video",
+    45: "scene_reference_video",
+    46: "scene_audio",
+    47: "sam3_input_video",
+    48: "sam3_original_video_path",
+    49: "sam3_mask_video",
+    50: "sam3_trim_payload",
 }
 SCENE_PRESET_SWITCH_CLEAR_VALUES = {
-    49: "",
+    50: "",
 }
 
 def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpaint_mode, comfyd_active_checkbox, bar_button = None, include_scene_outputs=True):

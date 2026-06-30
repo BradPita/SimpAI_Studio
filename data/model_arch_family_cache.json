@@ -39,7 +39,7 @@
     "loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": {"arch_family": "wan"},
     "loras/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors": {"arch_family": "wan"},
     "loras/ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors": {"arch_family": "ltx2"},
-    "loras/ltx/ltx-2.3-22b-distilled-lora-384-1.1.safetensors": {"arch_family": "ltx2"},
+    "loras/ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors": {"arch_family": "ltx2"},
     "loras/ltx/ltx-2.3-22b-ic-lora-outpaint.safetensors": {"arch_family": "ltx2"},
     "loras/qe2511_consis_alpha_patched.safetensors": {"arch_family": "qwen"},
     "loras/Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors": {"arch_family": "qwen"},

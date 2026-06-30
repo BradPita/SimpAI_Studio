@@ -100,7 +100,7 @@
   "28": {
     "inputs": {
       "anything": [
-        "206",
+        "220",
         0
       ]
     },
@@ -1074,6 +1074,241 @@
     "class_type": "LoadInputImage",
     "_meta": {
       "title": "LoadInputImage"
+    }
+  },
+  "217": {
+    "inputs": {
+      "image_name": [
+        "2",
+        5
+      ],
+      "image": "None"
+    },
+    "class_type": "LoadInputImage",
+    "_meta": {
+      "title": "LoadInputImage"
+    }
+  },
+  "218": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "217",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "219": {
+    "inputs": {
+      "mask": [
+        "218",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "220": {
+    "inputs": {
+      "boolean": [
+        "219",
+        0
+      ],
+      "on_true": [
+        "206",
+        0
+      ],
+      "on_false": [
+        "223",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "221": {
+    "inputs": {
+      "noise_mask": true,
+      "positive": [
+        "202",
+        0
+      ],
+      "negative": [
+        "202",
+        1
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "pixels": [
+        "180",
+        0
+      ],
+      "mask": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "InpaintModelConditioning",
+    "_meta": {
+      "title": "InpaintModelConditioning"
+    }
+  },
+  "222": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "1",
+        0
+      ],
+      "steps": [
+        "2",
+        9
+      ],
+      "cfg": [
+        "2",
+        8
+      ],
+      "sampler_name": [
+        "2",
+        30
+      ],
+      "scheduler": [
+        "2",
+        31
+      ],
+      "start_at_step": 0,
+      "end_at_step": [
+        "213",
+        1
+      ],
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "225",
+        0
+      ],
+      "positive": [
+        "221",
+        0
+      ],
+      "negative": [
+        "221",
+        1
+      ],
+      "latent_image": [
+        "221",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "223": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "1",
+        0
+      ],
+      "steps": [
+        "2",
+        9
+      ],
+      "cfg": [
+        "2",
+        8
+      ],
+      "sampler_name": [
+        "2",
+        30
+      ],
+      "scheduler": [
+        "2",
+        31
+      ],
+      "start_at_step": [
+        "213",
+        1
+      ],
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "226",
+        0
+      ],
+      "positive": [
+        "221",
+        0
+      ],
+      "negative": [
+        "221",
+        1
+      ],
+      "latent_image": [
+        "222",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "224": {
+    "inputs": {
+      "expand": 20,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 10,
+      "lerp_alpha": 1,
+      "decay_factor": 1,
+      "fill_holes": false,
+      "mask": [
+        "218",
+        0
+      ]
+    },
+    "class_type": "GrowMaskWithBlur",
+    "_meta": {
+      "title": "Grow Mask With Blur"
+    }
+  },
+  "225": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "165",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "Differential Diffusion"
+    }
+  },
+  "226": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "212",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "Differential Diffusion"
     }
   }
 }

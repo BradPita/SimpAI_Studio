@@ -5,7 +5,7 @@ import folder_paths
 import node_helpers
 
 from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
-from PIL import Image, ImageOps, ImageSequence
+from PIL import Image, ImageOps, ImageSequence, ImageFilter
 from sklearn.cluster import MiniBatchKMeans
 
 MAX_SEED_NUM = 1125899906842624
@@ -302,10 +302,57 @@ class SceneMaskColorInput:
         return ("#FFFFFF", )
 
 
+class SceneRelightLightMap:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "image": ("IMAGE", ),
+                    "blur_radius": ("FLOAT", {"default": 96.0, "min": 0.0, "max": 512.0, "step": 1.0}),
+                    "intensity": ("FLOAT", {"default": 1.25, "min": 0.0, "max": 4.0, "step": 0.01}),
+                    "gamma": ("FLOAT", {"default": 0.85, "min": 0.1, "max": 4.0, "step": 0.01}),
+                }}
+
+    CATEGORY = "api/input"
+
+    RETURN_TYPES = ("IMAGE", )
+    RETURN_NAMES = ("image", )
+
+    FUNCTION = "light_map"
+
+    def light_map(self, image, blur_radius, intensity, gamma):
+        source = image.detach().cpu().numpy() if isinstance(image, torch.Tensor) else np.array(image)
+        if source.ndim == 3:
+            source = source[None, ...]
+        source = np.nan_to_num(source[..., :3].astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        source = source.clip(0.0, 1.0)
+
+        frames = []
+        for frame in source:
+            if float(frame.max()) <= 0.0:
+                frames.append(frame)
+                continue
+
+            frame_u8 = (frame * 255.0).round().clip(0, 255).astype(np.uint8)
+            light = Image.fromarray(frame_u8, mode="RGB").filter(
+                ImageFilter.GaussianBlur(radius=float(blur_radius))
+            )
+            light = np.asarray(light).astype(np.float32) / 255.0
+
+            source_peak = max(float(frame.max()), 1e-6)
+            light_peak = max(float(light.max()), 1e-6)
+            light = light * min(source_peak / light_peak, 4.0)
+            light = (light * float(intensity)).clip(0.0, 1.0)
+            light = np.power(light, float(gamma)).clip(0.0, 1.0)
+            frames.append(light.astype(np.float32))
+
+        return (torch.from_numpy(np.stack(frames, axis=0)), )
+
+
 NODE_CLASS_MAPPINGS = {
     "GeneralInput": GeneralInput,
     "SceneInput": SceneInput,
     "SceneMaskColorInput": SceneMaskColorInput,
+    "SceneRelightLightMap": SceneRelightLightMap,
     "SeedInput": SeedInput,
     "LoadInputImage": LoadInputImage,
     "EnhanceUovInput": EnhanceUovInput,

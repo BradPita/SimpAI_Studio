@@ -980,6 +980,7 @@
             Number(sizeInput.max || MAX_BRUSH_SIZE)
         );
         const configuredBrush = classValue(root, "simpai-sketch-brush-");
+        const preserveMaskColor = root.classList.contains("simpai-sketch-preserve-mask-color");
         if (configuredBrush) colorInput.value = `#${configuredBrush.slice(0, 6)}`;
         sizeInput.value = String(configuredRadius);
         if (sizeValue) sizeValue.textContent = String(configuredRadius);
@@ -1838,6 +1839,7 @@
         function drawMaskImage(maskImage) {
             maskCtx.clearRect(0, 0, width, height);
             maskCtx.drawImage(maskImage, 0, 0, width, height);
+            if (preserveMaskColor) return;
             try {
                 const prev = maskCtx.globalCompositeOperation;
                 maskCtx.globalCompositeOperation = "source-in";

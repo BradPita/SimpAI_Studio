@@ -23,6 +23,42 @@ class InpaintHead(torch.nn.Module):
 current_task = None
 
 
+def _odd_kernel_size(size, ratio, max_size):
+    k = int(round(float(size) * ratio))
+    k = max(1, min(int(max_size), k))
+    if k % 2 == 0:
+        k = k + 1 if k < max_size else k - 1
+    return max(1, k)
+
+
+def _mask_to_image_shape(mask, image):
+    image_height, image_width = image.shape[:2]
+    mask = np.asarray(mask)
+
+    if mask.ndim == 3:
+        mask = np.max(mask, axis=2)
+
+    if mask.size > 0 and float(np.nanmax(mask)) <= 1.0:
+        mask = mask * 255.0
+
+    mask = np.nan_to_num(mask, nan=0.0, posinf=255.0, neginf=0.0)
+    mask = np.clip(mask, 0, 255).astype(np.uint8)
+
+    if mask.shape[:2] != (image_height, image_width):
+        mask = cv2.resize(mask, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+
+    return np.ascontiguousarray(mask)
+
+
+def _clip_area_to_image(a, b, c, d, image_shape):
+    image_height, image_width = image_shape[:2]
+    a = max(0, min(int(a), image_height))
+    b = max(0, min(int(b), image_height))
+    c = max(0, min(int(c), image_width))
+    d = max(0, min(int(d), image_width))
+    return a, b, c, d
+
+
 def box_blur(x, k):
     x = Image.fromarray(x)
     x = x.filter(ImageFilter.BoxBlur(k))
@@ -152,6 +188,7 @@ def fooocus_fill(image, mask):
 
 class InpaintWorker:
     def __init__(self, image, mask, use_fill=True, k=0.618):
+        mask = _mask_to_image_shape(mask, image)
         a, b, c, d = compute_initial_abcd(mask > 0)
         a, b, c, d = solve_abcd(mask, a, b, c, d, k=k)
 
@@ -248,20 +285,30 @@ class InpaintWorker:
         return
 
     def color_correction(self, img):
+        image_height, image_width = self.image.shape[:2]
+        if img.shape[:2] != (image_height, image_width):
+            img = resample_image(img, image_width, image_height)
+
         fg = img.astype(np.float32)
         bg = self.image.copy().astype(np.float32)
         
-        mask_height, mask_width = self.mask.shape[:2]     
-        kernel_size = int(min(mask_height, mask_width) * 0.02)
-        kernel_size = kernel_size + 1 if kernel_size % 2 == 0 else kernel_size
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        dilated_mask = cv2.dilate(self.mask, kernel, iterations=1)
-        
-        blur_kernel_size = int(min(mask_height, mask_width) * 0.05)
-        blur_kernel_size = blur_kernel_size + 1 if blur_kernel_size % 2 == 0 else blur_kernel_size
-        sigma = blur_kernel_size / 5
+        mask = _mask_to_image_shape(self.mask, self.image)
+        mask_height, mask_width = mask.shape[:2]
+        short_side = max(1, min(mask_height, mask_width))
 
-        w = cv2.GaussianBlur(dilated_mask, (blur_kernel_size, blur_kernel_size), sigma)
+        kernel_size = _odd_kernel_size(short_side, 0.02, 65)
+        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+        
+        blur_kernel_size = _odd_kernel_size(short_side, 0.05, 129)
+        sigma = max(0.2, blur_kernel_size / 5)
+
+        w = cv2.GaussianBlur(
+            dilated_mask,
+            (blur_kernel_size, blur_kernel_size),
+            sigma,
+            borderType=cv2.BORDER_REPLICATE
+        )
              
         w = w[:, :, None].astype(np.float32) / 255.0
         y = fg * w + bg * (1 - w)
@@ -270,6 +317,10 @@ class InpaintWorker:
 
     def post_process(self, img):
         a, b, c, d = self.interested_area
+        a, b, c, d = _clip_area_to_image(a, b, c, d, self.image.shape)
+        if b <= a or d <= c:
+            return self.image.copy()
+
         content = resample_image(img, d - c, b - a)
         result = self.image.copy()
         result[a:b, c:d] = content

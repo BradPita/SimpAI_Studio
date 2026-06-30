@@ -1502,7 +1502,9 @@ class showAnything(io.ComfyNode):
 
         if extra_pnginfo and isinstance(extra_pnginfo, dict) and "workflow" in extra_pnginfo:
             _uid = unique_id[0] if isinstance(unique_id, list) else unique_id
-            node = next((x for x in extra_pnginfo["workflow"]["nodes"] if str(x["id"]) == _uid), None)
+            workflow = extra_pnginfo.get("workflow")
+            nodes = workflow.get("nodes") if isinstance(workflow, dict) else None
+            node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id")) == _uid), None) if isinstance(nodes, list) else None
             if node:
                 node["widgets_values"] = [values]
 

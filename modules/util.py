@@ -159,7 +159,7 @@ def normalize_gradio_image_value(value, image_mode=None):
     return None
 
 
-def normalize_gradio_mask_value(value, image_shape=None):
+def normalize_gradio_mask_value(value, image_shape=None, preserve_color=False):
     mask = normalize_gradio_image_value(value)
     if mask is None:
         if image_shape is None:
@@ -172,13 +172,15 @@ def normalize_gradio_mask_value(value, image_shape=None):
     if mask.ndim == 2:
         return np.repeat(mask[:, :, None], 3, axis=2)
     if mask.ndim == 3 and mask.shape[2] == 4:
+        if preserve_color:
+            return mask
         alpha = mask[:, :, 3]
         mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
         return np.repeat(mask[:, :, None], 3, axis=2)
     return mask
 
 
-def normalize_gradio_sketch_value(value, image_mode="RGBA"):
+def normalize_gradio_sketch_value(value, image_mode="RGBA", preserve_mask_color=False):
     if value is None:
         return None
     if isinstance(value, str):
@@ -190,10 +192,10 @@ def normalize_gradio_sketch_value(value, image_mode="RGBA"):
                 value = json.loads(text)
             except Exception:
                 image = normalize_gradio_image_value(text, image_mode=image_mode)
-                return {"image": image, "mask": normalize_gradio_mask_value(None, getattr(image, "shape", None))} if image is not None else None
+                return {"image": image, "mask": normalize_gradio_mask_value(None, getattr(image, "shape", None), preserve_mask_color)} if image is not None else None
         else:
             image = normalize_gradio_image_value(text, image_mode=image_mode)
-            return {"image": image, "mask": normalize_gradio_mask_value(None, getattr(image, "shape", None))} if image is not None else None
+            return {"image": image, "mask": normalize_gradio_mask_value(None, getattr(image, "shape", None), preserve_mask_color)} if image is not None else None
     if isinstance(value, dict):
         try:
             from ui.components import sketch_cache
@@ -212,12 +214,12 @@ def normalize_gradio_sketch_value(value, image_mode="RGBA"):
                 break
         if image is None:
             return None
-        mask = normalize_gradio_mask_value(value.get("mask"), image.shape)
+        mask = normalize_gradio_mask_value(value.get("mask"), image.shape, preserve_mask_color)
         return {"image": image, "mask": mask}
     image = normalize_gradio_image_value(value, image_mode=image_mode)
     if image is None:
         return None
-    return {"image": image, "mask": normalize_gradio_mask_value(None, image.shape)}
+    return {"image": image, "mask": normalize_gradio_mask_value(None, image.shape, preserve_mask_color)}
 
 
 def resize_image(im, width=None, height=None, resize_mode=1, min_side=None, max_side=None):

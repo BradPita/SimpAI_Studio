@@ -7,14 +7,13 @@
         "scene_frontend": {
             "version": "m1.1",
             "theme": ["Bernini-ImageEdit"],
-            "theme_title": "Bernini Image Edit",
+            "theme_title": "Bernini Image Edit [Optional mask]",
             "disvisible": ["scene_additional_prompt", "scene_additional_prompt_2", "scene_video", "scene_audio",
                 "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
                 , "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "task_method": {
                 "Bernini-ImageEdit": "bernini_image_edit_cn"
             },
-            "disable_canvas_mask": true,
             "var_number4_title": "Match original colors",
             "var_number4_min": 0,
             "var_number4_max": 1.0,

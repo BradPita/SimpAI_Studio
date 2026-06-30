@@ -5403,6 +5403,147 @@ function setLivePortraitExpressionSceneImageMode(active, langSource) {
     }
 }
 
+const RELIGHT_LIGHT_LABELS = {
+    1: ["Top left", "左上"],
+    2: ["Top", "上"],
+    3: ["Top right", "右上"],
+    4: ["Left", "左"],
+    5: ["Center", "中心"],
+    6: ["Right", "右"],
+    7: ["Bottom left", "左下"],
+    8: ["Bottom", "下"],
+    9: ["Bottom right", "右下"],
+    10: ["Random", "随机"],
+};
+
+let relightLightControlBound = false;
+
+function getRelightLightControlHost() {
+    const app = gradioApp();
+    return (app && app.getElementById ? app.getElementById("relight_light_scene_control") : null) || document.getElementById("relight_light_scene_control");
+}
+
+function getRelightLightSliderRoot() {
+    const app = gradioApp();
+    return window.simpaiFindControlById?.("scene_var_number")
+        || (app && app.getElementById ? app.getElementById("scene_var_number") : null)
+        || document.getElementById("scene_var_number");
+}
+
+function relightLightLang(langSource) {
+    const source = langSource && typeof langSource === "object" ? langSource : (window.simpleaiTopbarSystemParams || {});
+    const raw = String(source.__lang || source.state?.__lang || window.locale_lang || document.documentElement.lang || "").toLowerCase();
+    if (raw) return raw.startsWith("en") ? "en" : "cn";
+    try {
+        if (window.SimpAII18n?.isEnglishUi) return window.SimpAII18n.isEnglishUi() ? "en" : "cn";
+    } catch (e) {}
+    return "cn";
+}
+
+function relightLightText(en, cn, langSource) {
+    try {
+        if (window.SimpAII18n?.t) return window.SimpAII18n.t(en, cn, langSource || window.simpleaiTopbarSystemParams || {});
+    } catch (e) {}
+    return relightLightLang(langSource) === "en" ? en : cn;
+}
+
+function normalizeRelightLightValue(value) {
+    const parsed = Number.parseInt(String(value ?? ""), 10);
+    if (!Number.isFinite(parsed)) return 10;
+    if (parsed >= 1 && parsed <= 10) return parsed;
+    return 10;
+}
+
+function readRelightLightValue() {
+    const root = getRelightLightSliderRoot();
+    if (!root) return 10;
+    const numberInput = root.querySelector?.('input[type="number"]');
+    const rangeInput = root.querySelector?.('input[type="range"]');
+    return normalizeRelightLightValue(numberInput?.value ?? rangeInput?.value ?? 10);
+}
+
+function writeRelightLightValue(value) {
+    const nextValue = normalizeRelightLightValue(value);
+    let wrote = false;
+    try {
+        if (typeof _ro_setSliderValue === "function") {
+            wrote = !!_ro_setSliderValue("scene_var_number", nextValue);
+        }
+    } catch (e) {}
+    if (!wrote) {
+        const root = getRelightLightSliderRoot();
+        const inputs = root ? Array.from(root.querySelectorAll?.('input[type="number"], input[type="range"]') || []) : [];
+        inputs.forEach((input) => {
+            input.value = String(nextValue);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            wrote = true;
+        });
+    }
+    syncRelightLightControl(window.simpleaiTopbarSystemParams || {});
+    return wrote;
+}
+
+function bindRelightLightControl() {
+    if (relightLightControlBound) return;
+    relightLightControlBound = true;
+    document.addEventListener("click", (event) => {
+        const button = event.target && event.target.closest ? event.target.closest("[data-relight-light-value]") : null;
+        if (!button || !button.closest("#relight_light_scene_control")) return;
+        event.preventDefault();
+        writeRelightLightValue(button.dataset.relightLightValue);
+    }, true);
+}
+
+function setRelightLightSliderHidden(hidden) {
+    const root = getRelightLightSliderRoot();
+    if (!root) return false;
+    if (hidden) {
+        root.dataset.saiRelightHidden = "1";
+        root.classList.add("simpai-force-hidden");
+        root.setAttribute("aria-hidden", "true");
+        root.hidden = true;
+        root.style.setProperty("display", "none", "important");
+        root.style.setProperty("min-height", "0", "important");
+        root.style.setProperty("height", "0", "important");
+        root.style.setProperty("margin", "0", "important");
+        root.style.setProperty("padding", "0", "important");
+        root.style.setProperty("overflow", "hidden", "important");
+        return true;
+    }
+    if (root.dataset.saiRelightHidden === "1") {
+        delete root.dataset.saiRelightHidden;
+        clearHiddenFlags(root);
+    }
+    return true;
+}
+
+function syncRelightLightControl(langSource) {
+    const host = getRelightLightControlHost();
+    if (!host) return;
+    bindRelightLightControl();
+    const lang = relightLightLang(langSource);
+    host.querySelectorAll("[data-relight-i18n-en][data-relight-i18n-cn]").forEach((node) => {
+        const text = lang === "en" ? node.dataset.relightI18nEn : node.dataset.relightI18nCn;
+        if (text) node.textContent = text;
+    });
+    const value = readRelightLightValue();
+    const labelPair = RELIGHT_LIGHT_LABELS[value] || RELIGHT_LIGHT_LABELS[10];
+    const status = host.querySelector("[data-relight-light-status]");
+    if (status) status.textContent = relightLightText(labelPair[0], labelPair[1], langSource);
+    host.querySelectorAll("[data-relight-light-value]").forEach((button) => {
+        const buttonValue = normalizeRelightLightValue(button.dataset.relightLightValue);
+        const selected = buttonValue === value;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+        const title = lang === "en" ? button.dataset.relightI18nTitleEn : button.dataset.relightI18nTitleCn;
+        if (title) button.setAttribute("title", title);
+    });
+}
+
+window.syncRelightLightControl = syncRelightLightControl;
+window.setRelightLightValue = writeRelightLightValue;
+
 function sceneFrontendSam3Values(sceneFrontend) {
     const values = [];
     const themes = sceneFrontend && sceneFrontend.theme;
@@ -5499,6 +5640,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const showGaussianStudio = !!(isScene && gaussianMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("gaussian_studio"));
     const liveportraitMarkers = ["liveportrait", "advancedliveportrait"];
     const showLivePortraitExpression = !!(isScene && liveportraitMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("liveportrait_expression"));
+    const showRelightLight = !!(isScene && (themeText.includes("relight") || taskText.includes("relight")) && !hidden.has("relight_light_control"));
     setSceneAuxControlVisible("camera_control_accordion", showCamera);
     setSceneAuxControlVisible("anglelight_control_accordion", showLight);
     setSceneAuxControlVisible("style_transfer_accordion", showStyle);
@@ -5508,8 +5650,11 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("pose_studio", showPoseStudio);
     setSceneAuxControlVisible("gaussian_studio", showGaussianStudio);
     setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
+    setSceneAuxControlVisible("relight_light_control", showRelightLight);
+    setRelightLightSliderHidden(showRelightLight);
     setGaussianStudioSceneImageMode(showGaussianStudio, langSource);
     setLivePortraitExpressionSceneImageMode(showLivePortraitExpression, langSource);
+    if (showRelightLight) syncRelightLightControl(langSource);
     if (!showPoseStudio && window.SimpAIPoseStudioEditor?.closeScenePreset) {
         try { window.SimpAIPoseStudioEditor.closeScenePreset(); } catch (e) {}
     }

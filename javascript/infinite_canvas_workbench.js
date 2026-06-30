@@ -16022,6 +16022,73 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         return facts;
     }
 
+    const CANVAS_RELIGHT_LIGHT_DIRECTIONS = Object.freeze([
+        { value: '1', icon: '↖', en: 'Top left', cn: '左上' },
+        { value: '2', icon: '↑', en: 'Top', cn: '上' },
+        { value: '3', icon: '↗', en: 'Top right', cn: '右上' },
+        { value: '4', icon: '←', en: 'Left', cn: '左' },
+        { value: '5', icon: '•', en: 'Center', cn: '中心' },
+        { value: '6', icon: '→', en: 'Right', cn: '右' },
+        { value: '7', icon: '↙', en: 'Bottom left', cn: '左下' },
+        { value: '8', icon: '↓', en: 'Bottom', cn: '下' },
+        { value: '9', icon: '↘', en: 'Bottom right', cn: '右下' },
+        { value: '10', icon: '', en: 'Random', cn: '随机', random: true }
+    ]);
+
+    function canvasRelightLightValue(value) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed)) return '10';
+        return String(clamp(Math.round(parsed), 1, 10));
+    }
+
+    function canvasRelightLightOption(value) {
+        const normalized = canvasRelightLightValue(value);
+        return CANVAS_RELIGHT_LIGHT_DIRECTIONS.find(item => item.value === normalized)
+            || CANVAS_RELIGHT_LIGHT_DIRECTIONS[CANVAS_RELIGHT_LIGHT_DIRECTIONS.length - 1];
+    }
+
+    function isCanvasRelightLightDirectionParam(node, param) {
+        if (!node || !param || param.key !== 'scene_var_number') return false;
+        const themeInfo = getPresetThemeInfo(node);
+        const taskMethod = String(themeInfo?.task_method || node.runtime?.task_method || '').toLowerCase();
+        if (taskMethod.includes('relight_fc')) return true;
+        const presetName = String(node.preset?.name || node.title || '').toLowerCase();
+        return presetName.includes('relight') && Number(param.max) === 10;
+    }
+
+    function renderCanvasRelightLightDirectionControl(node, param, attrName, options) {
+        const opts = options || {};
+        const disabled = opts.disabled ? 'disabled' : '';
+        const value = canvasRelightLightValue(opts.value);
+        const selected = canvasRelightLightOption(value);
+        const attr = `${attrName}="${escapeHtml(param.key)}"`;
+        const label = escapeHtml(t('Light Direction', '光源方向'));
+        const current = escapeHtml(t(selected.en, selected.cn));
+        const resetButton = opts.resetButton || '';
+        const buttonHtml = CANVAS_RELIGHT_LIGHT_DIRECTIONS.map((item) => {
+            const isSelected = item.value === value;
+            const title = escapeHtml(t(item.en, item.cn));
+            const classes = [
+                'sai-canvas-relight-light-button',
+                item.random ? 'sai-canvas-relight-light-random' : '',
+                isSelected ? 'is-selected' : ''
+            ].filter(Boolean).join(' ');
+            const icon = item.random
+                ? '<i class="fa-solid fa-shuffle" aria-hidden="true"></i>'
+                : `<span aria-hidden="true">${escapeHtml(item.icon)}</span>`;
+            return `<button type="button" class="${classes}" ${attr} value="${escapeHtml(item.value)}" data-relight-light-value="${escapeHtml(item.value)}" aria-pressed="${isSelected ? 'true' : 'false'}" title="${title}" ${disabled}>${icon}<small>${title}</small></button>`;
+        }).join('');
+        return `<div class="sai-canvas-relight-light-control" data-canvas-relight-light-control>
+  <div class="sai-canvas-relight-light-head">
+    <span class="sai-canvas-relight-light-title">${label}${resetButton}</span>
+    <span class="sai-canvas-relight-light-current">${current}</span>
+  </div>
+  <div class="sai-canvas-relight-light-grid" role="group" aria-label="${label}">
+    ${buttonHtml}
+  </div>
+</div>`;
+    }
+
     function renderPresetParamControl(node, param, attrName) {
         const key = escapeHtml(param.key);
         const label = escapeHtml(param.label || param.key);
@@ -16048,6 +16115,13 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (param.type === 'choice') {
             const choices = Array.isArray(param.choices) ? param.choices : [];
             return `<label class="sai-node-field">${labelHtml}<select ${attr} ${disabled}>${choices.map(choice => `<option value="${escapeHtml(choice)}" ${String(choice) === String(value) ? 'selected' : ''}>${escapeHtml(choice)}</option>`).join('')}</select></label>`;
+        }
+        if (isCanvasRelightLightDirectionParam(node, param)) {
+            return renderCanvasRelightLightDirectionControl(node, param, attrName, {
+                value,
+                disabled: !!disabled,
+                resetButton
+            });
         }
         const numeric = Number(value);
         const min = param.min !== undefined && param.min !== null && param.min !== '' ? Number(param.min) : 0;
@@ -22524,6 +22598,16 @@ ${actions}
         if (selectedNodeId) renderInspector();
     }
 
+    function handleCanvasRelightLightButtonClick(node, button, attrName) {
+        if (!node || !button || isNodeLocked(node)) return false;
+        const key = button.getAttribute(attrName);
+        if (!key) return false;
+        const value = Number(canvasRelightLightValue(button.getAttribute('data-relight-light-value') || button.value));
+        updateNodeParam(node.id, key, value, 'number');
+        mutate({ inspector: true });
+        return true;
+    }
+
     function bindNodeEvents(nodeEl, node) {
         if (nodeEl.__simpaiNodeEventsBound) {
             injectParamResetButtons(nodeEl);
@@ -22736,6 +22820,13 @@ ${actions}
             }
             if (!evt.target.closest('.sai-timeline-custom-select')) {
                 nodeEl.querySelectorAll('.sai-timeline-custom-select.is-open').forEach(el => el.classList.remove('is-open'));
+            }
+            const relightLightButton = evt.target.closest('.sai-canvas-relight-light-button[data-node-param]');
+            if (relightLightButton) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                handleCanvasRelightLightButtonClick(node, relightLightButton, 'data-node-param');
+                return;
             }
             const paramReset = evt.target.closest('[data-param-reset]');
             if (paramReset) {
@@ -25510,6 +25601,13 @@ ${renderGenerationMetadataInspectorSection(node)}
                 evt.preventDefault();
                 evt.stopPropagation();
                 resetPresetNodeParam(getNode(selectedNodeId), button.getAttribute('data-param-reset'));
+            });
+        });
+        inspector.querySelectorAll('.sai-canvas-relight-light-button[data-inspector-param]').forEach((button) => {
+            button.addEventListener('click', (evt) => {
+                evt.preventDefault();
+                evt.stopPropagation();
+                handleCanvasRelightLightButtonClick(getNode(selectedNodeId), button, 'data-inspector-param');
             });
         });
         inspector.querySelectorAll('[data-timeline-reset]').forEach((button) => {
@@ -29485,7 +29583,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                         'Qwen/Qwen3-TTS-Tokenizer-12Hz',
                         'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign',
                         'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',
-                        'ltx-2.3-22b-distilled-lora-384-1.1.safetensors',
+                        'ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors',
                         'gemma_3_12B_it_fpmixed.safetensors',
                         'LTX23_audio_vae_bf16.safetensors',
                         'LTX23_video_vae_bf16.safetensors',

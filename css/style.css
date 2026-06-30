@@ -7557,6 +7557,7 @@ html.simpai-preset-nav-active #sam3_video_mask_accordion,
 html.simpai-preset-nav-active #pose_studio,
 html.simpai-preset-nav-active #gaussian_studio,
 html.simpai-preset-nav-active #liveportrait_expression,
+html.simpai-preset-nav-active #relight_light_control,
 html.simpai-preset-nav-active #scene_resolution_override_accordion {
     display: none !important;
     min-height: 0 !important;
@@ -7588,6 +7589,7 @@ html.simpai-preset-nav-active #sam3_video_mask_accordion > *,
 html.simpai-preset-nav-active #pose_studio > *,
 html.simpai-preset-nav-active #gaussian_studio > *,
 html.simpai-preset-nav-active #liveportrait_expression > *,
+html.simpai-preset-nav-active #relight_light_control > *,
 html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     display: none !important;
 }
@@ -7959,6 +7961,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #pose_studio,
 #gaussian_studio,
 #liveportrait_expression,
+#relight_light_control,
 #scene_batch_accordion,
 #scene_resolution_override_accordion {
     width: 100% !important;
@@ -7997,6 +8000,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #pose_studio > *,
 #gaussian_studio > *,
 #liveportrait_expression > *,
+#relight_light_control > *,
 #scene_batch_accordion > *,
 #scene_resolution_override_accordion > * {
     max-width: 100% !important;
@@ -8027,7 +8031,13 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
 #liveportrait_expression > div,
 #liveportrait_expression .form,
 #liveportrait_expression .block,
-#liveportrait_expression .wrap {
+#liveportrait_expression .wrap,
+#relight_light_control > .form,
+#relight_light_control > .block,
+#relight_light_control > div,
+#relight_light_control .form,
+#relight_light_control .block,
+#relight_light_control .wrap {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;
@@ -8080,6 +8090,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #pose_studio summary,
 #gaussian_studio summary,
 #liveportrait_expression summary,
+#relight_light_control summary,
 #scene_batch_accordion summary,
 #scene_resolution_override_accordion summary,
 #scene_director_accordion summary,
@@ -8097,6 +8108,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #pose_studio [role="button"],
 #gaussian_studio [role="button"],
 #liveportrait_expression [role="button"],
+#relight_light_control [role="button"],
 #scene_batch_accordion [role="button"],
 #scene_resolution_override_accordion [role="button"],
 #scene_director_accordion [role="button"],
@@ -8115,6 +8127,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #pose_studio .wrap,
 #gaussian_studio .wrap,
 #liveportrait_expression .wrap,
+#relight_light_control .wrap,
 #scene_batch_accordion .wrap,
 #scene_resolution_override_accordion .wrap,
 #scene_director_accordion .wrap,
@@ -8126,6 +8139,7 @@ html.simpai-scene-director-video-preset #scene_director_accordion {
 #pose_studio .block,
 #gaussian_studio .block,
 #liveportrait_expression .block,
+#relight_light_control .block,
 #scene_batch_accordion .block,
 #scene_resolution_override_accordion .block,
 #scene_director_accordion .block,
@@ -9811,6 +9825,228 @@ html.simpai-scene-director-mode-enabled #scene_director_accordion.block > button
 
 #liveportrait_expression_scene_control [data-liveportrait-expression-scene-status].is-error {
     color: #fca5a5 !important;
+}
+
+#relight_light_control.sai-relight-light-scene-entry,
+#relight_light_control.sai-relight-light-scene-entry > *,
+#relight_light_control.sai-relight-light-scene-entry .styler,
+#relight_light_control.sai-relight-light-scene-entry .html-container,
+#relight_light_control.sai-relight-light-scene-entry .prose,
+#relight_light_control.sai-relight-light-scene-entry .contain,
+#relight_light_control.sai-relight-light-scene-entry .padded,
+#relight_light_control.sai-relight-light-scene-entry .form,
+#relight_light_control.sai-relight-light-scene-entry .block,
+#relight_light_control.sai-relight-light-scene-entry .wrap,
+#relight_light_scene_control_html,
+#relight_light_scene_control_html > *,
+#relight_light_scene_control_html > .prose,
+#relight_light_scene_control_html .prose,
+#relight_light_scene_control_html .html-container,
+#relight_light_scene_control_html .styler,
+#relight_light_scene_control_html .block {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+#relight_light_control.sai-relight-light-scene-entry {
+    margin: 8px 0 12px !important;
+}
+
+.gradio-container .gr-group:has(> .styler > #relight_light_scene_control_html),
+.gradio-container .styler:has(> #relight_light_scene_control_html) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+#relight_light_scene_control.sai-relight-light-scene-control {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+    padding: 14px !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary, #4b5563) 62%, transparent) !important;
+    border-radius: 8px !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 94%, var(--body-background-fill, #111827)) !important;
+    box-sizing: border-box !important;
+}
+
+#relight_light_scene_control .sai-relight-light-heading {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+}
+
+#relight_light_scene_control .sai-relight-light-title-wrap {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+    padding-top: 2px !important;
+}
+
+#relight_light_scene_control .sai-relight-light-title {
+    min-width: 0 !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    font-size: 14px !important;
+    line-height: 20px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+#relight_light_scene_control .sai-relight-light-status {
+    flex: 0 0 auto !important;
+    min-width: 54px !important;
+    padding: 2px 9px !important;
+    border: 1px solid color-mix(in srgb, var(--button-primary-background-fill, #f97316) 28%, transparent) !important;
+    border-radius: 8px !important;
+    background: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 14%, transparent) !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    font-size: 12px !important;
+    line-height: 18px !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    letter-spacing: 0 !important;
+}
+
+#relight_light_scene_control .sai-relight-light-grid {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+}
+
+#relight_light_scene_control button[data-relight-light-value] {
+    min-width: 0 !important;
+    min-height: 56px !important;
+    height: 56px !important;
+    padding: 6px 8px !important;
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    border: 1px solid color-mix(in srgb, var(--border-color-primary, #4b5563) 72%, transparent) !important;
+    border-radius: 7px !important;
+    background: var(--input-background-fill, var(--block-background-fill, #24262b)) !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease !important;
+}
+
+#relight_light_scene_control button[data-relight-light-value] > span[aria-hidden="true"] {
+    height: 22px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: var(--body-text-color, #f3f4f6) !important;
+    font-size: 21px !important;
+    line-height: 22px !important;
+    font-weight: 800 !important;
+}
+
+#relight_light_scene_control button[data-relight-light-value] small {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+    color: var(--body-text-color-subdued, #aab4c8) !important;
+    font-size: 12px !important;
+    line-height: 15px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+    text-align: center !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+#relight_light_scene_control button[data-relight-light-value].is-selected,
+#relight_light_scene_control button[data-relight-light-value]:hover,
+#relight_light_scene_control button[data-relight-light-value]:focus-visible {
+    border-color: color-mix(in srgb, var(--button-primary-background-fill, #f97316) 66%, #ffffff) !important;
+    background: color-mix(in srgb, var(--block-background-fill, #24262b) 86%, var(--button-primary-background-fill, #f97316)) !important;
+    outline: none !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--button-primary-background-fill, #f97316) 36%, transparent) !important;
+}
+
+#relight_light_scene_control button[data-relight-light-value].is-selected small,
+#relight_light_scene_control button[data-relight-light-value]:hover small,
+#relight_light_scene_control button[data-relight-light-value]:focus-visible small {
+    color: var(--body-text-color, #f3f4f6) !important;
+}
+
+#relight_light_scene_control button.sai-relight-light-random[data-relight-light-value] {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 104px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+}
+
+#relight_light_scene_control button.sai-relight-light-random[data-relight-light-value] i {
+    width: 18px !important;
+    height: 18px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: var(--button-primary-background-fill, #f97316) !important;
+    background: transparent !important;
+    font-size: 12px !important;
+}
+
+#relight_light_scene_control button.sai-relight-light-random[data-relight-light-value] span {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-width: 0 !important;
+    font-size: 13px !important;
+    line-height: 18px !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+}
+
+@media (max-width: 640px) {
+    #relight_light_scene_control .sai-relight-light-heading {
+        align-items: stretch !important;
+        flex-direction: column !important;
+    }
+
+    #relight_light_scene_control button.sai-relight-light-random[data-relight-light-value] {
+        width: 100% !important;
+        min-width: 0 !important;
+        justify-content: center !important;
+    }
 }
 
 #scene_panel::-webkit-scrollbar {
