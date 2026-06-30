@@ -1,0 +1,188 @@
+{
+    "default_engine": {
+        "backend_engine": "Comfy",
+        "engine_type": "video",
+        "disvisible": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection",
+            "negative_prompt",
+            "refiner_model",
+            "backend_selection",
+            "advanced_checkbox"
+        ],
+        "disinteractive": [
+            "input_image_checkbox",
+            "prompt_panel_checkbox",
+            "performance_selection",
+            "negative_prompt",
+            "refiner_model",
+            "backend_selection",
+            "advanced_checkbox"
+        ],
+        "available_aspect_ratios_selection": "Flux",
+        "scene_frontend": {
+            "version": "v1.1",
+            "theme": [
+                "LivePortrait Video"
+            ],
+            "theme_title": "LivePortrait Video Expression Editor",
+            "director_capability": {
+                "image_policy": "forbidden",
+                "audio_policy": "forbidden",
+                "video_policy": "required",
+                "max_images": 0,
+                "min_images": 0,
+                "video_modes": [
+                    "explicit"
+                ],
+                "duration_strategy": "video_min",
+                "audio_output": "source_audio",
+                "mixed_segments": false
+            },
+            "disable_canvas_mask": true,
+            "disvisible": [
+                "scene_canvas_image",
+                "scene_input_image1",
+                "scene_input_image2",
+                "scene_input_image3",
+                "scene_input_image4",
+                "scene_additional_prompt",
+                "scene_additional_prompt_2",
+                "scene_video_duration",
+                "scene_reference_video",
+                "scene_audio",
+                "scene_use_lora",
+                "pose_studio",
+                "gaussian_studio",
+                "scene_aspect_ratio",
+                "scene_image_number",
+                "scene_steps",
+                "scene_base_model",
+                "scene_refiner_model",
+                "scene_var_number",
+                "scene_var_number2",
+                "scene_var_number4",
+                "scene_var_number5",
+                "scene_var_number6",
+                "scene_var_number8",
+                "scene_var_number9",
+                "scene_var_number10",
+                "scene_switch_option1",
+                "scene_switch_option2",
+                "scene_switch_option3",
+                "scene_switch_option4",
+                "camera_control_accordion",
+                "anglelight_control_accordion",
+                "style_transfer_accordion",
+                "sam3_video_mask_accordion",
+                "sam3_input_video",
+                "sam3_mask_video"
+            ],
+            "disinteractive": [],
+            "task_method": {
+                "LivePortrait Video": "liveportrait_video_expression_cn"
+            },
+            "prompt": {
+                "LivePortrait Video": ""
+            },
+            "additional_prompt": {
+                "LivePortrait Video": ""
+            },
+            "additional_prompt_2": {
+                "LivePortrait Video": ""
+            },
+            "var_number3_title": "Load FPS Override",
+            "var_number3": {
+                "LivePortrait Video": 24
+            },
+            "var_number3_min": 1,
+            "var_number3_max": 60,
+            "var_number4_title": "Reference Strength",
+            "var_number4": {
+                "LivePortrait Video": 1
+            },
+            "var_number4_min": -0.2,
+            "var_number4_max": 1.2,
+            "var_number5_title": "Source Expression Keep",
+            "var_number5": {
+                "LivePortrait Video": 1
+            },
+            "var_number5_min": 0,
+            "var_number5_max": 1,
+            "var_number6_title": "Crop Factor",
+            "var_number6": {
+                "LivePortrait Video": 1.7
+            },
+            "var_number6_min": 1,
+            "var_number6_max": 2.5,
+            "var_number7_title": "Frame Load Cap [0 = All]",
+            "var_number7": {
+                "LivePortrait Video": 0
+            },
+            "var_number7_min": 0,
+            "var_number7_max": 1000,
+            "resolution_control": {
+                "mode": "input_passthrough",
+                "source": "scene_video",
+                "interactive": true,
+                "frontend_preprocess": false,
+                "preserve_audio": true
+            },
+            "aspect_ratio": [
+                "origin|Original"
+            ]
+        }
+    },
+    "default_model": "None",
+    "default_refiner": "None",
+    "default_refiner_switch": 0.5,
+    "default_upscale_model": "default",
+    "default_clip_model": "Default (model)",
+    "default_loras": [
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ],
+        [
+            "None",
+            1.0
+        ]
+    ],
+    "default_cfg_scale": 8,
+    "default_sample_sharpness": 2,
+    "default_sampler": "euler",
+    "default_scheduler": "simple",
+    "default_performance": "Speed",
+    "default_styles": [],
+    "default_aspect_ratio": "1024*1024",
+    "default_image_number": 1,
+    "default_overwrite_step": 2,
+    "default_prompt": "",
+    "default_prompt_negative": "",
+    "checkpoint_downloads": {},
+    "embeddings_downloads": {},
+    "lora_downloads": {},
+    "vae_downloads": {},
+    "model_list": [
+        "liveportrait,appearance_feature_extractor.safetensors,3361936,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/appearance_feature_extractor.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/appearance_feature_extractor.safetensors",
+        "liveportrait,motion_extractor.safetensors,112496256,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/motion_extractor.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/motion_extractor.safetensors",
+        "liveportrait,warping_module.safetensors,182158564,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/warping_module.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/warping_module.safetensors",
+        "liveportrait,spade_generator.safetensors,221771768,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/spade_generator.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/spade_generator.safetensors",
+        "liveportrait,stitching_retargeting_module.safetensors,911836,0,https://www.modelscope.cn/models/Kijai/LivePortrait_safetensors/resolve/master/stitching_retargeting_module.safetensors,https://huggingface.co/Kijai/LivePortrait_safetensors/resolve/main/stitching_retargeting_module.safetensors",
+        "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl",
+        "ultralytics,face_yolov8n.pt,6230011,0,https://www.modelscope.cn/models/Bingsu/adetailer/resolve/master/face_yolov8n.pt,https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt"
+    ]
+}

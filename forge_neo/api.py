@@ -1920,7 +1920,7 @@ def _known_script_args(name: str, *, is_img2img: bool = False) -> list[dict[str,
     if name == "x/y/z plot":
         axis_choices = _xyz_axis_choices(is_img2img=is_img2img)
         return [
-            _script_arg("X type", "Seed", choices=axis_choices),
+            _script_arg("X type", "Nothing", choices=axis_choices),
             _script_arg("X values", None),
             _script_arg("X values", None, choices=[]),
             _script_arg("Y type", "Nothing", choices=axis_choices),

@@ -3742,6 +3742,7 @@ with shared.gradio_root:
                             liveportrait_expression_scene_apply_btn = gr.Button("LivePortrait Expression Apply", visible="hidden", elem_id="liveportrait_expression_scene_apply_btn", elem_classes=["sai-gradio-hidden-bridge"])
 
                         scene_video = gr.Video(label="Video (Upload)", visible=True, sources=["upload"], height=400, elem_id="scene_video", elem_classes=['simpai-mounted-hidden'])
+                        scene_video_first_frame_path = gr.Textbox(value="", visible="hidden", elem_id="scene_video_first_frame_path", elem_classes=["sai-gradio-hidden-bridge"])
                         scene_video_placeholder = gr.HTML('<div style="height: 400px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888; font-size: 16px;"><span>Hide When Generating...</span></div>', visible=False, elem_id="scene_video_placeholder")
                         scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=300, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
                         scene_canvas_image = create_sketch_image(label='Upload and canvas(1)', show_label=True, type='numpy', height=420, width=630, brush_color="#70FF81", image_mode='RGBA', elem_id='scene_canvas')
@@ -4001,7 +4002,7 @@ with shared.gradio_root:
                             show_progress=False,
                         ).then(
                             lambda: None,
-                            js='()=>{try{if(typeof refresh_scene_localization==="function") refresh_scene_localization(); if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource("scene_input_image1","liveportrait_expression"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI LivePortrait Expression] scene bridge refresh failed", e);}}',
+                            js='()=>{try{if(typeof refresh_scene_localization==="function") refresh_scene_localization(); const lpeControl=document.querySelector("#liveportrait_expression_scene_control"); const sourceId=lpeControl?.dataset?.liveportraitExpressionSource==="scene_video_first_frame"?"scene_video":"scene_input_image1"; if(typeof refreshResolutionControlSource==="function") refreshResolutionControlSource(sourceId,"liveportrait_expression"); else if(typeof syncResolutionControlWidgets==="function") syncResolutionControlWidgets();}catch(e){console.warn("[SimpAI LivePortrait Expression] scene bridge refresh failed", e);}}',
                             queue=False,
                             show_progress=False,
                         )
@@ -4010,15 +4011,16 @@ with shared.gradio_root:
                         
                         def on_video_upload(video_path):
                             if video_path is None:
-                                return None, None, None, "{}"
+                                return None, None, None, "{}", ""
                             meta = build_resolution_video_meta(video_path, "scene_video", "scene")
+                            first_frame_path = util.extract_video_first_frame(video_path)
                             try:
                                 preview_path = util.compress_video(video_path)
                                 gr.Info("Compression completed!")
-                                return preview_path, video_path, "scene", meta
+                                return preview_path, video_path, "scene", meta, first_frame_path
                             except Exception as e:
                                 gr.Warning(f"Compression failed: {e}")
-                                return video_path, video_path, "scene", meta
+                                return video_path, video_path, "scene", meta, first_frame_path
 
                         def on_reference_video_upload(video_path):
                             if video_path is None:
@@ -4079,8 +4081,9 @@ with shared.gradio_root:
                             finally:
                                 sam3_video_mask.clear_sam3_cancel("webui")
 
-                        scene_video.upload(on_video_upload, inputs=[scene_video], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta], show_progress=True, queue=False) \
+                        scene_video.upload(on_video_upload, inputs=[scene_video], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path], show_progress=True, queue=False) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "upload");}')
+                        scene_video.clear(lambda: "", outputs=[scene_video_first_frame_path], queue=False, show_progress=False)
                         scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video], outputs=[scene_reference_video, scene_reference_video_original_path], show_progress=True, queue=False)
                         scene_reference_video.clear(lambda: None, outputs=[scene_reference_video_original_path], queue=False, show_progress=False)
                         scene_resolution_control = create_scene_resolution_control()

@@ -4581,6 +4581,15 @@ def _refresh_single_controlnet_model_clicked(preset: str | None):
     return gr.update(choices=_controlnet_model_choices(choices), value="None")
 
 
+def _script_xyz_axis_request(axis_type: object, axis_values: object, axis_values_dropdown: object) -> tuple[str, str, list[object]]:
+    clean_type = str(axis_type or "Nothing").strip() or "Nothing"
+    clean_values = str(axis_values or "")
+    clean_dropdown = list(axis_values_dropdown or [])
+    if clean_type != "Nothing" and (clean_values.strip() or any(str(item or "").strip() for item in clean_dropdown)):
+        return clean_type, clean_values, clean_dropdown
+    return "Nothing", "", []
+
+
 def _script_request_args(script: str, values: list[object]) -> dict[str, object]:
     name = str(script or "None").strip()
     if name == "Prompt Matrix":
@@ -4599,16 +4608,19 @@ def _script_request_args(script: str, values: list[object]) -> dict[str, object]
             "prompt_text": str(values[8] or ""),
         }
     if name == "X/Y/Z plot":
+        x_type, x_values, x_values_dropdown = _script_xyz_axis_request(values[9], values[10], values[11])
+        y_type, y_values, y_values_dropdown = _script_xyz_axis_request(values[12], values[13], values[14])
+        z_type, z_values, z_values_dropdown = _script_xyz_axis_request(values[15], values[16], values[17])
         return {
-            "x_type": str(values[9] or "Seed"),
-            "x_values": str(values[10] or ""),
-            "x_values_dropdown": list(values[11] or []),
-            "y_type": str(values[12] or "Nothing"),
-            "y_values": str(values[13] or ""),
-            "y_values_dropdown": list(values[14] or []),
-            "z_type": str(values[15] or "Nothing"),
-            "z_values": str(values[16] or ""),
-            "z_values_dropdown": list(values[17] or []),
+            "x_type": x_type,
+            "x_values": x_values,
+            "x_values_dropdown": x_values_dropdown,
+            "y_type": y_type,
+            "y_values": y_values,
+            "y_values_dropdown": y_values_dropdown,
+            "z_type": z_type,
+            "z_values": z_values,
+            "z_values_dropdown": z_values_dropdown,
             "row_count": int(values[18] or 0),
             "margin_size": int(values[19] or 0),
             "draw_legend": bool(values[20]),
@@ -7919,22 +7931,22 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
         with gr.Row(elem_classes=["forge-neo-script-xyz-row"]):
             controls["script_xyz_x_type"] = gr.Dropdown(
                 axis_choices,
-                value="Seed",
-                label="X type",
+                value="Nothing",
+                label=_label("X type", "X 轴类型"),
                 elem_id=_forge_elem(prefix, "script_xyz_x_type"),
                 scale=2,
             )
             controls["script_xyz_x_values"] = gr.Textbox(
                 value="",
                 lines=1,
-                label="X values",
+                label=_label("X values", "X 轴数值"),
                 elem_id=_forge_elem(prefix, "script_xyz_x_values"),
                 scale=5,
             )
             controls["script_xyz_x_values_dropdown"] = gr.Dropdown(
                 [],
                 value=[],
-                label="X values",
+                label=_label("X values", "X 轴数值"),
                 visible=False,
                 multiselect=True,
                 interactive=True,
@@ -7951,21 +7963,21 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
             controls["script_xyz_y_type"] = gr.Dropdown(
                 axis_choices,
                 value="Nothing",
-                label="Y type",
+                label=_label("Y type", "Y 轴类型"),
                 elem_id=_forge_elem(prefix, "script_xyz_y_type"),
                 scale=2,
             )
             controls["script_xyz_y_values"] = gr.Textbox(
                 value="",
                 lines=1,
-                label="Y values",
+                label=_label("Y values", "Y 轴数值"),
                 elem_id=_forge_elem(prefix, "script_xyz_y_values"),
                 scale=5,
             )
             controls["script_xyz_y_values_dropdown"] = gr.Dropdown(
                 [],
                 value=[],
-                label="Y values",
+                label=_label("Y values", "Y 轴数值"),
                 visible=False,
                 multiselect=True,
                 interactive=True,
@@ -7982,21 +7994,21 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
             controls["script_xyz_z_type"] = gr.Dropdown(
                 axis_choices,
                 value="Nothing",
-                label="Z type",
+                label=_label("Z type", "Z 轴类型"),
                 elem_id=_forge_elem(prefix, "script_xyz_z_type"),
                 scale=2,
             )
             controls["script_xyz_z_values"] = gr.Textbox(
                 value="",
                 lines=1,
-                label="Z values",
+                label=_label("Z values", "Z 轴数值"),
                 elem_id=_forge_elem(prefix, "script_xyz_z_values"),
                 scale=5,
             )
             controls["script_xyz_z_values_dropdown"] = gr.Dropdown(
                 [],
                 value=[],
-                label="Z values",
+                label=_label("Z values", "Z 轴数值"),
                 visible=False,
                 multiselect=True,
                 interactive=True,
@@ -8015,8 +8027,8 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
                 8,
                 value=0,
                 step=1,
-                label="Row Count",
-                info="(set to 0 for auto)",
+                label=_label("Row Count", "行数"),
+                info=_label("(set to 0 for auto)", "0 为自动"),
                 elem_id=_forge_elem(prefix, "script_xyz_row_count"),
             )
             controls["script_xyz_margin"] = gr.Slider(
@@ -8024,58 +8036,58 @@ def _create_script_controls(prefix: str, *, is_img2img: bool = False) -> dict[st
                 500,
                 value=0,
                 step=2,
-                label="Grid Margins",
-                info="(in pixels)",
+                label=_label("Grid Margins", "网格边距"),
+                info=_label("(in pixels)", "单位：像素"),
                 elem_id=_forge_elem(prefix, "script_xyz_margin"),
             )
         with gr.Row(elem_classes=["forge-neo-script-row", "forge-neo-script-check-row"]):
             with gr.Column(scale=3):
                 controls["script_xyz_draw_legend"] = gr.Checkbox(
                     True,
-                    label="Draw legend",
+                    label=_label("Draw legend", "绘制图例"),
                     elem_id=_forge_elem(prefix, "script_xyz_draw_legend"),
                 )
                 controls["script_xyz_keep_minus_one"] = gr.Checkbox(
                     False,
-                    label="Keep -1 for seeds",
+                    label=_label("Keep -1 for seeds", "Seed 保持 -1"),
                     elem_id=_forge_elem(prefix, "script_xyz_keep_minus_one"),
                 )
                 with gr.Row(elem_classes=["forge-neo-script-row"]):
                     controls["script_xyz_vary_x"] = gr.Checkbox(
                         False,
-                        label="Vary seeds for X",
+                        label=_label("Vary seeds for X", "X 轴变化 Seed"),
                         elem_id=_forge_elem(prefix, "script_xyz_vary_x"),
                     )
                     controls["script_xyz_vary_y"] = gr.Checkbox(
                         False,
-                        label="Vary seeds for Y",
+                        label=_label("Vary seeds for Y", "Y 轴变化 Seed"),
                         elem_id=_forge_elem(prefix, "script_xyz_vary_y"),
                     )
                     controls["script_xyz_vary_z"] = gr.Checkbox(
                         False,
-                        label="Vary seeds for Z",
+                        label=_label("Vary seeds for Z", "Z 轴变化 Seed"),
                         elem_id=_forge_elem(prefix, "script_xyz_vary_z"),
                     )
             with gr.Column(scale=2):
                 controls["script_xyz_include_sub_images"] = gr.Checkbox(
                     False,
-                    label="Include Sub Images",
+                    label=_label("Include Sub Images", "包含子图"),
                     elem_id=_forge_elem(prefix, "script_xyz_include_sub_images"),
                 )
                 controls["script_xyz_include_sub_grids"] = gr.Checkbox(
                     False,
-                    label="Include Sub Grids",
+                    label=_label("Include Sub Grids", "包含子网格"),
                     elem_id=_forge_elem(prefix, "script_xyz_include_sub_grids"),
                 )
                 controls["script_xyz_csv_mode"] = gr.Checkbox(
                     False,
-                    label="Use text inputs instead of dropdowns",
+                    label=_label("Use text inputs instead of dropdowns", "使用文本输入代替下拉框"),
                     elem_id=_forge_elem(prefix, "script_xyz_csv_mode"),
                 )
         with gr.Row(elem_classes=["forge-neo-script-row", "forge-neo-script-swap-row"]):
-            controls["script_xyz_swap_xy"] = gr.Button("Swap X/Y axes", elem_id=_forge_elem(prefix, "script_xyz_swap_xy"))
-            controls["script_xyz_swap_yz"] = gr.Button("Swap Y/Z axes", elem_id=_forge_elem(prefix, "script_xyz_swap_yz"))
-            controls["script_xyz_swap_xz"] = gr.Button("Swap X/Z axes", elem_id=_forge_elem(prefix, "script_xyz_swap_xz"))
+            controls["script_xyz_swap_xy"] = gr.Button(_label("Swap X/Y axes", "交换 X/Y 轴"), elem_id=_forge_elem(prefix, "script_xyz_swap_xy"))
+            controls["script_xyz_swap_yz"] = gr.Button(_label("Swap Y/Z axes", "交换 Y/Z 轴"), elem_id=_forge_elem(prefix, "script_xyz_swap_yz"))
+            controls["script_xyz_swap_xz"] = gr.Button(_label("Swap X/Z axes", "交换 X/Z 轴"), elem_id=_forge_elem(prefix, "script_xyz_swap_xz"))
 
     with gr.Group(
         visible=False,

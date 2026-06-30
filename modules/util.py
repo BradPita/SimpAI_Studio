@@ -415,6 +415,43 @@ def compress_video(input_path, output_path=None, target_height=480, crf=19):
         return input_path
 
 
+def extract_video_first_frame(input_path, output_path=None):
+    """
+    Extract the first decodable frame from the original video into a PNG file.
+    """
+    source = str(input_path or "").strip()
+    if not source or not os.path.exists(source):
+        return ""
+    if output_path is None:
+        _, output_path, _ = generate_temp_filename(folder=modules.config.temp_path, extension="png")
+    output_path = os.path.abspath(str(output_path))
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    cap = None
+    try:
+        cap = cv2.VideoCapture(source)
+        if not cap or not cap.isOpened():
+            return ""
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            return ""
+        if len(frame.shape) == 2:
+            image = Image.fromarray(frame).convert("RGB")
+        else:
+            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        image.save(output_path)
+        return output_path
+    except Exception as e:
+        logger.warning(f"Video first frame extraction failed: {e}")
+        return ""
+    finally:
+        try:
+            if cap is not None:
+                cap.release()
+        except Exception:
+            pass
+
+
 
 def remove_empty_str(items, default=None):
     items = [x for x in items if x != ""]

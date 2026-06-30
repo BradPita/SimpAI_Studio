@@ -18932,6 +18932,35 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
         return compact.includes('styletransfer') || text.includes('style_transfer') || text.includes('flux2_styletransfer');
     }
 
+    function isLivePortraitVideoExpressionPresetNode(node) {
+        if (!node || node.type !== 'preset') return false;
+        const taskMethod = String(getPresetThemeInfo(node).task_method || node.runtime?.task_method || '').toLowerCase();
+        if (taskMethod.includes('liveportrait_video_expression')) return true;
+        const text = [
+            node.title,
+            node.preset?.name,
+            node.preset?.display_name,
+            node.runtime?.scene_theme,
+            getPresetTheme(node)
+        ].filter(Boolean).join(' ').toLowerCase();
+        return text.includes('liveportrait') && text.includes('video');
+    }
+
+    function presetUploadSourceForSlot(node, slot) {
+        if (!node || !slot) return null;
+        const sourceId = node.upload_slots?.[slot]
+            || project.edges.find(edge => edge.type === 'upload' && edge.to === node.id && edge.slot === slot)?.from
+            || '';
+        return sourceId ? getNode(sourceId) : null;
+    }
+
+    function livePortraitVideoExpressionSourceInfo(node) {
+        const sourceNode = presetUploadSourceForSlot(node, 'scene_video');
+        const asset = sourceNode?.type === 'result' ? getSelectedResultAsset(sourceNode) : sourceNode?.asset || null;
+        const src = safeAssetFullDisplaySrc(asset || {}, asset?.preview_url || asset?.thumb || asset?.data_url || asset?.url || '');
+        return { sourceNode, asset, src };
+    }
+
     function findStyleSelectorForPreset(presetNode) {
         if (!presetNode) return null;
         return project.nodes.find(node => node?.type === 'style_selector' && node.style_selector?.target_preset_id === presetNode.id)
@@ -18956,6 +18985,23 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   <i class="fa-solid fa-palette"></i>
   <span><b>${escapeHtml(selector ? (selectedStyle || t('Style Selector linked', '已连接 Style Selector')) : t('Style Selector', '风格选择器'))}</b><span>${escapeHtml(selector ? t('Double-click this preset or use the button to focus it.', '双击此 preset 或用按钮定位。') : t('Create a linked style selector node for Style Transfer+.', '为 Style Transfer+ 创建已连接的风格选择器节点。'))}</span></span>
   <button type="button" data-node-action="add-style-selector"><i class="fa-solid ${selector ? 'fa-location-crosshairs' : 'fa-plus'}"></i><span>${escapeHtml(selector ? t('Focus', '定位') : t('Add', '添加'))}</span></button>
+</div>`;
+    }
+
+    function renderLivePortraitVideoExpressionPresetController(node) {
+        if (!isLivePortraitVideoExpressionPresetNode(node)) return '';
+        const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
+        const sourceTitle = sourceInfo.sourceNode?.title || sourceInfo.asset?.filename || sourceInfo.asset?.name || '';
+        const hasParams = !!String(node.params?.scene_additional_prompt_2 || '').trim();
+        const message = sourceInfo.sourceNode
+            ? (hasParams
+                ? t('Expression params saved. Edit from the source video first frame.', '表情参数已保存，可用源视频首帧继续编辑。')
+                : t('Edit using the source video first frame.', '使用源视频首帧编辑。'))
+            : t('Connect a video to Scene Video first.', '请先连接场景视频。');
+        return `<div class="sai-style-transfer-link-panel sai-liveportrait-video-expression-panel">
+  <i class="fa-solid fa-face-smile"></i>
+  <span><b>${escapeHtml(sourceTitle || t('LivePortrait Video', 'LivePortrait 视频表情'))}</b><span>${escapeHtml(message)}</span></span>
+  <button type="button" data-node-action="edit-liveportrait-video-expression"><i class="fa-solid fa-sliders"></i><span>${escapeHtml(t('Edit', '编辑'))}</span></button>
 </div>`;
     }
 
@@ -18991,6 +19037,7 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
   <span class="sai-node-title">${escapeHtml(node.title || node.preset?.name || t('Scene', '场景'))}</span>
   ${renderNodeStateBadges(node)}
   ${isStyleTransferPresetNode(node) ? `<button type="button" data-node-action="add-style-selector" title="${escapeHtml(t('Add or focus Style Selector', '添加或定位 Style Selector'))}"><i class="fa-solid fa-palette"></i></button>` : ''}
+  ${isLivePortraitVideoExpressionPresetNode(node) ? `<button type="button" data-node-action="edit-liveportrait-video-expression" title="${escapeHtml(t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'))}"><i class="fa-solid fa-face-smile"></i></button>` : ''}
   <button type="button" data-node-action="xyz-plot" title="${escapeHtml(t('X/Y/Z Plot', 'X/Y/Z 对比生成'))}"><i class="fa-solid fa-table-cells-large"></i></button>
   <button type="button" data-node-action="run" title="${escapeHtml(t('Run', '运行'))}"><i class="fa-solid fa-play"></i></button>
   <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
@@ -19004,6 +19051,7 @@ ${renderPresetModelStatusHtml(node)}
   ${PRESET_CONFIG_KINDS.map(kind => renderPresetConfigPortRow(node, kind)).join('')}
 </div>
 ${renderStyleTransferPresetController(node)}
+${renderLivePortraitVideoExpressionPresetController(node)}
 ${themes.length ? `<label class="sai-node-field sai-node-theme"><span>${escapeHtml(localizeCanvasLabel(schema.theme_title || 'Theme'))}</span><select data-node-theme>${themes.map(item => `<option value="${escapeHtml(item)}" ${item === theme ? 'selected' : ''}>${escapeHtml(localizeCanvasLabel(item))}</option>`).join('')}</select></label>` : ''}
 <div class="sai-preset-slots">
 ${uploadSlots.map((slotInfo, index) => {
@@ -27869,6 +27917,9 @@ ${renderGenerationMetadataInspectorSection(node)}
         const items = [];
         if (node.type === 'preset' || node.type === 'classic') {
             items.push({ label: t('Run', '运行'), icon: 'fa-play', action: () => runPresetNodeFromUi(node) });
+            if (isLivePortraitVideoExpressionPresetNode(node)) {
+                items.push({ label: t('Edit LivePortrait Video expression', '编辑 LivePortrait 视频表情'), icon: 'fa-face-smile', action: () => openLivePortraitVideoExpressionPresetEditor(node) });
+            }
             items.push({ label: t('X/Y/Z Plot', 'X/Y/Z 对比生成'), icon: 'fa-table-cells-large', action: () => openXyzPlotPanel(node) });
             items.push({ label: t('Check/download models', '检查/下载模型'), icon: 'fa-cloud-arrow-down', action: () => handlePresetModelAction(node) });
             items.push({ label: t('Run upstream to here', '运行上游到这里'), icon: 'fa-arrow-turn-down', action: () => runNodeChain(node, 'to-here') });
@@ -38332,6 +38383,169 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.openEditor(node, livePortraitExpressionNodeContext());
     }
 
+    function waitForCanvasVideoEvent(target, eventName, timeoutMs) {
+        return new Promise((resolve) => {
+            if (!target?.addEventListener) {
+                resolve(false);
+                return;
+            }
+            let done = false;
+            let timer = null;
+            const finish = (value) => {
+                if (done) return;
+                done = true;
+                if (timer) window.clearTimeout(timer);
+                target.removeEventListener(eventName, onEvent);
+                target.removeEventListener('error', onError);
+                resolve(value);
+            };
+            const onEvent = () => finish(true);
+            const onError = () => finish(false);
+            target.addEventListener(eventName, onEvent, { once: true });
+            target.addEventListener('error', onError, { once: true });
+            timer = window.setTimeout(() => finish(false), timeoutMs || 2200);
+        });
+    }
+
+    async function extractVideoFirstFrameDataUrl(src) {
+        const sourceUrl = String(src || '').trim();
+        if (!sourceUrl) return null;
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.crossOrigin = 'anonymous';
+        video.src = sourceUrl;
+        try {
+            try { video.load?.(); } catch (err) {}
+            const loaded = (video.readyState >= 2 && video.videoWidth && video.videoHeight)
+                || await waitForCanvasVideoEvent(video, 'loadeddata', 2600);
+            if (!loaded || !video.videoWidth || !video.videoHeight) return null;
+            const duration = Number(video.duration || 0);
+            if (Number.isFinite(duration) && duration > 0.001 && Math.abs(Number(video.currentTime || 0)) > 0.04) {
+                const seeked = waitForCanvasVideoEvent(video, 'seeked', 1800);
+                try { video.currentTime = 0; } catch (err) {}
+                await seeked;
+            }
+            const width = Number(video.videoWidth || 0);
+            const height = Number(video.videoHeight || 0);
+            if (!width || !height) return null;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+            return {
+                dataUrl: canvas.toDataURL('image/png'),
+                width,
+                height
+            };
+        } catch (err) {
+            return null;
+        } finally {
+            try { video.pause?.(); } catch (err) {}
+            video.removeAttribute('src');
+            try { video.load?.(); } catch (err) {}
+        }
+    }
+
+    async function openLivePortraitVideoExpressionPresetEditor(node) {
+        if (!isLivePortraitVideoExpressionPresetNode(node)) return null;
+        if (isNodeLocked(node)) {
+            showToast(t('Node is locked.', '节点已锁定。'));
+            return null;
+        }
+        const ready = await ensureWorkbenchLazyRuntime(
+            'livePortraitExpression',
+            () => typeof window.SimpAILivePortraitExpressionEditor?.open === 'function',
+            t('Loading LivePortrait Video...', '正在加载 LivePortrait Video...'),
+            t('LivePortrait Exp editor is not loaded.', 'LivePortrait Exp 编辑器尚未加载。')
+        );
+        if (!ready) return null;
+        const sourceInfo = livePortraitVideoExpressionSourceInfo(node);
+        if (!sourceInfo.sourceNode || !sourceInfo.src) {
+            showToast(t('Connect a source video first.', '请先连接源视频。'));
+            return null;
+        }
+        const frame = await extractVideoFirstFrameDataUrl(sourceInfo.src);
+        if (!frame?.dataUrl) {
+            showToast(t('Could not read the first frame from this video.', '无法读取这个视频的首帧。'));
+            return null;
+        }
+        const stored = node.liveportrait_video_expression || {};
+        const expressionState = String(node.params?.scene_additional_prompt_2 || stored.expression_state || stored.expression_state_draft || '');
+        const sourceFrameAsset = Object.assign({}, sourceInfo.asset || {}, {
+            kind: 'liveportrait_video_first_frame',
+            mime: 'image/png',
+            width: frame.width,
+            height: frame.height,
+            source_video_node_id: sourceInfo.sourceNode.id
+        });
+        return window.SimpAILivePortraitExpressionEditor.open({
+            title: t('LivePortrait Video', 'LivePortrait 视频表情'),
+            context: 'canvas',
+            exportMode: 'params',
+            projectId: project.id || PROJECT_ID,
+            node,
+            nodeId: node.id,
+            params: stored.params || {},
+            expressionState,
+            sourceDataUrl: frame.dataUrl,
+            sourceSrc: frame.dataUrl,
+            sourceAsset: sourceFrameAsset,
+            sourceAssetSource: serializeAssetSourceForRun(sourceInfo.sourceNode),
+            sourceSize: { width: frame.width, height: frame.height },
+            referenceDataUrl: '',
+            referenceSrc: '',
+            referenceAsset: null,
+            referenceSize: { width: 0, height: 0 },
+            modalMount: canvasOverlayHost(),
+            mountSelector: '#simpai-infinite-canvas-workbench',
+            detectTheme: detectWorkbenchTheme,
+            ensureFormNames: ensureWorkbenchFormFieldNames,
+            onStateChange: (cache) => {
+                const current = getNode(node.id) || node;
+                current.liveportrait_video_expression = Object.assign({}, current.liveportrait_video_expression || {}, {
+                    params: cache?.params || {},
+                    expression_state_draft: cache?.expression_state || '',
+                    source_node_id: sourceInfo.sourceNode.id,
+                    source_asset: sourceInfo.asset || null,
+                    source_frame_size: { width: frame.width, height: frame.height },
+                    face_selection: cache?.face_selection || {},
+                    updated_at: cache?.updated_at || nowIso()
+                });
+            },
+            onConfirm: (response) => {
+                pushHistory('Update LivePortrait Video expression params');
+                const current = getNode(node.id) || node;
+                const expression = response?.expression_state || expressionState || '';
+                current.params = Object.assign({}, current.params || {}, {
+                    scene_additional_prompt_2: expression
+                });
+                current.liveportrait_video_expression = Object.assign({}, current.liveportrait_video_expression || {}, {
+                    params: response?.params || {},
+                    expression_state: expression,
+                    expression_state_draft: '',
+                    source_node_id: sourceInfo.sourceNode.id,
+                    source_asset: sourceInfo.asset || null,
+                    source_frame_size: { width: frame.width, height: frame.height },
+                    source_face_bbox: response?.source_face_bbox || '',
+                    reference_face_bbox: response?.reference_face_bbox || '',
+                    updated_at: response?.exported_at || nowIso()
+                });
+                current.status = Object.assign({}, current.status || {}, {
+                    state: 'ready',
+                    message: t('Expression params saved.', '表情参数已保存。')
+                });
+                selectedNodeId = current.id;
+                selectedNodeIds = new Set([current.id]);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+                mutate({ inspector: true });
+                showToast(t('Expression params saved.', '表情参数已保存。'));
+            }
+        });
+    }
+
     function qwenTtsResultBasePosition(node) {
         return {
             x: Math.round((node?.x || 0) + (node?.w || 360) + 140),
@@ -42502,6 +42716,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             openXyzPlotPanel(node);
         } else if (action === 'add-style-selector' && node.type === 'preset') {
             ensureStyleSelectorForPreset(node, { select: true });
+        } else if (action === 'edit-liveportrait-video-expression' && node.type === 'preset') {
+            openLivePortraitVideoExpressionPresetEditor(node);
         } else if (action === 'apply-style-selector' && node.type === 'style_selector') {
             runStyleSelectorTargetPreset(node);
         } else if (action === 'check-models' && ['preset', 'classic'].includes(node.type)) {

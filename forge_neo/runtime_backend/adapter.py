@@ -1188,17 +1188,32 @@ def _source_xyz_axis_index(value: object, *, is_img2img: bool) -> int:
     return 0
 
 
+def _source_xyz_axis_payload(args: dict[str, object], key: str, *, is_img2img: bool, default: str = "Nothing") -> tuple[int, str, list[object]]:
+    axis_type = args.get(f"{key}_type", default)
+    values = _script_arg_str(args, f"{key}_values")
+    dropdown_values = _script_arg_list(args, f"{key}_values_dropdown")
+    axis_index = _source_xyz_axis_index(axis_type, is_img2img=is_img2img)
+    if axis_index and not values.strip() and not any(str(item or "").strip() for item in dropdown_values):
+        axis_index = 0
+    if not axis_index:
+        return 0, "", []
+    return axis_index, values, dropdown_values
+
+
 def _source_xyz_script_args_tuple(args: dict[str, object], *, is_img2img: bool) -> tuple[object, ...]:
+    x_type, x_values, x_values_dropdown = _source_xyz_axis_payload(args, "x", is_img2img=is_img2img, default="Seed")
+    y_type, y_values, y_values_dropdown = _source_xyz_axis_payload(args, "y", is_img2img=is_img2img)
+    z_type, z_values, z_values_dropdown = _source_xyz_axis_payload(args, "z", is_img2img=is_img2img)
     return (
-        _source_xyz_axis_index(args.get("x_type", "Seed"), is_img2img=is_img2img),
-        _script_arg_str(args, "x_values"),
-        _script_arg_list(args, "x_values_dropdown"),
-        _source_xyz_axis_index(args.get("y_type", "Nothing"), is_img2img=is_img2img),
-        _script_arg_str(args, "y_values"),
-        _script_arg_list(args, "y_values_dropdown"),
-        _source_xyz_axis_index(args.get("z_type", "Nothing"), is_img2img=is_img2img),
-        _script_arg_str(args, "z_values"),
-        _script_arg_list(args, "z_values_dropdown"),
+        x_type,
+        x_values,
+        x_values_dropdown,
+        y_type,
+        y_values,
+        y_values_dropdown,
+        z_type,
+        z_values,
+        z_values_dropdown,
         _script_arg_bool(args, "draw_legend", True),
         _script_arg_bool(args, "include_lone_images", False, "include_sub_images"),
         _script_arg_bool(args, "include_sub_grids", False),

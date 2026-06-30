@@ -2480,7 +2480,7 @@ def _source_script_api_defaults(script: object) -> list[Any]:
     if title == "prompts from file or textbox":
         return [False, False, "start", ""]
     if title == "x/y/z plot":
-        return [1, "", [], 0, "", [], 0, "", [], True, False, False, False, False, False, False, 0, 0, False]
+        return [0, "", [], 0, "", [], 0, "", [], True, False, False, False, False, False, False, 0, 0, False]
     if title == "loopback":
         return [2, 0.5, "Linear"]
     if title == "sd upscale":

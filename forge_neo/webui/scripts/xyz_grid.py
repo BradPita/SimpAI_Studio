@@ -339,6 +339,10 @@ if cmd_opts.adv_samplers:
     )
 
 
+def axis_options_for_mode(is_img2img: bool):
+    return [x for x in axis_options if type(x) == AxisOption or x.is_img2img == is_img2img]
+
+
 # region Main
 
 
@@ -476,8 +480,18 @@ class Script(scripts.Script):
     def title(self):
         return "X/Y/Z plot"
 
+    def _axis_options(self, is_img2img: bool):
+        is_img2img = bool(is_img2img)
+        if getattr(self, "_current_axis_options_is_img2img", None) != is_img2img or not hasattr(self, "current_axis_options"):
+            self.current_axis_options = axis_options_for_mode(is_img2img)
+            self._current_axis_options_is_img2img = is_img2img
+        return self.current_axis_options
+
+    def _axis_options_for_processing(self, p: StableDiffusionProcessing):
+        return self._axis_options(not isinstance(p, StableDiffusionProcessingTxt2Img))
+
     def ui(self, is_img2img):
-        self.current_axis_options = [x for x in axis_options if type(x) == AxisOption or x.is_img2img == is_img2img]
+        self.current_axis_options = self._axis_options(is_img2img)
 
         with gr.Group(elem_classes=["xyz_entries"]):
             with gr.Row():
@@ -594,7 +608,21 @@ class Script(scripts.Script):
         return [x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, row_count, margin_size, csv_mode]
 
     def run(self, p, x_type, x_values, x_values_dropdown, y_type, y_values, y_values_dropdown, z_type, z_values, z_values_dropdown, draw_legend, include_lone_images, include_sub_grids, no_fixed_seeds, vary_seeds_x, vary_seeds_y, vary_seeds_z, row_count, margin_size, csv_mode):
+        self._axis_options_for_processing(p)
         x_type, y_type, z_type = x_type or 0, y_type or 0, z_type or 0  # if axle type is None set to 0
+
+        def reset_empty_axis(axis_type, axis_values, axis_values_dropdown):
+            if axis_type == 0:
+                return 0
+            if str(axis_values or "").strip():
+                return axis_type
+            if any(str(item or "").strip() for item in list(axis_values_dropdown or [])):
+                return axis_type
+            return 0
+
+        x_type = reset_empty_axis(x_type, x_values, x_values_dropdown)
+        y_type = reset_empty_axis(y_type, y_values, y_values_dropdown)
+        z_type = reset_empty_axis(z_type, z_values, z_values_dropdown)
 
         if not no_fixed_seeds:
             modules.processing.fix_seed(p)

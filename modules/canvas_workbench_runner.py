@@ -251,6 +251,12 @@ def _scene_param(params, defaults, key, fallback=None):
     return fallback
 
 
+def _combined_scene_additional_prompt(params, defaults):
+    first = _scene_param(params, defaults, "scene_additional_prompt", "")
+    second = _scene_param(params, defaults, "scene_additional_prompt_2", "")
+    return f"{first or ''}{second or ''}"
+
+
 def _enabled_loras(model_values):
     raw = model_values.get("loras") if isinstance(model_values, dict) else []
     if not isinstance(raw, list):
@@ -1640,7 +1646,7 @@ def build_canvas_task_args_preview(payload, materialized_inputs, state_params):
         "scene_image_number": scene_image_number,
         "scene_steps": scene_steps,
         "image_seed": image_seed,
-        "scene_additional_prompt": _scene_param(params, scene_defaults, "scene_additional_prompt", ""),
+        "scene_additional_prompt": _combined_scene_additional_prompt(params, scene_defaults),
         "scene_additional_prompt_2": _scene_param(params, scene_defaults, "scene_additional_prompt_2", ""),
         "clip_model": models.get("clip_model") or models.get("clip") or "",
         "scene_base_model": models.get("base_model") or "",

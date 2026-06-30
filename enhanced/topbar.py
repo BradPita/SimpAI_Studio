@@ -166,6 +166,8 @@ def is_preset_file_allowed(p):
         return False
     p2 = str(p).replace('\\', '/').strip('/')
     parts = [x for x in p2.split('/') if x]
+    if parts and parts[-1].lower() == 'liveportrait video exp.json':
+        return False
     if 'deprecated' in parts:
         return False
     if 'characters' in parts:

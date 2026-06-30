@@ -121,6 +121,15 @@ def retargeting(delta_out, driving_exp, factor, idxes):
         #delta_out[0, idx] -= src_exp[0, idx] * factor
         delta_out[0, idx] += driving_exp[0, idx] * factor
 
+def pingpong_index(index, length):
+    if length <= 1:
+        return 0
+    span = length * 2 - 2
+    pos = index % span
+    if pos >= length:
+        return span - pos
+    return pos
+
 class PreparedSrcImg:
     def __init__(self, src_rgb, crop_trans_m, x_s_info, f_s_user, x_s_user, mask_ori):
         self.src_rgb = src_rgb
@@ -435,13 +444,37 @@ class LP_Engine:
 
         return psi_list
 
-    def prepare_driving_video(self, face_images):
+    def prepare_driving_video(self, face_images, crop_factor=0, face_bbox=""):
         print("Prepare driving video...")
         pipeline = self.get_pipeline()
         f_img_np = (face_images * 255).byte().numpy()
+        crop_factor = float(crop_factor or 0)
+        face_bbox = str(face_bbox or "").strip()
+        stable_crop = crop_factor > 0 or bool(face_bbox)
+        smoothed_crop_region = None
+        bbox_alpha = 0.35
 
         out_list = []
         for f_img in f_img_np:
+            if stable_crop:
+                crop_factor = crop_factor if crop_factor > 0 else crop_factor_default
+                detected_region = self.detect_face(
+                    f_img,
+                    crop_factor,
+                    face_bbox=face_bbox if smoothed_crop_region is None else None,
+                )
+                if smoothed_crop_region is None:
+                    smoothed_crop_region = [float(v) for v in detected_region]
+                elif detected_region != [0, 0, get_rgb_size(f_img)[0], get_rgb_size(f_img)[1]]:
+                    smoothed_crop_region = [
+                        old * (1.0 - bbox_alpha) + float(new) * bbox_alpha
+                        for old, new in zip(smoothed_crop_region, detected_region)
+                    ]
+                crop_region = [int(round(v)) for v in smoothed_crop_region]
+                face_region, is_changed = self.calc_face_region(crop_region, get_rgb_size(f_img))
+                f_img = rgb_crop(f_img, face_region)
+                if is_changed:
+                    f_img = self.expand_img(f_img, crop_region)
             i_d = self.prepare_src_image(f_img)
             d_info = pipeline.get_kp_info(i_d)
             out_list.append(d_info)
@@ -698,6 +731,8 @@ class AdvancedLivePortrait:
     def __init__(self):
         self.src_images = None
         self.driving_images = None
+        self.driving_crop_factor = None
+        self.driving_face_bbox = None
         self.pbar = comfy.utils.ProgressBar(1)
         self.crop_factor = None
 
@@ -718,7 +753,13 @@ class AdvancedLivePortrait:
             "optional": {
                 "src_images": ("IMAGE",),
                 "motion_link": ("EDITOR_LINK",),
+                "add_exp": ("EXP_DATA",),
                 "driving_images": ("IMAGE",),
+                "driving_rotation_strength": ("INT", {"default": 1, "min": 0, "max": 1, "step": 1}),
+                "driving_translation_strength": ("INT", {"default": 1, "min": 0, "max": 1, "step": 1}),
+                "driving_expression_smooth": ("INT", {"default": 0, "min": 0, "max": 10, "step": 1}),
+                "driving_crop_factor": ("FLOAT", {"default": 0, "min": 0, "max": crop_factor_max, "step": 0.1}),
+                "driving_face_bbox": ("STRING", {"default": "", "multiline": False}),
             },
         }
 
@@ -767,9 +808,16 @@ class AdvancedLivePortrait:
 
 
     def run(self, retargeting_eyes, retargeting_mouth, turn_on, tracking_src_vid, animate_without_vid, command, crop_factor,
-            src_images=None, driving_images=None, motion_link=None):
+            src_images=None, driving_images=None, motion_link=None, add_exp=None, driving_rotation_strength=1, driving_translation_strength=1,
+            driving_expression_smooth=0, driving_crop_factor=0, driving_face_bbox=""):
         if turn_on == False: return (None,None)
         src_length = 1
+        driving_rotation_strength = max(0.0, min(1.0, float(driving_rotation_strength)))
+        driving_translation_strength = max(0.0, min(1.0, float(driving_translation_strength)))
+        driving_expression_smooth = max(0, min(10, int(driving_expression_smooth or 0)))
+        driving_expression_alpha = 1.0 if driving_expression_smooth == 0 else max(0.1, 1.0 - driving_expression_smooth / 10.0)
+        driving_crop_factor = max(0.0, min(crop_factor_max, float(driving_crop_factor or 0)))
+        driving_face_bbox = str(driving_face_bbox or "").strip()
 
         if src_images == None:
             if motion_link != None:
@@ -793,12 +841,22 @@ class AdvancedLivePortrait:
 
         driving_length = 0
         if driving_images is not None:
-            if id(driving_images) != id(self.driving_images):
+            if (
+                id(driving_images) != id(self.driving_images)
+                or self.driving_crop_factor != driving_crop_factor
+                or self.driving_face_bbox != driving_face_bbox
+            ):
                 self.driving_images = driving_images
-                self.driving_values = g_engine.prepare_driving_video(driving_images)
+                self.driving_crop_factor = driving_crop_factor
+                self.driving_face_bbox = driving_face_bbox
+                self.driving_values = g_engine.prepare_driving_video(
+                    driving_images,
+                    crop_factor=driving_crop_factor,
+                    face_bbox=driving_face_bbox,
+                )
             driving_length = len(self.driving_values)
 
-        total_length = max(driving_length, src_length)
+        total_length = src_length if src_images is not None else max(driving_length, src_length)
 
         if animate_without_vid:
             total_length = max(total_length, cmd_length)
@@ -806,6 +864,7 @@ class AdvancedLivePortrait:
         c_i_es = ExpressionSet()
         c_o_es = ExpressionSet()
         d_0_es = None
+        smoothed_exp_delta = None
         out_list = []
 
         psi = None
@@ -839,8 +898,11 @@ class AdvancedLivePortrait:
             elif 0 < cmd_length:
                 new_es.add(c_i_es)
 
-            if i < driving_length:
-                d_i_info = self.driving_values[i]
+            if add_exp != None:
+                new_es.add(add_exp)
+
+            if driving_length > 0:
+                d_i_info = self.driving_values[pingpong_index(i, driving_length)]
                 d_i_r = torch.Tensor([d_i_info['pitch'], d_i_info['yaw'], d_i_info['roll']])#.float().to(device="cuda:0")
 
                 if d_0_es is None:
@@ -849,9 +911,16 @@ class AdvancedLivePortrait:
                     retargeting(s_es.e, d_0_es.e, retargeting_eyes, (11, 13, 15, 16))
                     retargeting(s_es.e, d_0_es.e, retargeting_mouth, (14, 17, 19, 20))
 
-                new_es.e += d_i_info['exp'] - d_0_es.e
-                new_es.r += d_i_r - d_0_es.r
-                new_es.t += d_i_info['t'] - d_0_es.t
+                exp_delta = d_i_info['exp'] - d_0_es.e
+                if smoothed_exp_delta is None:
+                    smoothed_exp_delta = exp_delta.clone()
+                elif driving_expression_smooth > 0:
+                    smoothed_exp_delta = smoothed_exp_delta * (1.0 - driving_expression_alpha) + exp_delta * driving_expression_alpha
+                    exp_delta = smoothed_exp_delta
+
+                new_es.e += exp_delta
+                new_es.r += (d_i_r - d_0_es.r) * driving_rotation_strength
+                new_es.t += (d_i_info['t'] - d_0_es.t) * driving_translation_strength
 
             r_new = get_rotation_matrix(
                 s_info['pitch'] + new_es.r[0], s_info['yaw'] + new_es.r[1], s_info['roll'] + new_es.r[2])
@@ -877,6 +946,8 @@ class ExpressionEditor:
     def __init__(self):
         self.sample_image = None
         self.src_image = None
+        self.src_psi_list = None
+        self.src_is_video = False
         self.crop_factor = None
         self.src_face_bbox = None
         self.sample_face_bbox = None
@@ -936,28 +1007,36 @@ class ExpressionEditor:
         sample_face_bbox = str(sample_face_bbox or "").strip()
 
         new_editor_link = None
+        psi_list = None
         if motion_link != None:
             self.psi = motion_link[0]
+            psi_list = [self.psi]
             new_editor_link = motion_link.copy()
         elif src_image != None:
-            if id(src_image) != id(self.src_image) or self.crop_factor != crop_factor or self.src_face_bbox != src_face_bbox:
+            src_is_video = len(src_image) > 1
+            if (
+                id(src_image) != id(self.src_image)
+                or self.crop_factor != crop_factor
+                or self.src_face_bbox != src_face_bbox
+                or self.src_is_video != src_is_video
+            ):
                 self.crop_factor = crop_factor
                 self.src_face_bbox = src_face_bbox
-                self.psi = g_engine.prepare_source(src_image, crop_factor, face_bbox=src_face_bbox)
+                self.src_is_video = src_is_video
+                if src_is_video:
+                    self.src_psi_list = g_engine.prepare_source(src_image, crop_factor, True, True, face_bbox=src_face_bbox)
+                    self.psi = self.src_psi_list[0] if self.src_psi_list else None
+                else:
+                    self.psi = g_engine.prepare_source(src_image, crop_factor, face_bbox=src_face_bbox)
+                    self.src_psi_list = [self.psi]
                 self.src_image = src_image
+            psi_list = self.src_psi_list or ([self.psi] if self.psi is not None else [])
             new_editor_link = []
             new_editor_link.append(self.psi)
         else:
             return (None,None)
 
         pipeline = g_engine.get_pipeline()
-
-        psi = self.psi
-        s_info = psi.x_s_info
-        #delta_new = copy.deepcopy()
-        s_exp = s_info['exp'] * src_ratio
-        s_exp[0, 5] = s_info['exp'][0, 5]
-        s_exp += s_info['kp']
 
         es = ExpressionSet()
 
@@ -990,23 +1069,40 @@ class ExpressionEditor:
         if add_exp != None:
             es.add(add_exp)
 
-        new_rotate = get_rotation_matrix(s_info['pitch'] + es.r[0], s_info['yaw'] + es.r[1],
-                                         s_info['roll'] + es.r[2])
-        x_d_new = (s_info['scale'] * (1 + es.s)) * ((s_exp + es.e) @ new_rotate) + s_info['t']
+        out_list = []
+        preview_crop = None
+        for psi in psi_list:
+            if psi is None:
+                continue
+            s_info = psi.x_s_info
+            s_exp = s_info['exp'] * src_ratio
+            s_exp[0, 5] = s_info['exp'][0, 5]
+            s_exp += s_info['kp']
 
-        x_d_new = pipeline.stitching(psi.x_s_user, x_d_new)
+            frame_es = ExpressionSet(es=es)
+            new_rotate = get_rotation_matrix(s_info['pitch'] + frame_es.r[0], s_info['yaw'] + frame_es.r[1],
+                                             s_info['roll'] + frame_es.r[2])
+            x_d_new = (s_info['scale'] * (1 + frame_es.s)) * ((s_exp + frame_es.e) @ new_rotate) + s_info['t']
 
-        crop_out = pipeline.warp_decode(psi.f_s_user, psi.x_s_user, x_d_new)
-        crop_out = pipeline.parse_output(crop_out['out'])[0]
+            x_d_new = pipeline.stitching(psi.x_s_user, x_d_new)
 
-        crop_with_fullsize = cv2.warpAffine(crop_out, psi.crop_trans_m, get_rgb_size(psi.src_rgb), cv2.INTER_LINEAR)
-        out = np.clip(psi.mask_ori * crop_with_fullsize + (1 - psi.mask_ori) * psi.src_rgb, 0, 255).astype(np.uint8)
+            crop_out = pipeline.warp_decode(psi.f_s_user, psi.x_s_user, x_d_new)
+            crop_out = pipeline.parse_output(crop_out['out'])[0]
 
-        out_img = pil2tensor(out)
+            crop_with_fullsize = cv2.warpAffine(crop_out, psi.crop_trans_m, get_rgb_size(psi.src_rgb), cv2.INTER_LINEAR)
+            out = np.clip(psi.mask_ori * crop_with_fullsize + (1 - psi.mask_ori) * psi.src_rgb, 0, 255).astype(np.uint8)
+            out_list.append(out)
+            if preview_crop is None:
+                preview_crop = crop_out
+
+        if len(out_list) == 0:
+            return (None,None)
+
+        out_img = torch.cat([pil2tensor(img_rgb) for img_rgb in out_list])
 
         filename = g_engine.get_temp_img_name() #"fe_edit_preview.png"
         folder_paths.get_save_image_path(filename, folder_paths.get_temp_directory())
-        img = Image.fromarray(crop_out)
+        img = Image.fromarray(preview_crop if preview_crop is not None else out_list[0])
         img.save(os.path.join(folder_paths.get_temp_directory(), filename), compress_level=1)
         results = list()
         results.append({"filename": filename, "type": "temp"})

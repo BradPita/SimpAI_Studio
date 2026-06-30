@@ -5249,6 +5249,7 @@ function syncSceneUploadImageLabels(isScene, hidden) {
 
 const GAUSSIAN_STUDIO_SCENE_STATUS_TEXT = "Input Image 1 reference -> Gaussian Studio -> Canvas output";
 const LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT = "Source Image 1 -> Reference Image 2 -> Expression output";
+const LIVEPORTRAIT_EXPRESSION_VIDEO_SCENE_STATUS_TEXT = "Source video first frame -> expression params -> video output";
 
 let gaussianStudioSceneInputGuardBound = false;
 
@@ -5342,6 +5343,13 @@ function setLivePortraitExpressionSceneImageMode(active, langSource) {
     const reference = (app && app.getElementById ? app.getElementById("scene_input_image2") : null) || document.getElementById("scene_input_image2");
     const host = (app && app.getElementById ? app.getElementById("liveportrait_expression_scene_control") : null) || document.getElementById("liveportrait_expression_scene_control");
     const status = host && host.querySelector ? host.querySelector("[data-liveportrait-expression-scene-status]") : null;
+    const sceneFrontend = langSource && typeof langSource === "object" ? langSource.scene_frontend : null;
+    const sourceMode = host && host.dataset ? host.dataset.liveportraitExpressionSource : "";
+    const isVideoExpression = sourceMode === "scene_video_first_frame"
+        || sceneFrontendSam3Values(sceneFrontend).some((value) => value.includes("liveportrait_video_expression"));
+    const statusText = isVideoExpression
+        ? LIVEPORTRAIT_EXPRESSION_VIDEO_SCENE_STATUS_TEXT
+        : LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT;
     if (row) {
         row.classList.toggle("sai-liveportrait-expression-image-flow", !!active);
         row.dataset.saiLiveportraitExpressionActive = active ? "1" : "0";
@@ -5359,7 +5367,7 @@ function setLivePortraitExpressionSceneImageMode(active, langSource) {
             const current = String(status.textContent || "").trim();
             if (status.dataset.saiLiveportraitDefaultStatus === "1" || !current) {
                 status.dataset.saiLiveportraitDefaultStatus = "1";
-                status.textContent = topbarTranslateText(LIVEPORTRAIT_EXPRESSION_SCENE_STATUS_TEXT);
+                status.textContent = topbarTranslateText(statusText);
                 status.classList.remove("is-error");
             }
         }

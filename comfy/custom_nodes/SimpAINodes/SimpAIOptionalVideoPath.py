@@ -62,51 +62,7 @@ class SimpAIOptionalVideoPath:
     CATEGORY = "SimpAI/video"
 
     def load_video(self, video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1):
-        path = _resolve_video_path(video)
-        if not path:
-            return (None, 0)
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"Optional reference video file not found: {video}")
-
-        frame_load_cap = max(0, int(frame_load_cap or 0))
-        skip_first_frames = max(0, int(skip_first_frames or 0))
-        select_every_nth = max(1, int(select_every_nth or 1))
-        force_rate = max(0.0, float(force_rate or 0))
-
-        capture = cv2.VideoCapture(path)
-        if not capture.isOpened():
-            raise ValueError(f"Optional reference video could not be opened: {path}")
-
-        source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
-        target_interval = (1.0 / force_rate) if force_rate > 0 and source_fps > 0 else None
-        next_target_time = 0.0
-        frames = []
-        frame_index = -1
-        try:
-            while True:
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                frame_index += 1
-                if frame_index < skip_first_frames:
-                    continue
-                if (frame_index - skip_first_frames) % select_every_nth != 0:
-                    continue
-                if target_interval is not None:
-                    current_time = frame_index / source_fps
-                    if current_time + 1e-6 < next_target_time:
-                        continue
-                    next_target_time += target_interval
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frames.append(frame.astype(np.float32) / 255.0)
-                if frame_load_cap > 0 and len(frames) >= frame_load_cap:
-                    break
-        finally:
-            capture.release()
-
-        if not frames:
-            raise RuntimeError(f"Optional reference video produced no frames: {path}")
-        return (torch.from_numpy(np.stack(frames, axis=0)), len(frames))
+        return _load_video_frames(video, force_rate, frame_load_cap, skip_first_frames, select_every_nth, "Optional reference video")
 
     @classmethod
     def IS_CHANGED(cls, video, **kwargs):
@@ -117,16 +73,102 @@ class SimpAIOptionalVideoPath:
         text = _clean_video_value(video)
         if not text:
             return True
-        path = _resolve_video_path(text)
+        path = _resolve_video_path(video)
         if not os.path.isfile(path):
             return f"Invalid optional reference video file: {video}"
         return True
 
 
+class SimpAIOptionalReferenceVideoPath:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "reference_video": ("STRING", {"default": "", "multiline": False, "vhs_path_extensions": list(VIDEO_EXTENSIONS)}),
+                "force_rate": ("FLOAT", {"default": 0, "min": 0, "max": 60, "step": 1}),
+                "frame_load_cap": ("INT", {"default": 0, "min": 0, "max": 999999, "step": 1}),
+                "skip_first_frames": ("INT", {"default": 0, "min": 0, "max": 999999, "step": 1}),
+                "select_every_nth": ("INT", {"default": 1, "min": 1, "max": 999999, "step": 1}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT")
+    RETURN_NAMES = ("IMAGE", "frame_count")
+    FUNCTION = "load_video"
+    CATEGORY = "SimpAI/video"
+
+    def load_video(self, reference_video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1):
+        return _load_video_frames(reference_video, force_rate, frame_load_cap, skip_first_frames, select_every_nth, "Optional reference video")
+
+    @classmethod
+    def IS_CHANGED(cls, reference_video, **kwargs):
+        return _file_hash(_resolve_video_path(reference_video))
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, reference_video, **kwargs):
+        text = _clean_video_value(reference_video)
+        if not text:
+            return True
+        path = _resolve_video_path(text)
+        if not os.path.isfile(path):
+            return f"Invalid optional reference video file: {reference_video}"
+        return True
+
+
+def _load_video_frames(video, force_rate=0, frame_load_cap=0, skip_first_frames=0, select_every_nth=1, label="Optional video"):
+    path = _resolve_video_path(video)
+    if not path:
+        return (None, 0)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"{label} file not found: {video}")
+
+    frame_load_cap = max(0, int(frame_load_cap or 0))
+    skip_first_frames = max(0, int(skip_first_frames or 0))
+    select_every_nth = max(1, int(select_every_nth or 1))
+    force_rate = max(0.0, float(force_rate or 0))
+
+    capture = cv2.VideoCapture(path)
+    if not capture.isOpened():
+        raise ValueError(f"{label} could not be opened: {path}")
+
+    source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0)
+    target_interval = (1.0 / force_rate) if force_rate > 0 and source_fps > 0 else None
+    next_target_time = 0.0
+    frames = []
+    frame_index = -1
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            frame_index += 1
+            if frame_index < skip_first_frames:
+                continue
+            if (frame_index - skip_first_frames) % select_every_nth != 0:
+                continue
+            if target_interval is not None:
+                current_time = frame_index / source_fps
+                if current_time + 1e-6 < next_target_time:
+                    continue
+                next_target_time += target_interval
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame.astype(np.float32) / 255.0)
+            if frame_load_cap > 0 and len(frames) >= frame_load_cap:
+                break
+    finally:
+        capture.release()
+
+    if not frames:
+        raise RuntimeError(f"{label} produced no frames: {path}")
+    return (torch.from_numpy(np.stack(frames, axis=0)), len(frames))
+
+
 NODE_CLASS_MAPPINGS = {
     "SimpAIOptionalVideoPath": SimpAIOptionalVideoPath,
+    "SimpAIOptionalReferenceVideoPath": SimpAIOptionalReferenceVideoPath,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SimpAIOptionalVideoPath": "SimpAI Optional Video Path",
+    "SimpAIOptionalReferenceVideoPath": "SimpAI Optional Reference Video Path",
 }

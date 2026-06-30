@@ -330,6 +330,25 @@
         return params;
     }
 
+    function paramsDifferFromDefault(params) {
+        const source = params && typeof params === 'object' ? params : {};
+        for (const group of PARAM_GROUPS) {
+            for (const item of group.items) {
+                const key = item[0];
+                const defaultValue = item[3];
+                if (Math.abs(Number(source[key] ?? defaultValue) - Number(defaultValue)) > 0.000001) return true;
+            }
+        }
+        return String(source.sample_parts || DEFAULT_PARAMS.sample_parts) !== DEFAULT_PARAMS.sample_parts;
+    }
+
+    function shouldPreviewSavedStateOnOpen(options, params) {
+        const opts = options || {};
+        const raw = String(opts.expressionState || opts.state || readBridgeValue('scene_additional_prompt_2') || '').trim();
+        if (!raw && !(opts.params && typeof opts.params === 'object')) return false;
+        return paramsDifferFromDefault(params);
+    }
+
     function normalizeFaceBBox(value) {
         let data = value;
         if (typeof data === 'string') {
@@ -447,9 +466,71 @@
     }
 
     function activeExportLabel() {
-        return activeSession?.context === 'canvas'
-            ? t('Export To Canvas', '导出到画布')
-            : t('Export To Input 1', '导出到输入图 1');
+        if (canvasExportIsParamsOnly()) return t('Save Params', '保存参数');
+        if (activeSession?.context === 'canvas') return t('Export To Canvas', '导出到画布');
+        if (sceneExportIsParamsOnly()) return t('Save Params', '保存参数');
+        return t('Export To Input 1', '导出到输入图 1');
+    }
+
+    function sceneExpressionConfig() {
+        if (activeSession?.context !== 'scene_preset') {
+            return {
+                source: 'scene_input_image1',
+                reference: 'scene_input_image2',
+                exportTarget: 'scene_input_image1',
+                exportMode: 'image'
+            };
+        }
+        const host = findById('liveportrait_expression_scene_control');
+        const dataset = host?.dataset || {};
+        return {
+            source: dataset.liveportraitExpressionSource || 'scene_input_image1',
+            reference: dataset.liveportraitExpressionReference || 'scene_input_image2',
+            exportTarget: dataset.liveportraitExpressionExportTarget || 'scene_input_image1',
+            exportMode: dataset.liveportraitExpressionExportMode || 'image'
+        };
+    }
+
+    function sceneExportIsParamsOnly() {
+        return activeSession?.context === 'scene_preset' && sceneExpressionConfig().exportMode === 'params';
+    }
+
+    function canvasExportIsParamsOnly() {
+        return activeSession?.context === 'canvas' && activeSession?.exportMode === 'params';
+    }
+
+    function sceneSourceIsVideoFirstFrame() {
+        return activeSession?.context === 'scene_preset' && sceneExpressionConfig().source === 'scene_video_first_frame';
+    }
+
+    function sourceMissingMessage() {
+        if (canvasExportIsParamsOnly()) return t('Connect a source video, then open Preview.', '连接源视频后可打开预览。');
+        if (activeSession?.context === 'canvas') return t('Connect a source image, then open Preview.', '连接源图后可打开预览。');
+        if (sceneSourceIsVideoFirstFrame()) return t('Upload a source video first.', '请先上传源视频。');
+        return t('Upload the source face to Input Image 1.', '请把源人脸图上传到输入图 1。');
+    }
+
+    function sourceLoadedMessage() {
+        if (canvasExportIsParamsOnly()) return t('First frame loaded from source video. Preview will render the expression result.', '已加载源视频首帧。点击预览会生成表情结果。');
+        if (activeSession?.context === 'canvas') return t('Source image loaded. Preview will render the expression result.', '源图已加载。点击预览会生成表情结果。');
+        if (sceneSourceIsVideoFirstFrame()) return t('First frame loaded from source video. Preview will render the expression result.', '已加载源视频首帧。点击预览会生成表情结果。');
+        return t('Source image loaded from Input Image 1. Preview will render the expression result.', '已从输入图 1 加载源图。点击预览会生成表情结果。');
+    }
+
+    function previewReadyMessage() {
+        if (canvasExportIsParamsOnly()) return t('Preview ready. Save Params will keep these expression settings for Generate.', '预览已生成。保存参数会让 Generate 使用当前表情设置。');
+        if (activeSession?.context === 'canvas') return t('Preview ready. Export writes it to the canvas node.', '预览已生成，导出会写入画布节点。');
+        if (sceneExportIsParamsOnly()) return t('Preview ready. Save Params will keep these expression settings for Generate.', '预览已生成。保存参数会让 Generate 使用当前表情设置。');
+        if (sceneSourceIsVideoFirstFrame()) return t('Preview ready. Export writes it to Input Image 1 as the video reference image.', '预览已生成，导出会写入输入图 1 作为视频参考图。');
+        return t('Preview ready. Export writes it to Input Image 1.', '预览已生成，导出会写入输入图 1。');
+    }
+
+    function sceneInitialStatusMessage() {
+        if (canvasExportIsParamsOnly()) return t('Source video first frame previews expression params. Generate reads the current JSON settings.', '源视频首帧用于预览表情参数，Generate 会读取当前 JSON 设置。');
+        if (activeSession?.context === 'canvas') return t('Source image is edited here. Optional reference image can guide expression.', '在这里编辑源图表情，也可以连接参考表情图。');
+        if (sceneExportIsParamsOnly()) return t('Source video first frame previews expression params. Generate reads the current JSON settings.', '源视频首帧用于预览表情参数，Generate 会读取当前 JSON 设置。');
+        if (sceneSourceIsVideoFirstFrame()) return t('Source video first frame is edited here. Export writes the reference image to Input Image 1.', '这里编辑源视频首帧，导出会写入输入图 1 作为参考表情图。');
+        return t('Input Image 1 is source. Input Image 2 can provide reference expression.', '输入图 1 是源人脸，输入图 2 可作为参考表情。');
     }
 
     function markPreviewDirty() {
@@ -586,7 +667,8 @@
             faceSelection,
             sourceFaces: [],
             sourceFaceFingerprint: '',
-            expressionState: JSON.stringify(statePayload(params))
+            expressionState: JSON.stringify(statePayload(params)),
+            previewOnOpen: shouldPreviewSavedStateOnOpen(opts, params)
         }, opts, {
             params,
             faceSelection
@@ -603,7 +685,7 @@
   <div class="sai-lpe-body">
     <div>${renderControls(params)}</div>
     <aside class="sai-lpe-preview-pane">
-      <div class="sai-lpe-status" data-lpe-status>${escapeHtml(t('Input Image 1 is source. Input Image 2 can provide reference expression.', '输入图 1 是源人脸，输入图 2 可作为参考表情。'))}</div>
+      <div class="sai-lpe-status" data-lpe-status>${escapeHtml(sceneInitialStatusMessage())}</div>
       <div class="sai-lpe-image-frame">
         <div class="sai-lpe-image-stage" data-lpe-image-stage hidden><img data-lpe-preview-img alt="" hidden><div class="sai-lpe-face-layer" data-lpe-face-layer hidden></div></div>
         <span data-lpe-preview-empty>${escapeHtml(t('Preview appears here', '预览会显示在这里'))}</span>
@@ -900,6 +982,123 @@
         }
     }
 
+    function localFilePathToUrl(path) {
+        const value = String(path || '').trim();
+        if (!value) return '';
+        if (/^(data:image\/|blob:|https?:\/\/|\/file=)/i.test(value)) return value;
+        if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\') || value.startsWith('/')) {
+            return `/file=${encodeURIComponent(value)}`;
+        }
+        return value;
+    }
+
+    function imageDataUrlSize(dataUrl) {
+        return new Promise((resolve) => {
+            const src = String(dataUrl || '');
+            if (!src) {
+                resolve({ width: 0, height: 0 });
+                return;
+            }
+            const image = new Image();
+            image.onload = () => resolve({ width: image.naturalWidth || image.width || 0, height: image.naturalHeight || image.height || 0 });
+            image.onerror = () => resolve({ width: 0, height: 0 });
+            image.src = src;
+        });
+    }
+
+    async function readBackendSceneVideoFirstFrame() {
+        const id = 'scene_video_first_frame';
+        const framePath = readBridgeValue('scene_video_first_frame_path');
+        const dataUrl = await imageSrcToDataUrl(localFilePathToUrl(framePath));
+        if (!dataUrl) return { id, dataUrl: '', width: 0, height: 0 };
+        const size = await imageDataUrlSize(dataUrl);
+        return { id, dataUrl, width: size.width, height: size.height };
+    }
+
+    function waitForMediaEvent(target, eventName, timeoutMs) {
+        return new Promise((resolve) => {
+            if (!target?.addEventListener) {
+                resolve(false);
+                return;
+            }
+            let done = false;
+            let timer = null;
+            const finish = (value) => {
+                if (done) return;
+                done = true;
+                if (timer) window.clearTimeout(timer);
+                target.removeEventListener(eventName, onEvent);
+                target.removeEventListener('error', onError);
+                resolve(value);
+            };
+            const onEvent = () => finish(true);
+            const onError = () => finish(false);
+            target.addEventListener(eventName, onEvent, { once: true });
+            target.addEventListener('error', onError, { once: true });
+            timer = window.setTimeout(() => finish(false), timeoutMs || 1600);
+        });
+    }
+
+    async function ensureVideoFrameReady(video) {
+        if (!video) return false;
+        if (video.readyState >= 2 && video.videoWidth && video.videoHeight) return true;
+        try { video.load?.(); } catch (err) {}
+        await waitForMediaEvent(video, 'loadeddata', 2200);
+        return !!(video.readyState >= 2 && video.videoWidth && video.videoHeight);
+    }
+
+    async function seekVideoFrame(video, time) {
+        if (!video) return;
+        const duration = Number(video.duration || 0);
+        if (!Number.isFinite(duration) || duration <= 0) return;
+        const target = Math.max(0, Math.min(Number(time || 0), Math.max(0, duration - 0.001)));
+        if (Math.abs(Number(video.currentTime || 0) - target) < 0.04) return;
+        const seeked = waitForMediaEvent(video, 'seeked', 1400);
+        try {
+            video.currentTime = target;
+        } catch (err) {
+            return;
+        }
+        await seeked;
+    }
+
+    async function readSceneVideoFirstFrame() {
+        const id = 'scene_video_first_frame';
+        const backendFrame = await readBackendSceneVideoFirstFrame();
+        if (backendFrame?.dataUrl) return backendFrame;
+        const host = findById('scene_video');
+        const video = host?.querySelector?.('video');
+        if (!video) return { id, dataUrl: '', width: 0, height: 0 };
+        const previousTime = Number(video.currentTime || 0);
+        const wasPaused = !!video.paused;
+        try {
+            try { video.pause?.(); } catch (err) {}
+            const ready = await ensureVideoFrameReady(video);
+            if (!ready) return { id, dataUrl: '', width: 0, height: 0 };
+            await seekVideoFrame(video, 0);
+            const width = Number(video.videoWidth || 0);
+            const height = Number(video.videoHeight || 0);
+            if (!width || !height) return { id, dataUrl: '', width: 0, height: 0 };
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+            return { id, dataUrl: canvas.toDataURL('image/png'), width, height };
+        } catch (err) {
+            return { id, dataUrl: '', width: 0, height: 0 };
+        } finally {
+            if (previousTime > 0.04) {
+                try { await seekVideoFrame(video, previousTime); } catch (err) {}
+            }
+            if (!wasPaused) {
+                try {
+                    const playResult = video.play?.();
+                    if (playResult?.catch) playResult.catch(() => {});
+                } catch (err) {}
+            }
+        }
+    }
+
     function canvasHasContent(canvas) {
         if (!canvas || !canvas.width || !canvas.height) return false;
         try {
@@ -964,9 +1163,22 @@
     }
 
     async function readActiveSourceImage() {
-        return activeSession?.context === 'canvas'
-            ? await readOptionImage('canvas_source', 'sourceDataUrl', 'sourceSrc', 'sourceAsset', 'sourceSize')
-            : await readSceneImage('scene_input_image1');
+        if (activeSession?.context === 'canvas') {
+            return await readOptionImage('canvas_source', 'sourceDataUrl', 'sourceSrc', 'sourceAsset', 'sourceSize');
+        }
+        const source = sceneExpressionConfig().source || 'scene_input_image1';
+        return source === 'scene_video_first_frame'
+            ? await readSceneVideoFirstFrame()
+            : await readSceneImage(source);
+    }
+
+    async function readActiveReferenceImage() {
+        if (activeSession?.context === 'canvas') {
+            return await readOptionImage('canvas_reference', 'referenceDataUrl', 'referenceSrc', 'referenceAsset', 'referenceSize');
+        }
+        const reference = sceneExpressionConfig().reference || 'scene_input_image2';
+        if (reference === 'none') return { id: 'none', dataUrl: '', width: 0, height: 0 };
+        return await readSceneImage(reference);
     }
 
     async function loadInitialSourcePreview() {
@@ -976,17 +1188,13 @@
         if (requestId !== sourcePreviewRequestSeq || !activeModal) return null;
         if (!source?.dataUrl) {
             setPreviewImage('');
-            setStatus(activeSession?.context === 'canvas'
-                ? t('Connect a source image, then open Preview.', '连接源图后可打开预览。')
-                : t('Upload the source face to Input Image 1.', '请把源人脸图上传到输入图 1。'));
+            setStatus(sourceMissingMessage());
             return null;
         }
         if (!lastPreview?.image_data_url) {
             setPreviewImage(source.dataUrl);
             initialSourcePreviewLoaded = true;
-            setStatus(activeSession?.context === 'canvas'
-                ? t('Source image loaded. Preview will render the expression result.', '源图已加载。点击预览会生成表情结果。')
-                : t('Source image loaded from Input Image 1. Preview will render the expression result.', '已从输入图 1 加载源图。点击预览会生成表情结果。'));
+            setStatus(sourceLoadedMessage());
             await loadSourceFaces(source);
         }
         return source;
@@ -996,9 +1204,7 @@
         const params = readParams();
         const expressionPayload = writeActiveState(params);
         const source = await readActiveSourceImage();
-        const reference = activeSession?.context === 'canvas'
-            ? await readOptionImage('canvas_reference', 'referenceDataUrl', 'referenceSrc', 'referenceAsset', 'referenceSize')
-            : await readSceneImage('scene_input_image2');
+        const reference = await readActiveReferenceImage();
         await loadSourceFaces(source, { quiet: true });
         const sourceFaceBBox = faceBBoxText(activeSession?.faceSelection?.source_face_bbox);
         const referenceFaceBBox = faceBBoxText(activeSession?.faceSelection?.reference_face_bbox);
@@ -1051,7 +1257,7 @@
             setBusy(true, opts.auto ? t('Please wait, updating preview...', '请等待，正在更新预览...') : t('Rendering preview...', '正在生成预览...'));
             const payload = await buildPreviewPayload();
             if (!payload.source_image) {
-                setStatus(t('Upload the source face to Input Image 1.', '请把源人脸图上传到输入图 1。'), !opts.auto);
+                setStatus(sourceMissingMessage(), !opts.auto);
                 return null;
             }
             const data = await postJson('/liveportrait-expression/preview', payload);
@@ -1064,9 +1270,7 @@
             lastPreview = Object.assign({}, data, { params: payload.params, reference_size: payload.reference_size });
             initialSourcePreviewLoaded = false;
             setPreviewImage(data.image_data_url || data.expression_image?.data_url || '');
-            setStatus(activeSession?.context === 'canvas'
-                ? t('Preview ready. Export writes it to the canvas node.', '预览已生成，导出会写入画布节点。')
-                : t('Preview ready. Export writes it to Input Image 1.', '预览已生成，导出会写入输入图 1。'));
+            setStatus(previewReadyMessage());
             return lastPreview;
         } finally {
             if (previewRunningRequestId === requestId) {
@@ -1082,6 +1286,12 @@
     }
 
     async function exportToScene() {
+        if (sceneExportIsParamsOnly()) {
+            writeActiveState(readParams());
+            setStatus(t('Parameters saved. Generate uses the current expression JSON.', '参数已保存。Generate 会使用当前表情 JSON。'));
+            closeActiveModal();
+            return;
+        }
         let result = lastPreview;
         if (!result?.image_data_url) {
             result = await preview({ manual: true });
@@ -1096,13 +1306,33 @@
             reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
             reference_size: result.reference_size || {}
         };
-        setBridgeValue('liveportrait_expression_scene_target', 'scene_input_image1');
+        const target = sceneExpressionConfig().exportTarget || 'scene_input_image1';
+        setBridgeValue('liveportrait_expression_scene_target', target);
         setBridgeValue('liveportrait_expression_scene_payload', JSON.stringify(payload));
         clickBridgeButton('liveportrait_expression_scene_apply_btn');
-        setStatus(t('Exported to Input Image 1. Generate uses the current JSON state.', '已导出到输入图 1。Generate 会使用当前 JSON 状态。'));
+        setStatus(sceneSourceIsVideoFirstFrame()
+            ? t('Exported to Input Image 1 as the video reference image.', '已导出到输入图 1，作为视频参考表情图。')
+            : t('Exported to Input Image 1. Generate uses the current JSON state.', '已导出到输入图 1。Generate 会使用当前 JSON 状态。'));
+        closeActiveModal();
     }
 
     async function exportToCanvas() {
+        if (canvasExportIsParamsOnly()) {
+            const params = readParams();
+            const payload = writeActiveState(params);
+            const response = {
+                ok: true,
+                params,
+                expression_state: JSON.stringify(payload),
+                source_face_bbox: faceBBoxText(activeSession?.faceSelection?.source_face_bbox),
+                reference_face_bbox: faceBBoxText(activeSession?.faceSelection?.reference_face_bbox),
+                exported_at: payload.updated_at
+            };
+            if (typeof activeSession?.onConfirm === 'function') activeSession.onConfirm(response);
+            setStatus(t('Parameters saved. Generate uses the current expression JSON.', '参数已保存。Generate 会使用当前表情 JSON。'));
+            closeActiveModal();
+            return;
+        }
         let result = lastPreview;
         if (!result?.image_data_url) {
             result = await preview({ manual: true });
@@ -1141,6 +1371,7 @@
             });
             if (typeof activeSession?.onConfirm === 'function') activeSession.onConfirm(response);
             setStatus(t('Exported to canvas node.', '已导出到画布节点。'));
+            closeActiveModal();
         } finally {
             setBusy(false);
         }
@@ -1280,13 +1511,23 @@
         return closeActiveModal();
     }
 
+    async function initializeOpenPreview() {
+        const session = activeSession;
+        const source = await loadInitialSourcePreview();
+        if (!activeModal || activeSession !== session) return;
+        if (!source?.dataUrl) return;
+        if (session?.previewOnOpen && isAutoPreviewEnabled()) {
+            requestAutoPreview('open_saved_state');
+        }
+    }
+
     function open(options) {
         closeActiveModal();
         const opts = options || {};
         activeModal = createModal(opts);
         resolveModalMount(opts).appendChild(activeModal);
         bindModalScrollGuards();
-        loadInitialSourcePreview();
+        initializeOpenPreview();
         checkResources({ preserveReadyStatus: true });
         return true;
     }

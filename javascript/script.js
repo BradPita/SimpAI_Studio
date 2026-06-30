@@ -2789,6 +2789,14 @@ document.addEventListener("DOMContentLoaded", function() {
             try { window.SimpAIGaussianStudioEditor.closeScenePreset(); } catch (e) {}
         }
         const showLivePortraitExpression = (themeLower.includes('liveportrait') || taskMethodLower.includes('liveportrait') || taskMethodLower.includes('advancedliveportrait')) && !disvisible.has('liveportrait_expression');
+        const livePortraitExpressionControl = gradioApp().querySelector('#liveportrait_expression_scene_control');
+        if (livePortraitExpressionControl) {
+            const useVideoFirstFrame = taskMethodLower.includes('liveportrait_video_expression');
+            livePortraitExpressionControl.dataset.liveportraitExpressionSource = useVideoFirstFrame ? 'scene_video_first_frame' : 'scene_input_image1';
+            livePortraitExpressionControl.dataset.liveportraitExpressionReference = useVideoFirstFrame ? 'none' : 'scene_input_image2';
+            livePortraitExpressionControl.dataset.liveportraitExpressionExportTarget = 'scene_input_image1';
+            livePortraitExpressionControl.dataset.liveportraitExpressionExportMode = useVideoFirstFrame ? 'params' : 'image';
+        }
         setVisible('liveportrait_expression', showLivePortraitExpression);
         if (!showLivePortraitExpression && window.SimpAILivePortraitExpressionEditor?.closeScenePreset) {
             try { window.SimpAILivePortraitExpressionEditor.closeScenePreset(); } catch (e) {}

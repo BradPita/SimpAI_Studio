@@ -73,6 +73,7 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("sampler", "SceneInput:SceneInput:sampler")
         comfy_params.update_mapping_rule("scheduler", "SceneInput:SceneInput:scheduler")
         comfy_params.update_mapping_rule("video_duration", "SceneInput:SceneInput:video_duration")
+        comfy_params.update_mapping_rule("reference_video", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath:reference_video")
     if 'base_model_gguf' in default_params:
         comfy_params.delete_params(['base_model'])
     if 'base_model_gguf2' in default_params:

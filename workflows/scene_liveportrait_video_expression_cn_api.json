@@ -1,0 +1,273 @@
+{
+  "1": {
+    "inputs": {
+      "prompt": "",
+      "additional_prompt": "",
+      "ip_image": "None",
+      "ip_image1": "None",
+      "ip_image2": "None",
+      "ip_image3": "None",
+      "inpaint_image": "None",
+      "inpaint_mask": "None",
+      "width": 1024,
+      "height": 1024,
+      "cfg": 8,
+      "steps": 20,
+      "var_number": 0,
+      "var_number2": 0,
+      "var_number3": 24,
+      "var_number4": 1,
+      "var_number5": 1,
+      "var_number6": 1.7,
+      "var_number7": 0,
+      "var_number8": 0,
+      "var_number9": 0,
+      "var_number10": 0,
+      "switch_option1": false,
+      "switch_option2": false,
+      "switch_option3": false,
+      "switch_option4": false,
+      "model_type": 1,
+      "model_type2": 1,
+      "clip_type": 1,
+      "negative_prompt": "",
+      "sampler": "euler",
+      "scheduler": "simple",
+      "video_duration": 0
+    },
+    "class_type": "SceneInput",
+    "_meta": {
+      "title": "SceneInput"
+    }
+  },
+  "2": {
+    "inputs": {
+      "video": "example.mp4",
+      "force_rate": [
+        "1",
+        12
+      ],
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": [
+        "1",
+        16
+      ],
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "3": {
+    "inputs": {
+      "expression_state": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "LivePortraitExpressionParams",
+    "_meta": {
+      "title": "LivePortrait Expression Params"
+    }
+  },
+  "6": {
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "indexes": "0"
+    },
+    "class_type": "GetImagesFromBatchIndexed",
+    "_meta": {
+      "title": "Source First Frame"
+    }
+  },
+  "4": {
+    "inputs": {
+      "rotate_pitch": [
+        "3",
+        0
+      ],
+      "rotate_yaw": [
+        "3",
+        1
+      ],
+      "rotate_roll": [
+        "3",
+        2
+      ],
+      "blink": [
+        "3",
+        3
+      ],
+      "eyebrow": [
+        "3",
+        4
+      ],
+      "wink": [
+        "3",
+        5
+      ],
+      "pupil_x": [
+        "3",
+        6
+      ],
+      "pupil_y": [
+        "3",
+        7
+      ],
+      "aaa": [
+        "3",
+        8
+      ],
+      "eee": [
+        "3",
+        9
+      ],
+      "woo": [
+        "3",
+        10
+      ],
+      "smile": [
+        "3",
+        11
+      ],
+      "src_ratio": [
+        "3",
+        12
+      ],
+      "sample_ratio": [
+        "3",
+        13
+      ],
+      "sample_parts": [
+        "3",
+        14
+      ],
+      "crop_factor": [
+        "3",
+        15
+      ],
+      "src_face_bbox": [
+        "3",
+        16
+      ],
+      "src_image": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "ExpressionEditor",
+    "_meta": {
+      "title": "LivePortrait Video Expression From Params"
+    }
+  },
+  "7": {
+    "inputs": {
+      "retargeting_eyes": [
+        "1",
+        13
+      ],
+      "retargeting_mouth": [
+        "1",
+        14
+      ],
+      "crop_factor": [
+        "3",
+        15
+      ],
+      "turn_on": true,
+      "tracking_src_vid": true,
+      "animate_without_vid": false,
+      "command": "",
+      "src_images": [
+        "2",
+        0
+      ],
+      "add_exp": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "AdvancedLivePortrait",
+    "_meta": {
+      "title": "Advanced Live Portrait Video From Params"
+    }
+  },
+  "8": {
+    "inputs": {
+      "video_info": [
+        "2",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoLoaded",
+    "_meta": {
+      "title": "Video Info (Loaded) 🎥🅥🅗🅢"
+    }
+  },
+  "9": {
+    "inputs": {
+      "video_info": [
+        "2",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfoSource",
+    "_meta": {
+      "title": "Video Info (Source) 🎥🅥🅗🅢"
+    }
+  },
+  "10": {
+    "inputs": {
+      "source_fps": [
+        "8",
+        0
+      ],
+      "target_fps": [
+        "9",
+        0
+      ],
+      "scale": 2,
+      "model_name": "flownet.pkl",
+      "batch_size": 16,
+      "use_fp16": true,
+      "images": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "RIFEInterpolation",
+    "_meta": {
+      "title": "RIFE Frame Interpolation"
+    }
+  },
+  "5": {
+    "inputs": {
+      "format": "MP4",
+      "codec": "h264",
+      "fps": [
+        "9",
+        0
+      ],
+      "crf": 19,
+      "images": [
+        "10",
+        0
+      ],
+      "audio": [
+        "2",
+        2
+      ]
+    },
+    "class_type": "SaveVideoWebsocket",
+    "_meta": {
+      "title": "SaveVideoWebsocket"
+    }
+  }
+}
