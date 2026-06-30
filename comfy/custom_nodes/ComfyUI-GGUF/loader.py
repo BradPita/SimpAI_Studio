@@ -9,7 +9,7 @@ import os
 from .ops import GGMLTensor
 from .dequant import is_quantized, dequantize_tensor
 
-IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image"}
+IMG_ARCH_LIST = {"flux", "sd1", "sdxl", "sd3", "aura", "hidream", "cosmos", "ltxv", "hyvid", "wan", "lumina2", "qwen_image", "krea2"}
 TXT_ARCH_LIST = {"t5", "t5encoder", "llama", "qwen2vl", "qwen3", "qwen3vl", "gemma3"}
 VIS_TYPE_LIST = {"clip-vision", "mmproj"}
 
@@ -219,6 +219,29 @@ CLIP_VISION_SD_MAP = {
     "ln2.": "norm2.",
 }
 
+CLIP_VISION_QWEN3_MAP = {
+    "v.blk": "model.visual.blocks",
+    ".fc": ".linear_fc",
+    "ck.8.": "st.0.",
+    "ck.16.": "st.1.",
+    "ck.24.": "st.2.",
+    "ck.5.": "st.0.",
+    "ck.11.": "st.1.",
+    "ck.17.": "st.2.",
+    "attn_out": "attn.proj",
+    "ln1": "norm1",
+    "ln2": "norm2",
+    "attn_qkv": "attn.qkv",
+    "ffn_up": "mlp.linear_fc1",
+    "ffn_down": "mlp.linear_fc2",
+    "mm.0": "model.visual.merger.linear_fc1",
+    "mm.2": "model.visual.merger.linear_fc2",
+    "v.post_ln": "model.visual.merger.norm",
+    "v.patch_embd": "model.visual.patch_embed.proj",
+    "v.position_embd.weight": "visual.pos_embed.weight",
+    "v.deepstast.": "model.visual.deepstack_merger_list.",
+}
+
 def sd_map_replace(raw_sd, key_map):
     sd = {}
     for k,v in raw_sd.items():
@@ -304,6 +327,9 @@ def gguf_mmproj_loader(path):
         w1 = dequantize_tensor(vsd.pop("v.patch_embd.weight"), dtype=torch.float32)
         w2 = dequantize_tensor(vsd.pop("v.patch_embd.weight.1"), dtype=torch.float32)
         vsd["v.patch_embd.weight"] = torch.stack([w1, w2], dim=2)
+
+    if any("deepstack" in key for key in vsd):
+        return sd_map_replace(vsd, CLIP_VISION_QWEN3_MAP)
 
     # run main replacement
     vsd = sd_map_replace(vsd, CLIP_VISION_SD_MAP)
@@ -498,9 +524,21 @@ def gguf_clip_loader(path):
             sd = sd_map_replace(sd, LLAMA_SD_MAP)
         if arch == "llama":
             sd = llama_permute(sd, 32, 8) # L3 / Mistral
-        if arch == "qwen2vl":
+        if arch in {"qwen2vl", "qwen3vl"}:
             vsd = gguf_mmproj_loader(path)
-            sd.update(vsd)
+            if vsd:
+                sd.update(vsd)
+            elif arch == "qwen3vl" and "model.visual.deepstack_merger_list.0.norm.weight" not in sd:
+                ln_key = "model.layers.0.input_layernorm.weight"
+                lm_hidden = int(sd[ln_key].shape[0]) if ln_key in sd else 2560
+                vis_hidden = 1024 if lm_hidden == 2560 else 1152
+                merge_dim = vis_hidden * 4
+                sd["model.visual.deepstack_merger_list.0.norm.weight"] = torch.zeros(merge_dim)
+                sd["model.visual.merger.linear_fc2.weight"] = torch.zeros(lm_hidden, merge_dim)
+                logging.info(
+                    "qwen3vl GGUF: injected visual marker tensors "
+                    f"(lm_hidden={lm_hidden}, merge_dim={merge_dim}) for text encoder detection"
+                )
     else:
         pass
     return sd
