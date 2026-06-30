@@ -3204,20 +3204,19 @@ function initPresetPreviewOverlay() {
                 if (requestSeq !== presetPreviewRequestSeq || activePresetPreviewTarget !== label) return;
                 overlay.classList.remove('has-preview-image');
                 overlay.style.height = '54px';
-		const modelName = await fetchPresetDataFor(name);
+		const resourceInfo = await fetchPresetDataFor(name);
                 if (requestSeq !== presetPreviewRequestSeq || activePresetPreviewTarget !== label) return;
-		let text = modelName ? `模型资源 ${modelName}` : "模型资源缺失";
-                if (download) text += ' ' + '\u2B07' + "未就绪，需要下载";
-		else text += " 已准备好";
+		let text = presetResourceTooltipText(resourceInfo, download);
                 tooltip.textContent = text;
             };
 	    img.onload = async () => {
                 if (requestSeq !== presetPreviewRequestSeq || activePresetPreviewTarget !== label) return;
                 overlay.classList.add('has-preview-image');
                 overlay.style.height = '128px'; 
-		let text = await fetchPresetDataFor(name);
+		const resourceInfo = await fetchPresetDataFor(name);
                 if (requestSeq !== presetPreviewRequestSeq || activePresetPreviewTarget !== label) return;
-                if (download) text += ' ' + '\u2B07' + "need download";
+                let text = resourceInfo.modelName || resourceInfo.readyLabel || "";
+                if (download) text = presetResourceTooltipText(resourceInfo, true);
                 tooltip.textContent = text;
 		overlay.style.backgroundImage = `url("${samplesPath.replace(
                     "default",
@@ -3238,15 +3237,39 @@ function initPresetPreviewOverlay() {
     });
 }
 
+function presetResourceTooltipText(resourceInfo, needsDownload) {
+    const info = resourceInfo && typeof resourceInfo === "object" ? resourceInfo : {};
+    if (needsDownload) {
+        if (info.modelName) return `模型资源 ${info.modelName} \u2B07未就绪，需要下载`;
+        if (info.hasModelList) return `工具资源 \u2B07未就绪，需要下载`;
+        return `模型资源 \u2B07未就绪，需要下载`;
+    }
+    if (info.modelName) return `模型资源 ${info.modelName} 已准备好`;
+    if (info.hasModelList) return "工具资源已准备好";
+    return "资源状态未知";
+}
+
 async function fetchPresetDataFor(name) {
     let time_ver = "t="+Date.now()+"."+Math.floor(Math.random() * 10000);
     const response = await fetch(`${webpath}/presets/${name}.json?${time_ver}`);
     if (response.ok) {
 	const data = await response.json();
-        let pos = data.default_model.lastIndexOf('.');
-        return data.default_model.substring(0,pos);
+        const defaultModel = String(data.default_model || "").trim();
+        const lowerDefaultModel = defaultModel.toLowerCase();
+        const hasPrimaryModel = !!defaultModel && lowerDefaultModel !== "none" && lowerDefaultModel !== "default (model)";
+        const hasModelList = Array.isArray(data.model_list) && data.model_list.length > 0;
+        let modelName = "";
+        if (hasPrimaryModel) {
+            const pos = defaultModel.lastIndexOf('.');
+            modelName = pos > 0 ? defaultModel.substring(0, pos) : defaultModel;
+        }
+        return {
+            modelName,
+            hasModelList,
+            readyLabel: hasModelList && !modelName ? "工具资源已准备好" : "",
+        };
     } else {
-	return "";
+	return {};
     }
 }
 

@@ -227,6 +227,7 @@ PRESET_STORE_ORDER = [
     "LTX2.3(IA2V)",
     "LTX2.3(T2V)",
     "LTX2.3(TA2V)",
+    "LTX2.3(AudioGen)",
     "LTX-Outpaint",
     "Nvidia-VSR",
     "Hunyuan-Foley",

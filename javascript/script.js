@@ -3525,6 +3525,8 @@ function syncPositivePromptMetaState() {
     if (!promptInput) return;
 
     if (elementIsVisible(getGradioRootById('skip_button')) || elementIsVisible(getGradioRootById('stop_button'))) {
+        setGradioButtonInteractive('random_prompt_button', false);
+        setGradioButtonInteractive('super_prompter_button', false);
         return;
     }
 

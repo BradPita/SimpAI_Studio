@@ -632,7 +632,7 @@ def check_models_exists(preset, user_did=None):
             else:
                 file_path = _resolve_model_filepath(cata, path_file)
 
-                if file_path is None or file_path == '' or not os.path.exists(file_path) or size != os.path.getsize(file_path):
+                if file_path is None or file_path == '' or not _file_size_matches(file_path, size):
                     logger.debug(f'Missing model file in preset({preset}): {cata}, {path_file}')
                     return False
         return True

@@ -611,11 +611,23 @@ class LTXVChunkFeedForward(io.ComfyNode):
 import server
 from threading import Thread
 import torch.nn.functional as F
+import os
 import time
 import struct
 from PIL import Image
 from io import BytesIO
 serv = server.PromptServer.instance
+
+
+def _env_int(name, default):
+    try:
+        value = int(float(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
+    return max(1, value)
+
+
+LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK = _env_int("SIMPLEAI_LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK", 16)
 
 class WrappedPreviewer():
     def __init__(self, latent_rgb_factors, latent_rgb_factors_bias, rate=8, taeltx=None):
@@ -634,16 +646,17 @@ class WrappedPreviewer():
             x0 = x0.reshape((-1,)+x0.shape[-3:])
         num_images = x0.size(0)
         new_time = time.time()
-        num_previews = int((new_time - self.last_time) * self.rate)
-        self.last_time = self.last_time + num_previews/self.rate
-        if num_previews > num_images:
-            num_previews = num_images
-        elif num_previews <= 0:
-            return None
         if self.first_preview:
             self.first_preview = False
             serv.send_sync('VHS_latentpreview', {'length':num_images, 'rate': self.rate, 'id': serv.last_node_id})
-            self.last_time = new_time + 1/self.rate
+            self.last_time = new_time
+            num_previews = LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK
+        else:
+            num_previews = int((new_time - self.last_time) * self.rate)
+            if num_previews <= 0:
+                return None
+            self.last_time = new_time
+        num_previews = min(num_previews, num_images, LTX_PREVIEW_MAX_FRAMES_PER_CALLBACK)
         if self.c_index + num_previews > num_images:
             x0 = x0.roll(-self.c_index, 0)[:num_previews]
         else:

@@ -7862,11 +7862,21 @@ with shared.gradio_root:
                 .then(lambda x: None, inputs=state_topbar, queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(typeof syncSimpleAIImageToolsEnabledClass==="function") syncSimpleAIImageToolsEnabledClass(!(state&&state.__image_tools_enabled===false)); if(state&&state.__post_generation_compare_cleared&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("image_tools_checkbox"); if(typeof syncPostGenerationResultControls==="function") syncPostGenerationResultControls(state);}catch(e){console.warn("[UI-TRACE] image_tools_checkbox_sync_failed", e);}}')
             comfyd_active_checkbox.change(toggle_comfyd_checked, inputs=[comfyd_active_checkbox, state_topbar], queue=False, show_progress=False)
             
-            import enhanced.superprompter
+            def handle_super_prompter_click(input_text, prompt_prefix, translation_method, canvas_image, image1, image2, image3, image4, state, state_is_generating):
+                if check_generating_state(state_is_generating):
+                    logger.info('SuperPrompt ignored while generation is active.')
+                    return input_text if input_text is not None else ""
+                logger.info('Using VLM')
+                return vlm.extended_prompt(
+                    input_text,
+                    prompt_prefix,
+                    [extract_scene_image(canvas_image), extract_scene_image(image1), extract_scene_image(image2), extract_scene_image(image3), extract_scene_image(image4)],
+                    state,
+                    translation_method
+                )
+
             super_prompter.click(
-                lambda x, y, z, c, i, i2, i3, i4, s, state_is_generating:
-                    (logger.info('Using superprompter'), enhanced.superprompter.answer(input_text=enhanced.translator.convert(f'{y}{x}', z)))[1] if check_generating_state(state_is_generating) else
-                    (logger.info('Using VLM'), vlm.extended_prompt(x, y, [extract_scene_image(c), extract_scene_image(i), extract_scene_image(i2), extract_scene_image(i3), extract_scene_image(i4)], s, z))[1],
+                handle_super_prompter_click,
                 inputs=[prompt, super_prompter_prompt, translation_methods, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, state_topbar, state_is_generating],
                 outputs=prompt,
                 queue=False,
@@ -8305,6 +8315,8 @@ with shared.gradio_root:
             try {
                 setVisible("generate_button", false);
                 setInteractive("generate_button", false);
+                setInteractive("random_prompt_button", false);
+                setInteractive("super_prompter_button", false);
                 setVisible("stop_button", true);
                 setInteractive("stop_button", false);
                 setVisible("skip_button", true);
