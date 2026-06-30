@@ -611,6 +611,8 @@
         const version = cleanVlmVersion(raw);
         const customPanel = componentHost('describe_vlm_custom_panel');
         if (version === 'Custom' || isVisible(customPanel)) return 'Custom';
+        const customModel = String(readComponentValue('describe_vlm_custom_model') || '').trim();
+        if (customModel && version === customModel) return 'Custom';
         return version;
     }
 

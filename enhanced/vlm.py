@@ -283,7 +283,7 @@ def _extract_openai_compatible_text(response):
         return ""
     message = choices[0].get("message") if isinstance(choices[0], dict) else {}
     content = message.get("content") if isinstance(message, dict) else ""
-    if isinstance(content, str):
+    if isinstance(content, str) and content.strip():
         return content
     if isinstance(content, list):
         parts = []
@@ -294,7 +294,15 @@ def _extract_openai_compatible_text(response):
                 parts.append(str(item.get("text") or ""))
             elif isinstance(item.get("content"), str):
                 parts.append(item.get("content"))
-        return "\n".join([part for part in parts if part])
+        text = "\n".join([part for part in parts if part])
+        if text.strip():
+            return text
+    reasoning = message.get("reasoning_content") if isinstance(message, dict) else ""
+    if isinstance(reasoning, str) and reasoning.strip() and reasoning.strip() != "None":
+        return reasoning
+    reasoning = message.get("reasoning") if isinstance(message, dict) else ""
+    if isinstance(reasoning, str) and reasoning.strip() and reasoning.strip() != "None":
+        return reasoning
     return str(content or "")
 
 
@@ -788,6 +796,7 @@ class VLM:
             "top_p": float(top_p),
             "max_tokens": int(max_tokens),
             "stream": False,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         try:
             seed_value = int(seed)

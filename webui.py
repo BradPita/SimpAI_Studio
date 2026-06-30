@@ -361,7 +361,7 @@ def _main_vlm_save_admin_version(version, state, request=None):
 def _main_vlm_save_selected_version(version, state, persist_admin=False, request=None):
     version = _vlm_resolve_version(version)
     _main_vlm_write_local_settings({"version": version})
-    if persist_admin and version != VLM.CUSTOM_VERSION:
+    if persist_admin:
         _main_vlm_save_admin_version(version, state, request=request)
     return version
 
