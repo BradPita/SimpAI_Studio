@@ -175,9 +175,48 @@ def normalize_gradio_mask_value(value, image_shape=None, preserve_color=False):
         if preserve_color:
             return mask
         alpha = mask[:, :, 3]
-        mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
-        return np.repeat(mask[:, :, None], 3, axis=2)
+        if np.any(alpha < 255):
+            mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
+            return np.repeat(mask[:, :, None], 3, axis=2)
+        return mask[:, :, :3]
     return mask
+
+
+def normalize_inpaint_mask_upload(value):
+    def to_rgb_mask_array(mask):
+        if not isinstance(mask, np.ndarray):
+            return None
+        if mask.dtype != np.uint8:
+            mask = np.clip(mask, 0, 255).astype(np.uint8)
+        if mask.ndim == 2:
+            return np.repeat(mask[:, :, None], 3, axis=2)
+        if mask.ndim != 3:
+            return None
+        channels = mask.shape[2]
+        if channels == 1:
+            return np.repeat(mask, 3, axis=2)
+        if channels == 3:
+            return mask
+        if channels == 4:
+            alpha = mask[:, :, 3]
+            if np.any(alpha < 255):
+                binary = np.where(alpha > 0, 255, 0).astype(np.uint8)
+                return np.repeat(binary[:, :, None], 3, axis=2)
+            return mask[:, :, :3]
+        return None
+
+    if isinstance(value, dict):
+        image = to_rgb_mask_array(value.get("image"))
+        mask = to_rgb_mask_array(value.get("mask"))
+        if image is None:
+            return mask
+        if mask is None:
+            return image
+        if image.shape[:2] != mask.shape[:2]:
+            mask = resample_image(mask, width=image.shape[1], height=image.shape[0])
+        return np.maximum(image, mask)
+
+    return to_rgb_mask_array(value)
 
 
 def normalize_gradio_sketch_value(value, image_mode="RGBA", preserve_mask_color=False):

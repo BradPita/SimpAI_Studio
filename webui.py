@@ -3791,11 +3791,21 @@ with shared.gradio_root:
                                 scene_batch_stop = gr.Button(value="Batch Stop", size="sm", elem_classes=["simpleai-batch-stop-button"])
                         
                         def update_qwen_image(image):
+                            raw_image = image
+                            image = util.normalize_gradio_image_value(raw_image, image_mode="RGBA")
+                            if image is None:
+                                sketch_value = util.normalize_gradio_sketch_value(raw_image, image_mode="RGBA")
+                                if isinstance(sketch_value, dict):
+                                    image = sketch_value.get("image")
                             if image is None:
                                 return None
                             try:
                                 if isinstance(image, np.ndarray):
+                                    if image.dtype != np.uint8:
+                                        image = np.clip(image, 0, 255).astype(np.uint8)
                                     pil_image = Image.fromarray(image)
+                                    if pil_image.mode not in ("RGB", "RGBA"):
+                                        pil_image = pil_image.convert("RGBA")
                                     max_size = 512
                                     if pil_image.width > max_size or pil_image.height > max_size:
                                         pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
@@ -4036,6 +4046,7 @@ with shared.gradio_root:
                             show_progress=False,
                         )
 
+                        scene_canvas_image.change(update_qwen_image, inputs=[scene_canvas_image], outputs=[qwen_image_data], queue=False, show_progress=False)
                         scene_input_image1.change(update_qwen_image, inputs=[scene_input_image1], outputs=[qwen_image_data], queue=False, show_progress=False)
                         
                         def on_video_upload(video_path):
@@ -5741,7 +5752,7 @@ with shared.gradio_root:
 
                             mask, _, _, _ = generate_mask_from_image(image, mask_model, extras, sam_options)
 
-                            return mask
+                            return {"mask": mask}
 
 
                         inpaint_mask_model.change(lambda x: [skip_component_update()] * 3 +

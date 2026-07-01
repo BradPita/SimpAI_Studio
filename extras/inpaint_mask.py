@@ -2,6 +2,7 @@ import sys
 
 import modules.config
 import numpy as np
+import onnxruntime as ort
 import os
 import torch
 from extras.GroundingDINO.util.inference import default_groundingdino
@@ -11,6 +12,22 @@ from modules.model_path_utils import find_dir_containing_model, first_model_dir
 from rembg import remove, new_session
 from segment_anything import sam_model_registry
 from segment_anything.utils.amg import remove_small_regions
+
+
+def _ort_providers():
+    available = set(ort.get_available_providers())
+    preferred = [
+        "CUDAExecutionProvider",
+        "DirectMLExecutionProvider",
+        "DmlExecutionProvider",
+        "ROCMExecutionProvider",
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    if os.environ.get("SIMPAI_REMBG_ENABLE_TENSORRT") == "1":
+        preferred.insert(0, "TensorrtExecutionProvider")
+    providers = [provider for provider in preferred if provider in available]
+    return providers or ["CPUExecutionProvider"]
 
 
 class SAMOptions:
@@ -71,7 +88,7 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
         )
         result = remove(
             image,
-            session=new_session(mask_model, **extras),
+            session=new_session(mask_model, providers=_ort_providers(), **extras),
             only_mask=True,
             **extras
         )

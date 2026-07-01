@@ -564,7 +564,7 @@ def worker():
     from extras.expansion import safe_str
     from modules.util import (remove_empty_str, join_prompts, HWC3, resize_image, get_image_shape_ceil, set_image_shape_ceil,
                               get_shape_ceil, resample_image, erode_or_dilate, parse_lora_references_from_prompt,
-                              apply_wildcards)
+                              apply_wildcards, normalize_inpaint_mask_upload)
     from modules.lora_params import sync_loras_to_params_backend
     from modules.upscaler import perform_upscale
     from modules.flags import Performance
@@ -1592,13 +1592,8 @@ def worker():
             inpaint_mask = async_task.inpaint_input_image['mask'][:, :, 0]
 
             if async_task.inpaint_advanced_masking_checkbox:
-                if isinstance(async_task.inpaint_mask_image_upload, dict):
-                    if (isinstance(async_task.inpaint_mask_image_upload['image'], np.ndarray)
-                            and isinstance(async_task.inpaint_mask_image_upload['mask'], np.ndarray)
-                            and async_task.inpaint_mask_image_upload['image'].ndim == 3):
-                        async_task.inpaint_mask_image_upload = np.maximum(
-                            async_task.inpaint_mask_image_upload['image'],
-                            async_task.inpaint_mask_image_upload['mask'])
+                async_task.inpaint_mask_image_upload = normalize_inpaint_mask_upload(
+                    async_task.inpaint_mask_image_upload)
                 if isinstance(async_task.inpaint_mask_image_upload,
                               np.ndarray) and async_task.inpaint_mask_image_upload.ndim == 3:
                     H, W, C = inpaint_image.shape

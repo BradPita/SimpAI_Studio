@@ -355,6 +355,12 @@
                 z-index: 2;
                 cursor: none;
             }
+            .simpai-sketch__stage.has-mask-only {
+                background: #000;
+            }
+            .simpai-sketch__stage.has-mask-only canvas.mask {
+                opacity: 1;
+            }
             .simpai-sketch__brush-cursor {
                 position: absolute;
                 left: 0;
@@ -648,6 +654,17 @@
             img.onerror = reject;
             img.src = src;
         });
+    }
+
+    function hexToRgb(value) {
+        const hex = String(value || "").trim().replace(/^#/, "");
+        if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+        const n = Number.parseInt(hex, 16);
+        return {
+            r: (n >> 16) & 255,
+            g: (n >> 8) & 255,
+            b: n & 255
+        };
     }
 
     function isImageFileLike(file) {
@@ -1057,6 +1074,7 @@
             if (sizeValue) sizeValue.textContent = brushSize;
             if (sizeButton) sizeButton.textContent = brushSize;
             stage.classList.toggle("has-image", !!hasImage);
+            stage.classList.toggle("has-mask-only", !!hasImage && !sourceImageDataUrl && !preserveMaskColor);
             editor.classList.toggle("is-cropping", !!(cropMode && hasImage));
             if (cropMode) {
                 stage.classList.remove("is-cursor-visible");
@@ -1841,11 +1859,24 @@
             maskCtx.drawImage(maskImage, 0, 0, width, height);
             if (preserveMaskColor) return;
             try {
-                const prev = maskCtx.globalCompositeOperation;
-                maskCtx.globalCompositeOperation = "source-in";
-                maskCtx.fillStyle = colorInput.value || "#ffffff";
-                maskCtx.fillRect(0, 0, width, height);
-                maskCtx.globalCompositeOperation = prev;
+                const maskData = maskCtx.getImageData(0, 0, width, height);
+                const data = maskData.data;
+                const color = hexToRgb(colorInput.value || "#ffffff") || { r: 255, g: 255, b: 255 };
+                let hasTransparency = false;
+                for (let i = 3; i < data.length; i += 4) {
+                    if (data[i] < 255) {
+                        hasTransparency = true;
+                        break;
+                    }
+                }
+                for (let i = 0; i < data.length; i += 4) {
+                    const alpha = hasTransparency ? data[i + 3] : Math.max(data[i], data[i + 1], data[i + 2]);
+                    data[i] = color.r;
+                    data[i + 1] = color.g;
+                    data[i + 2] = color.b;
+                    data[i + 3] = alpha;
+                }
+                maskCtx.putImageData(maskData, 0, 0);
             } catch {
             }
         }

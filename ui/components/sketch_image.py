@@ -185,8 +185,11 @@ def _decode_mask_data_url_to_value(data_url: str | None, image_type: str, preser
             return None
         return np.array(image)
     alpha = np.array(image.getchannel("A"))
-    mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
-    mask_rgb = np.repeat(mask[:, :, None], 3, axis=2)
+    if np.any(alpha < 255):
+        mask = np.where(alpha > 0, 255, 0).astype(np.uint8)
+        mask_rgb = np.repeat(mask[:, :, None], 3, axis=2)
+    else:
+        mask_rgb = np.array(image.convert("RGB"))
     if image_type == "pil":
         return PILImage.fromarray(mask_rgb, mode="RGB")
     if image_type == "filepath":

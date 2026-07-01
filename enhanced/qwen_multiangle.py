@@ -1217,6 +1217,26 @@ def get_viewer_html():
             }
         }
 
+        function readGradioInput(elemId) {
+            const container = document.getElementById(elemId);
+            if (!container) {
+                return "";
+            }
+            const input = container.querySelector("input, textarea");
+            return input ? input.value : "";
+        }
+
+        function sendCurrentImageToIframe(iframe) {
+            const imageUrl = readGradioInput("qwen_image_data");
+            if (!imageUrl || !iframe || !iframe.contentWindow) {
+                return;
+            }
+            iframe.contentWindow.postMessage({
+                type: "UPDATE_IMAGE",
+                imageUrl: imageUrl
+            }, "*");
+        }
+
         function generatePrompt(horizontal_angle, vertical_angle, zoom) {
             const h_angle = horizontal_angle % 360;
             let h_direction;
@@ -1270,6 +1290,10 @@ def get_viewer_html():
         window.addEventListener("message", function(event) {
             const iframe = document.getElementById("qwen_multiangle_iframe");
             if (!iframe || event.source !== iframe.contentWindow) return;
+            if (event.data && event.data.type === "VIEWER_READY") {
+                sendCurrentImageToIframe(iframe);
+                return;
+            }
             if (event.data && event.data.type === "ANGLE_UPDATE") {
                 // Try to find components - they might be rendered later
                 // updateGradioInput("qwen_h", event.data.horizontal);
