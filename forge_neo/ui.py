@@ -5864,6 +5864,8 @@ def _settings_unload_models_html(result: Mapping[str, object], state=None) -> st
     lang = _state_lang(state)
     yes = _label_for_lang(lang, "Yes", "是")
     no = _label_for_lang(lang, "No", "否")
+    parent_model_unload = result.get("parent_model_unload") if isinstance(result.get("parent_model_unload"), Mapping) else {}
+    source_backend = result.get("source_backend") if isinstance(result.get("source_backend"), Mapping) else {}
 
     def yes_no(value: object) -> str:
         return yes if bool(value) else no
@@ -5871,6 +5873,25 @@ def _settings_unload_models_html(result: Mapping[str, object], state=None) -> st
     rows = [
         (_label_for_lang(lang, "Previous worker status", "清理前任务状态"), str(result.get("previous_status") or "idle")),
         (_label_for_lang(lang, "Worker events cleared", "已清理任务事件"), str(result.get("events_cleared", 0))),
+        (
+            _label_for_lang(lang, "Parent model unload", "父进程模型卸载"),
+            yes_no(
+                bool(parent_model_unload.get("unload_model_weights_called"))
+                or bool(parent_model_unload.get("memory_management_called"))
+            ),
+        ),
+        (
+            _label_for_lang(lang, "Source backend status", "源后端状态"),
+            str(source_backend.get("status") or "unknown"),
+        ),
+        (
+            _label_for_lang(lang, "Source backend unload requested", "源后端卸载请求"),
+            yes_no(source_backend.get("model_unload_requested")),
+        ),
+        (
+            _label_for_lang(lang, "Source loaded models", "源后端已加载模型"),
+            f"{source_backend.get('loaded_models_before', 0)} -> {source_backend.get('loaded_models_after', 0)}",
+        ),
         (_label_for_lang(lang, "Python GC collected", "Python GC 回收对象"), str(result.get("gc_collected", 0))),
         ("PyTorch", yes_no(result.get("torch_available"))),
         (_label_for_lang(lang, "CUDA available", "CUDA 可用"), yes_no(result.get("cuda_available"))),
@@ -5880,6 +5901,12 @@ def _settings_unload_models_html(result: Mapping[str, object], state=None) -> st
     error = str(result.get("torch_error") or "").strip()
     if error:
         rows.append((_label_for_lang(lang, "PyTorch note", "PyTorch 提示"), error))
+    parent_error = str(parent_model_unload.get("error") or "").strip()
+    if parent_error:
+        rows.append((_label_for_lang(lang, "Parent unload note", "父进程卸载提示"), parent_error))
+    source_error = str(source_backend.get("error") or "").strip()
+    if source_error:
+        rows.append((_label_for_lang(lang, "Source backend note", "源后端提示"), source_error))
 
     body = "".join(
         "<tr>"
@@ -5891,8 +5918,8 @@ def _settings_unload_models_html(result: Mapping[str, object], state=None) -> st
     title = _label_for_lang(lang, "Unload All Models", "卸载所有模型")
     note = _label_for_lang(
         lang,
-        "Forge Neo runtime state was cleared and PyTorch/CUDA cache release was requested.",
-        "Forge Neo 运行态已清理，并已请求释放 PyTorch/CUDA 缓存。",
+        "Forge Neo runtime state was cleared; loaded models were requested to move off VRAM and PyTorch/CUDA cache release was requested.",
+        "Forge Neo 运行态已清理，已请求将模型从显存卸载到内存，并已请求释放 PyTorch/CUDA 缓存。",
     )
     return (
         '<div class="forge-neo-settings-unload-models">'
@@ -5907,6 +5934,7 @@ def _settings_unload_models_html(result: Mapping[str, object], state=None) -> st
 
 
 def _settings_unload_models_clicked(state):
+    gr.Info(_label_for_lang(state, "Forge Neo model unload requested.", "已请求卸载 Forge Neo 模型。"))
     return _settings_result_html_update(_settings_unload_models_html(unload_runtime_state(), state=state))
 
 
@@ -11069,7 +11097,9 @@ def create_app() -> gr.Blocks:
                     allow_custom_value=True,
                     elem_id="forge_neo_vae",
                 )
-                refresh_btn = gr.Button("↻", elem_id="forge_neo_refresh_models", min_width=44)
+                with gr.Column(elem_id="forge_neo_model_tool_stack", elem_classes=["forge-neo-topbar-tool-stack"], scale=0, min_width=44):
+                    unload_vram_btn = gr.Button("🧹", elem_id="forge_neo_unload_models", min_width=44)
+                    refresh_btn = gr.Button("↻", elem_id="forge_neo_refresh_models", min_width=44)
                 language_switch = gr.Dropdown(
                     [("EN", "en"), ("CN", "cn")],
                     value=state_value["__lang"],
@@ -15772,6 +15802,12 @@ def create_app() -> gr.Blocks:
                         show_progress="hidden",
                     )
                     settings_unload_models.click(
+                        _settings_unload_models_clicked,
+                        inputs=[state],
+                        outputs=[settings_result],
+                        show_progress="hidden",
+                    )
+                    unload_vram_btn.click(
                         _settings_unload_models_clicked,
                         inputs=[state],
                         outputs=[settings_result],

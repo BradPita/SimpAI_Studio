@@ -264,11 +264,33 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     width: 100% !important;
 }
 
-#forge_neo_root #forge_neo_refresh_models {
+#forge_neo_root #forge_neo_model_tool_stack {
     align-self: end !important;
     flex: 0 0 44px !important;
-    height: 32px !important;
     min-width: 44px !important;
+    width: 44px !important;
+}
+
+#forge_neo_root #forge_neo_model_tool_stack > .form,
+#forge_neo_root #forge_neo_model_tool_stack {
+    gap: 4px !important;
+}
+
+#forge_neo_root #forge_neo_unload_models,
+#forge_neo_root #forge_neo_refresh_models {
+    flex: 0 0 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    min-width: 44px !important;
+    width: 44px !important;
+}
+
+#forge_neo_root #forge_neo_unload_models button,
+#forge_neo_root #forge_neo_refresh_models button {
+    height: 32px !important;
+    min-height: 32px !important;
+    min-width: 44px !important;
+    padding: 0 !important;
     width: 44px !important;
 }
 
@@ -4726,7 +4748,8 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     flex-wrap: nowrap;
     margin-top: 10px;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: hidden;
 }
 
 #forge_neo_tabs > .tab-wrapper {
@@ -4754,19 +4777,12 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     border-radius: 6px 6px 0 0 !important;
     color: var(--forge-neo-muted) !important;
     display: inline-flex !important;
-    font-size: 0 !important;
     height: 34px !important;
     justify-content: center !important;
     min-height: 34px !important;
     min-width: 38px !important;
     padding: 0 !important;
     width: 38px !important;
-}
-
-#forge_neo_tabs > .tab-wrapper > .overflow-menu > button::before {
-    content: "...";
-    font-size: 18px;
-    line-height: 1;
 }
 
 #forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown {
@@ -5576,11 +5592,11 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
         width: 100%;
     }
 
-    #forge_neo_root #forge_neo_refresh_models {
+    #forge_neo_root #forge_neo_model_tool_stack {
         align-self: stretch !important;
-        flex: 0 0 38px !important;
+        flex: 0 0 44px !important;
         max-width: none !important;
-        width: 100% !important;
+        width: 44px !important;
     }
 
     #forge_neo_root #forge_neo_language {

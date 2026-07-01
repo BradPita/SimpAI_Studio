@@ -7,6 +7,7 @@ import logging
 import mimetypes
 import os
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -26,6 +27,10 @@ PREVIEW_EXTENSIONS = (".webp", ".png", ".jpg", ".jpeg")
 VIDEO_PREVIEW_EXTENSIONS = (".mp4", ".webm", ".mov", ".m4v")
 PREVIEW_MAX_EDGE = 1024
 REMOTE_DISABLED_TYPES = {"clip", "vae"}
+MODEL_BROWSER_CATALOG_CACHE_TTL = 120.0
+MODEL_BROWSER_CATALOG_CACHE: Dict[str, Dict[str, Any]] = {}
+MODEL_BROWSER_CATALOG_CACHE_LOCK = threading.Lock()
+_MODEL_BROWSER_METADATA_DIR_CACHE = ""
 ARCH_FAMILY_CHOICES = (
     "unknown",
     "sdxl",
@@ -208,14 +213,37 @@ def _metadata_trained_words(sidecar: Dict[str, Any]) -> List[str]:
 
 
 def _lora_user_trigger_entry(lora_name: str) -> Tuple[bool, str, List[str]]:
-    try:
-        from modules.lora_trigger_manager import get_lora_trigger_word_entry
+    return _lora_user_trigger_entry_from_cache(lora_name, _load_lora_trigger_words_cache())
 
-        exists, text = get_lora_trigger_word_entry(lora_name)
+
+def _load_lora_trigger_words_cache() -> Dict[str, str]:
+    try:
+        from modules.lora_trigger_manager import trigger_manager
+
+        trigger_manager.load_trigger_words()
+        return dict(getattr(trigger_manager, "trigger_words", {}) or {})
     except Exception as exc:
         logger.debug("Model browser LoRA trigger word lookup failed: %s", exc)
-        exists, text = False, ""
-    text = str(text or "").strip()
+        return {}
+
+
+def _lora_user_trigger_entry_from_cache(lora_name: str, trigger_words: Dict[str, str]) -> Tuple[bool, str, List[str]]:
+    key = str(lora_name or "").strip()
+    if not key:
+        return False, "", []
+    candidates = [key]
+    slash_variant = key.replace("\\", "/")
+    backslash_variant = key.replace("/", "\\")
+    for candidate in (slash_variant, backslash_variant):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    exists = False
+    text = ""
+    for candidate in candidates:
+        if candidate in trigger_words:
+            exists = True
+            text = str(trigger_words.get(candidate) or "").strip()
+            break
     return exists, text, [text] if text else []
 
 
@@ -406,6 +434,64 @@ def _model_choices(model_type: str, payload: Dict[str, Any]) -> List[str]:
     if payload_choices is not None:
         return payload_choices
     return _choices_from_config(model_type)
+
+
+def _payload_force_catalog_refresh(payload: Dict[str, Any]) -> bool:
+    return bool(
+        payload.get("force_refresh")
+        or payload.get("__force_refresh")
+        or payload.get("refresh_catalog")
+        or payload.get("refreshCatalog")
+    )
+
+
+def _payload_has_explicit_model_choices(payload: Dict[str, Any]) -> bool:
+    return any(
+        isinstance(payload.get(key), expected)
+        for key, expected in (
+            ("choices", list),
+            ("catalog", dict),
+            ("preset_node", dict),
+        )
+    )
+
+
+def _model_choice_cache_key(model_type: str, payload: Dict[str, Any]) -> str:
+    if _payload_has_explicit_model_choices(payload):
+        return ""
+    engine, task_method = _engine_task_from_payload(payload)
+    use_model_filter = _payload_bool(payload, ("use_model_filter", "model_filter", "modelFilter"), True)
+    return json.dumps(
+        {
+            "type": model_type,
+            "engine": engine,
+            "task_method": task_method or "",
+            "use_model_filter": bool(use_model_filter),
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
+def _model_choices_cached(model_type: str, payload: Dict[str, Any]) -> List[str]:
+    key = _model_choice_cache_key(model_type, payload)
+    if not key:
+        return _model_choices(model_type, payload)
+    now = time.time()
+    force = _payload_force_catalog_refresh(payload)
+    cached = MODEL_BROWSER_CATALOG_CACHE.get(key)
+    if not force and isinstance(cached, dict) and now - float(cached.get("time") or 0) <= MODEL_BROWSER_CATALOG_CACHE_TTL:
+        return list(cached.get("choices") or [])
+    with MODEL_BROWSER_CATALOG_CACHE_LOCK:
+        now = time.time()
+        cached = MODEL_BROWSER_CATALOG_CACHE.get(key)
+        if not force and isinstance(cached, dict) and now - float(cached.get("time") or 0) <= MODEL_BROWSER_CATALOG_CACHE_TTL:
+            return list(cached.get("choices") or [])
+        choices = _model_choices(model_type, payload)
+        if len(MODEL_BROWSER_CATALOG_CACHE) > 64:
+            MODEL_BROWSER_CATALOG_CACHE.clear()
+        MODEL_BROWSER_CATALOG_CACHE[key] = {"time": now, "choices": list(choices or [])}
+        return choices
 
 
 def _resolve_models_info_key(data: Dict[str, Any], catalogs: Iterable[str], model_name: str) -> Tuple[str, Dict[str, Any]]:
@@ -642,8 +728,12 @@ def _safe_metadata_stem(value: str) -> str:
 
 
 def _model_browser_metadata_dir() -> str:
+    global _MODEL_BROWSER_METADATA_DIR_CACHE
+    if _MODEL_BROWSER_METADATA_DIR_CACHE:
+        return _MODEL_BROWSER_METADATA_DIR_CACHE
     path = os.path.join(_model_root(), ".model_browser", "metadata")
     os.makedirs(path, exist_ok=True)
+    _MODEL_BROWSER_METADATA_DIR_CACHE = path
     return path
 
 
@@ -837,11 +927,11 @@ def _folder_for_name(name: str) -> str:
     return folder or "Root"
 
 
-def _item_from_choice(model_type: str, name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+def _basic_item_from_choice(model_type: str, name: str) -> Dict[str, Any]:
     cfg = TYPE_CONFIG[model_type]
     display_name = _display_path(name)
     synthetic = _synthetic_choice(name)
-    item = {
+    return {
         "id": f"{model_type}:{_normalize_model_name(name)}",
         "type": model_type,
         "type_label": cfg["label"],
@@ -880,6 +970,12 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any]) -> Dict[
         "arch_family_choices": list(ARCH_FAMILY_CHOICES),
         "arch_family_manageable": False,
     }
+
+
+def _item_from_choice(model_type: str, name: str, data: Dict[str, Any], lora_trigger_words: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    cfg = TYPE_CONFIG[model_type]
+    item = _basic_item_from_choice(model_type, name)
+    synthetic = bool(item.get("synthetic"))
     if synthetic:
         return item
 
@@ -893,7 +989,10 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any]) -> Dict[
     trigger_words_text = ", ".join(metadata_words)
     trigger_words_source = "metadata" if metadata_words else "none"
     if model_type == "lora":
-        user_trigger_set, user_trigger_text, user_trigger_words = _lora_user_trigger_entry(name)
+        if lora_trigger_words is None:
+            user_trigger_set, user_trigger_text, user_trigger_words = _lora_user_trigger_entry(name)
+        else:
+            user_trigger_set, user_trigger_text, user_trigger_words = _lora_user_trigger_entry_from_cache(name, lora_trigger_words)
         if user_trigger_set:
             effective_words = user_trigger_words
             trigger_words_text = user_trigger_text
@@ -984,16 +1083,32 @@ def _sort_items(items: List[Dict[str, Any]], sort: str) -> List[Dict[str, Any]]:
     return sorted(items, key=lambda item: str(item.get("display_name") or "").lower(), reverse=reverse)
 
 
+def _sort_requires_full_items(sort: Any) -> bool:
+    value = str(sort or "name").lower()
+    key_name = value[:-5] if value.endswith("_desc") else value
+    return key_name in {"modified", "size", "preview"}
+
+
+def _enrich_model_browser_items(model_type: str, items: List[Dict[str, Any]], data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if not items:
+        return []
+    trigger_words = _load_lora_trigger_words_cache() if model_type == "lora" else None
+    return [
+        _item_from_choice(model_type, item.get("name") or "", data, trigger_words)
+        for item in items
+    ]
+
+
 def query_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
     model_type = _normalize_type(payload.get("type") or payload.get("target_type"))
     data = _load_models_info()
-    choices = _model_choices(model_type, payload)
-    items = [_item_from_choice(model_type, choice, data) for choice in choices]
-    folders = ["All folders"] + sorted({item.get("folder") or "Root" for item in items}, key=lambda item: (item != "Root", item.lower()))
-    filtered = _filter_items(items, payload.get("search") or payload.get("q") or "", payload.get("folder") or "All folders")
-    filtered = _sort_items(filtered, payload.get("sort") or "name")
-    total = len(filtered)
+    choices = _model_choices_cached(model_type, payload)
+    basic_items = [_basic_item_from_choice(model_type, choice) for choice in choices]
+    folders = ["All folders"] + sorted({item.get("folder") or "Root" for item in basic_items}, key=lambda item: (item != "Root", item.lower()))
+    search = payload.get("search") or payload.get("q") or ""
+    folder = payload.get("folder") or "All folders"
+    sort = payload.get("sort") or "name"
     try:
         page = max(1, int(payload.get("page") or 1))
     except Exception:
@@ -1004,7 +1119,27 @@ def query_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         page_size = 36
     page_size = max(1, min(page_size, 500))
     start = (page - 1) * page_size
-    page_items = filtered[start:start + page_size]
+    force_full_index = bool(payload.get("full_index") or payload.get("include_metadata_index") or payload.get("search_metadata"))
+    full_index = force_full_index or _sort_requires_full_items(sort)
+
+    if full_index:
+        indexed_items = _enrich_model_browser_items(model_type, basic_items, data)
+        filtered = _filter_items(indexed_items, search, folder)
+        filtered = _sort_items(filtered, sort)
+        total = len(filtered)
+        page_items = filtered[start:start + page_size]
+    else:
+        filtered_basic = _filter_items(basic_items, search, folder)
+        if search and not filtered_basic:
+            indexed_items = _enrich_model_browser_items(model_type, basic_items, data)
+            filtered = _filter_items(indexed_items, search, folder)
+            filtered = _sort_items(filtered, sort)
+            total = len(filtered)
+            page_items = filtered[start:start + page_size]
+        else:
+            filtered = _sort_items(filtered_basic, sort)
+            total = len(filtered)
+            page_items = _enrich_model_browser_items(model_type, filtered[start:start + page_size], data)
     return {
         "ok": True,
         "type": model_type,
@@ -1017,8 +1152,8 @@ def query_models(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "has_more": start + page_size < total,
         "folders": folders,
         "types": [{"value": key, "label": value["label"]} for key, value in TYPE_CONFIG.items()],
-        "missing_preview_count": sum(1 for item in filtered if not item.get("preview_url") and not item.get("synthetic")),
-        "metadata_missing_count": sum(1 for item in filtered if item.get("metadata_status") == "missing" and item.get("remote_enabled")),
+        "missing_preview_count": sum(1 for item in page_items if not item.get("preview_url") and not item.get("synthetic")),
+        "metadata_missing_count": sum(1 for item in page_items if item.get("metadata_status") == "missing" and item.get("remote_enabled")),
     }
 
 

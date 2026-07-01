@@ -1124,6 +1124,116 @@ class _SourceBackendSession:
                 "model_loaded": False,
             }
 
+    def unload_models(self, *, timeout: float = 30.0) -> dict[str, Any]:
+        started = time.monotonic()
+        with self._lock:
+            process = self._process
+            if process is None or process.poll() is not None:
+                return {
+                    "ok": True,
+                    "status": "not_running",
+                    "model_unload_requested": False,
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                }
+
+            output_queue = self._queue
+            if output_queue is None or process.stdin is None:
+                self.stop()
+                return {
+                    "ok": False,
+                    "status_code": 503,
+                    "status": "pipe_unavailable",
+                    "model_unload_requested": False,
+                    "error": "Source backend service pipe is unavailable.",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                }
+
+            job_id = f"forge-neo-{uuid.uuid4().hex}"
+            self._last_console_event_line = ""
+            self._console_progress_started_at = time.monotonic()
+            self._console_progress_key = job_id
+            _print_source_backend_log(_source_job_console_line(job_id, "unload_models", {}))
+            try:
+                process.stdin.write(json.dumps({"job_id": job_id, "mode": "unload_models", "payload": {}}, ensure_ascii=False) + "\n")
+                process.stdin.flush()
+            except OSError as exc:
+                self.stop()
+                return {
+                    "ok": False,
+                    "status_code": 503,
+                    "status": "write_failed",
+                    "model_unload_requested": False,
+                    "error": f"Source backend service write failed: {type(exc).__name__}: {exc}",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "debug_info": {"stdout_tail": _tail_lines(self._stdout_lines)},
+                }
+
+            deadline = time.monotonic() + timeout
+            result: dict[str, Any] | None = None
+            while result is None:
+                try:
+                    item = output_queue.get(timeout=0.1)
+                except queue.Empty:
+                    item = None
+
+                if item is _STDOUT_DONE:
+                    self._stdout_lines.append("<source backend stdout closed>")
+                    _print_source_backend_log("child stdout closed")
+                elif isinstance(item, str):
+                    line = item.rstrip("\r\n")
+                    source_result = _source_result_from_line(line)
+                    if source_result is not None:
+                        self._stdout_lines.append(_source_result_log_line(source_result))
+                        if str(source_result.get("job_id") or "") == job_id:
+                            payload_result = source_result.get("result")
+                            result = payload_result if isinstance(payload_result, dict) else {"ok": False, "error": "Source backend returned invalid result."}
+                            _print_source_backend_log(_source_result_console_line(job_id, result))
+                            break
+                    else:
+                        event = _source_event_from_line(line)
+                        if event is not None:
+                            event_job_id = str(event.get("job_id") or "")
+                            self._stdout_lines.append(_source_event_log_line(event))
+                            if not event_job_id or event_job_id == job_id:
+                                self._print_source_event_console(event)
+                        elif line:
+                            self._stdout_lines.append(line)
+                            _print_source_backend_log(line)
+
+                if time.monotonic() >= deadline and process.poll() is None:
+                    _print_source_backend_log(f"job {job_id[-8:]} timed out after {timeout:g}s")
+                    self.stop()
+                    return {
+                        "ok": False,
+                        "status_code": 503,
+                        "status": "timeout",
+                        "model_unload_requested": True,
+                        "error": f"Source backend service timed out after {timeout:g}s.",
+                        "elapsed_seconds": round(time.monotonic() - started, 3),
+                        "debug_info": {"stdout_tail": _tail_lines(self._stdout_lines)},
+                    }
+
+                if process.poll() is not None and output_queue.empty():
+                    _print_source_backend_log(f"service exited code={process.returncode}")
+                    break
+
+            if result is None:
+                self.stop()
+                return {
+                    "ok": False,
+                    "status_code": 503,
+                    "status": "exited",
+                    "model_unload_requested": True,
+                    "error": "Source backend service exited before returning a result.",
+                    "elapsed_seconds": round(time.monotonic() - started, 3),
+                    "debug_info": {"stdout_tail": _tail_lines(self._stdout_lines)},
+                }
+            result.setdefault("ok", True)
+            result.setdefault("status", "unloaded")
+            result["model_unload_requested"] = True
+            result.setdefault("elapsed_seconds", round(time.monotonic() - started, 3))
+            return result
+
     def call(
         self,
         *,
@@ -1473,6 +1583,10 @@ def start_source_backend_service(
     elif env_model_ref:
         resolved_model_ref = Path(env_model_ref).resolve()
     return _SOURCE_BACKEND_SESSION.start(data_root=resolved_data_root, model_ref=resolved_model_ref)
+
+
+def unload_source_backend_models(timeout: float = 30.0) -> dict[str, Any]:
+    return _SOURCE_BACKEND_SESSION.unload_models(timeout=timeout)
 
 
 def _source_backend_additional_modules(request: object) -> list[str]:

@@ -1606,6 +1606,8 @@
         const refresh = document.querySelector("#forge_neo_refresh_models button, #forge_neo_refresh_models");
         if (refresh && refresh.textContent.trim() === "Refresh") refresh.textContent = t("Refresh", "刷新");
         [
+            ["#forge_neo_unload_models", "Unload models to RAM", "卸载模型到内存"],
+            ["#forge_neo_refresh_models", "Refresh models", "刷新模型"],
             ["#forge_neo_paste_params", "Read generation parameters", "读取生成参数"],
             ["#forge_neo_img2img_paste_params", "Read generation parameters", "读取生成参数"],
             ["#forge_neo_clear_prompt", "Clear prompt", "清空提示词"],

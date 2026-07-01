@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import sys
 import threading
 import time
 from collections.abc import Mapping
@@ -9,6 +10,55 @@ from datetime import datetime
 
 from forge_neo.i18n import t
 from forge_neo.runtime import ForgeNeoExtrasRequest, ForgeNeoRequest, ForgeNeoResult, generate, run_extras
+
+
+def _unload_parent_model_weights() -> dict[str, object]:
+    result: dict[str, object] = {
+        "attempted": False,
+        "unload_model_weights_called": False,
+        "memory_management_called": False,
+        "error": "",
+    }
+    sd_models = (
+        sys.modules.get("modules.sd_models")
+        or sys.modules.get("forge_neo.runtime_backend.modules.sd_models")
+        or sys.modules.get("forge_neo.webui.modules.sd_models")
+    )
+    unload_model_weights = getattr(sd_models, "unload_model_weights", None) if sd_models is not None else None
+    try:
+        if callable(unload_model_weights):
+            result["attempted"] = True
+            unload_model_weights()
+            result["unload_model_weights_called"] = True
+            return result
+
+        memory_management = (
+            sys.modules.get("backend.memory_management")
+            or sys.modules.get("forge_neo.runtime_backend.backend.memory_management")
+            or sys.modules.get("forge_neo.webui.backend.memory_management")
+        )
+        unload_all_models = getattr(memory_management, "unload_all_models", None) if memory_management is not None else None
+        if callable(unload_all_models):
+            result["attempted"] = True
+            unload_all_models()
+            result["memory_management_called"] = True
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def _unload_source_backend_model_weights() -> dict[str, object]:
+    try:
+        from forge_neo.runtime_backend.source_runtime import unload_source_backend_models
+
+        return unload_source_backend_models()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "model_unload_requested": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 @dataclass
@@ -156,6 +206,8 @@ class ForgeNeoWorker:
         result: dict[str, object] = {
             "previous_status": previous_status,
             "events_cleared": events_cleared,
+            "parent_model_unload": _unload_parent_model_weights(),
+            "source_backend": _unload_source_backend_model_weights(),
             "gc_collected": gc.collect(),
             "torch_available": False,
             "cuda_available": False,

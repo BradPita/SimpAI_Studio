@@ -290,8 +290,9 @@
         state.loading = true;
         state.status = '';
         render(options);
+        const payloadExtra = options?.forceRefresh ? { force_refresh: true } : null;
         try {
-            const data = await postJson('/model-browser/query', currentPayload());
+            const data = await postJson('/model-browser/query', currentPayload(payloadExtra));
             if (id !== requestId) return;
             state.items = Array.isArray(data.items) ? data.items : [];
             state.total = Number(data.total || 0);
@@ -568,9 +569,42 @@
         });
     }
 
+    function captureSearchFocusState() {
+        if (!modal || !modal.contains(document.activeElement)) return null;
+        const field = document.activeElement;
+        if (!field?.matches?.('[data-smb-search]')) return null;
+        let start = null;
+        let end = null;
+        let direction = 'none';
+        try {
+            start = field.selectionStart;
+            end = field.selectionEnd;
+            direction = field.selectionDirection || 'none';
+        } catch (err) {}
+        return { selector: '[data-smb-search]', start, end, direction };
+    }
+
+    function restoreSearchFocusState(focusState) {
+        if (!focusState || !modal) return;
+        requestAnimationFrame(() => {
+            const field = modal.querySelector(focusState.selector);
+            if (!field) return;
+            field.focus({ preventScroll: true });
+            if (typeof field.setSelectionRange === 'function') {
+                const length = String(field.value || '').length;
+                const start = Math.min(focusState.start ?? length, length);
+                const end = Math.min(focusState.end ?? start, length);
+                try {
+                    field.setSelectionRange(start, end, focusState.direction || 'none');
+                } catch (err) {}
+            }
+        });
+    }
+
     function render(options) {
         if (!modal) return;
         const scroll = options?.preserveScroll ? captureScrollState() : null;
+        const focus = captureSearchFocusState();
         const item = selectedItem();
         const start = state.total ? (state.page - 1) * state.pageSize + 1 : 0;
         const end = Math.min(state.total, state.page * state.pageSize);
@@ -623,6 +657,7 @@
   </footer>
 </div>`;
         restoreScrollState(scroll);
+        restoreSearchFocusState(focus);
     }
 
     function findItem(id) {
@@ -1149,7 +1184,7 @@
         const refresh = event.target.closest('[data-smb-refresh]');
         if (refresh) {
             event.preventDefault();
-            query();
+            query({ forceRefresh: true });
             return;
         }
         const page = event.target.closest('[data-smb-page]');
@@ -1286,7 +1321,7 @@
             state.page = 1;
             state.folder = 'All folders';
             state.checkedIds.clear();
-            query();
+            query({ forceRefresh: true });
             return;
         }
         const type = event.target.closest('[data-smb-type]');
@@ -1295,7 +1330,7 @@
             state.page = 1;
             state.folder = 'All folders';
             state.checkedIds.clear();
-            query();
+            query({ forceRefresh: true });
             return;
         }
         const folder = event.target.closest('[data-smb-folder]');

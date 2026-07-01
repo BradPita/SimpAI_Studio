@@ -29850,15 +29850,23 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
         if (input) input.focus({ preventScroll: true });
     }
 
-    function renderTemplateLibraryHtml(state, sourceItems) {
+    function templateLibraryFilterState(state, sourceItems) {
         const currentCategory = normalizeTemplateLibraryCategory(state?.category, 'starter');
-        const query = String(state?.query || '').trim().toLowerCase();
+        const rawQuery = String(state?.query || '');
+        const query = rawQuery.trim().toLowerCase();
         const items = (sourceItems || getDefaultWorkbenchTemplateLibraryItems()).filter((item) => {
             if ((item.category || 'image') !== currentCategory) return false;
             if (!query) return true;
             const dependency = item.modelDependency || {};
             return [item.title, item.description, item.typeLabel, dependency.label, dependency.note, ...(dependency.models || []), ...(item.tags || [])].join(' ').toLowerCase().includes(query);
         });
+        return { currentCategory, rawQuery, items };
+    }
+
+    function renderTemplateLibraryHtml(state, sourceItems) {
+        const filtered = templateLibraryFilterState(state, sourceItems);
+        const currentCategory = filtered.currentCategory;
+        const items = filtered.items;
         const categories = TEMPLATE_LIBRARY_CATEGORIES;
         return `
 <div class="sai-canvas-modal-panel sai-template-library-panel" data-template-category="${escapeHtml(currentCategory)}">
@@ -29870,7 +29878,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
   </aside>
   <section class="sai-template-library-main">
     <div class="sai-template-library-head">
-      <label class="sai-template-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-template-search value="${escapeHtml(state?.query || '')}" placeholder="${escapeHtml(t('Search templates', '搜索模板'))}"></label>
+      <label class="sai-template-search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" data-template-search value="${escapeHtml(filtered.rawQuery)}" placeholder="${escapeHtml(t('Search templates', '搜索模板'))}"></label>
       <button type="button" data-template-save-current title="${escapeHtml(t('Save current canvas as template', '将当前画布保存为模板'))}"><i class="fa-solid fa-floppy-disk"></i><span>${escapeHtml(t('Save current', '保存当前'))}</span></button>
       <button type="button" data-template-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -29910,6 +29918,31 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
 </article>`;
     }
 
+    function refreshTemplateLibraryModal(modal, state) {
+        const filtered = templateLibraryFilterState(state, modal.__saiTemplateItems || []);
+        const panel = modal.querySelector('.sai-template-library-panel');
+        if (!panel) {
+            modal.innerHTML = renderTemplateLibraryHtml(state, modal.__saiTemplateItems || []);
+            bindTemplateLibraryModal(modal);
+            return;
+        }
+        panel.setAttribute('data-template-category', filtered.currentCategory);
+        panel.querySelectorAll('[data-template-category-button]').forEach((button) => {
+            const category = normalizeTemplateLibraryCategory(button.getAttribute('data-template-category-button'), 'starter');
+            button.classList.toggle('is-active', category === filtered.currentCategory);
+        });
+        const input = panel.querySelector('[data-template-search]');
+        if (input && input.value !== filtered.rawQuery) input.value = filtered.rawQuery;
+        const sectionTitle = panel.querySelector('.sai-template-library-section-title');
+        if (sectionTitle) sectionTitle.textContent = templateCategoryLabel(filtered.currentCategory);
+        const grid = panel.querySelector('.sai-template-grid');
+        if (grid) {
+            grid.innerHTML = filtered.items.length
+                ? filtered.items.map(renderTemplateCardHtml).join('')
+                : `<div class="sai-template-empty">${escapeHtml(t('No templates in this category yet.', '这个分类还没有模板。'))}</div>`;
+        }
+    }
+
     function templateDependencyIcon(mode) {
         return {
             model_free: 'fa-circle-check',
@@ -29946,8 +29979,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                 if (categoryBtn) {
                     const category = normalizeTemplateLibraryCategory(categoryBtn.getAttribute('data-template-category-button'), 'starter');
                     const query = modal.querySelector('[data-template-search]')?.value || '';
-                    modal.innerHTML = renderTemplateLibraryHtml({ category, query }, modal.__saiTemplateItems || []);
-                    bindTemplateLibraryModal(modal);
+                    refreshTemplateLibraryModal(modal, { category, query });
                     return;
                 }
                 const deleteBtn = evt.target.closest('[data-template-delete]');
@@ -29970,9 +30002,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             input.addEventListener('input', () => {
                 const panel = modal.querySelector('.sai-template-library-panel');
                 const category = normalizeTemplateLibraryCategory(panel?.getAttribute('data-template-category'), 'starter');
-                modal.innerHTML = renderTemplateLibraryHtml({ category, query: input.value || '' }, modal.__saiTemplateItems || []);
-                bindTemplateLibraryModal(modal);
-                modal.querySelector('[data-template-search]')?.focus({ preventScroll: true });
+                refreshTemplateLibraryModal(modal, { category, query: input.value || '' });
             });
         }
     }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gc
 import inspect
 import importlib.util
 import io
@@ -3159,6 +3160,38 @@ def _run_img2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
     }
 
 
+def _run_unload_models() -> dict[str, Any]:
+    started = time.monotonic()
+    from backend import memory_management
+    from modules import sd_models
+
+    loaded_before = len(getattr(memory_management, "current_loaded_models", []) or [])
+    unload_model_weights = getattr(sd_models, "unload_model_weights", None)
+    unload_model_weights_called = False
+    if callable(unload_model_weights):
+        unload_model_weights()
+        unload_model_weights_called = True
+    else:
+        unload_all_models = getattr(memory_management, "unload_all_models", None)
+        if callable(unload_all_models):
+            unload_all_models()
+    soft_empty_cache = getattr(memory_management, "soft_empty_cache", None)
+    if callable(soft_empty_cache):
+        soft_empty_cache()
+    gc_collected = gc.collect()
+    loaded_after = len(getattr(memory_management, "current_loaded_models", []) or [])
+    _emit_event(_stage_event(1.0, "Source backend models unloaded", "源后端模型已卸载"))
+    return {
+        "ok": True,
+        "status": "unloaded",
+        "loaded_models_before": loaded_before,
+        "loaded_models_after": loaded_after,
+        "unload_model_weights_called": unload_model_weights_called,
+        "gc_collected": gc_collected,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
+
+
 def _serve_loop(data_root: Path, source_root: Path) -> int:
     global _CURRENT_JOB_ID
     _emit_event(_stage_event(0.03, "Source backend process ready", "源后端进程已就绪"))
@@ -3179,6 +3212,8 @@ def _serve_loop(data_root: Path, source_root: Path) -> int:
                 result = _run_controlnet_detect(payload, data_root, source_root)
             elif mode == "upscale":
                 result = _run_upscale(payload, data_root)
+            elif mode == "unload_models":
+                result = _run_unload_models()
             elif mode == "txt2img":
                 result = _run_txt2img(payload, data_root)
             elif mode == "img2img":
@@ -3243,6 +3278,8 @@ def main() -> int:
             result = _run_controlnet_detect(payload, data_root, source_root)
         elif mode == "upscale":
             result = _run_upscale(payload, data_root)
+        elif mode == "unload_models":
+            result = _run_unload_models()
         elif mode == "txt2img":
             result = _run_txt2img(payload, data_root)
         elif mode == "img2img":
