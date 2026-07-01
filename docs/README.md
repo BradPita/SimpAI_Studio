@@ -36,6 +36,7 @@ Keep these tracked:
 - `gallery-director-manual-test-checklist.md`: manual checklist for recent
   gallery, small UI optimization, real generation preview, and Director
   Workspace validation.
+- `readme-showcase.md`: screenshot showcase used by the root README.
 - `vlm_skills/`: runtime skill knowledge loaded by the VLM Agent.
 
 Keep these runtime prompt-enrichment data files tracked unless the code is

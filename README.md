@@ -6,6 +6,10 @@ SimpAI Studio 是面向本地创作的 AI 多媒体工作台。项目把面向�
 - 应用指南：[《SimpAI 创意生图集中营：应用指南全收录》](https://acnmokx5gwds.feishu.cn/wiki/QK3LwOp2oiRRaTkFRhYcO4LonGe)
 - 用户交流：QQ 交流群 `1005085136`
 
+![SimpAI Studio 主 WebUI / Main WebUI](docs/image/readme/01-main-webui-overview.jpg)
+
+<p align="center"><sub>主 WebUI / Main WebUI: 预置包、提示词、生成参数、图库和 VLM/LLM 助手集中在同一个创作界面。Preset, prompt, generation controls, gallery and VLM/LLM assistant are available in one workspace.</sub></p>
+
 ## 项目定位
 
 SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作”到“节点式复杂编排”放在同一个本地环境里，一路探索，步步是惊喜：
@@ -14,6 +18,60 @@ SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作
 - Infinite Canvas 负责预置包编排、批量任务、素材复用、模板库、时间线编辑素材、X/Y/Z 对比、VLM Agent辅助和复杂工作流展示，是你贴心的工作区域。
 - ComfyUI 是细粒度、原子化的图像、视频、音频等任务的节点界面，复杂度高，支持用户自定义节点加入进行进阶探索。
 - Forge Neo 迁移至 Gradio 6 前端风格，兼容原后端、SDAPI/ControlNet 兼容接口、扩展运行和独立界面。
+
+## 功能速览 / Feature Tour
+
+完整截图图库见 [docs/readme-showcase.md](docs/readme-showcase.md)。
+
+### Core Workspace / 核心工作区
+
+| Preset Store / 预置包商店 | Preset Detail / 预置包详情 |
+| --- | --- |
+| ![Preset Store / 预置包商店](docs/image/readme/02-preset-store-overview.jpg) | ![Preset Detail / 预置包详情](docs/image/readme/03-preset-detail-and-models.jpg) |
+| 分类浏览、搜索、安装状态和预置包入口集中展示。<br>Browse categories, search presets and check install status in one place. | 查看预置包说明、模型依赖和可用场景。<br>Review preset notes, model dependencies and supported scenarios. |
+
+| Model Browser / 模型浏览器 | Gallery Tools / 结果图库工具 |
+| --- | --- |
+| ![Model Browser / 模型浏览器](docs/image/readme/04-model-browser-overview.jpg) | ![Gallery Tools / 结果图库工具](docs/image/readme/05-generation-gallery-tools.jpg) |
+| 管理 LoRA、模型预览、筛选和当前选择。<br>Manage LoRA assets, previews, filters and current selections. | 浏览生成历史、媒体结果和继续编辑入口。<br>Browse generation history, media results and follow-up editing actions. |
+
+### Canvas Workflows / 画布工作流
+
+| Infinite Canvas / 无限画布 | Template Library / 模板库 |
+| --- | --- |
+| ![Infinite Canvas / 无限画布](docs/image/readme/06-infinite-canvas-overview.jpg) | ![Template Library / 模板库](docs/image/readme/07-canvas-template-library.jpg) |
+| 把 WebUI 预置包、素材、结果节点和运行状态放进同一张画布。<br>Compose WebUI presets, assets, result nodes and run status on one canvas. | 内置图片、视频、音频、Timeline 和结果复用模板。<br>Use built-in templates for image, video, audio, timeline and result reuse workflows. |
+
+| Canvas Agent / 画布助手 | Qwen TTS / 语音合成 |
+| --- | --- |
+| ![Canvas Agent / 画布助手](docs/image/readme/08-canvas-agent-vlm-chat.jpg) | ![Qwen TTS / 语音合成](docs/image/readme/11-tts.jpg) |
+| VLM Chat 和 Canvas Agent 可以辅助提示词、素材理解和画布编排。<br>VLM Chat and Canvas Agent help with prompts, asset understanding and canvas planning. | 支持语音合成、角色音色和对白类工作流。<br>Support speech synthesis, character voices and dialogue workflows. |
+
+### Image Input & Editing / 图像输入与编辑
+
+| Image Prompt & ControlNet / 图像提示与控制 | Inpaint & Outpaint / 重绘与扩图 |
+| --- | --- |
+| ![Image Prompt and ControlNet / 图像提示与控制](docs/image/readme/11-image-prompt-controlnet.jpg) | ![Inpaint and Outpaint / 重绘与扩图](docs/image/readme/11-inpaint-outpaint.jpg) |
+| 管理图像参考、ControlNet 和场景输入。<br>Manage image references, ControlNet and scene inputs. | 支持局部重绘、扩图、遮罩和图片编辑任务。<br>Use inpaint, outpaint, masks and image editing tasks. |
+
+| Enhance+ / 增强修图 | Upscale & Variation / 放大与变化 |
+| --- | --- |
+| ![Enhance+ / 增强修图](docs/image/readme/11-enhanced.jpg) | ![Upscale and Variation / 放大与变化](docs/image/readme/11-upscale-vary.jpg) |
+| 局部增强、细节修复和图片后续处理集中在同类入口。<br>Use one group of tools for local enhancement, detail repair and image follow-up work. | 放大、变化和继续生成放在相邻图片工具区。<br>Upscale, variation and continued generation stay near the image tools. |
+
+### Specialized Modules / 特色模块
+
+| Pose Studio / 姿态编辑 | Gaussian Studio / 高斯泼溅视角 |
+| --- | --- |
+| ![Pose Studio / 姿态编辑](docs/image/readme/10-pose-1.jpg) | ![Gaussian Studio / 高斯泼溅视角](docs/image/readme/10-gaussian.jpg) |
+| 直接在 WebUI 中调整角色姿态并发送给场景预置包。<br>Edit character poses in WebUI and send them to scene presets. | 用可视化视角编辑器控制 3D/多视角素材。<br>Control 3D and multi-view assets with a visual camera editor. |
+
+### Built-in Interfaces / 内置界面
+
+| ComfyUI Bridge / ComfyUI 节点界面 | Forge Neo / Forge Neo 界面 |
+| --- | --- |
+| ![ComfyUI Bridge / ComfyUI 节点界面](docs/image/readme/12-comfyui-bridge.jpg) | ![Forge Neo / Forge Neo 界面](docs/image/readme/12-forge-neo-bridge.jpg) |
+| 使用内置 ComfyUI 执行节点工作流，并与主 WebUI 共享资源。<br>Run node workflows with the built-in ComfyUI runtime and shared assets. | Gradio 6 风格的 Forge Neo 独立界面，与主 WebUI 共享模型目录。<br>Forge Neo provides a Gradio 6 interface and shares model folders with the main WebUI. |
 
 ## 能做什么
 

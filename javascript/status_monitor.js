@@ -3477,11 +3477,25 @@
         }
     }
 
+    let mobileStatusVisibilityFrame = 0;
+    function scheduleMobileStatusPresetStoreVisibility() {
+        if (mobileStatusVisibilityFrame) return;
+        mobileStatusVisibilityFrame = window.requestAnimationFrame
+            ? window.requestAnimationFrame(() => {
+                mobileStatusVisibilityFrame = 0;
+                syncMobileStatusPresetStoreVisibility();
+            })
+            : window.setTimeout(() => {
+                mobileStatusVisibilityFrame = 0;
+                syncMobileStatusPresetStoreVisibility();
+            }, 60);
+    }
+
     function initMobileStatusPresetStoreVisibility() {
         syncMobileStatusPresetStoreVisibility();
         const observerRoot = document.body || document.documentElement;
         if (observerRoot && typeof MutationObserver !== 'undefined') {
-            const observer = new MutationObserver(syncMobileStatusPresetStoreVisibility);
+            const observer = new MutationObserver(scheduleMobileStatusPresetStoreVisibility);
             observer.observe(observerRoot, {
                 subtree: true,
                 childList: true,
@@ -3489,10 +3503,10 @@
                 attributeFilter: ['class', 'hidden', 'style']
             });
         }
-        window.addEventListener('resize', syncMobileStatusPresetStoreVisibility);
-        window.addEventListener('scroll', syncMobileStatusPresetStoreVisibility, { passive: true });
-        window.addEventListener('simpai:preset-store-opened', syncMobileStatusPresetStoreVisibility);
-        window.addEventListener('simpai:preset-store-closed', syncMobileStatusPresetStoreVisibility);
+        window.addEventListener('resize', scheduleMobileStatusPresetStoreVisibility);
+        window.addEventListener('scroll', scheduleMobileStatusPresetStoreVisibility, { passive: true });
+        window.addEventListener('simpai:preset-store-opened', scheduleMobileStatusPresetStoreVisibility);
+        window.addEventListener('simpai:preset-store-closed', scheduleMobileStatusPresetStoreVisibility);
     }
 
     function initImageTransferStation() {

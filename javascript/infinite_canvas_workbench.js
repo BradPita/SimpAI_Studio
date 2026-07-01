@@ -1856,12 +1856,24 @@
         };
     }
 
-    function buildVlmAgentContext(node) {
+    function buildVlmAgentContext(node, options = {}) {
+        const opts = options || {};
+        const instructionPrompt = String(opts.userPrompt || opts.prompt || opts.instruction || '').trim();
+        const instructionOverrideEntry = findCanvasAgentPresetInstructionOverride(instructionPrompt);
+        const instructionPresetName = normalizePresetName(instructionOverrideEntry?.name || instructionOverrideEntry?.display_name || '');
         const selectedIds = Array.from(selectedNodeIds && selectedNodeIds.size ? selectedNodeIds : new Set(selectedNodeId ? [selectedNodeId] : []));
         const selectedSet = new Set(selectedIds);
         const connectedIds = new Set([node?.id || '']);
-        const textToImageTarget = canvasAgentPromptTargetFromPurpose('text-to-image', {});
-        const imageEditTarget = canvasAgentPromptTargetFromPurpose('image edit', {});
+        const textToImageTarget = canvasAgentPromptTargetFromPurpose('text-to-image', { presetName: instructionPresetName });
+        const imageEditTarget = canvasAgentPromptTargetFromPurpose('image edit', { presetName: instructionPresetName });
+        const withInstructionPresetOverride = (target) => Object.assign({}, target || {}, instructionPresetName ? {
+            preset_instruction_override: true,
+            instruction_preset: instructionPresetName,
+            instruction_override_source: 'user_prompt'
+        } : {}, {
+            instruction: canvasAgentPromptTargetInstruction(target),
+            context_line: canvasAgentPromptTargetContextLine(target)
+        });
         project.edges.forEach((edge) => {
             if (edge.from === node?.id) connectedIds.add(edge.to);
             if (edge.to === node?.id) connectedIds.add(edge.from);
@@ -1894,15 +1906,14 @@
             },
             node_types: nodeTypes,
             prompt_generation_targets: {
-                text_to_image: Object.assign({}, textToImageTarget || {}, {
-                    instruction: canvasAgentPromptTargetInstruction(textToImageTarget),
-                    context_line: canvasAgentPromptTargetContextLine(textToImageTarget)
-                }),
-                image_edit: Object.assign({}, imageEditTarget || {}, {
-                    instruction: canvasAgentPromptTargetInstruction(imageEditTarget),
-                    context_line: canvasAgentPromptTargetContextLine(imageEditTarget)
-                })
+                text_to_image: withInstructionPresetOverride(textToImageTarget),
+                image_edit: withInstructionPresetOverride(imageEditTarget)
             },
+            preset_instruction_override: instructionPresetName ? {
+                enabled: true,
+                preset: instructionPresetName,
+                source: 'user_prompt'
+            } : null,
             selected_nodes: selectedNodes,
             related_nodes: nearbyNodes,
             edges: project.edges.slice(0, 80).map(edge => ({
@@ -5987,10 +5998,65 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const clean = normalizePresetName(value || '').toLowerCase();
         const compact = clean.replace(/[^a-z0-9\u4e00-\u9fff]+/gi, '');
         const tokens = [clean, compact].filter(Boolean);
+        clean.split(/[^a-z0-9\u4e00-\u9fff]+/gi).forEach(part => {
+            if (part && part.length >= 3) tokens.push(part);
+        });
         if (compact.endsWith('t') && compact.length > 3) tokens.push(compact.slice(0, -1));
         if (compact.includes('image')) tokens.push(compact.replace(/image/g, 'img'));
         if (compact.includes('img')) tokens.push(compact.replace(/img/g, 'image'));
         return Array.from(new Set(tokens.filter(item => item.length >= 3)));
+    }
+
+    function canvasAgentInstructionAliasPresetNames(prompt) {
+        const text = String(prompt || '').toLowerCase();
+        if (!text || !/(?:preset|scene|模型|预设|使用|用|采用|指定|选择|run|运行|生成)/i.test(text)) return [];
+        const compact = text.replace(/[^a-z0-9\u4e00-\u9fff]+/gi, '');
+        const aliases = [];
+        const add = (names) => {
+            (names || []).forEach(name => {
+                if (name && !aliases.includes(name)) aliases.push(name);
+            });
+        };
+        const hasCompactAlias = (...needles) => needles.some(needle => compact.includes(needle));
+        const hasLooseAlias = (pattern, compactNeedles, names) => {
+            if (pattern.test(text) || hasCompactAlias(...(compactNeedles || []))) add(names);
+        };
+        hasLooseAlias(
+            /(?:^|[\s,，。:：;；/])(?:preset|模型|预设|用|使用|采用|指定|选择)?\s*(?:z|zt|zit|zimage|z-image)(?:$|[\s,，。:：;；/])/i,
+            ['用z', '使用z', '采用z', '指定z', '选择z', '模型z', '预设z', 'presetz', '生成zimage', '用zimage'],
+            ['Z-imageT', 'Z-TTP']
+        );
+        hasLooseAlias(
+            /\b(?:krea|krea2)\b/i,
+            ['用krea', '使用krea', '采用krea', '指定krea', '选择krea', '模型krea', '预设krea'],
+            ['Krea2-Turbo']
+        );
+        hasLooseAlias(
+            /\bklein\b/i,
+            ['用klein', '使用klein', '采用klein', '指定klein', '选择klein', '模型klein', '预设klein'],
+            ['Flux2-Klein', 'Flux2-KleinEdit', 'Flux2-KleinPose']
+        );
+        hasLooseAlias(
+            /\bflux(?:1|2)?\b/i,
+            ['用flux', '使用flux', '采用flux', '指定flux', '选择flux', '模型flux', '预设flux'],
+            ['Flux1-dev', 'Flux2-Klein', 'Flux2-KleinEdit']
+        );
+        hasLooseAlias(
+            /\bwan\b/i,
+            ['用wan', '使用wan', '采用wan', '指定wan', '选择wan', '模型wan', '预设wan'],
+            ['Wan(T2I)', 'Wan(T2V)', 'Wan(I2V)', 'Wan-Swap', 'Wan-Animate']
+        );
+        hasLooseAlias(
+            /\bbernini\b/i,
+            ['用bernini', '使用bernini', '采用bernini', '指定bernini', '选择bernini', '模型bernini', '预设bernini'],
+            ['Bernini-ImageEdit', 'Bernini-MultiI2V', 'Bernini-VideoEdit']
+        );
+        hasLooseAlias(
+            /\banima\b/i,
+            ['用anima', '使用anima', '采用anima', '指定anima', '选择anima', '模型anima', '预设anima'],
+            ['Anima']
+        );
+        return aliases;
     }
 
     function canvasAgentPromptMentionsPreset(prompt, names) {
@@ -6016,6 +6082,10 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         const settings = getCanvasAgentSettings();
         if (!settings.allowPresetInstructionOverride) return null;
         if (!String(prompt || '').trim()) return null;
+        const aliasEntry = canvasAgentInstructionAliasPresetNames(prompt)
+            .map(name => findPresetCatalogEntryByName(name))
+            .find(Boolean);
+        if (aliasEntry) return aliasEntry;
         const entries = getPresetCatalog()
             .map(entry => ({
                 entry,
@@ -7965,6 +8035,22 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         };
     }
 
+    function canvasAgentPresetAliasTokensForEntry(entry) {
+        const name = normalizePresetName(entry?.name || entry?.display_name || '').toLowerCase();
+        const aliases = [];
+        const add = (...values) => values.forEach(value => {
+            if (value && !aliases.includes(value)) aliases.push(value);
+        });
+        if (/(^|[^a-z0-9])z(?:-|_|\b)|zimage|z-ttp|ztp/i.test(name)) add('z', 'zt', 'zit', 'zimage', 'z-image');
+        if (name.includes('krea')) add('krea', 'krea2');
+        if (name.includes('klein')) add('klein');
+        if (name.includes('flux')) add('flux', 'flux1', 'flux2');
+        if (name.includes('wan')) add('wan');
+        if (name.includes('bernini')) add('bernini');
+        if (name.includes('anima')) add('anima');
+        return aliases;
+    }
+
     function stripCanvasAgentPresetFromPrompt(prompt, entry) {
         let text = String(prompt || '').trim();
         const names = [entry?.name, entry?.display_name].filter(Boolean);
@@ -7976,6 +8062,11 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
                     text = text.replace(new RegExp(canvasAgentEscapeRegExp(token), 'ig'), ' ');
                 });
         });
+        canvasAgentPresetAliasTokensForEntry(entry)
+            .sort((a, b) => b.length - a.length)
+            .forEach((token) => {
+                text = text.replace(new RegExp(`(^|[\\s,，。:：;；/])${canvasAgentEscapeRegExp(token)}(?=$|[\\s,，。:：;；/]|[\\u3400-\\u9fff])`, 'ig'), '$1 ');
+            });
         return text
             .replace(/(?:使用|采用|指定|选择|调用|用|preset|scene|预设|模型|文生图|生成|运行)/gi, ' ')
             .replace(/\s+/g, ' ')
@@ -8032,6 +8123,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         getCanvasAgentPresetQueue('audio_to_video').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('audio_image_to_video').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         getCanvasAgentPresetQueue('audio').forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
+        canvasAgentInstructionAliasPresetNames(rawPrompt).forEach(name => addEntry(findPresetCatalogEntryByName(name) || { name }));
         catalog.forEach((entry) => {
             if (byName.size >= 24) return;
             const names = [entry.name, entry.display_name].filter(Boolean);
@@ -8050,6 +8142,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         return [
             'Prompt target rules:',
             '- Resolve final prompt format by selected preset, backend_engine, task_method, workflow filename, and text encoder; the actual text encoder wins over the display family name.',
+            '- If the user writes 用/使用/采用/指定/选择 plus a preset name or house alias such as Z, Zimage, Klein, Krea, Flux, Wan, Bernini, or Anima, user intent wins over the default preset queues. Return the resolved catalog preset in JSON preset, remove that preset name from prompt, and format recommended_prompt for that preset.',
             '- If the selected workflow task_method ends with _cn, the target supports Chinese natural language; prefer Chinese for Chinese requests.',
             '- Z-image/Z-imageT/qwen text encoders: use natural language; prefer Chinese for Chinese requests.',
             '- Wan/umt5/_cn video targets: use natural language with visible motion, action progression, camera movement, and continuity.',
@@ -8102,8 +8195,9 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
         ].join('\n');
     }
 
-    function canvasAgentVlmAgentContextPayload() {
-        return Object.assign({}, buildVlmAgentContext(null) || {}, {
+    function canvasAgentVlmAgentContextPayload(options = {}) {
+        const opts = options || {};
+        return Object.assign({}, buildVlmAgentContext(null, { userPrompt: opts.userPrompt || opts.prompt || '' }) || {}, {
             agent_references: normalizeCanvasAgentReferences().map(ref => ({
                 role: ref.role,
                 kind: ref.kind,
@@ -8124,7 +8218,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             asset_sources: assetSources,
             conversation_id: `canvas_agent_plan:${project.id || PROJECT_ID}`,
             chat_messages: [],
-            agent_context: canvasAgentVlmAgentContextPayload(),
+            agent_context: canvasAgentVlmAgentContextPayload({ userPrompt: rawPrompt }),
             params: Object.assign({
                 version: model,
                 mode: 'chat',
@@ -8325,7 +8419,7 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
             asset_sources: assetSources,
             conversation_id: '',
             chat_messages: [],
-            agent_context: canvasAgentVlmAgentContextPayload(),
+            agent_context: canvasAgentVlmAgentContextPayload({ userPrompt: opts.userPrompt || prompt }),
             params: Object.assign({
                 version: model,
                 mode: 'chat',
@@ -39352,7 +39446,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             chat_messages: historyMessages,
             chat_messages_full: displayHistoryMessages,
             context: rollingHistory.info,
-            agent_context: isChat ? buildVlmAgentContext(node) : null,
+            agent_context: isChat ? buildVlmAgentContext(node, { userPrompt }) : null,
             params: requestParams
         }, { signal: chatAbortController?.signal });
         if (isChat && !canvasVlmChatRequestIsActive(node.id, chatRequestId)) {
@@ -41383,12 +41477,17 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             || (assistantPretendsGenerated && vlmVisualScenePromptHint(prompt));
         if (mode === 'raw' || !intent) return [];
         const originalPrompt = cleanVlmToolPrompt(prompt) || String(prompt || '').trim();
-        const cleanPrompt = preparedPrompt || originalPrompt;
+        const presetEntry = findCanvasAgentPresetInstructionOverride(originalPrompt);
+        const presetName = normalizePresetName(presetEntry?.name || presetEntry?.display_name || '');
+        const cleanPrompt = presetName
+            ? (stripCanvasAgentPresetFromPrompt(preparedPrompt || originalPrompt, presetEntry) || preparedPrompt || originalPrompt)
+            : (preparedPrompt || originalPrompt);
         const isEdit = intent === 'edit_image';
         return [{
             action: isEdit ? 'edit_image' : 'generate_image',
             prompt: cleanPrompt,
             user_prompt: originalPrompt,
+            preset: presetName,
             _frontend_fallback: 'true',
             summary: isEdit
                 ? t('Edit the previous generated image after confirmation.', '确认后编辑上一张生成图片。')
@@ -41524,9 +41623,18 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 preparedActions.push(action);
                 continue;
             }
+            if (!String(action?.preset || '').trim()) {
+                const presetEntry = findCanvasAgentPresetInstructionOverride(userPrompt);
+                const presetName = normalizePresetName(presetEntry?.name || presetEntry?.display_name || '');
+                if (presetName) action = Object.assign({}, action, { preset: presetName });
+            }
             const purpose = vlmAgentActionPurpose(type);
             const target = canvasAgentPromptTargetFromPurpose(purpose, { presetName: action?.preset || '' });
             let prompt = vlmAgentCleanActionPrompt(action.prompt || action.image_prompt || action.recommended_prompt || action.final_prompt || '') || stripCanvasAgentInlineGenerationParams(preparedFromText) || '';
+            const actionPresetEntry = findCanvasAgentPresetEntryByAlias(action?.preset || '');
+            if (prompt && actionPresetEntry) {
+                prompt = stripCanvasAgentPresetFromPrompt(prompt, actionPresetEntry) || prompt;
+            }
             const backendLocked = String(action?._backend_repaired || action?._canonical_locked || '').toLowerCase() === 'true';
             if (prompt && String(target?.key || '') === 'qwen_natural' && canvasAgentPromptNeedsTargetRewrite(prompt, target)) {
                 const naturalFallback = cleanVlmToolPrompt(action?.user_prompt || userPrompt) || String(userPrompt || '').trim();

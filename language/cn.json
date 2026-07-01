@@ -1120,7 +1120,7 @@
   "Qwen-MultiAngle Free Viewpoint": "Qwen-MultiAngle自由视角",
   "QwenEdit+ A2R Anime-to-Real": "QwenEdit+A2R动漫转真人",
   "Qwen Gaussian Studio, upload the reference to Input Image 1, then send the result to Canvas": "Qwen 3D高斯泼溅视角转换 / 上传参考图到输入图 1，结果写入画布",
-  "Input Image 1 reference -> Gaussian Studio -> Canvas output": "输入图 1 参考图 -> Gaussian Studio -> 画布输出",
+  "Input Image 1 reference -> Gaussian Studio -> Canvas output": "输入参考图片(2) -> Gaussian Studio -> 画布输出",
   "Canvas is the Gaussian Studio output slot. Upload the reference to Input Image 1.": "画布是 Gaussian Studio 输出位。参考图请上传到 Input Image 1。",
   "Upload the reference to Input Image 1 before opening Gaussian Studio.": "打开 Gaussian Studio 前请先上传参考图到 Input Image 1。",
   "LivePortrait Exp": "LivePortrait 表情编辑",

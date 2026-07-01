@@ -2069,6 +2069,28 @@
         });
     }
 
+    let scanAndInjectTimer = 0;
+    let scanAndInjectFrame = 0;
+    function scheduleScanAndInject(delay = 80) {
+        if (scanAndInjectTimer || scanAndInjectFrame) return;
+        const run = () => {
+            scanAndInjectTimer = 0;
+            scanAndInjectFrame = 0;
+            scanAndInject();
+        };
+        if (delay <= 0 && typeof requestAnimationFrame === 'function') {
+            scanAndInjectFrame = requestAnimationFrame(run);
+            return;
+        }
+        scanAndInjectTimer = setTimeout(() => {
+            if (typeof requestAnimationFrame === 'function') {
+                scanAndInjectFrame = requestAnimationFrame(run);
+            } else {
+                run();
+            }
+        }, Math.max(0, Number(delay) || 0));
+    }
+
     function syncAllLayerForgeMasks(force = false) {
         const now = Date.now();
         if (!force && window.__layerforgeLastSync && (now - window.__layerforgeLastSync < 2000)) {
@@ -3067,7 +3089,7 @@
         }, true);
 
         const observer = new MutationObserver((mutations) => {
-            scanAndInject();
+            scheduleScanAndInject(80);
         });
 
         observer.observe(document.body, { childList: true, subtree: true });

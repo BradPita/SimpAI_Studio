@@ -1050,6 +1050,9 @@
             }
             editor.dataset.simpaiMaskDisabled = attrValue;
             editor.classList.toggle("is-mask-disabled", maskDisabled);
+            if (!changed && !options.force) {
+                return !maskDisabled;
+            }
             if (maskDisabled) {
                 drawing = false;
                 mode = "brush";
@@ -2464,17 +2467,33 @@
             const target = event?.target;
             return !!(target && (target === root || target === editor || root.contains(target) || editor.contains(target)));
         };
+        let lastVisibilityCheckAt = 0;
+        let lastVisibilityResult = true;
         const isSketchVisible = () => {
-            if (!root.isConnected || !editor.isConnected) return false;
-            if (fullscreenMode) return true;
+            if (!root.isConnected || !editor.isConnected) {
+                lastVisibilityResult = false;
+                lastVisibilityCheckAt = Date.now();
+                return false;
+            }
+            if (fullscreenMode) {
+                lastVisibilityResult = true;
+                lastVisibilityCheckAt = Date.now();
+                return true;
+            }
+            const now = Date.now();
+            if (now - lastVisibilityCheckAt < 180) return lastVisibilityResult;
+            let visible = true;
             try {
                 const rootStyle = window.getComputedStyle(root);
                 const editorStyle = window.getComputedStyle(editor);
-                if (rootStyle.display === "none" || editorStyle.display === "none") return false;
-                if (rootStyle.visibility === "hidden" || editorStyle.visibility === "hidden") return false;
+                if (rootStyle.display === "none" || editorStyle.display === "none") visible = false;
+                if (rootStyle.visibility === "hidden" || editorStyle.visibility === "hidden") visible = false;
             } catch {
             }
-            return root.getClientRects().length > 0 && editor.getClientRects().length > 0;
+            if (visible) visible = root.getClientRects().length > 0 && editor.getClientRects().length > 0;
+            lastVisibilityCheckAt = now;
+            lastVisibilityResult = visible;
+            return visible;
         };
         const isSketchHotkeyActive = (event) => {
             if (!isSketchVisible()) {

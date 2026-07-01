@@ -23,8 +23,13 @@ these forms as likely aliases when the preset catalog contains a matching name:
 - Compact spelling: `ZimageT`
 - Short spelling: `Zimage`
 - Case-insensitive spelling: `z-image`, `zimage`
+- House aliases: `Z`, `Krea`, `Klein`, `Flux`, `Wan`, `Bernini`, `Anima`
 
 For example, if the user says "使用Zimage生成一张美女图片", the intended preset is usually `Z-imageT` when that preset exists in the catalog or Agent queue.
+
+When the user says "用/使用/采用/指定/选择" plus one of these aliases, treat it
+as preset intent first. Resolve the catalog preset, remove the preset name from
+the image prompt, and format the final prompt for that preset's target.
 
 Do not invent a preset that is not in the catalog. If the requested preset cannot
 be found, explain that the user should select or create the preset first.

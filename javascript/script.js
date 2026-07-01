@@ -2354,13 +2354,29 @@ document.addEventListener("DOMContentLoaded", function() {
         const root = controlRoot(id);
         if (!root) return false;
         if (visible) {
+            const alreadyVisible = !root.hidden
+                && root.getAttribute?.('aria-hidden') !== 'true'
+                && !root.classList?.contains('hidden')
+                && !root.classList?.contains('hide')
+                && !root.classList?.contains('simpai-force-hidden')
+                && !root.classList?.contains('simpai-mounted-hidden')
+                && root.style?.display !== 'none';
+            if (alreadyVisible) return true;
             clearHiddenFlags(root);
         } else {
+            const force = !!options.force;
+            const alreadyHidden = !!root.hidden
+                && root.getAttribute?.('aria-hidden') === 'true'
+                && root.classList?.contains('hidden')
+                && root.classList?.contains('simpai-mounted-hidden')
+                && (!force || root.classList?.contains('simpai-force-hidden'))
+                && root.style?.display === 'none';
+            if (alreadyHidden) return true;
             root.classList?.add('hidden');
             root.classList?.add('simpai-mounted-hidden');
-            if (options.force) root.classList?.add('simpai-force-hidden');
+            if (force) root.classList?.add('simpai-force-hidden');
             root.hidden = true;
-            if (options.force) root.style?.setProperty('display', 'none', 'important');
+            if (force) root.style?.setProperty('display', 'none', 'important');
             else root.style.display = 'none';
             root.setAttribute('aria-hidden', 'true');
         }
@@ -2833,8 +2849,14 @@ document.addEventListener("DOMContentLoaded", function() {
         try { window.SimpAISketch?.releaseHidden?.(); } catch (e) {}
     }
 
+    let mountedVisibilityTimers = [];
     function scheduleAllMountedDynamicVisibility() {
-        visibility?.schedule?.(syncAllMountedDynamicVisibility);
+        for (const timer of mountedVisibilityTimers) {
+            window.clearTimeout(timer);
+        }
+        mountedVisibilityTimers = [0, 160, 520].map((delay) => window.setTimeout(() => {
+            syncAllMountedDynamicVisibility();
+        }, delay));
     }
 
     window.syncPromptPanelMountedVisibility = () => scheduleAllMountedDynamicVisibility();
@@ -4920,10 +4942,10 @@ function _rc_readImageSource(sourceIds) {
         if (!(width >= 64 && height >= 64)) return;
         candidates.push({ node, width, height, kind, area: width * height });
     };
+    const meta = _rc_readSourceMeta();
     for (const id of sourceIds || []) {
         const root = _rc_getRoot(id);
         if (!root) continue;
-        const meta = _rc_readSourceMeta();
         const sourceMeta = meta && typeof meta === 'object' ? meta[id] : null;
         if (sourceMeta && sourceMeta.width > 0 && sourceMeta.height > 0) {
             const mediaNode = root.querySelector('video, img, canvas');
@@ -4950,15 +4972,71 @@ function _rc_readImageSource(sourceIds) {
     return candidates[0] || null;
 }
 
+function _rc_nowMs() {
+    try {
+        return window.performance && typeof window.performance.now === 'function'
+            ? window.performance.now()
+            : Date.now();
+    } catch (e) {
+        return Date.now();
+    }
+}
+
+function _rc_markResolutionSourceDirty(widget) {
+    if (!widget) return;
+    widget.__rc_source_version = (Number(widget.__rc_source_version || 0) || 0) + 1;
+    widget.__rc_cached_image_source_key = '';
+    widget.__rc_cached_image_source_value = null;
+}
+
+function _rc_runResolutionWidgetSync(widget, syncFn) {
+    if (!widget || typeof syncFn !== 'function') return false;
+    window.clearTimeout(widget.__rc_widget_sync_timer);
+    widget.__rc_widget_sync_timer = 0;
+    widget.__rc_last_sync_at = _rc_nowMs();
+    try {
+        syncFn();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function _rc_scheduleResolutionWidgetSync(widget, syncFn, options = {}) {
+    if (!widget || typeof syncFn !== 'function') return false;
+    const force = options === true || options.force === true;
+    const delay = Math.max(0, Number(options.delay ?? 60) || 0);
+    const minInterval = force ? 0 : Math.max(0, Number(options.minInterval ?? 160) || 0);
+    const now = _rc_nowMs();
+    const last = Number(widget.__rc_last_sync_at || 0) || 0;
+    const wait = force ? delay : Math.max(delay, last ? minInterval - (now - last) : 0, 0);
+    window.clearTimeout(widget.__rc_widget_sync_timer);
+    widget.__rc_widget_sync_timer = window.setTimeout(() => {
+        _rc_runResolutionWidgetSync(widget, syncFn);
+    }, wait);
+    return true;
+}
+
+function _rc_syncResolutionWidget(widget, syncFn, options = {}) {
+    if (!widget || typeof syncFn !== 'function') return false;
+    const force = options === true || options.force === true;
+    const minInterval = force ? 0 : Math.max(0, Number(options.minInterval ?? 160) || 0);
+    const last = Number(widget.__rc_last_sync_at || 0) || 0;
+    const elapsed = _rc_nowMs() - last;
+    if (!force && last && elapsed < minInterval) {
+        return _rc_scheduleResolutionWidgetSync(widget, syncFn, {
+            delay: minInterval - elapsed,
+            minInterval,
+        });
+    }
+    return _rc_runResolutionWidgetSync(widget, syncFn);
+}
+
 function _rc_scheduleSourceSync(widget, syncFn) {
     if (!widget) return;
     const schedule = () => {
-        window.clearTimeout(widget.__rc_source_sync_timer);
-        widget.__rc_source_sync_timer = window.setTimeout(() => {
-            try {
-                if (typeof syncFn === 'function') syncFn();
-            } catch (e) {}
-        }, 80);
+        _rc_markResolutionSourceDirty(widget);
+        _rc_scheduleResolutionWidgetSync(widget, syncFn, { delay: 80, minInterval: 120 });
     };
     try {
         const observer = widget.__rc_source_observer || new MutationObserver(schedule);
@@ -4986,10 +5064,16 @@ function _rc_scheduleSourceSync(widget, syncFn) {
     }
 }
 
-function initResolutionControlWidget(widget) {
+function initResolutionControlWidget(widget, options = {}) {
     if (!widget || widget.dataset.rcInitialized === '1') {
         if (widget) _rc_scheduleSourceSync(widget, widget.__rc_sync);
-        if (widget && typeof widget.__rc_sync === 'function') widget.__rc_sync();
+        if (widget && typeof widget.__rc_sync === 'function') {
+            if (options === true || options.force === true) {
+                _rc_syncResolutionWidget(widget, widget.__rc_sync, { force: true });
+            } else {
+                _rc_scheduleResolutionWidgetSync(widget, widget.__rc_sync, { delay: 80, minInterval: 180 });
+            }
+        }
         return;
     }
 
@@ -5068,6 +5152,18 @@ function initResolutionControlWidget(widget) {
             return payload.sceneSourceIds || [];
         }
         return payload.sourceIds || [];
+    };
+    const readImageSource = (sourceIds = getSourceIds()) => {
+        const ids = Array.isArray(sourceIds) ? sourceIds : [];
+        const metaKey = _rc_getTextValue('resolution_source_meta') || '';
+        const key = `${JSON.stringify(ids)}|${metaKey}|${widget.__rc_source_version || 0}`;
+        if (widget.__rc_cached_image_source_key === key) {
+            return widget.__rc_cached_image_source_value || null;
+        }
+        const source = _rc_readImageSource(ids);
+        widget.__rc_cached_image_source_key = key;
+        widget.__rc_cached_image_source_value = source || null;
+        return source || null;
     };
     const readSelection = () => useSceneSelection() ? _rc_normalizeSceneRatio(_rc_getTextValue(sceneSelectionId)) : _rc_getTextValue(mainSelectionId);
     const writeSelection = (value, commit = true) => {
@@ -5201,7 +5297,7 @@ function initResolutionControlWidget(widget) {
     const getProjectedProfileChoices = () => {
         const profile = getActiveProfile();
         if (!profileUsesProjectedChoices(profile)) return null;
-        const source = _rc_readImageSource(getSourceIds());
+        const source = readImageSource(getSourceIds());
         const ratios = Array.isArray(profile.aspect_ratios) && profile.aspect_ratios.length
             ? profile.aspect_ratios
             : [`${profile.base_width || 640}|1:1`];
@@ -5274,7 +5370,7 @@ function initResolutionControlWidget(widget) {
         const match = key.match(/^custom-area:(\d+(?:\.\d+)?)$/);
         if (!match) return null;
         const area = parseFloat(match[1]);
-        const source = _rc_readImageSource(getSourceIds());
+        const source = readImageSource(getSourceIds());
         if (!source || !(area > 0)) return null;
         const dims = _rc_projectKeepInputPixelArea(source.width, source.height, area, profileStep(getActiveProfile()) || readStep());
         return {
@@ -5437,7 +5533,7 @@ function initResolutionControlWidget(widget) {
         if (profileUsesProjectedChoices(profile) && _rc_getCheckboxValue(targetOverrideId) && ow != null && oh != null && ow > 0 && oh > 0 && !hasProjectedChoiceForHiddenSize()) {
             return { width: ow, height: oh, manual: true, profileMode: mode };
         }
-        const source = mode ? _rc_readImageSource(getSourceIds()) : null;
+        const source = mode ? readImageSource(getSourceIds()) : null;
         if (mode === 'input_passthrough' && source) {
             return { width: source.width, height: source.height, manual: false, source, profileMode: mode };
         }
@@ -5518,14 +5614,19 @@ function initResolutionControlWidget(widget) {
         const ratios = getRatios();
         const templates = Object.keys(ratios);
         const selected = useSceneSelection() ? 'Scene' : getActiveNonSceneTemplate(templates);
-        templateSelect.innerHTML = "";
-        for (const template of templates) {
-            const option = document.createElement('option');
-            option.value = template;
-            option.textContent = template;
-            templateSelect.appendChild(option);
+        const optionsKey = templates.join('\u001f');
+        if (templateSelect.dataset.rcOptionsKey !== optionsKey) {
+            templateSelect.innerHTML = "";
+            for (const template of templates) {
+                const option = document.createElement('option');
+                option.value = template;
+                option.textContent = template;
+                templateSelect.appendChild(option);
+            }
+            templateSelect.dataset.rcOptionsKey = optionsKey;
         }
-        templateSelect.value = templates.includes(selected) ? selected : (templates[0] || '');
+        const nextValue = templates.includes(selected) ? selected : (templates[0] || '');
+        if (templateSelect.value !== nextValue) templateSelect.value = nextValue;
     };
 
     const populateRatios = () => {
@@ -5535,14 +5636,14 @@ function initResolutionControlWidget(widget) {
         const currentWidth = _ro_getSliderValue(targetWidthId);
         const currentHeight = _ro_getSliderValue(targetHeightId);
         const usesProjectedChoices = profileUsesProjectedChoices(getActiveProfile());
-        ratioSelect.innerHTML = "";
+        const optionEntries = [];
         let customValue = null;
         for (const choice of choices) {
             const choiceValue = choice && typeof choice === 'object' ? choice.value : choice;
-            const option = document.createElement('option');
-            option.value = choiceValue;
-            option.textContent = choice && typeof choice === 'object' ? choice.label : _rc_displayRatioChoice(choice);
-            ratioSelect.appendChild(option);
+            optionEntries.push({
+                value: choiceValue,
+                label: choice && typeof choice === 'object' ? choice.label : _rc_displayRatioChoice(choice),
+            });
         }
         const matched = choices.find((choice) => {
             const choiceValue = choice && typeof choice === 'object' ? choice.value : choice;
@@ -5552,15 +5653,30 @@ function initResolutionControlWidget(widget) {
             if (useSceneSelection()) return _rc_normalizeSceneRatio(choiceValue) === current;
             return choiceValue === current || choiceValue === readSelection();
         });
+        let nextValue = '';
         if (matched) {
-            ratioSelect.value = matched && typeof matched === 'object' ? matched.value : matched;
+            nextValue = matched && typeof matched === 'object' ? matched.value : matched;
         } else if ((widget.__rc_user_custom_resolution || _rc_getCheckboxValue(targetOverrideId)) && currentWidth > 0 && currentHeight > 0) {
             customValue = `${currentWidth}\u00d7${currentHeight}|custom`;
-            const option = document.createElement('option');
-            option.value = customValue;
-            option.textContent = `Custom ${_rc_addRatio(currentWidth, currentHeight)}`;
-            ratioSelect.appendChild(option);
-            ratioSelect.value = customValue;
+            optionEntries.push({
+                value: customValue,
+                label: `Custom ${_rc_addRatio(currentWidth, currentHeight)}`,
+            });
+            nextValue = customValue;
+        }
+        const optionsKey = optionEntries.map((entry) => `${entry.value}\u001f${entry.label}`).join('\u001e');
+        if (ratioSelect.dataset.rcOptionsKey !== optionsKey) {
+            ratioSelect.innerHTML = "";
+            for (const entry of optionEntries) {
+                const option = document.createElement('option');
+                option.value = entry.value;
+                option.textContent = entry.label;
+                ratioSelect.appendChild(option);
+            }
+            ratioSelect.dataset.rcOptionsKey = optionsKey;
+        }
+        if (nextValue && ratioSelect.value !== nextValue) {
+            ratioSelect.value = nextValue;
         }
     };
 
@@ -5686,7 +5802,7 @@ function initResolutionControlWidget(widget) {
     };
 
     const applyProportionalFromSource = (attempt = 0) => {
-        const source = _rc_readImageSource(getSourceIds());
+        const source = readImageSource(getSourceIds());
         const dims = getCurrentDims();
         if (!source || !(dims.width > 0 && dims.height > 0)) {
             if (attempt < 6) {
@@ -5732,7 +5848,7 @@ function initResolutionControlWidget(widget) {
             const currentWidth = _ro_getSliderValue(targetWidthId);
             const currentHeight = _ro_getSliderValue(targetHeightId);
             const hasValidOverride = currentWidth > 0 && currentHeight > 0;
-            const sourceReady = !!_rc_readImageSource(getSourceIds());
+            const sourceReady = !!readImageSource(getSourceIds());
             if ((widget.__rc_force_projected_default && sourceReady) || !hasValidOverride) {
                 commitProjectedChoice(getRememberedProjectedChoice() || getFirstProjectedChoice(), true);
             }
@@ -5797,7 +5913,7 @@ function initResolutionControlWidget(widget) {
             if (ctx) {
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                 ctx.clearRect(0, 0, padW, padH);
-                const source = _rc_readImageSource(getSourceIds());
+                const source = readImageSource(getSourceIds());
                 if (source) {
                     const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional');
                     let dw = rw;
@@ -6012,7 +6128,7 @@ function initResolutionControlWidget(widget) {
     widget.dataset.rcInitialized = '1';
     widget.__rc_sync = syncFromHidden;
     _rc_scheduleSourceSync(widget, syncFromHidden);
-    syncFromHidden();
+    _rc_syncResolutionWidget(widget, syncFromHidden, { force: true });
 }
 
 function initResolutionControlWidgets(options = {}) {
@@ -6022,7 +6138,7 @@ function initResolutionControlWidgets(options = {}) {
         return;
     }
     const widgets = _rc_getResolutionWidgets();
-    for (const widget of widgets) initResolutionControlWidget(widget);
+    for (const widget of widgets) initResolutionControlWidget(widget, options);
 }
 
 function syncResolutionControlWidgets(options = {}) {
@@ -6047,26 +6163,52 @@ function syncResolutionControlWidgets(options = {}) {
         return;
     }
     for (const widget of widgets) {
-        if (widget && typeof widget.__rc_sync === 'function') widget.__rc_sync();
-        else initResolutionControlWidget(widget);
+        if (widget && typeof widget.__rc_sync === 'function') {
+            if (force) {
+                _rc_syncResolutionWidget(widget, widget.__rc_sync, { force: true });
+            } else {
+                _rc_scheduleResolutionWidgetSync(widget, widget.__rc_sync, { delay: 60, minInterval: 180 });
+            }
+        } else {
+            initResolutionControlWidget(widget, options);
+        }
     }
 }
 
 function refreshResolutionControlSource(sourceId, reason) {
     simpaiUiTrace("log", '[UI-TRACE] resolution_control.source_refresh', { sourceId, reason });
-    const delays = [0, 80, 200, 500, 900, 1500, 2500];
+    const reasonText = String(reason || '');
+    const mutatesSource = reasonText === 'upload' || reasonText === 'clear' || reasonText === 'change';
+    const delays = mutatesSource ? [0, 220, 900, 1800] : [80, 420];
+    const token = (Number(window.__rc_resolution_source_refresh_token || 0) || 0) + 1;
+    window.__rc_resolution_source_refresh_token = token;
+    if (Array.isArray(window.__rc_resolution_source_refresh_timers)) {
+        for (const timer of window.__rc_resolution_source_refresh_timers) {
+            window.clearTimeout(timer);
+        }
+    }
+    window.__rc_resolution_source_refresh_timers = [];
     for (const delay of delays) {
-        window.setTimeout(() => {
-            initResolutionControlWidgets();
+        const timer = window.setTimeout(() => {
+            if (window.__rc_resolution_source_refresh_token !== token) return;
             for (const widget of _rc_getResolutionWidgets()) {
-                if (reason === 'upload' || reason === 'clear' || reason === 'change') {
+                const wasInitialized = widget?.dataset?.rcInitialized === '1';
+                if (!wasInitialized) initResolutionControlWidget(widget, { force: delay === 0 });
+                _rc_markResolutionSourceDirty(widget);
+                if (mutatesSource) {
                     const customArea = String(widget.__rc_projected_choice_key || '').startsWith('custom-area:');
                     widget.__rc_user_custom_resolution = customArea;
-                    widget.__rc_force_projected_default = reason !== 'clear';
+                    widget.__rc_force_projected_default = reasonText !== 'clear';
+                }
+                if (widget && typeof widget.__rc_sync === 'function') {
+                    _rc_scheduleResolutionWidgetSync(widget, widget.__rc_sync, {
+                        delay: delay === 0 ? 0 : 40,
+                        minInterval: delay === 0 ? 80 : 180,
+                    });
                 }
             }
-            syncResolutionControlWidgets();
         }, delay);
+        window.__rc_resolution_source_refresh_timers.push(timer);
     }
 }
 

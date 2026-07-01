@@ -4977,11 +4977,22 @@ function syncSceneCanvasMaskMode(systemParams) {
     const app = gradioApp();
     const root = (app && app.getElementById ? app.getElementById("scene_canvas") : null) || document.getElementById("scene_canvas");
     if (!root) return disabled;
-    root.dataset.simpaiMaskDisabled = disabled ? "1" : "0";
-    root.classList.toggle("simpai-scene-canvas-mask-disabled", disabled);
+    const attrValue = disabled ? "1" : "0";
+    const previousAttr = root.dataset.simpaiMaskDisabled;
+    const previousApplied = root.__simpaiSceneCanvasMaskDisabledApplied;
+    const changed = previousAttr !== attrValue || previousApplied !== disabled;
+    if (previousAttr !== attrValue) {
+        root.dataset.simpaiMaskDisabled = attrValue;
+    }
+    if (root.classList.contains("simpai-scene-canvas-mask-disabled") !== disabled) {
+        root.classList.toggle("simpai-scene-canvas-mask-disabled", disabled);
+    }
+    root.__simpaiSceneCanvasMaskDisabledApplied = disabled;
     if (window.SimpAISketch?.setMaskDisabled) {
         try {
-            window.SimpAISketch.setMaskDisabled(root, disabled, { clearMask: true, change: true });
+            if (changed) {
+                window.SimpAISketch.setMaskDisabled(root, disabled, { clearMask: true, change: true });
+            }
         } catch (e) {
             console.warn("[UI-TRACE] scene_canvas_mask_mode_sync_failed", e);
         }
@@ -12500,6 +12511,18 @@ function ensurePreviewGeneratingFitObserver() {
 }
 window.ensurePreviewGeneratingFitObserver = ensurePreviewGeneratingFitObserver;
 
+let scenePanelMaxHeightFrame = 0;
+let scenePanelMaxHeightTrace = "";
+function scheduleScenePanelMaxHeight(traceLabel) {
+    scenePanelMaxHeightTrace = traceLabel || scenePanelMaxHeightTrace || "scheduled";
+    if (scenePanelMaxHeightFrame) return;
+    scenePanelMaxHeightFrame = requestAnimationFrame(() => {
+        scenePanelMaxHeightFrame = 0;
+        syncScenePanelMaxHeight(scenePanelMaxHeightTrace);
+        scenePanelMaxHeightTrace = "";
+    });
+}
+
 function syncScenePanelMaxHeight(traceLabel) {
     const previewColumn = document.querySelector('#main_layout_row > .preview_column');
     const scenePanel = document.getElementById('scene_panel');
@@ -12687,9 +12710,9 @@ function syncSceneAndAdvancedColumns(traceLabel, isSceneFrontend) {
         }
         disableQuickEnhanceForScene();
     };
-    setTimeout(() => syncScenePanelMaxHeight(`${traceLabel}+0ms`), 0);
-    setTimeout(() => syncScenePanelMaxHeight(`${traceLabel}+120ms`), 120);
-    setTimeout(() => syncScenePanelMaxHeight(`${traceLabel}+500ms`), 500);
+    setTimeout(() => scheduleScenePanelMaxHeight(`${traceLabel}+0ms`), 0);
+    setTimeout(() => scheduleScenePanelMaxHeight(`${traceLabel}+120ms`), 120);
+    setTimeout(() => scheduleScenePanelMaxHeight(`${traceLabel}+500ms`), 500);
     window.simpleaiSyncSceneSettingSubtabs = syncSceneSettingSubtabs;
     setTimeout(syncSceneSettingSubtabs, 0);
     setTimeout(syncSceneSettingSubtabs, 120);
@@ -13016,7 +13039,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
             if (shouldSync) {
-                requestAnimationFrame(() => syncScenePanelMaxHeight("mutationObserver"));
+                scheduleScenePanelMaxHeight("mutationObserver");
             }
         });
 
