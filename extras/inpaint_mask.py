@@ -9,9 +9,35 @@ from extras.GroundingDINO.util.inference import default_groundingdino
 from extras.sam.predictor import SamPredictor
 from modules.util import HWC3
 from modules.model_path_utils import find_dir_containing_model, first_model_dir
-from rembg import remove, new_session
 from segment_anything import sam_model_registry
 from segment_anything.utils.amg import remove_small_regions
+
+
+def _rembg_import_error_message(exc: BaseException) -> str:
+    detail = str(exc)
+    guidance = (
+        "RMBG/自动蒙版依赖加载失败。RMBG / automatic mask dependencies failed to load."
+    )
+    if (
+        "应用程序控制策略" in detail
+        or "application control" in detail.lower()
+        or "dll load failed" in detail.lower()
+    ):
+        guidance += (
+            " Windows application control/security policy may have blocked "
+            "CuPy/PyMatting native .pyd/.dll files. "
+            "请检查 Windows Application Control、WDAC、AppLocker、Smart App Control，"
+            "或解除便携包目录中文件的阻止状态。"
+        )
+    return f"{guidance} Original error: {detail}"
+
+
+def _load_rembg():
+    try:
+        from rembg import remove, new_session
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(_rembg_import_error_message(exc)) from exc
+    return remove, new_session
 
 
 def _ort_providers():
@@ -81,6 +107,7 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
     image = HWC3(image)
 
     if mask_model != 'sam' or sam_options is None:
+        remove, new_session = _load_rembg()
         os.environ["U2NET_HOME"] = find_dir_containing_model(
             modules.config.paths_inpaint + modules.config.paths_rembg,
             f"{mask_model}.onnx",

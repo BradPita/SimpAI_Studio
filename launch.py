@@ -4,6 +4,7 @@ import sys
 import json
 import platform
 import re
+import hashlib
 from importlib import metadata as importlib_metadata
 from packaging import version as packaging_version
 import shared
@@ -15,6 +16,7 @@ import logging
 import shutil
 import subprocess
 import torch
+import requests
 from build_launcher import download_if_updated
 from modules.launch_util import is_installed, is_installed_version, run, python, requirements_met, delete_folder_content, index_url, extra_index_url, target_path_install
 from enhanced.logger import setup_logger, now_string, get_log_file
@@ -60,6 +62,10 @@ ORT_CUDA13_WHEEL_URL = os.environ.get(
 ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
 
 OBSOLETE_CUSTOM_NODE_FOLDERS = ()
+
+SIMPLEAI_BASE_WHEEL_SHA256 = {
+    "simpleai_base-0.3.49-cp313-cp313-win_amd64.whl": "2A092D6821EA0E7A8F47086DCB6BEC747007867178370616EC9EF72A10B79B7E",
+}
 
 def cleanup_obsolete_custom_nodes():
     custom_nodes_root = os.path.join(root, "comfy", "custom_nodes")
@@ -140,6 +146,79 @@ def _simpleai_base_wheel_filename(ver_required):
         return f"simpleai_base-{ver_required}-{current_tag}-{current_tag}-macosx_10_12_x86_64.whl"
 
     return f"simpleai_base-{ver_required}-{current_tag}-{current_tag}-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+
+def _file_sha256(path):
+    sha256 = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest().upper()
+
+def _simpleai_base_wheel_hash_matches(path, expected_sha256):
+    try:
+        actual_sha256 = _file_sha256(path)
+    except Exception as e:
+        logger.warning(f"读取 simpleai_base wheel 哈希失败，将重新下载: {path} ({e})")
+        return False
+
+    if actual_sha256 == expected_sha256.upper():
+        return True
+
+    logger.warning(
+        f"simpleai_base wheel SHA256 校验失败，将删除后重新下载: "
+        f"{os.path.basename(path)}, expected={expected_sha256.upper()}, actual={actual_sha256}"
+    )
+    return False
+
+def _delete_simpleai_base_wheel(path):
+    try:
+        os.remove(path)
+        logger.warning(f"已删除校验失败的 simpleai_base wheel: {path}")
+        return True
+    except FileNotFoundError:
+        return True
+    except Exception as e:
+        logger.error(f"删除校验失败的 simpleai_base wheel 失败: {path} ({e})")
+        return False
+
+def _remote_sha256_from_headers(url):
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=(5, 20))
+        response.raise_for_status()
+    except Exception as e:
+        logger.warning(f"读取远端 simpleai_base wheel 哈希失败，将使用本地校验表: {e}")
+        return None
+
+    for header_name in ("X-Linked-Etag", "ETag"):
+        raw_value = str(response.headers.get(header_name) or "").strip().strip('"')
+        if re.fullmatch(r"[0-9a-fA-F]{64}", raw_value):
+            return raw_value.upper()
+    return None
+
+def _expected_simpleai_base_wheel_sha256(base_url, base_file):
+    return _remote_sha256_from_headers(base_url) or SIMPLEAI_BASE_WHEEL_SHA256.get(base_file)
+
+def _ensure_simpleai_base_wheel(base_url, base_path, base_file):
+    has_update_whl = download_if_updated(base_url, base_path)
+    expected_sha256 = _expected_simpleai_base_wheel_sha256(base_url, base_file)
+    if not os.path.exists(base_path):
+        return has_update_whl, False
+    if not expected_sha256:
+        return has_update_whl, True
+    if _simpleai_base_wheel_hash_matches(base_path, expected_sha256):
+        return has_update_whl, True
+
+    if not _delete_simpleai_base_wheel(base_path):
+        return has_update_whl, False
+
+    redownloaded = download_if_updated(base_url, base_path)
+    if not os.path.exists(base_path):
+        return redownloaded, False
+    if _simpleai_base_wheel_hash_matches(base_path, expected_sha256):
+        return True, True
+
+    _delete_simpleai_base_wheel(base_path)
+    return False, False
 
 def _simpleai_base_has_required_apis():
     required = [
@@ -341,10 +420,10 @@ def check_base_environment():
     base_file = _simpleai_base_wheel_filename(ver_required)
     base_path = os.path.abspath(os.path.join(root, f'enhanced/libs/{base_file}'))
     base_url = f'{base_url}/{base_file}'
-    has_update_whl = download_if_updated(base_url, base_path)
+    has_update_whl, has_valid_base_wheel = _ensure_simpleai_base_wheel(base_url, base_path, base_file)
     has_required_base_apis = _simpleai_base_has_required_apis() if is_installed(base_pkg) else False
     if has_update_whl or REINSTALL_BASE or not is_installed_version(base_pkg, ver_required) or not has_required_base_apis:
-        if os.path.exists(base_path):
+        if has_valid_base_wheel:
             if not is_installed(base_pkg):
                 run(f'"{python}" -s -m pip install {base_path}', f'Install {base_pkg} {ver_required}', custom_env=_make_pip_env())
             else:
@@ -354,16 +433,18 @@ def check_base_environment():
                     logger.info(f"正在更新 {base_pkg}: {version_installed} -> {ver_required}")
                     run(f'"{python}" -s -m pip install -U {base_path}', f'Update {base_pkg} {ver_required}', custom_env=_make_pip_env())
         else:
+            if os.path.exists(base_path):
+                logger.error(f"{base_pkg} 安装包未通过完整性校验，已阻止安装: {base_path}")
             if not is_installed(base_pkg):
-                logger.error(f"缺失必要的包 {base_pkg} 且下载失败，程序可能无法正常运行。请检查网络连接并重新启动。")
+                logger.error(f"缺失必要的包 {base_pkg} 且下载失败或安装包校验失败，程序可能无法正常运行。请检查网络连接并重新启动。")
             else:
                 version_installed = _installed_package_version(base_pkg) or "unknown"
                 if not is_installed_version(base_pkg, ver_required):
-                    logger.warning(f"无法下载更新包 {base_pkg} {ver_required}，当前版本为 {version_installed}，将尝试继续启动。")
+                    logger.warning(f"无法下载或校验更新包 {base_pkg} {ver_required}，当前版本为 {version_installed}，将尝试继续启动。")
                 elif not has_required_base_apis:
-                    logger.warning(f"无法下载更新包 {base_pkg} {ver_required}，当前版本 {version_installed} 缺少本地身份 API，将尝试继续启动。")
+                    logger.warning(f"无法下载或校验更新包 {base_pkg} {ver_required}，当前版本 {version_installed} 缺少本地身份 API，将尝试继续启动。")
                 else:
-                    logger.warning(f"无法下载更新包 {base_pkg}，将继续使用当前版本 {version_installed}。")
+                    logger.warning(f"无法下载或校验更新包 {base_pkg}，将继续使用当前版本 {version_installed}。")
 
     if torch.__version__ == '2.9.1+cu130':
         logger.info(f'当前环境：PyTorch 2.9.1+CUDA 13.0. 50系以上显卡支持Nvfp4模型加速推理.')
