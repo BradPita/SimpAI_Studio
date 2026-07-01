@@ -102,6 +102,10 @@ _SOURCE_BACKEND_MODEL_ARG_CATALOGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("--esrgan-models-path", ("upscale_models",)),
 )
 _SOURCE_BACKEND_SINGLE_MODEL_ARGS = {"--esrgan-models-path"}
+_SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = False
+_SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = 0
+_SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
+_SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 
 
 def _default_data_root() -> Path:
@@ -319,10 +323,62 @@ def _source_result_log_line(result: dict[str, Any]) -> str:
     return SOURCE_RESULT_PREFIX + json.dumps(compact, ensure_ascii=True, sort_keys=True)
 
 
+def _finish_source_backend_progress_line() -> None:
+    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
+    if _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE:
+        completion = str(_SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE or "").strip()
+        if completion:
+            rendered = f"[Forge Neo]: {completion}"
+            width = max(_SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, len(rendered))
+            print("\r" + rendered.ljust(width), end="", flush=True)
+        print("", flush=True)
+        _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = False
+        _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = 0
+        _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
+
+
 def _print_source_backend_log(message: str) -> None:
     text = str(message or "").strip()
     if text:
+        _finish_source_backend_progress_line()
         print(f"[Forge Neo]: {text}", flush=True)
+
+
+def _print_source_backend_progress_line(message: str, *, completion_line: str = "") -> None:
+    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
+    text = str(message or "").strip()
+    if not text:
+        return
+    rendered = f"[Forge Neo]: {text}"
+    completion = str(completion_line or "").strip()
+    completion_rendered = f"[Forge Neo]: {completion}" if completion else ""
+    width = max(_SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, len(rendered), len(completion_rendered))
+    print("\r" + rendered.ljust(width), end="", flush=True)
+    _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = True
+    _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = width
+    _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = completion
+
+
+def _source_tqdm_interval(seconds: float) -> str:
+    total = max(0, int(seconds))
+    minutes, sec = divmod(total, 60)
+    hours, minute = divmod(minutes, 60)
+    if hours:
+        return f"{hours:d}:{minute:02d}:{sec:02d}"
+    return f"{minute:02d}:{sec:02d}"
+
+
+def _source_tqdm_bar(fraction: float, width: int = 10) -> str:
+    scaled = max(0.0, min(float(width), fraction * width))
+    whole = int(scaled)
+    partial_index = int(round((scaled - whole) * 8))
+    if partial_index >= 8:
+        whole += 1
+        partial_index = 0
+    whole = max(0, min(width, whole))
+    partial = _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS[partial_index] if whole < width else ""
+    spaces = " " * max(0, width - whole - len(partial))
+    return "█" * whole + partial + spaces
 
 
 def _source_backend_full_args_log_enabled() -> bool:
@@ -397,6 +453,39 @@ def _source_event_console_line(event: dict[str, Any]) -> str:
     if job_id:
         suffix += f" job={job_id[-8:]}"
     return f"{progress * 100:.1f}% {message}{suffix}"
+
+
+def _source_sampling_progress_console_line(event: dict[str, Any], *, elapsed_seconds: float | None = None) -> str:
+    try:
+        step = int(event.get("sampling_step") or 0)
+        steps = int(event.get("sampling_steps") or 0)
+    except Exception:
+        return ""
+    if step <= 0 or steps <= 0:
+        return ""
+
+    message = str(event.get("message_en") or event.get("message") or event.get("message_cn") or "Source backend sampling")
+    if "Source backend sampling" not in message and "源后端采样" not in message:
+        return ""
+
+    fraction = max(0.0, min(1.0, step / max(steps, 1)))
+    percent = int(round(fraction * 100))
+    try:
+        eta_relative = max(0.0, float(event.get("eta_relative") or 0.0))
+    except Exception:
+        eta_relative = 0.0
+    remaining_steps = max(0, steps - step)
+    if eta_relative > 0 and remaining_steps > 0:
+        seconds_per_step = eta_relative / remaining_steps
+        elapsed = seconds_per_step * step
+    else:
+        elapsed = max(0.0, float(elapsed_seconds or 0.0))
+        seconds_per_step = elapsed / max(step, 1) if elapsed > 0 else 0.0
+    eta = eta_relative
+    if eta <= 0 and seconds_per_step > 0:
+        eta = seconds_per_step * remaining_steps
+    rate = f"{seconds_per_step:5.2f}s/it" if seconds_per_step > 0 else " ?s/it"
+    return f"{percent:3d}%|{_source_tqdm_bar(fraction)}| {step}/{steps} [{_source_tqdm_interval(elapsed)}<{_source_tqdm_interval(eta)}, {rate}]"
 
 
 def _source_job_console_line(job_id: str, mode: str, payload: dict[str, Any]) -> str:
@@ -862,6 +951,9 @@ class _SourceBackendSession:
         self._queue: queue.Queue[object] | None = None
         self._key: tuple[str, str] | None = None
         self._stdout_lines: deque[str] = deque(maxlen=300)
+        self._last_console_event_line = ""
+        self._console_progress_started_at = 0.0
+        self._console_progress_key = ""
 
     def _env(self) -> dict[str, str]:
         env = os.environ.copy()
@@ -917,9 +1009,59 @@ class _SourceBackendSession:
         self._queue = output_queue
         self._key = key
         self._stdout_lines.clear()
+        self._last_console_event_line = ""
+        self._console_progress_started_at = 0.0
+        self._console_progress_key = ""
         _print_source_backend_log(f"service pid={process.pid}")
         self._drain_startup_output(process, output_queue)
         return process
+
+    def _source_sampling_elapsed_seconds(self, event: dict[str, Any]) -> float:
+        try:
+            step = int(event.get("sampling_step") or 0)
+        except Exception:
+            step = 0
+        key = str(event.get("job_id") or event.get("task_id") or "")
+        now = time.monotonic()
+        if step <= 1 or key != self._console_progress_key or self._console_progress_started_at <= 0:
+            self._console_progress_started_at = now
+            self._console_progress_key = key
+        return max(0.0, now - self._console_progress_started_at)
+
+    def _print_source_event_console(self, event: dict[str, Any]) -> None:
+        console_line = _source_event_console_line(event)
+        if not console_line:
+            return
+        if console_line == self._last_console_event_line:
+            return
+        self._last_console_event_line = console_line
+        progress_elapsed = self._source_sampling_elapsed_seconds(event)
+        progress_line = _source_sampling_progress_console_line(event, elapsed_seconds=progress_elapsed)
+        if progress_line:
+            completion_line = ""
+            try:
+                step = int(event.get("sampling_step") or 0)
+                steps = int(event.get("sampling_steps") or 0)
+            except Exception:
+                step = 0
+                steps = 0
+            if 0 < step < steps:
+                completion_event = dict(event)
+                completion_event["sampling_step"] = steps
+                completion_event["progress"] = 1.0
+                completion_event["eta_relative"] = 0.0
+                completion_elapsed = progress_elapsed
+                try:
+                    eta_relative = max(0.0, float(event.get("eta_relative") or 0.0))
+                except Exception:
+                    eta_relative = 0.0
+                remaining_steps = max(0, steps - step)
+                if eta_relative > 0 and remaining_steps > 0:
+                    completion_elapsed = eta_relative / remaining_steps * steps
+                completion_line = _source_sampling_progress_console_line(completion_event, elapsed_seconds=completion_elapsed)
+            _print_source_backend_progress_line(progress_line, completion_line=completion_line)
+            return
+        _print_source_backend_log(console_line)
 
     def _drain_startup_output(self, process: subprocess.Popen, output_queue: "queue.Queue[object]", timeout: float = 2.0) -> None:
         deadline = time.monotonic() + timeout
@@ -943,9 +1085,7 @@ class _SourceBackendSession:
             event = _source_event_from_line(line)
             if event is not None:
                 self._stdout_lines.append(_source_event_log_line(event))
-                console_line = _source_event_console_line(event)
-                if console_line:
-                    _print_source_backend_log(console_line)
+                self._print_source_event_console(event)
                 message = str(event.get("message_en") or event.get("message") or event.get("message_cn") or "")
                 if message == _SOURCE_BACKEND_COMMAND_LINE_MESSAGE:
                     saw_command_line = True
@@ -964,6 +1104,9 @@ class _SourceBackendSession:
         self._process = None
         self._queue = None
         self._key = None
+        self._last_console_event_line = ""
+        self._console_progress_started_at = 0.0
+        self._console_progress_key = ""
         if process is not None:
             _print_source_backend_log(f"stopping service pid={process.pid}")
             _stop_child_process(process)
@@ -1014,6 +1157,9 @@ class _SourceBackendSession:
 
             job_id = f"forge-neo-{uuid.uuid4().hex}"
             job_payload = dict(payload or {})
+            self._last_console_event_line = ""
+            self._console_progress_started_at = time.monotonic()
+            self._console_progress_key = job_id
             _print_source_backend_log(_source_job_console_line(job_id, mode, job_payload))
             try:
                 process.stdin.write(json.dumps({"job_id": job_id, "mode": mode, "payload": job_payload}, ensure_ascii=False) + "\n")
@@ -1055,7 +1201,7 @@ class _SourceBackendSession:
                             event_job_id = str(event.get("job_id") or "")
                             self._stdout_lines.append(_source_event_log_line(event))
                             if not event_job_id or event_job_id == job_id:
-                                _print_source_backend_log(_source_event_console_line(event))
+                                self._print_source_event_console(event)
                         elif line:
                             self._stdout_lines.append(line)
                             _print_source_backend_log(line)
@@ -1130,6 +1276,9 @@ class _SourceBackendSession:
             control_path = _source_backend_control_path(job_id)
             _cleanup_source_backend_control_path(control_path)
             job_payload[_SOURCE_BACKEND_CONTROL_PAYLOAD_KEY] = str(control_path)
+            self._last_console_event_line = ""
+            self._console_progress_started_at = time.monotonic()
+            self._console_progress_key = job_id
             _print_source_backend_log(_source_job_console_line(job_id, mode, job_payload))
             try:
                 process.stdin.write(json.dumps({"job_id": job_id, "mode": mode, "payload": job_payload}, ensure_ascii=False) + "\n")
@@ -1176,7 +1325,7 @@ class _SourceBackendSession:
                             event_job_id = str(event.get("job_id") or "")
                             self._stdout_lines.append(_source_event_log_line(event))
                             if not event_job_id or event_job_id == job_id:
-                                _print_source_backend_log(_source_event_console_line(event))
+                                self._print_source_event_console(event)
                                 _forward_source_event(event, progress_callback)
                         elif line:
                             self._stdout_lines.append(line)

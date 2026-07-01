@@ -194,7 +194,7 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
         samples = self.launch_sampling(
             t_enc + 1,
-            lambda: self.func(self.model_wrap_cfg, xi, extra_args=self.sampler_extra_args, disable=False, callback=self.callback_state, **extra_params_kwargs),
+            lambda: self.func(self.model_wrap_cfg, xi, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
         )
 
         self.add_infotext(p)
@@ -249,7 +249,7 @@ class KDiffusionSampler(sd_samplers_common.Sampler):
 
         samples = self.launch_sampling(
             steps,
-            lambda: self.func(self.model_wrap_cfg, x, extra_args=self.sampler_extra_args, disable=False, callback=self.callback_state, **extra_params_kwargs),
+            lambda: self.func(self.model_wrap_cfg, x, extra_args=self.sampler_extra_args, disable=shared.cmd_opts.disable_console_progressbars, callback=self.callback_state, **extra_params_kwargs),
         )
 
         self.add_infotext(p)

@@ -60,6 +60,11 @@ logger = logging.getLogger("loader")
 setup_logger(logger)
 
 HF = os.path.join(os.path.dirname(__file__), "huggingface")
+KREA2_REPOS = {"krea/Krea-2-Turbo", "krea/Krea-2-Raw"}
+
+
+def _is_krea2_config(guess):
+    return getattr(guess, "huggingface_repo", "") in KREA2_REPOS or guess.unet_config.get("image_model") == "krea2"
 
 
 def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_path, state_dict):
@@ -73,7 +78,7 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
             cls = getattr(importlib.import_module(lib_name), cls_name)
             return cls.from_pretrained(os.path.join(repo_path, component_name))
         if component_name.startswith("tokenizer"):
-            if cls_name == "Qwen2Tokenizer" and getattr(guess, "huggingface_repo", "") == "krea/Krea-2-Turbo":
+            if cls_name == "Qwen2Tokenizer" and _is_krea2_config(guess):
                 from transformers import PreTrainedTokenizerFast
 
                 with open(os.path.join(config_path, "tokenizer_config.json"), "r", encoding="utf-8") as f:
@@ -522,7 +527,7 @@ def load_huggingface_component(guess, component_name, lib_name, cls_name, repo_p
 def replace_state_dict(sd: dict[str, torch.Tensor], asd: dict[str, torch.Tensor], guess, path: os.PathLike):
     vae_key_prefix = guess.vae_key_prefix[0]
     text_encoder_key_prefix = guess.text_encoder_key_prefix[0]
-    is_krea2 = getattr(guess, "huggingface_repo", "") == "krea/Krea-2-Turbo" or guess.unet_config.get("image_model") == "krea2"
+    is_krea2 = _is_krea2_config(guess)
     qwen3vl_added = False
 
     if path.endswith("gguf"):
@@ -888,6 +893,11 @@ def forge_loader(sd: os.PathLike, additional_state_dicts: list[os.PathLike] = No
         raise ValueError("Failed to recognize model...") from None
 
     repo_name = estimated_config.huggingface_repo
+    if _is_krea2_config(estimated_config) and "raw" in os.path.basename(str(sd)).lower():
+        raw_repo = "krea/Krea-2-Raw"
+        if os.path.isdir(os.path.join(HF, raw_repo)):
+            repo_name = raw_repo
+            estimated_config.huggingface_repo = repo_name
 
     backend.args.dynamic_args.kontext = "kontext" in str(sd).lower()
     backend.args.dynamic_args.edit = "qwen" in str(sd).lower() and "edit" in str(sd).lower()

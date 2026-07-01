@@ -279,6 +279,49 @@ def flux_to_diffusers(mmdit_config, output_prefix=""):
     return key_map
 
 
+def krea2_to_diffusers(mmdit_config, output_prefix=""):
+    n_layers = mmdit_config.get("layers", 0)
+    n_txt_layerwise = 2
+    n_txt_refiner = 2
+    key_map = {}
+
+    def add_block(prefix_to, prefix_from):
+        block_map = {
+            "attn.to_q": "attn.wq",
+            "attn.to_k": "attn.wk",
+            "attn.to_v": "attn.wv",
+            "attn.to_gate": "attn.gate",
+            "attn.to_out.0": "attn.wo",
+            "attn.to_out": "attn.wo",
+            "ff.gate": "mlp.gate",
+            "ff.up": "mlp.up",
+            "ff.down": "mlp.down",
+        }
+        for diffusers_key, forge_key in block_map.items():
+            key_map[f"{prefix_to}.{diffusers_key}.weight"] = f"{output_prefix}{prefix_from}.{forge_key}.weight"
+
+    for i in range(n_layers):
+        add_block(f"transformer_blocks.{i}", f"blocks.{i}")
+    for i in range(n_txt_layerwise):
+        add_block(f"text_fusion.layerwise_blocks.{i}", f"txtfusion.layerwise_blocks.{i}")
+    for i in range(n_txt_refiner):
+        add_block(f"text_fusion.refiner_blocks.{i}", f"txtfusion.refiner_blocks.{i}")
+
+    for diffusers_key, forge_key in [
+        ("img_in", "first"),
+        ("time_embed.linear_1", "tmlp.0"),
+        ("time_embed.linear_2", "tmlp.2"),
+        ("time_mod_proj", "tproj.1"),
+        ("txt_in.linear_1", "txtmlp.1"),
+        ("txt_in.linear_2", "txtmlp.3"),
+        ("text_fusion.projector", "txtfusion.projector"),
+        ("final_layer.linear", "last.linear"),
+    ]:
+        key_map[f"{diffusers_key}.weight"] = f"{output_prefix}{forge_key}.weight"
+
+    return key_map
+
+
 def z_image_to_diffusers(mmdit_config, output_prefix=""):
     n_layers = mmdit_config.get("n_layers", 0)
     hidden_size = mmdit_config.get("dim", 0)

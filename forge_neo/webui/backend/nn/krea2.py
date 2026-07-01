@@ -1,4 +1,4 @@
-# https://github.com/Comfy-Org/ComfyUI/blob/v0.16.2/comfy/ldm/krea2/model.py
+# https://github.com/Comfy-Org/ComfyUI/blob/v0.26.1/comfy/ldm/krea2/model.py
 
 from typing import Optional
 
@@ -244,7 +244,7 @@ class SingleStreamDiT(nn.Module):
         h, w = x.shape[-2], x.shape[-1]
         h_tokens, w_tokens = h // patch, w // patch
 
-        context = self._unpack_context(context)
+        context = self._unpack_context(context.squeeze(1))
 
         img = rearrange(x, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=patch, pw=patch)
         img = self.first(img)
@@ -252,7 +252,7 @@ class SingleStreamDiT(nn.Module):
         t = self.tmlp(timestep_embedding(timesteps, self.tdim).unsqueeze(1).to(img.dtype))
         tvec = self.tproj(t)
 
-        context = self.txtfusion(context, mask=attention_mask, transformer_options=transformer_options)
+        context = self.txtfusion(context, mask=None, transformer_options=transformer_options)
         context = self.txtmlp(context)
 
         txtlen, imglen = context.shape[1], img.shape[1]
@@ -285,6 +285,7 @@ class SingleStreamDiT(nn.Module):
         if fused != expected:
             raise ValueError(
                 f"Krea2 expects conditioning with {self.txtlayers}x{self.txtdim}={expected} features "
-                f"but got {fused}."
+                f"(a {self.txtlayers}-layer Qwen3-VL stack) but got {fused}. "
+                f"Load the text encoder with CLIPLoader type 'krea2'."
             )
         return context.reshape(b, seq, self.txtlayers, self.txtdim)
