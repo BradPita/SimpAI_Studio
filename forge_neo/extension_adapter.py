@@ -187,8 +187,10 @@ TAGCOMPLETE_PROFILE = ForgeNeoExtensionProfile(
         "/tacapi/v1/get-use-count-list",
         "/tacapi/v1/get-all-use-counts",
     ),
+    source_callbacks=("script_callbacks.on_ui_settings(on_ui_settings)",),
     notes=(
         "Uses Forge Neo DOM id bridge for txt2img/img2img prompts.",
+        "Source extension registers Tag Autocomplete settings; Forge Neo exposes them in the native Settings page.",
         "Runtime files are created only when the extension is installed and enabled.",
     ),
 )

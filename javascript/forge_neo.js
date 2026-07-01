@@ -99,41 +99,214 @@
         return languageFromState(state).startsWith("en") ? en : cn;
     }
 
-    function settingsNavGroupLabels() {
+    function settingsNativeTablist() {
+        const wrapper = document.querySelector("#forge_neo_settings > .tab-wrapper");
+        if (!wrapper) return null;
+        const tablists = Array.from(wrapper.querySelectorAll(".tab-container[role='tablist']"));
+        return tablists.find(function (tabs) {
+            return !tabs.closest(".overflow-menu") &&
+                !tabs.classList.contains("visually-hidden") &&
+                tabs.querySelector("#forge_neo_settings_paths_for_saving-button");
+        }) || tablists.find(function (tabs) {
+            return !tabs.closest(".overflow-menu") && !tabs.classList.contains("visually-hidden");
+        }) || tablists[0] || null;
+    }
+
+    function normalizedSettingsText(value) {
+        return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function settingsNativeTabButtons() {
+        const wrapper = document.querySelector("#forge_neo_settings > .tab-wrapper");
+        if (!wrapper) return [];
+        return Array.from(wrapper.querySelectorAll(".tab-container[role='tablist'] button[role='tab'], .overflow-dropdown button")).filter(function (button) {
+            return normalizedSettingsText(button.textContent);
+        });
+    }
+
+    function settingsTabButtonFor(panelId, label) {
+        const direct = panelId ? document.getElementById(panelId + "-button") : null;
+        const normalizedLabel = normalizedSettingsText(label);
+        const buttons = settingsNativeTabButtons();
+        return direct || buttons.find(function (button) {
+            return panelId && button.getAttribute("aria-controls") === panelId;
+        }) || buttons.find(function (button) {
+            return normalizedSettingsText(button.textContent) === normalizedLabel;
+        }) || null;
+    }
+
+    function isSettingsPanelVisible(panelId) {
+        const panel = panelId ? document.getElementById(panelId) : null;
+        return isVisibleElement(panel);
+    }
+
+    let settingsStaticSelectedPanelId = "forge_neo_settings_paths_for_saving";
+
+    function settingsStaticNavPageDefinitions() {
         return [
-            { before: "#forge_neo_settings_paths_for_saving-button", en: "Textbox", cn: "文本框" },
-            { before: "#forge_neo_settings_paths_for_saving-button", en: "Saving", cn: "保存" },
-            { before: "#forge_neo_settings_control_net-button", en: "Stable Diffusion", cn: "Stable Diffusion" },
-            { before: "#forge_neo_settings_comments-button", en: "User Interface", cn: "界面" },
-            { before: "#forge_neo_settings_anima-button", en: "Model Presets", cn: "模型预设" },
-            { before: "#forge_neo_settings_api-button", en: "System", cn: "系统" },
-            { before: "#forge_neo_settings_face_restoration-button", en: "Postprocessing", cn: "后处理" },
-            { before: "#forge_neo_settings_nunchaku-button", en: "Nunchaku", cn: "Nunchaku" },
-            { before: "#forge_neo_settings_defaults-button", en: "Other", cn: "其他" }
+            { type: "group", key: "saving_paths", en: "Saving & Paths", cn: "保存与路径" },
+            { type: "tab", panelId: "forge_neo_settings_paths_for_saving", en: "Paths for Saving", cn: "保存路径" },
+            { type: "tab", panelId: "forge_neo_settings_saving_images_grids", en: "Saving Images/Grids", cn: "图像/宫格保存" },
+            { type: "tab", panelId: "forge_neo_settings_saving_subdirectory", en: "Saving to Subdirectory", cn: "保存到子目录" },
+            { type: "group", key: "models_sampling", en: "Models & Sampling", cn: "模型与采样" },
+            { type: "tab", panelId: "forge_neo_settings_control_net", en: "ControlNet", cn: "ControlNet" },
+            { type: "tab", panelId: "forge_neo_settings_extra_networks", en: "Extra Networks", cn: "额外网络" },
+            { type: "tab", panelId: "forge_neo_settings_optimizations", en: "Optimizations", cn: "优化" },
+            { type: "tab", panelId: "forge_neo_settings_refiner", en: "Refiner", cn: "精修" },
+            { type: "tab", panelId: "forge_neo_settings_sampler_parameters", en: "Sampler Parameters", cn: "采样器参数" },
+            { type: "tab", panelId: "forge_neo_settings_stable_diffusion", en: "Stable Diffusion", cn: "Stable Diffusion" },
+            { type: "tab", panelId: "forge_neo_settings_vae", en: "VAE", cn: "VAE" },
+            { type: "tab", panelId: "forge_neo_settings_img2img", en: "img2img", cn: "图生图" },
+            { type: "tab", panelId: "forge_neo_settings_txt2img", en: "txt2img", cn: "文生图" },
+            { type: "group", key: "interface_info", en: "Interface & Info", cn: "界面与信息" },
+            { type: "tab", panelId: "forge_neo_settings_comments", en: "Comments", cn: "评论" },
+            { type: "tab", panelId: "forge_neo_settings_forge_canvas", en: "Forge Canvas", cn: "Forge Canvas" },
+            { type: "tab", panelId: "forge_neo_settings_gallery", en: "Gallery", cn: "图库" },
+            { type: "tab", panelId: "forge_neo_settings_infotext", en: "Infotext", cn: "生成信息" },
+            { type: "tab", panelId: "forge_neo_settings_live_previews", en: "Live Previews", cn: "实时预览" },
+            { type: "tab", panelId: "forge_neo_settings_prompt_editing", en: "Prompt Editing", cn: "提示词编辑" },
+            { type: "tab", panelId: "forge_neo_settings_tagcomplete", en: "Tag Autocomplete", cn: "标签补全" },
+            { type: "tab", panelId: "forge_neo_settings_settings_in_ui", en: "Settings in UI", cn: "UI 内设置" },
+            { type: "tab", panelId: "forge_neo_settings_ui_alternatives", en: "UI Alternatives", cn: "UI Alternatives" },
+            { type: "tab", panelId: "forge_neo_settings_user_interface", en: "User Interface", cn: "界面" },
+            { type: "group", key: "model_presets", en: "Model Presets", cn: "模型预设" },
+            { type: "tab", panelId: "forge_neo_settings_anima", en: "ANIMA", cn: "ANIMA" },
+            { type: "tab", panelId: "forge_neo_settings_flux", en: "FLUX", cn: "FLUX" },
+            { type: "tab", panelId: "forge_neo_settings_klein", en: "KLEIN", cn: "KLEIN" },
+            { type: "tab", panelId: "forge_neo_settings_krea2", en: "KREA2", cn: "KREA2" },
+            { type: "tab", panelId: "forge_neo_settings_lumina", en: "LUMINA", cn: "LUMINA" },
+            { type: "tab", panelId: "forge_neo_settings_qwen", en: "QWEN", cn: "QWEN" },
+            { type: "tab", panelId: "forge_neo_settings_sd_arch", en: "SD", cn: "SD" },
+            { type: "tab", panelId: "forge_neo_settings_xl", en: "XL", cn: "XL" },
+            { type: "tab", panelId: "forge_neo_settings_zit", en: "ZIT", cn: "ZIT" },
+            { type: "group", key: "runtime_api", en: "Runtime & API", cn: "运行与接口" },
+            { type: "tab", panelId: "forge_neo_settings_api", en: "API", cn: "API" },
+            { type: "tab", panelId: "forge_neo_settings_callbacks", en: "Callbacks", cn: "回调" },
+            { type: "tab", panelId: "forge_neo_settings_profiler", en: "Profiler", cn: "性能分析" },
+            { type: "tab", panelId: "forge_neo_settings_system", en: "System", cn: "系统" },
+            { type: "group", key: "postprocessing_tools", en: "Postprocessing Tools", cn: "后期处理工具" },
+            { type: "tab", panelId: "forge_neo_settings_face_restoration", en: "Face Restoration", cn: "面部修复" },
+            { type: "tab", panelId: "forge_neo_settings_postprocessing", en: "Postprocessing", cn: "后处理" },
+            { type: "tab", panelId: "forge_neo_settings_upscaling", en: "Upscaling", cn: "放大" },
+            { type: "group", key: "low_bit_runtime", en: "Low-bit Runtime", cn: "低位推理" },
+            { type: "tab", panelId: "forge_neo_settings_nunchaku", en: "Nunchaku", cn: "Nunchaku" },
+            { type: "group", key: "other", en: "Other", cn: "其他" },
+            { type: "tab", panelId: "forge_neo_settings_defaults", en: "Defaults", cn: "默认值" },
+            { type: "tab", panelId: "forge_neo_settings_sysinfo", en: "Sysinfo", cn: "系统信息" },
+            { type: "tab", panelId: "forge_neo_settings_actions", en: "Actions", cn: "操作" },
+            { type: "tab", panelId: "forge_neo_settings_licenses", en: "Licenses", cn: "许可证" }
         ];
     }
 
-    function syncSettingsNavGroups() {
-        const tabs = document.querySelector("#forge_neo_settings > .tab-wrapper .tab-container[role='tablist']");
-        if (!tabs) return;
-        const labels = settingsNavGroupLabels();
-        const existing = new Map(Array.from(tabs.querySelectorAll(".forge-neo-settings-nav-group")).map(function (label) {
-            return [label.getAttribute("data-forge-neo-before") + "::" + label.getAttribute("data-forge-neo-en"), label];
-        }));
-        labels.forEach(function (item) {
-            const before = tabs.querySelector(item.before);
-            if (!before) return;
-            const key = item.before + "::" + item.en;
-            let label = existing.get(key);
-            if (!label) {
-                label = document.createElement("div");
-                label.className = "forge-neo-settings-nav-group";
-                label.setAttribute("data-forge-neo-before", item.before);
-                label.setAttribute("data-forge-neo-en", item.en);
-                label.setAttribute("aria-hidden", "true");
-                before.parentNode.insertBefore(label, before);
+    function settingsStaticNavEntries() {
+        const settings = document.querySelector("#forge_neo_settings");
+        const wrapper = settings ? settings.querySelector(":scope > .tab-wrapper") : null;
+        if (!settings || !wrapper) return [];
+
+        const selected = wrapper.querySelector(".tab-container[role='tablist'] button[aria-selected='true'], .tab-container[role='tablist'] button.selected, .overflow-dropdown button.selected");
+        const visiblePanel = Array.from(settings.querySelectorAll(":scope > [role='tabpanel']")).find(function (panel) {
+            return panel.id && isVisibleElement(panel);
+        });
+        const selectedPanelId = (selected ? selected.getAttribute("aria-controls") || "" : "") || (visiblePanel ? visiblePanel.id : "") || settingsStaticSelectedPanelId;
+        const selectedLabel = selected ? normalizedSettingsText(selected.textContent) : "";
+
+        const entries = settingsStaticNavPageDefinitions().map(function (entry) {
+            if (entry.type === "group") {
+                return { ...entry, text: t(entry.en, entry.cn) };
             }
-            label.textContent = t(item.en, item.cn);
+            const text = t(entry.en, entry.cn);
+            return {
+                ...entry,
+                key: entry.panelId,
+                text,
+                selected: (entry.panelId && entry.panelId === selectedPanelId) || text === selectedLabel
+            };
+        });
+
+        return entries;
+    }
+
+    function showSettingsStaticPanel(panelId) {
+        const settings = document.querySelector("#forge_neo_settings");
+        const panel = panelId ? document.getElementById(panelId) : null;
+        if (!settings || !panel) return false;
+        settings.querySelectorAll(":scope > [role='tabpanel']").forEach(function (item) {
+            const active = item.id === panelId;
+            item.hidden = !active;
+            item.setAttribute("aria-hidden", active ? "false" : "true");
+            item.style.display = active ? "" : "none";
+        });
+        document.querySelectorAll("#forge_neo_settings > .tab-wrapper button[role='tab']").forEach(function (button) {
+            const active = button.getAttribute("aria-controls") === panelId;
+            button.classList.toggle("selected", active);
+            button.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        return true;
+    }
+
+    function clickSettingsNativeTab(panelId, label) {
+        const wrapper = document.querySelector("#forge_neo_settings > .tab-wrapper");
+        if (!wrapper) return;
+        if (panelId) settingsStaticSelectedPanelId = panelId;
+        const target = settingsTabButtonFor(panelId, label);
+        const fallbackPanel = function () {
+            if (panelId && !isSettingsPanelVisible(panelId)) {
+                showSettingsStaticPanel(panelId);
+            }
+        };
+        if (target) {
+            target.click();
+        } else {
+            fallbackPanel();
+        }
+        window.requestAnimationFrame(fallbackPanel);
+        window.setTimeout(fallbackPanel, 80);
+        window.setTimeout(fallbackPanel, 240);
+    }
+
+    function syncSettingsNavGroups() {
+        const settings = document.querySelector("#forge_neo_settings");
+        const wrapper = settings ? settings.querySelector(":scope > .tab-wrapper") : null;
+        const tabs = settingsNativeTablist();
+        if (!settings || !wrapper || !tabs) return;
+
+        wrapper.setAttribute("aria-hidden", "true");
+
+        let nav = settings.querySelector(":scope > .forge-neo-settings-static-nav");
+        if (!nav) {
+            nav = document.createElement("div");
+            nav.className = "forge-neo-settings-static-nav";
+            nav.setAttribute("role", "tablist");
+            nav.setAttribute("aria-label", "Settings");
+            settings.insertBefore(nav, wrapper);
+        }
+
+        nav.textContent = "";
+        const entries = settingsStaticNavEntries();
+        entries.forEach(function (entry) {
+            if (entry.type === "group") {
+                const label = document.createElement("div");
+                label.className = "forge-neo-settings-static-group";
+                label.setAttribute("aria-hidden", "true");
+                label.textContent = entry.text;
+                nav.appendChild(label);
+                return;
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "forge-neo-settings-static-tab";
+            if (entry.selected) button.classList.add("is-selected");
+            button.setAttribute("data-forge-neo-settings-target", entry.panelId);
+            button.setAttribute("data-forge-neo-settings-label", entry.text);
+            button.setAttribute("aria-selected", entry.selected ? "true" : "false");
+            button.textContent = entry.text;
+            button.addEventListener("click", function () {
+                clickSettingsNativeTab(entry.panelId, entry.text);
+                window.requestAnimationFrame(syncSettingsNavGroups);
+                window.setTimeout(syncSettingsNavGroups, 80);
+            });
+            nav.appendChild(button);
         });
     }
 
@@ -2175,6 +2348,13 @@
         if (event.target.closest("#forge_neo_settings_licenses-button")) {
             window.setTimeout(populateForgeNeoLicenses, 120);
             window.setTimeout(populateForgeNeoLicenses, 900);
+        }
+        const topTabButton = event.target.closest("#forge_neo_tabs > .tab-wrapper button");
+        const topTabText = topTabButton ? normalizedSettingsText(topTabButton.textContent) : "";
+        if (topTabButton && (topTabText === "Settings" || topTabText === "设置")) {
+            window.requestAnimationFrame(syncSettingsNavGroups);
+            window.setTimeout(syncSettingsNavGroups, 60);
+            window.setTimeout(syncSettingsNavGroups, 180);
         }
         const extraNetworkTool = event.target.closest(".forge-neo-extra-card-tool[data-extra-action]");
         if (extraNetworkTool && handleExtraNetworkCardTool(extraNetworkTool)) {

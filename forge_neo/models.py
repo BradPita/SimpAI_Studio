@@ -983,3 +983,48 @@ def first_or_none(values: list[str]) -> str:
 
 def defaults_for_preset(preset: str) -> dict[str, float | int | str]:
     return dict(PRESET_DEFAULTS.get(str(preset or "").lower(), PRESET_DEFAULTS["klein"]))
+
+
+def settings_defaults_for_preset(
+    preset: str,
+    *,
+    mode: str = "t2i",
+    settings: dict[str, object] | None = None,
+) -> dict[str, float | int | str]:
+    preset_key = str(preset or "").strip().lower()
+    if preset_key not in PRESET_DEFAULTS:
+        preset_key = "klein"
+    base = defaults_for_preset(preset_key)
+    mode_key = "i2i" if str(mode or "").lower() == "i2i" else "t2i"
+
+    def positive_int(suffix: str, default: object) -> int:
+        try:
+            value = int(_settings_value(settings, f"{preset_key}_{suffix}", default))
+        except Exception:
+            value = int(default)
+        return value if value > 0 else int(default)
+
+    def positive_float(suffix: str, default: object) -> float:
+        try:
+            value = float(_settings_value(settings, f"{preset_key}_{suffix}", default))
+        except Exception:
+            value = float(default)
+        return value if value > 0.0 else float(default)
+
+    result: dict[str, float | int | str] = {
+        "steps": positive_int(f"{mode_key}_step", base["steps"]),
+        "width": positive_int(f"{mode_key}_width", base["width"]),
+        "height": positive_int(f"{mode_key}_height", base["height"]),
+        "cfg_scale": positive_float(f"{mode_key}_cfg", base["cfg_scale"]),
+        "sampler": str(_settings_value(settings, f"{preset_key}_{mode_key}_sampler", base["sampler"])),
+        "scheduler": str(_settings_value(settings, f"{preset_key}_{mode_key}_scheduler", base["scheduler"])),
+        "batch_size": positive_int(f"{mode_key}_batch_size", 1),
+    }
+    if str(mode or "").lower() in {"hires", "t2i_hr", "hr"}:
+        result.update(
+            {
+                "steps": positive_int("t2i_hr_step", base["steps"]),
+                "cfg_scale": positive_float("t2i_hr_cfg", base["cfg_scale"]),
+            }
+        )
+    return result

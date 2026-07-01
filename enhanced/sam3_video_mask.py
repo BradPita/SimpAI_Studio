@@ -2662,6 +2662,20 @@ def get_viewer_html() -> str:
     return root.querySelector('input[type="file"]');
   };
 
+  const componentIsVisible = (root) => {
+    if (!root) return false;
+    if (root.hidden || root.closest('[hidden], .simpai-mounted-hidden, .simpai-force-hidden, .hidden, .hide, [aria-hidden="true"]')) return false;
+    try {
+      const style = window.getComputedStyle ? window.getComputedStyle(root) : null;
+      if (style && (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none")) return false;
+      const rect = root.getBoundingClientRect ? root.getBoundingClientRect() : null;
+      if (rect && (rect.width <= 0 || rect.height <= 0)) return false;
+    } catch (e) {
+      return false;
+    }
+    return true;
+  };
+
   const uploadFileToComponent = (componentId, file) => {
     const input = componentFileInput(componentId);
     if (!input || !file) return false;
@@ -2815,6 +2829,7 @@ def get_viewer_html() -> str:
     const opts = options || {};
 
     const preventFileOpen = (event) => {
+      if (!componentIsVisible(root)) return;
       if (!containsTransferFile(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2822,6 +2837,7 @@ def get_viewer_html() -> str:
     };
 
     const onDrop = (event) => {
+      if (!componentIsVisible(root)) return;
       if (!containsTransferFile(event.dataTransfer)) return;
       preventFileOpen(event);
       const file = transferFiles(event.dataTransfer)[0];

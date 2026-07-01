@@ -3371,36 +3371,57 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     gap: 20px !important;
     grid-template-columns: 148px minmax(0, 1fr);
     min-height: 1704px !important;
+    position: relative !important;
 }
 
 #forge_neo_root #forge_neo_settings > .tab-wrapper {
-    align-self: start;
-    grid-column: 1;
-    grid-row: 1;
-    display: block !important;
-    height: 1704px !important;
-    min-height: 1704px !important;
-    min-width: 0;
+    height: auto !important;
+    left: -10000px !important;
+    min-height: 0 !important;
+    min-width: 1800px !important;
+    opacity: 0 !important;
     overflow: visible !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    top: 0 !important;
+    visibility: hidden !important;
+    width: 1800px !important;
 }
 
-#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"] {
-    align-items: stretch !important;
+#forge_neo_root #forge_neo_settings > .tab-wrapper > .tab-container[role="tablist"],
+#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"][aria-hidden="true"],
+#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container.visually-hidden,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-menu,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown.hide {
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+#forge_neo_root #forge_neo_settings > .tab-wrapper > .tab-container[role="tablist"],
+#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"][aria-hidden="true"],
+#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container.visually-hidden,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-menu,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown,
+#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown.hide {
+    display: flex !important;
+}
+
+#forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav {
+    align-self: start;
     background: transparent !important;
     border: 0 !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 0 !important;
-    height: auto !important;
-    max-width: none !important;
+    grid-column: 1;
+    grid-row: 1;
     min-height: 1704px !important;
-    min-width: 1800px !important;
     overflow: visible !important;
-    pointer-events: none !important;
-    width: 1800px !important;
+    width: 148px !important;
 }
 
-#forge_neo_root #forge_neo_settings > .tab-wrapper .forge-neo-settings-nav-group {
+#forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-group {
     align-items: center;
     color: var(--forge-neo-text-muted);
     display: flex;
@@ -3415,15 +3436,11 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     width: 148px;
 }
 
-#forge_neo_root #forge_neo_settings > .tab-wrapper .forge-neo-settings-nav-group:first-child {
+#forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-group:first-child {
     margin-top: 0;
 }
 
-#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container.visually-hidden {
-    display: none !important;
-}
-
-#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"] button {
+#forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-tab {
     align-items: center !important;
     background: transparent !important;
     border: 0 !important;
@@ -3442,59 +3459,7 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
     width: 148px !important;
 }
 
-#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-menu {
-    display: none !important;
-    height: auto !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    position: static !important;
-    width: 100% !important;
-}
-
-#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-menu > button {
-    display: none !important;
-}
-
-#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown,
-#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown.hide {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    display: none !important;
-    flex-direction: column !important;
-    gap: 0 !important;
-    height: auto !important;
-    margin: 0 !important;
-    max-height: none !important;
-    opacity: 1 !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    pointer-events: auto !important;
-    position: static !important;
-    transform: none !important;
-    visibility: visible !important;
-    width: 100% !important;
-}
-
-#forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown button {
-    align-items: center !important;
-    background: transparent !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    color: var(--forge-neo-tab) !important;
-    display: flex !important;
-    font-size: 14px !important;
-    height: 32px !important;
-    justify-content: flex-start !important;
-    line-height: 1.2 !important;
-    min-height: 32px !important;
-    padding: 0 10px !important;
-    text-align: left !important;
-    white-space: normal !important;
-    width: 100% !important;
-}
-
-#forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"] button.selected {
+#forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-tab.is-selected {
     color: var(--forge-neo-primary-bottom) !important;
     font-weight: 700 !important;
     text-decoration: underline;
@@ -4757,7 +4722,101 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
     margin-top: 10px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+#forge_neo_tabs > .tab-wrapper {
+    align-items: flex-start !important;
+    flex-wrap: nowrap !important;
+    position: relative !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu {
+    align-items: flex-start !important;
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    margin-top: 10px !important;
+    min-height: 34px !important;
+    overflow: visible !important;
+    position: relative !important;
+    width: auto !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > button {
+    align-items: center !important;
+    background: #161618 !important;
+    border: 1px solid transparent !important;
+    border-bottom: 0 !important;
+    border-radius: 6px 6px 0 0 !important;
+    color: var(--forge-neo-muted) !important;
+    display: inline-flex !important;
+    font-size: 0 !important;
+    height: 34px !important;
+    justify-content: center !important;
+    min-height: 34px !important;
+    min-width: 38px !important;
+    padding: 0 !important;
+    width: 38px !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > button::before {
+    content: "...";
+    font-size: 18px;
+    line-height: 1;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown {
+    background: var(--forge-neo-panel) !important;
+    border: 1px solid var(--forge-neo-border) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+    height: auto !important;
+    min-width: 180px !important;
+    opacity: 1 !important;
+    overflow: hidden !important;
+    padding: 4px !important;
+    position: absolute !important;
+    right: 0 !important;
+    top: 36px !important;
+    transform: none !important;
+    visibility: visible !important;
+    width: max-content !important;
+    z-index: 80 !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown.hide {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown button {
+    align-items: center !important;
+    background: #161618 !important;
+    border: 1px solid transparent !important;
+    border-radius: 4px !important;
+    color: var(--forge-neo-muted) !important;
+    display: flex !important;
+    height: 32px !important;
+    justify-content: flex-start !important;
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    white-space: nowrap !important;
+    width: 100% !important;
+}
+
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown button:hover,
+#forge_neo_tabs > .tab-wrapper > .overflow-menu > .overflow-dropdown button.selected {
+    background: var(--forge-neo-panel-2) !important;
+    color: var(--forge-neo-text) !important;
 }
 
 #forge_neo_tabs > .tab-wrapper > .tab-container[role="tablist"] #forge_neo_txt2img_tab-button {
@@ -5565,27 +5624,37 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
 
     #forge_neo_root #forge_neo_settings > .tab-wrapper {
         height: auto !important;
-        margin-bottom: 12px !important;
+        left: -10000px !important;
         min-height: 0 !important;
+        width: 1800px !important;
     }
 
-    #forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"] {
+    #forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav {
         flex-direction: row !important;
         flex-wrap: wrap !important;
         gap: 0 !important;
+        margin-bottom: 12px !important;
         min-height: 0 !important;
+        width: 100% !important;
     }
 
-    #forge_neo_root #forge_neo_settings > .tab-wrapper .tab-container[role="tablist"] button {
+    #forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-tab {
         flex: 1 1 120px !important;
         min-width: 120px !important;
         width: auto !important;
     }
 
+    #forge_neo_root #forge_neo_settings > .forge-neo-settings-static-nav .forge-neo-settings-static-group {
+        flex: 1 0 100% !important;
+        width: 100% !important;
+    }
+
     #forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-menu,
     #forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown,
     #forge_neo_root #forge_neo_settings > .tab-wrapper .overflow-dropdown.hide {
-        display: none !important;
+        display: flex !important;
+        pointer-events: none !important;
+        visibility: hidden !important;
     }
 
     #forge_neo_root .forge-neo-output-actions,

@@ -45,6 +45,7 @@ from forge_neo.extension_adapter import (
     sam_matting_available,
     see_through_available,
     storyboard_assistant_available,
+    TAGCOMPLETE_EXTENSION,
     trellis2_available,
     wd14_tagger_available,
     wd14_interrogate_payload,
@@ -89,7 +90,6 @@ from forge_neo.licenses import license_notice_html
 from forge_neo.localization import localization_template_html, save_localization_template
 from forge_neo.models import (
     UI_PRESETS,
-    defaults_for_preset,
     find_model_path,
     first_or_none,
     initial_preset,
@@ -100,6 +100,7 @@ from forge_neo.models import (
     sampling_methods,
     scheduler_types,
     save_forge_neo_config_values,
+    settings_defaults_for_preset,
     split_module_selection,
     upscale_model_names,
 )
@@ -151,6 +152,7 @@ from forge_neo.settings import (
     PRESET_FRAMES,
     PRESET_SETTING_KEYS,
     PRESET_SHIFT,
+    TAGCOMPLETE_SETTING_KEYS,
     check_sysinfo_file,
     load_settings,
     normalize_settings,
@@ -761,6 +763,7 @@ SETTINGS_INPUT_KEYS = [
     "keyedit_move",
     "disable_token_counters",
     "include_styles_into_token_counters",
+    *TAGCOMPLETE_SETTING_KEYS,
     "extra_options_txt2img",
     "extra_options_img2img",
     "extra_options_cols",
@@ -782,6 +785,7 @@ SETTINGS_INPUT_KEYS = [
     "show_progressbar",
     "live_preview_refresh_period",
     "extra_networks_default_multiplier",
+    "extra_networks_add_text_separator",
     "extra_networks_card_width",
     "extra_networks_card_height",
     "localization",
@@ -979,6 +983,18 @@ SOURCE_SETTINGS_PAGE_GROUPS: tuple[tuple[str, str, str, tuple[tuple[str, str], .
             ("Prompt editing key", "提示词编辑按键"),
             ("Prompt editing timeout", "提示词编辑超时"),
             ("Delimiter behavior", "分隔符行为"),
+        ),
+    ),
+    (
+        "Tag Autocomplete",
+        "标签补全",
+        "forge_neo_settings_tagcomplete",
+        (
+            ("Tag filename", "标签文件"),
+            ("Translation filename", "翻译文件"),
+            ("Extra filename", "额外标签文件"),
+            ("Chant filename", "长提示文件"),
+            ("Completion behavior", "补全行为"),
         ),
     ),
     (
@@ -1200,6 +1216,232 @@ def _choice_list_with_value(choices: list[str], value: object) -> list[str]:
 
 def _setting_initial_value(settings_initial: dict[str, object], key: str) -> object:
     return settings_initial.get(key, DEFAULT_SETTINGS[key])
+
+
+def _tagcomplete_file_choices(suffix: str, value: object) -> list[str]:
+    choices = ["None"]
+    tags_dir = Path(__file__).resolve().parents[1] / "forge_neo" / "webui" / "extensions" / TAGCOMPLETE_EXTENSION / "tags"
+    try:
+        choices.extend(sorted(path.name for path in tags_dir.glob(f"*{suffix}") if path.is_file()))
+    except Exception:
+        pass
+    return _choice_list_with_value(choices, value)
+
+
+def _create_tagcomplete_settings_page(settings_initial: dict[str, object]) -> list[object]:
+    components: list[object] = []
+
+    def add(component):
+        components.append(component)
+        return component
+
+    def value(key: str) -> object:
+        return _setting_initial_value(settings_initial, key)
+
+    with gr.Column(elem_classes=["forge-neo-settings-panel", "forge-neo-tagcomplete-settings-panel"]):
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(
+                gr.Dropdown(
+                    _tagcomplete_file_choices(".csv", value("tac_tagFile")),
+                    value=value("tac_tagFile"),
+                    label=_label("Tag filename", "标签文件"),
+                    elem_id="forge_neo_setting_tac_tagFile",
+                )
+            )
+            add(
+                gr.Checkbox(
+                    value=value("tac_active"),
+                    label=_label("Enable Tag Autocompletion", "启用标签补全"),
+                    elem_id="forge_neo_setting_tac_active",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_activeIn.txt2img"), label=_label("Active in txt2img", "文生图启用"), elem_id="forge_neo_setting_tac_activeIn_txt2img"))
+            add(gr.Checkbox(value=value("tac_activeIn.img2img"), label=_label("Active in img2img", "图生图启用"), elem_id="forge_neo_setting_tac_activeIn_img2img"))
+            add(gr.Checkbox(value=value("tac_activeIn.negativePrompts"), label=_label("Active in negative prompts", "反向提示词启用"), elem_id="forge_neo_setting_tac_activeIn_negativePrompts"))
+            add(gr.Checkbox(value=value("tac_activeIn.thirdParty"), label=_label("Active in third party textboxes", "第三方文本框启用"), elem_id="forge_neo_setting_tac_activeIn_thirdParty"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(
+                gr.Textbox(
+                    value=value("tac_activeIn.modelList"),
+                    label=_label("Black/Whitelist models", "模型黑白名单"),
+                    elem_id="forge_neo_setting_tac_activeIn_modelList",
+                )
+            )
+            add(
+                gr.Radio(
+                    _localized_value_choices([("Blacklist", "黑名单"), ("Whitelist", "白名单")]),
+                    value=value("tac_activeIn.modelListMode"),
+                    label=_label("Mode to use for model list", "模型名单模式"),
+                    elem_id="forge_neo_setting_tac_activeIn_modelListMode",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Slider(1, 200, value=value("tac_maxResults"), step=1, label=_label("Maximum results", "最大候选数"), elem_id="forge_neo_setting_tac_maxResults"))
+            add(gr.Slider(10, 1000, value=value("tac_resultStepLength"), step=10, label=_label("How many results to load at once", "每次加载候选数"), elem_id="forge_neo_setting_tac_resultStepLength"))
+            add(gr.Slider(0, 2000, value=value("tac_delayTime"), step=25, label=_label("Completion delay (ms)", "补全延迟（毫秒）"), elem_id="forge_neo_setting_tac_delayTime"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_slidingPopup"), label=_label("Move popup with cursor", "候选框跟随光标"), elem_id="forge_neo_setting_tac_slidingPopup"))
+            add(gr.Checkbox(value=value("tac_showAllResults"), label=_label("Show all results", "显示所有候选"), elem_id="forge_neo_setting_tac_showAllResults"))
+            add(gr.Checkbox(value=value("tac_useIndexedSearch"), label=_label("Use indexed search", "使用索引搜索"), elem_id="forge_neo_setting_tac_useIndexedSearch"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_useWildcards"), label=_label("Search for wildcards", "搜索通配符"), elem_id="forge_neo_setting_tac_useWildcards"))
+            add(gr.Checkbox(value=value("tac_sortWildcardResults"), label=_label("Sort wildcard contents", "通配符内容排序"), elem_id="forge_neo_setting_tac_sortWildcardResults"))
+            add(gr.Checkbox(value=value("tac_skipWildcardRefresh"), label=_label("Skip wildcard refresh", "跳过通配符刷新"), elem_id="forge_neo_setting_tac_skipWildcardRefresh"))
+        add(
+            gr.Textbox(
+                value=value("tac_wildcardExclusionList"),
+                label=_label("Wildcard folder exclusion list", "通配符排除目录"),
+                elem_id="forge_neo_setting_tac_wildcardExclusionList",
+            )
+        )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_useEmbeddings"), label=_label("Search for embeddings", "搜索 Embeddings"), elem_id="forge_neo_setting_tac_useEmbeddings"))
+            add(gr.Checkbox(value=value("tac_forceRefreshEmbeddings"), label=_label("Force refresh embeddings", "强制刷新 Embeddings"), elem_id="forge_neo_setting_tac_forceRefreshEmbeddings"))
+            add(gr.Checkbox(value=value("tac_includeEmbeddingsInNormalResults"), label=_label("Include embeddings in normal results", "普通候选包含 Embeddings"), elem_id="forge_neo_setting_tac_includeEmbeddingsInNormalResults"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_useLoras"), label=_label("Search for Loras", "搜索 LoRA"), elem_id="forge_neo_setting_tac_useLoras"))
+            add(gr.Checkbox(value=value("tac_useLycos"), label=_label("Search for LyCORIS/LoHa", "搜索 LyCORIS/LoHa"), elem_id="forge_neo_setting_tac_useLycos"))
+            add(gr.Checkbox(value=value("tac_useLoraPrefixForLycos"), label=_label("Use '<lora:' prefix for LyCORIS", "LyCORIS 使用 '<lora:' 前缀"), elem_id="forge_neo_setting_tac_useLoraPrefixForLycos"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_showWikiLinks"), label=_label("Show wiki links", "显示 Wiki 链接"), elem_id="forge_neo_setting_tac_showWikiLinks"))
+            add(gr.Checkbox(value=value("tac_showExtraNetworkPreviews"), label=_label("Show extra network previews", "显示额外网络预览图"), elem_id="forge_neo_setting_tac_showExtraNetworkPreviews"))
+            add(gr.Checkbox(value=value("tac_useStyleVars"), label=_label("Search style names", "搜索样式名"), elem_id="forge_neo_setting_tac_useStyleVars"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(
+                gr.Dropdown(
+                    ["Name", "Date Modified (newest first)", "Date Modified (oldest first)"],
+                    value=value("tac_modelSortOrder"),
+                    label=_label("Model sort order", "模型排序方式"),
+                    elem_id="forge_neo_setting_tac_modelSortOrder",
+                )
+            )
+            add(
+                gr.Dropdown(
+                    ["Logarithmic (weak)", "Logarithmic (strong)", "Usage first"],
+                    value=value("tac_frequencyFunction"),
+                    label=_label("Frequency sorting function", "频率排序函数"),
+                    elem_id="forge_neo_setting_tac_frequencyFunction",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_frequencySort"), label=_label("Sort frequent tags higher", "常用标签优先"), elem_id="forge_neo_setting_tac_frequencySort"))
+            add(gr.Slider(0, 100, value=value("tac_frequencyMinCount"), step=1, label=_label("Minimum frequent uses", "常用最小次数"), elem_id="forge_neo_setting_tac_frequencyMinCount"))
+            add(gr.Slider(0, 365, value=value("tac_frequencyMaxAge"), step=1, label=_label("Maximum frequent age in days", "常用最长天数"), elem_id="forge_neo_setting_tac_frequencyMaxAge"))
+            add(gr.Slider(0, 100, value=value("tac_frequencyRecommendCap"), step=1, label=_label("Maximum recommended tags", "推荐标签最大数量"), elem_id="forge_neo_setting_tac_frequencyRecommendCap"))
+        add(gr.Checkbox(value=value("tac_frequencyIncludeAlias"), label=_label("Frequency sorting matches aliases", "频率排序匹配别名"), elem_id="forge_neo_setting_tac_frequencyIncludeAlias"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_replaceUnderscores"), label=_label("Replace underscores with spaces", "下划线替换为空格"), elem_id="forge_neo_setting_tac_replaceUnderscores"))
+            add(gr.Checkbox(value=value("tac_escapeParentheses"), label=_label("Escape parentheses", "转义括号"), elem_id="forge_neo_setting_tac_escapeParentheses"))
+            add(gr.Checkbox(value=value("tac_appendComma"), label=_label("Append comma", "追加逗号"), elem_id="forge_neo_setting_tac_appendComma"))
+            add(gr.Checkbox(value=value("tac_appendSpace"), label=_label("Append space", "追加空格"), elem_id="forge_neo_setting_tac_appendSpace"))
+            add(gr.Checkbox(value=value("tac_alwaysSpaceAtEnd"), label=_label("Always append ending space", "末尾总是追加空格"), elem_id="forge_neo_setting_tac_alwaysSpaceAtEnd"))
+        add(
+            gr.Textbox(
+                value=value("tac_undersocreReplacementExclusionList"),
+                label=_label("Underscore replacement exclusion list", "下划线替换排除列表"),
+                elem_id="forge_neo_setting_tac_undersocreReplacementExclusionList",
+            )
+        )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(
+                gr.Radio(
+                    _localized_value_choices([("Never", "从不"), ("Only user list", "仅用户列表"), ("Always", "总是")]),
+                    value=value("tac_modelKeywordCompletion"),
+                    label=_label("Add known trigger words for LoRA/LyCO", "加入 LoRA/LyCO 触发词"),
+                    elem_id="forge_neo_setting_tac_modelKeywordCompletion",
+                )
+            )
+            add(
+                gr.Dropdown(
+                    _localized_value_choices(
+                        [
+                            ("Start of prompt", "提示词开头"),
+                            ("End of prompt", "提示词结尾"),
+                            ("Before LORA/LyCO", "LoRA/LyCO 前"),
+                            ("After LORA/LyCO", "LoRA/LyCO 后"),
+                        ]
+                    ),
+                    value=value("tac_modelKeywordLocation"),
+                    label=_label("Trigger keyword location", "触发词位置"),
+                    elem_id="forge_neo_setting_tac_modelKeywordLocation",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_modelKeywordCivitai"), label=_label("Fetch trigger words from CivitAI", "从 CivitAI 获取触发词"), elem_id="forge_neo_setting_tac_modelKeywordCivitai"))
+            add(gr.Textbox(value=value("tac_civitaiApiKey"), label=_label("CivitAI API key", "CivitAI API key"), type="password", elem_id="forge_neo_setting_tac_civitaiApiKey"))
+            add(
+                gr.Dropdown(
+                    _localized_value_choices(
+                        [
+                            ("To next folder level", "到下一级目录"),
+                            ("To first difference", "到第一个差异"),
+                            ("Always fully", "总是完整路径"),
+                        ]
+                    ),
+                    value=value("tac_wildcardCompletionMode"),
+                    label=_label("Nested wildcard completion", "嵌套通配符补全"),
+                    elem_id="forge_neo_setting_tac_wildcardCompletionMode",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_alias.searchByAlias"), label=_label("Search by alias", "按别名搜索"), elem_id="forge_neo_setting_tac_alias_searchByAlias"))
+            add(gr.Checkbox(value=value("tac_alias.onlyShowAlias"), label=_label("Only show alias", "仅显示别名"), elem_id="forge_neo_setting_tac_alias_onlyShowAlias"))
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(
+                gr.Dropdown(
+                    _tagcomplete_file_choices(".csv", value("tac_translation.translationFile")),
+                    value=value("tac_translation.translationFile"),
+                    label=_label("Translation filename", "翻译文件"),
+                    elem_id="forge_neo_setting_tac_translation_translationFile",
+                )
+            )
+            add(
+                gr.Dropdown(
+                    _tagcomplete_file_choices(".csv", value("tac_extra.extraFile")),
+                    value=value("tac_extra.extraFile"),
+                    label=_label("Extra filename", "额外标签文件"),
+                    elem_id="forge_neo_setting_tac_extra_extraFile",
+                )
+            )
+            add(
+                gr.Dropdown(
+                    _tagcomplete_file_choices(".json", value("tac_chantFile")),
+                    value=value("tac_chantFile"),
+                    label=_label("Chant filename", "长提示文件"),
+                    elem_id="forge_neo_setting_tac_chantFile",
+                )
+            )
+        with gr.Row(elem_classes=["forge-neo-settings-row"]):
+            add(gr.Checkbox(value=value("tac_translation.oldFormat"), label=_label("Old translation format", "旧翻译格式"), elem_id="forge_neo_setting_tac_translation_oldFormat"))
+            add(gr.Checkbox(value=value("tac_translation.searchByTranslation"), label=_label("Search by translation", "按翻译搜索"), elem_id="forge_neo_setting_tac_translation_searchByTranslation"))
+            add(gr.Checkbox(value=value("tac_translation.liveTranslation"), label=_label("Live translation", "实时翻译"), elem_id="forge_neo_setting_tac_translation_liveTranslation"))
+            add(
+                gr.Radio(
+                    _localized_value_choices([("Insert before", "插入前面"), ("Insert after", "插入后面")]),
+                    value=value("tac_extra.addMode"),
+                    label=_label("Extra tags add mode", "额外标签加入方式"),
+                    elem_id="forge_neo_setting_tac_extra_addMode",
+                )
+            )
+        add(
+            gr.Textbox(
+                value=value("tac_keymap"),
+                label=_label("Configure Hotkeys JSON", "快捷键 JSON"),
+                lines=6,
+                elem_id="forge_neo_setting_tac_keymap",
+            )
+        )
+        add(
+            gr.Textbox(
+                value=value("tac_colormap"),
+                label=_label("Configure colors JSON", "颜色 JSON"),
+                lines=8,
+                elem_id="forge_neo_setting_tac_colormap",
+            )
+        )
+
+    return components
 
 
 def _create_preset_settings_page(arch: str, settings_initial: dict[str, object]) -> list[object]:
@@ -6384,11 +6626,20 @@ def _checkpoint_changed(checkpoint_name: str, preset: str):
     )
 
 
-def _preset_dcfg_value(preset: str, *, is_img2img: bool = False, settings: dict[str, object] | None = None) -> float:
+def _preset_dcfg_value(
+    preset: str,
+    *,
+    is_img2img: bool = False,
+    is_hires: bool = False,
+    settings: dict[str, object] | None = None,
+) -> float:
     key = str(preset or "").lower()
     if settings is None:
         settings = load_settings()
-    suffix = "i2i_dcfg" if is_img2img else "t2i_dcfg"
+    if is_hires:
+        suffix = "t2i_hr_dcfg"
+    else:
+        suffix = "i2i_dcfg" if is_img2img else "t2i_dcfg"
     if key in PRESET_SHIFT:
         return float(settings.get(f"{key}_{suffix}", abs(PRESET_SHIFT[key])))
     if key in PRESET_DISTILL:
@@ -6412,9 +6663,9 @@ def _preset_dcfg_label(preset: str) -> tuple[str, str]:
     return ("Distilled CFG Scale", "蒸馏 CFG 比例")
 
 
-def _preset_dcfg_update(preset: str, *, is_img2img: bool = False):
+def _preset_dcfg_update(preset: str, *, is_img2img: bool = False, is_hires: bool = False):
     return gr.update(
-        value=_preset_dcfg_value(preset, is_img2img=is_img2img),
+        value=_preset_dcfg_value(preset, is_img2img=is_img2img, is_hires=is_hires),
         visible=_preset_dcfg_visible(preset),
         label=_label(*_preset_dcfg_label(preset)),
     )
@@ -6424,7 +6675,10 @@ def _preset_changed(preset: str):
     preset_key = str(preset or "").strip().lower()
     if preset_key in UI_PRESETS:
         save_forge_neo_config_values({"forge_preset": preset_key})
-    defaults = defaults_for_preset(preset)
+    settings = load_settings()
+    defaults = settings_defaults_for_preset(preset, mode="t2i", settings=settings)
+    hires_defaults = settings_defaults_for_preset(preset, mode="t2i_hr", settings=settings)
+    img_defaults = settings_defaults_for_preset(preset, mode="i2i", settings=settings)
     choices = refresh_model_choices(preset)
     lora_update, lora_weights = _lora_default_updates(preset, choices)
     prompt_value = _default_prompt(preset, choices)
@@ -6437,15 +6691,20 @@ def _preset_changed(preset: str):
         int(defaults["height"]),
         float(defaults["cfg_scale"]),
         _preset_dcfg_update(preset),
+        int(hires_defaults["steps"]),
+        float(hires_defaults["cfg_scale"]),
+        _preset_dcfg_update(preset, is_hires=True),
+        int(defaults["batch_size"]),
         defaults["sampler"],
         defaults["scheduler"],
-        int(defaults["steps"]),
-        int(defaults["width"]),
-        int(defaults["height"]),
-        float(defaults["cfg_scale"]),
+        int(img_defaults["steps"]),
+        int(img_defaults["width"]),
+        int(img_defaults["height"]),
+        float(img_defaults["cfg_scale"]),
         _preset_dcfg_update(preset, is_img2img=True),
-        defaults["sampler"],
-        defaults["scheduler"],
+        int(img_defaults["batch_size"]),
+        img_defaults["sampler"],
+        img_defaults["scheduler"],
         lora_update,
         lora_update,
         lora_weights,
@@ -10761,11 +11020,13 @@ def create_app() -> gr.Blocks:
     os.environ["FORGE_NEO_MANAGED_SOURCE_EXTENSION_TABS"] = "1"
     state_value = _initial_state()
     default_preset = initial_preset()
+    settings_initial = load_settings()
     model_choices = initial_model_choices(default_preset)
     model_defaults = preset_model_defaults(default_preset, model_choices)
-    defaults = defaults_for_preset(default_preset)
+    defaults = settings_defaults_for_preset(default_preset, mode="t2i", settings=settings_initial)
+    hires_defaults = settings_defaults_for_preset(default_preset, mode="t2i_hr", settings=settings_initial)
+    img_defaults = settings_defaults_for_preset(default_preset, mode="i2i", settings=settings_initial)
     styles = style_choices()
-    settings_initial = load_settings()
     sampling_choices = sampling_methods(settings_initial)
     all_sampling_choices = sampling_methods(settings_initial, include_hidden=True)
     scheduler_choices = scheduler_types()
@@ -10879,7 +11140,7 @@ def create_app() -> gr.Blocks:
                                                 hr_steps = gr.Slider(
                                                     0,
                                                     150,
-                                                    value=0,
+                                                    value=hires_defaults["steps"],
                                                     step=1,
                                                     label=_label("Hires steps", "高清步数"),
                                                     elem_id="forge_neo_hires_steps",
@@ -10948,7 +11209,7 @@ def create_app() -> gr.Blocks:
                                                 hr_cfg = gr.Slider(
                                                     1.0,
                                                     24.0,
-                                                    value=6.0,
+                                                    value=hires_defaults["cfg_scale"],
                                                     step=0.5,
                                                     label=_label("Hires CFG Scale", "高清 CFG"),
                                                     elem_id="forge_neo_hires_cfg",
@@ -10956,7 +11217,7 @@ def create_app() -> gr.Blocks:
                                                 hr_distilled_cfg = gr.Slider(
                                                     1.0,
                                                     24.0,
-                                                    value=3.0,
+                                                    value=_preset_dcfg_value(default_preset, is_hires=True, settings=settings_initial),
                                                     step=0.5,
                                                     label=_label("Hires Distilled CFG Scale", "高清 Distilled CFG"),
                                                     elem_id="forge_neo_hires_distilled_cfg",
@@ -11008,7 +11269,7 @@ def create_app() -> gr.Blocks:
                                                     res_switch_btn = gr.Button("⇅", elem_id="forge_neo_res_switch_btn", min_width=40)
                                         with gr.Column(scale=3, elem_classes=["forge-neo-batch-column"]):
                                             batch_count = gr.Slider(1, 16, value=1, step=1, label=_label("Batch Count", "批次数"), elem_id="forge_neo_batch_count")
-                                            batch_size = gr.Slider(1, 16, value=1, step=1, label=_label("Batch Size", "批大小"), elem_id="forge_neo_batch_size")
+                                            batch_size = gr.Slider(1, 16, value=defaults["batch_size"], step=1, label=_label("Batch Size", "批大小"), elem_id="forge_neo_batch_size")
                                     with gr.Row():
                                         distilled_cfg_scale = gr.Slider(
                                             1,
@@ -11572,9 +11833,9 @@ def create_app() -> gr.Blocks:
                                                 elem_id="forge_neo_img2img_soft_inpainting_difference_contrast",
                                             )
                                     with gr.Row(elem_classes=["forge-neo-sampling-row"]):
-                                        img_sampler = gr.Dropdown(sampling_choices, value=defaults["sampler"], label=_label("Sampling Method", "采样方法"))
-                                        img_scheduler = gr.Dropdown(scheduler_choices, value=defaults["scheduler"], label=_label("Schedule Type", "调度类型"))
-                                        img_steps = gr.Slider(1, 150, value=defaults["steps"], step=1, label=_label("Sampling Steps", "采样步数"), elem_id="forge_neo_img2img_steps")
+                                        img_sampler = gr.Dropdown(sampling_choices, value=img_defaults["sampler"], label=_label("Sampling Method", "采样方法"))
+                                        img_scheduler = gr.Dropdown(scheduler_choices, value=img_defaults["scheduler"], label=_label("Schedule Type", "调度类型"))
+                                        img_steps = gr.Slider(1, 150, value=img_defaults["steps"], step=1, label=_label("Sampling Steps", "采样步数"), elem_id="forge_neo_img2img_steps")
                                     with gr.Column(elem_classes=["forge-neo-advanced-accordions"]):
                                         with InputAccordion(False, label=_label("Refiner", "精修"), elem_id="forge_neo_img2img_refiner") as img_refiner:
                                             with gr.Row():
@@ -11598,8 +11859,8 @@ def create_app() -> gr.Blocks:
                                                 with gr.Tab(_label("Resize to", "Resize to"), elem_id="forge_neo_img2img_resize_to") as img_resize_to_tab:
                                                     with gr.Row(elem_id="forge_neo_img2img_dimensions", elem_classes=["forge-neo-resolution-row"]):
                                                         with gr.Column(scale=4, elem_classes=["forge-neo-resolution-sliders"]):
-                                                            img_width = gr.Slider(64, 2048, value=defaults["width"], step=8, label=_label("Width", "宽度"), elem_id="forge_neo_img2img_width")
-                                                            img_height = gr.Slider(64, 2048, value=defaults["height"], step=8, label=_label("Height", "高度"), elem_id="forge_neo_img2img_height")
+                                                            img_width = gr.Slider(64, 2048, value=img_defaults["width"], step=8, label=_label("Width", "宽度"), elem_id="forge_neo_img2img_width")
+                                                            img_height = gr.Slider(64, 2048, value=img_defaults["height"], step=8, label=_label("Height", "高度"), elem_id="forge_neo_img2img_height")
                                                         with gr.Column(scale=1, elem_classes=["forge-neo-dimension-tools"]):
                                                             img_res_switch_btn = gr.Button("⇅", elem_id="forge_neo_img2img_res_switch_btn", min_width=40)
                                                             img_detect_size_btn = gr.Button("📐", elem_id="forge_neo_img2img_detect_image_size_btn", min_width=40)
@@ -11614,7 +11875,7 @@ def create_app() -> gr.Blocks:
                                                     )
                                         with gr.Column(scale=3, elem_classes=["forge-neo-batch-column"]):
                                             img_batch_count = gr.Slider(1, 16, value=1, step=1, label=_label("Batch Count", "批次数"), elem_id="forge_neo_img2img_batch_count")
-                                            img_batch_size = gr.Slider(1, 16, value=1, step=1, label=_label("Batch Size", "批大小"), elem_id="forge_neo_img2img_batch_size")
+                                            img_batch_size = gr.Slider(1, 16, value=img_defaults["batch_size"], step=1, label=_label("Batch Size", "批大小"), elem_id="forge_neo_img2img_batch_size")
                                     with gr.Row():
                                         img_distilled_cfg_scale = gr.Slider(
                                             0,
@@ -11625,7 +11886,7 @@ def create_app() -> gr.Blocks:
                                             elem_id="forge_neo_img2img_distilled_cfg_scale",
                                             visible=_preset_dcfg_visible(default_preset, settings=settings_initial),
                                         )
-                                        img_cfg_scale = gr.Slider(1, 24, value=defaults["cfg_scale"], step=0.5, label=_label("CFG Scale", "CFG 比例"), elem_id="forge_neo_img2img_cfg_scale")
+                                        img_cfg_scale = gr.Slider(1, 24, value=img_defaults["cfg_scale"], step=0.5, label=_label("CFG Scale", "CFG 比例"), elem_id="forge_neo_img2img_cfg_scale")
                                         img_image_cfg_scale = gr.Slider(
                                             0,
                                             3.0,
@@ -13238,7 +13499,7 @@ def create_app() -> gr.Blocks:
                 _create_sam_matting_tab(state_value)
                 _create_see_through_tab(state_value)
                 _create_trellis2_tab(state_value)
-                with gr.Tab(_label("Settings", "设置"), elem_id="forge_neo_settings_tab"):
+                with gr.Tab(_label("Settings", "设置"), elem_id="forge_neo_settings_tab", render_children=True):
                     with gr.Row(elem_classes=["forge-neo-settings-toolbar"]):
                         settings_submit = gr.Button(
                             _label("Apply settings", "应用设置"),
@@ -13265,7 +13526,7 @@ def create_app() -> gr.Blocks:
                             elem_id="forge_neo_settings_search",
                         )
                     with gr.Tabs(elem_id="forge_neo_settings", elem_classes=["forge-neo-settings-tabs"]):
-                        with gr.Tab(_label("Paths for Saving", "保存路径"), elem_id="forge_neo_settings_paths_for_saving"):
+                        with gr.Tab(_label("Paths for Saving", "保存路径"), elem_id="forge_neo_settings_paths_for_saving", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel", "forge-neo-settings-paths-panel"]):
                                 settings_output_dir = gr.Textbox(
                                     value=settings_initial["output_dir"],
@@ -13330,7 +13591,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_outdir_init_images",
                                 )
-                        with gr.Tab(_label("Saving Images/Grids", "图像/宫格保存"), elem_id="forge_neo_settings_saving_images_grids"):
+                        with gr.Tab(_label("Saving Images/Grids", "图像/宫格保存"), elem_id="forge_neo_settings_saving_images_grids", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_save_samples = gr.Checkbox(
                                     value=settings_initial["save_samples"],
@@ -13546,7 +13807,7 @@ def create_app() -> gr.Blocks:
                             show_label=False,
                             container=False,
                         )
-                        with gr.Tab(_label("Saving to Subdirectory", "保存到子目录"), elem_id="forge_neo_settings_saving_subdirectory"):
+                        with gr.Tab(_label("Saving to Subdirectory", "保存到子目录"), elem_id="forge_neo_settings_saving_subdirectory", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_save_to_dirs = gr.Checkbox(
                                     value=settings_initial["save_to_dirs"],
@@ -13577,7 +13838,7 @@ def create_app() -> gr.Blocks:
                                     precision=0,
                                     elem_id="forge_neo_setting_directories_max_prompt_words",
                                 )
-                        with gr.Tab(_label("ControlNet", "ControlNet"), elem_id="forge_neo_settings_control_net"):
+                        with gr.Tab(_label("ControlNet", "ControlNet"), elem_id="forge_neo_settings_control_net", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_control_net_models_path = gr.Textbox(
                                     value=settings_initial["control_net_models_path"],
@@ -13616,7 +13877,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("Do not append detectmap to output", "不将 detectmap 附加到输出"),
                                     elem_id="forge_neo_setting_control_net_no_detectmap",
                                 )
-                        with gr.Tab(_label("Extra Networks", "额外网络"), elem_id="forge_neo_settings_extra_networks"):
+                        with gr.Tab(_label("Extra Networks", "额外网络"), elem_id="forge_neo_settings_extra_networks", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_extra_multiplier = gr.Slider(
                                     0.0,
@@ -13625,6 +13886,11 @@ def create_app() -> gr.Blocks:
                                     step=0.05,
                                     label=_label("Default weight for Extra Networks", "额外网络默认权重"),
                                     elem_id="forge_neo_setting_extra_networks_default_multiplier",
+                                )
+                                settings_extra_separator = gr.Textbox(
+                                    value=settings_initial["extra_networks_add_text_separator"],
+                                    label=_label("Extra Networks token separator", "额外网络 token 分隔符"),
+                                    elem_id="forge_neo_setting_extra_networks_add_text_separator",
                                 )
                                 with gr.Row(elem_classes=["forge-neo-settings-row"]):
                                     settings_extra_card_width = gr.Slider(
@@ -13643,7 +13909,7 @@ def create_app() -> gr.Blocks:
                                         label=_label("Card height", "卡片高度"),
                                         elem_id="forge_neo_setting_extra_networks_card_height",
                                     )
-                        with gr.Tab(_label("Optimizations", "优化"), elem_id="forge_neo_settings_optimizations"):
+                        with gr.Tab(_label("Optimizations", "优化"), elem_id="forge_neo_settings_optimizations", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_cross_attention_optimization = gr.Dropdown(
                                     ["Automatic"],
@@ -13751,7 +14017,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_token_merging_no_rand",
                                 )
-                        with gr.Tab(_label("Refiner", "精修"), elem_id="forge_neo_settings_refiner"):
+                        with gr.Tab(_label("Refiner", "精修"), elem_id="forge_neo_settings_refiner", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_show_refiner = gr.Checkbox(
                                     value=settings_initial["show_refiner"],
@@ -13792,7 +14058,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_refiner_lora_explanation",
                                 )
-                        with gr.Tab(_label("Sampler Parameters", "采样器参数"), elem_id="forge_neo_settings_sampler_parameters"):
+                        with gr.Tab(_label("Sampler Parameters", "采样器参数"), elem_id="forge_neo_settings_sampler_parameters", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_hide_samplers = gr.Dropdown(
                                     all_sampling_choices,
@@ -13801,7 +14067,7 @@ def create_app() -> gr.Blocks:
                                     multiselect=True,
                                     elem_id="forge_neo_setting_hide_samplers",
                                 )
-                        with gr.Tab(_label("Stable Diffusion", "Stable Diffusion"), elem_id="forge_neo_settings_stable_diffusion"):
+                        with gr.Tab(_label("Stable Diffusion", "Stable Diffusion"), elem_id="forge_neo_settings_stable_diffusion", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 with gr.Row(elem_classes=["forge-neo-settings-row"]):
                                     settings_sd_unet = gr.Dropdown(
@@ -13944,7 +14210,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_klein_no_reference",
                                 )
-                        with gr.Tab(_label("VAE", "VAE"), elem_id="forge_neo_settings_vae"):
+                        with gr.Tab(_label("VAE", "VAE"), elem_id="forge_neo_settings_vae", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 gr.HTML(
                                     _label(
@@ -13978,7 +14244,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("method to decode latent to image", "将 latent 解码为图片的方式"),
                                     elem_id="forge_neo_setting_sd_vae_decode_method",
                                 )
-                        with gr.Tab(_label("img2img", "图生图"), elem_id="forge_neo_settings_img2img"):
+                        with gr.Tab(_label("img2img", "图生图"), elem_id="forge_neo_settings_img2img", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_inpainting_mask_weight = gr.Slider(
                                     0.0,
@@ -14122,7 +14388,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_img2img_inpaint_precise_mask",
                                 )
-                        with gr.Tab(_label("txt2img", "文生图"), elem_id="forge_neo_settings_txt2img"):
+                        with gr.Tab(_label("txt2img", "文生图"), elem_id="forge_neo_settings_txt2img", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_txt2img_upscale_single_batch = gr.Checkbox(
                                     value=settings_initial["txt2img_upscale_single_batch"],
@@ -14179,7 +14445,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("i.e. do not reload LoRA for the Hires. pass", "也就是高清阶段不重新加载 LoRA"),
                                     elem_id="forge_neo_setting_hires_fix_use_firstpass_conds",
                                 )
-                        with gr.Tab(_label("Comments", "评论"), elem_id="forge_neo_settings_comments"):
+                        with gr.Tab(_label("Comments", "评论"), elem_id="forge_neo_settings_comments", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_enable_prompt_comments = gr.Checkbox(
                                     value=settings_initial["enable_prompt_comments"],
@@ -14200,7 +14466,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("include the comments in Infotext", "在生成信息中保留注释"),
                                     elem_id="forge_neo_setting_save_prompt_comments",
                                 )
-                        with gr.Tab(_label("Forge Canvas", "Forge Canvas"), elem_id="forge_neo_settings_forge_canvas"):
+                        with gr.Tab(_label("Forge Canvas", "Forge Canvas"), elem_id="forge_neo_settings_forge_canvas", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_forge_canvas_height = gr.Number(
                                     value=settings_initial["forge_canvas_height"],
@@ -14242,7 +14508,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("Solid Color for Plain Background", "纯色背景颜色"),
                                     elem_id="forge_neo_setting_forge_canvas_plain_color",
                                 )
-                        with gr.Tab(_label("Gallery", "图库"), elem_id="forge_neo_settings_gallery"):
+                        with gr.Tab(_label("Gallery", "图库"), elem_id="forge_neo_settings_gallery", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_do_not_show_images = gr.Checkbox(
                                     value=settings_initial["do_not_show_images"],
@@ -14315,7 +14581,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("What directory the [📂] button opens", "[📂] 按钮打开的目录"),
                                     elem_id="forge_neo_setting_open_dir_button_choice",
                                 )
-                        with gr.Tab(_label("Infotext", "生成信息"), elem_id="forge_neo_settings_infotext"):
+                        with gr.Tab(_label("Infotext", "生成信息"), elem_id="forge_neo_settings_infotext", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 gr.HTML(
                                     _label(
@@ -14393,7 +14659,7 @@ def create_app() -> gr.Blocks:
                                     elem_id="forge_neo_setting_infotext_styles_explanation",
                                     elem_classes=["forge-neo-settings-note"],
                                 )
-                        with gr.Tab(_label("Live Previews", "实时预览"), elem_id="forge_neo_settings_live_previews"):
+                        with gr.Tab(_label("Live Previews", "实时预览"), elem_id="forge_neo_settings_live_previews", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_live_previews = gr.Checkbox(
                                     value=settings_initial["live_previews_enable"],
@@ -14413,7 +14679,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("Preview refresh period (ms)", "预览刷新间隔（毫秒）"),
                                     elem_id="forge_neo_setting_live_preview_refresh_period",
                                 )
-                        with gr.Tab(_label("Prompt Editing", "提示词编辑"), elem_id="forge_neo_settings_prompt_editing"):
+                        with gr.Tab(_label("Prompt Editing", "提示词编辑"), elem_id="forge_neo_settings_prompt_editing", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_keyedit_precision_attention = gr.Slider(
                                     0.05,
@@ -14469,7 +14735,9 @@ def create_app() -> gr.Blocks:
                                     label=_label("Include enabled Styles in Token Count", "Token 计数包含已启用 Styles"),
                                     elem_id="forge_neo_setting_include_styles_into_token_counters",
                                 )
-                        with gr.Tab(_label("Settings in UI", "UI 内设置"), elem_id="forge_neo_settings_settings_in_ui"):
+                        with gr.Tab(_label("Tag Autocomplete", "标签补全"), elem_id="forge_neo_settings_tagcomplete", render_children=True):
+                            settings_tagcomplete_components = _create_tagcomplete_settings_page(settings_initial)
+                        with gr.Tab(_label("Settings in UI", "UI 内设置"), elem_id="forge_neo_settings_settings_in_ui", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 gr.HTML(
                                     _label(
@@ -14510,7 +14778,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("requires Reload UI", "需要重载 UI"),
                                     elem_id="forge_neo_setting_extra_options_accordion",
                                 )
-                        with gr.Tab(_label("UI Alternatives", "UI Alternatives"), elem_id="forge_neo_settings_ui_alternatives"):
+                        with gr.Tab(_label("UI Alternatives", "UI Alternatives"), elem_id="forge_neo_settings_ui_alternatives", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_show_rescale_cfg = gr.Checkbox(
                                     value=settings_initial["show_rescale_cfg"],
@@ -14634,7 +14902,7 @@ def create_app() -> gr.Blocks:
                                     ),
                                     elem_id="forge_neo_setting_interrupt_after_current",
                                 )
-                        with gr.Tab(_label("User Interface", "界面"), elem_id="forge_neo_settings_user_interface"):
+                        with gr.Tab(_label("User Interface", "界面"), elem_id="forge_neo_settings_user_interface", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_localization = gr.Dropdown(
                                     ["None"],
@@ -14731,9 +14999,9 @@ def create_app() -> gr.Blocks:
                         for arch in PRESET_ARCHES:
                             preset_label = PRESET_DISPLAY_NAMES[arch]
                             elem_id = "forge_neo_settings_sd_arch" if arch == "sd" else f"forge_neo_settings_{arch}"
-                            with gr.Tab(_label(preset_label, preset_label), elem_id=elem_id):
+                            with gr.Tab(_label(preset_label, preset_label), elem_id=elem_id, render_children=True):
                                 settings_preset_components.extend(_create_preset_settings_page(arch, settings_initial))
-                        with gr.Tab(_label("API", "API"), elem_id="forge_neo_settings_api"):
+                        with gr.Tab(_label("API", "API"), elem_id="forge_neo_settings_api", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_api_enable_requests = gr.Checkbox(
                                     value=settings_initial["api_enable_requests"],
@@ -14750,9 +15018,9 @@ def create_app() -> gr.Blocks:
                                     label=_label("User Agent for Requests", "请求使用的 User Agent"),
                                     elem_id="forge_neo_setting_api_useragent",
                                 )
-                        with gr.Tab(_label("Callbacks", "回调"), elem_id="forge_neo_settings_callbacks"):
+                        with gr.Tab(_label("Callbacks", "回调"), elem_id="forge_neo_settings_callbacks", render_children=True):
                             settings_callback_components = _create_callbacks_settings_page(settings_initial)
-                        with gr.Tab(_label("Profiler", "性能分析"), elem_id="forge_neo_settings_profiler"):
+                        with gr.Tab(_label("Profiler", "性能分析"), elem_id="forge_neo_settings_profiler", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 gr.HTML(
                                     _label(
@@ -14793,7 +15061,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("Profile Filename", "性能分析文件名"),
                                     elem_id="forge_neo_setting_profiling_filename",
                                 )
-                        with gr.Tab(_label("System", "系统"), elem_id="forge_neo_settings_system"):
+                        with gr.Tab(_label("System", "系统"), elem_id="forge_neo_settings_system", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_allocated_vram = gr.Slider(
                                     0.0,
@@ -14882,7 +15150,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("requires Reload UI", "需要重载 UI"),
                                     elem_id="forge_neo_setting_no_spellcheck",
                                 )
-                        with gr.Tab(_label("Face Restoration", "面部修复"), elem_id="forge_neo_settings_face_restoration"):
+                        with gr.Tab(_label("Face Restoration", "面部修复"), elem_id="forge_neo_settings_face_restoration", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_face_restoration = gr.Checkbox(
                                     value=settings_initial["face_restoration"],
@@ -14910,7 +15178,7 @@ def create_app() -> gr.Blocks:
                                     label=_label("Move the model to CPU after restoration", "修复后将模型移到 CPU"),
                                     elem_id="forge_neo_setting_face_restoration_unload",
                                 )
-                        with gr.Tab(_label("Postprocessing", "后处理"), elem_id="forge_neo_settings_postprocessing"):
+                        with gr.Tab(_label("Postprocessing", "后处理"), elem_id="forge_neo_settings_postprocessing", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_postprocessing_enable_in_main_ui = gr.Dropdown(
                                     POSTPROCESSING_OPERATION_CHOICES,
@@ -14933,7 +15201,7 @@ def create_app() -> gr.Blocks:
                                     multiselect=True,
                                     elem_id="forge_neo_setting_postprocessing_operation_order",
                                 )
-                        with gr.Tab(_label("Upscaling", "放大"), elem_id="forge_neo_settings_upscaling"):
+                        with gr.Tab(_label("Upscaling", "放大"), elem_id="forge_neo_settings_upscaling", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_esrgan_tile = gr.Slider(
                                     0,
@@ -14985,7 +15253,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("increase speed; reduce quality; will try fp16, then bf16, then fall back to fp32 if not supported (requires restart)", "提升速度但可能降低质量；会尝试 fp16、bf16，不支持时回到 fp32（需要重启）"),
                                     elem_id="forge_neo_setting_prefer_fp16_upscalers",
                                 )
-                        with gr.Tab(_label("Nunchaku", "Nunchaku"), elem_id="forge_neo_settings_nunchaku"):
+                        with gr.Tab(_label("Nunchaku", "Nunchaku"), elem_id="forge_neo_settings_nunchaku", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_svdq_cpu_offload = gr.Checkbox(
                                     value=settings_initial["svdq_cpu_offload"],
@@ -15026,7 +15294,7 @@ def create_app() -> gr.Blocks:
                                     info=_label("higher = more VRAM usage ; lower = more RAM usage", "更高会占用更多显存；更低会占用更多内存"),
                                     elem_id="forge_neo_setting_svdq_num_blocks_on_gpu",
                                 )
-                        with gr.Tab(_label("Defaults", "默认值"), elem_id="forge_neo_settings_defaults"):
+                        with gr.Tab(_label("Defaults", "默认值"), elem_id="forge_neo_settings_defaults", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_defaults_info = gr.HTML(
                                     _settings_defaults_instructions_html(),
@@ -15052,7 +15320,7 @@ def create_app() -> gr.Blocks:
                                     elem_id="forge_neo_settings_json",
                                     visible=False,
                                 )
-                        with gr.Tab(_label("Sysinfo", "系统信息"), elem_id="forge_neo_settings_sysinfo"):
+                        with gr.Tab(_label("Sysinfo", "系统信息"), elem_id="forge_neo_settings_sysinfo", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_sysinfo_download_link = gr.HTML(
                                     _settings_sysinfo_download_html(),
@@ -15096,7 +15364,7 @@ def create_app() -> gr.Blocks:
                                         elem_id="forge_neo_settings_sysinfo_validity",
                                         visible=False,
                                     )
-                        with gr.Tab(_label("Actions", "操作"), elem_id="forge_neo_settings_actions"):
+                        with gr.Tab(_label("Actions", "操作"), elem_id="forge_neo_settings_actions", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 with gr.Row(
                                     elem_id="forge_neo_settings_internal_reload_row",
@@ -15178,7 +15446,7 @@ def create_app() -> gr.Blocks:
                                     elem_id="forge_neo_settings_checkpoint_hashes",
                                     visible=False,
                                 )
-                        with gr.Tab(_label("Licenses", "许可证"), elem_id="forge_neo_settings_licenses"):
+                        with gr.Tab(_label("Licenses", "许可证"), elem_id="forge_neo_settings_licenses", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 settings_licenses = gr.HTML(
                                     _initial_license_notice(),
@@ -15339,6 +15607,7 @@ def create_app() -> gr.Blocks:
                         settings_keyedit_move,
                         settings_disable_token_counters,
                         settings_include_styles_into_token_counters,
+                        *settings_tagcomplete_components,
                         settings_extra_options_txt2img,
                         settings_extra_options_img2img,
                         settings_extra_options_cols,
@@ -15360,6 +15629,7 @@ def create_app() -> gr.Blocks:
                         settings_show_progressbar,
                         settings_preview_refresh,
                         settings_extra_multiplier,
+                        settings_extra_separator,
                         settings_extra_card_width,
                         settings_extra_card_height,
                         settings_localization,
@@ -16055,6 +16325,10 @@ def create_app() -> gr.Blocks:
                 height,
                 cfg_scale,
                 distilled_cfg_scale,
+                hr_steps,
+                hr_cfg,
+                hr_distilled_cfg,
+                batch_size,
                 sampler,
                 scheduler,
                 img_steps,
@@ -16062,6 +16336,7 @@ def create_app() -> gr.Blocks:
                 img_height,
                 img_cfg_scale,
                 img_distilled_cfg_scale,
+                img_batch_size,
                 img_sampler,
                 img_scheduler,
                 lora_dropdown,

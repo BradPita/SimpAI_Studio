@@ -2988,6 +2988,31 @@
         }
     }
 
+    function stopTransferDropEvent(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+
+    function isTransferStationDropTarget(e) {
+        const target = e && e.target ? e.target : null;
+        const path = e && typeof e.composedPath === 'function' ? e.composedPath() : [];
+        return [transferPanel, transferToggleBtn, workEntryTile].some((el) => {
+            if (!el) return false;
+            if (path && path.includes && path.includes(el)) return true;
+            return !!(target && el.contains && el.contains(target));
+        });
+    }
+
+    function consumeTransferHoverEvent(e) {
+        if (!isTransferStationDropTarget(e)) return false;
+        if (!hasTransferExternalDropPayload(e.dataTransfer)) return false;
+        stopTransferDropEvent(e);
+        if (!transferState.expanded) setTransferExpanded(true, true);
+        transferPanel.classList.add('dragover');
+        return true;
+    }
+
     async function handleTransferDropDataTransfer(dataTransfer) {
         const transferId = dataTransfer ? (dataTransfer.getData('application/x-simpleai-transfer-id') || '') : '';
         if (transferId) return;
@@ -3019,9 +3044,25 @@
 
     function initTransferDropZone() {
         const prevent = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+            stopTransferDropEvent(e);
         };
+
+        document.addEventListener('dragenter', (e) => {
+            consumeTransferHoverEvent(e);
+        }, true);
+
+        document.addEventListener('dragover', (e) => {
+            consumeTransferHoverEvent(e);
+        }, true);
+
+        document.addEventListener('drop', async (e) => {
+            if (!isTransferStationDropTarget(e)) return;
+            if (!hasTransferExternalDropPayload(e.dataTransfer)) return;
+            stopTransferDropEvent(e);
+            if (!transferState.expanded) setTransferExpanded(true, true);
+            transferPanel.classList.remove('dragover');
+            await handleTransferDropDataTransfer(e.dataTransfer);
+        }, true);
 
         transferPanel.addEventListener('dragover', (e) => {
             prevent(e);
