@@ -6,6 +6,7 @@ import platform
 import re
 import hashlib
 from importlib import metadata as importlib_metadata
+from packaging import specifiers as packaging_specifiers
 from packaging import version as packaging_version
 import shared
 from modules.access_mode import is_local_mode
@@ -102,33 +103,35 @@ def _make_pip_env():
     env.pop("PYTHONHOME", None)
     return env
 
-def install_package_with_retry(pkg_name, pkg_version=None, description=None):
+def _package_install_spec(pkg_name, pkg_version=None, version_specifier=None):
+    if pkg_version:
+        return f"{pkg_name}=={pkg_version}"
+    if version_specifier:
+        return f"{pkg_name}{version_specifier}"
+    return pkg_name
+
+def install_package_with_retry(pkg_name, pkg_version=None, description=None, version_specifier=None):
     """尝试安装包，先使用阿里源，如果失败则尝试使用清华源"""
-    desc = description or f'Installing {pkg_name}'
-    errdesc = f"Couldn't install {pkg_name}"
+    install_spec = _package_install_spec(pkg_name, pkg_version, version_specifier)
+    desc = description or f'Installing {install_spec}'
+    errdesc = f"Couldn't install {install_spec}"
 
     try:
-        if pkg_version:
-            pkg_command = f'pip install -U {pkg_name}=={pkg_version} -i {index_url}'
-        else:
-            pkg_command = f'pip install -U {pkg_name} -i {index_url}'
+        pkg_command = f'pip install -U "{install_spec}" -i {index_url}'
 
         run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
         return True
     except Exception as e:
-        logger.warning(f"阿里源安装{pkg_name}失败: {str(e)}")
+        logger.warning(f"阿里源安装{install_spec}失败: {str(e)}")
         logger.info("尝试使用清华源镜像...")
 
     try:
-        if pkg_version:
-            pkg_command = f'pip install -U {pkg_name}=={pkg_version} -i {extra_index_url}'
-        else:
-            pkg_command = f'pip install -U {pkg_name} -i {extra_index_url}'
+        pkg_command = f'pip install -U "{install_spec}" -i {extra_index_url}'
 
         run(f'"{python}" -s -m {pkg_command}', desc, errdesc, custom_env=_make_pip_env(), live=True)
         return True
     except Exception as e:
-        logger.error(f"使用清华源安装{pkg_name}失败: {str(e)}")
+        logger.error(f"使用清华源安装{install_spec}失败: {str(e)}")
         return False
 
 def _simpleai_base_wheel_filename(ver_required):
@@ -270,6 +273,21 @@ def _installed_package_version(package):
     except Exception as e:
         logger.debug(f"读取 {package} 已安装版本失败: {e}")
         return None
+
+def _package_requirement_met(package, pkg_version=None, version_specifier=None):
+    version_installed = _installed_package_version(package)
+    if version_installed is None:
+        return False
+    try:
+        installed = packaging_version.parse(version_installed)
+        if pkg_version:
+            return packaging_version.parse(pkg_version) == installed
+        if version_specifier:
+            return installed in packaging_specifiers.SpecifierSet(version_specifier)
+    except Exception as e:
+        logger.debug(f"比较 {package} 已安装版本失败: {e}")
+        return False
+    return True
 
 def _installed_onnxruntime_cuda_info():
     code = r"""
@@ -451,19 +469,25 @@ def check_base_environment():
         if not install_onnxruntime_gpu_cuda13():
             logger.error("无法安装 ONNX Runtime CUDA 13 nightly，DWPose/ReActor 等 ONNX 节点可能降到 CPU。")
         update_pkgs = [
-            ('comfyui-frontend-package', '1.45.19'),
-            ('comfyui-workflow-templates', '0.10.7'),
-            ('comfyui-embedded-docs', '0.5.5'),
-            ('comfy-kitchen', '0.2.12'),
-            ('comfy-aimdo', '0.4.10'),
-            ('av', '17.0.0'),
-            ('lmdb', '2.2.1'),
-            ('shtab', '1.8.0'),
-            ('tyro', '0.8.5')
+            ('comfyui-frontend-package', '1.45.20', None),
+            ('comfyui-workflow-templates', '0.11.1', None),
+            ('comfyui-embedded-docs', '0.5.6', None),
+            ('comfy-kitchen', '0.2.16', None),
+            ('comfy-aimdo', '0.4.10', None),
+            ('av', '17.0.0', None),
+            ('PyOpenGL', None, '>=3.1.8'),
+            ('comfy-angle', None, None),
+            ('lmdb', '2.2.1', None),
+            ('shtab', '1.8.0', None),
+            ('tyro', '0.8.5', None)
         ]
-        for (update_pkg_name, update_pkg_version) in update_pkgs:
-            if not is_installed_version(update_pkg_name, update_pkg_version):
-                success = install_package_with_retry(update_pkg_name, update_pkg_version)
+        for (update_pkg_name, update_pkg_version, update_pkg_specifier) in update_pkgs:
+            if not _package_requirement_met(update_pkg_name, update_pkg_version, update_pkg_specifier):
+                success = install_package_with_retry(
+                    update_pkg_name,
+                    update_pkg_version,
+                    version_specifier=update_pkg_specifier,
+                )
                 if not success:
                     logger.error(f"无法安装{update_pkg_name}，请检查网络状态")
     else:
