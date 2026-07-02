@@ -792,7 +792,8 @@ def _adaptive_lowvram_model_memory(model_memory: float, current_free_memory: flo
     available_for_weights = current_free_memory - reserved_memory - load_margin
     full_load_margin = max(FULL_LOAD_MARGIN_MEMORY, load_margin)
     if model_memory + full_load_margin <= available_for_weights:
-        return 0
+        target_loaded_memory = min(available_for_weights, model_memory + full_load_margin)
+        return max(0.1, target_loaded_memory - loaded_memory)
     min_partial_budget = min(LOWVRAM_MIN_WEIGHT_MEMORY, model_memory)
     max_partial_budget = max(0.1, model_memory - LOWVRAM_FULL_LOAD_GAP_MEMORY)
     target_loaded_memory = min(max(min_partial_budget, available_for_weights), max_partial_budget)
@@ -802,13 +803,19 @@ def _adaptive_lowvram_model_memory(model_memory: float, current_free_memory: flo
     return extra_memory
 
 
+def _format_lowvram_budget(lowvram_model_memory: float) -> str:
+    if lowvram_model_memory == 0:
+        return "full load"
+    return "{:.2f} MB".format(lowvram_model_memory / (1024 * 1024))
+
+
 def _reload_model_with_adaptive_lowvram_budget(loaded_model: "LoadedModel", model: "ModelPatcher", torch_dev: torch.device, headroom: float, force_patch_weights: bool) -> None:
     loaded_memory = loaded_model.model_loaded_memory()
     model_memory = loaded_model.model_memory_required(torch_dev)
     current_free_mem = _weight_budget_free_memory(model, torch_dev, loaded_memory)
     lowvram_model_memory = _adaptive_lowvram_model_memory(model_memory, current_free_mem, headroom, loaded_memory)
     load_margin = _source_patcher_weight_load_margin(model_memory, headroom)
-    logger.info("Reloading {} with adaptive low VRAM budget, margin {:.2f} MB, budget {:.2f} MB".format(model.model.__class__.__name__, load_margin / (1024 * 1024), lowvram_model_memory / (1024 * 1024)))
+    logger.info("Reloading {} with adaptive low VRAM budget, margin {:.2f} MB, budget {}".format(model.model.__class__.__name__, load_margin / (1024 * 1024), _format_lowvram_budget(lowvram_model_memory)))
     loaded_model.model_unload(None, unpatch_weights=True)
     loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
 
@@ -933,9 +940,7 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
             current_free_mem = _weight_budget_free_memory(model, torch_dev, loaded_memory)
             lowvram_model_memory = _adaptive_lowvram_model_memory(model_memory, current_free_mem, reserved_model_memory, loaded_memory)
 
-            if lowvram_model_memory == 0:
-                lowvram_model_memory = 0.1
-            logger.info("Using adaptive low VRAM loading: free {:.2f} MB ({}), reserved {:.2f} MB, budget {:.2f} MB".format(current_free_mem / (1024 * 1024), _free_memory_source_name(torch_dev), reserved_model_memory / (1024 * 1024), lowvram_model_memory / (1024 * 1024)))
+            logger.info("Using adaptive low VRAM loading: free {:.2f} MB ({}), reserved {:.2f} MB, budget {}".format(current_free_mem / (1024 * 1024), _free_memory_source_name(torch_dev), reserved_model_memory / (1024 * 1024), _format_lowvram_budget(lowvram_model_memory)))
 
         if vram_set_state is VRAMState.NO_VRAM:
             lowvram_model_memory = 0.1

@@ -34,7 +34,7 @@ _CONTROLNET_PREPROCESSOR_IMPORT_ERRORS: list[str] = []
 _SOURCE_ADAPTER_SCRIPT_IMPORTS: set[str] = set()
 _SOURCE_CONTROLNET_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".safetensors", ".bin"}
 _SOURCE_BACKEND_DEFAULT_PERFORMANCE_ARGS = [
-    "--lowvram",
+    "--normalvram",
     "--cuda-malloc",
     "--cuda-stream",
     "--pin-shared-memory",

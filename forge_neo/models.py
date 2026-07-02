@@ -15,7 +15,7 @@ SOURCE_LICENSE = "AGPL-3.0"
 
 UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "krea2", "lumina", "zit", "anima"]
 FORGE_NEO_LOCAL_CONFIG_KEYS = {"forge_preset"}
-LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "Int8", "Int8 (fp16 LoRA)", "NF4", "None"]
+LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "NF4", "None"]
 MODEL_EXTENSIONS = {".pth", ".ckpt", ".bin", ".safetensors", ".fooocus.patch", ".patch", ".gguf", ".pt", ".onnx"}
 UPSCALER_MODEL_EXTENSIONS = {".pt", ".pth", ".safetensors"}
 CONFIG_PATH_KEYS = {
@@ -752,8 +752,8 @@ def _low_bits_from_source(value: object) -> str:
         "float8_e4m3fn": "Float8 e4m3fn",
         "float8-e5m2": "Float8 e5m2",
         "float8_e5m2": "Float8 e5m2",
-        "int8": "Int8",
-        "int8 (fp16 lora)": "Int8 (fp16 LoRA)",
+        "int8": "Automatic",
+        "int8 (fp16 lora)": "Automatic",
         "bnb-nf4": "NF4",
         "nf4": "NF4",
         "none": "None",
