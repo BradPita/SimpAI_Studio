@@ -250,7 +250,7 @@
   },
   "453": {
     "inputs": {
-      "unet_name": "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+      "unet_name": "placeholder.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -854,7 +854,7 @@
         0
       ],
       "latent": [
-        "621",
+        "644",
         0
       ],
       "image": [
@@ -914,28 +914,6 @@
       "title": "LTXV Preprocess"
     }
   },
-  "621": {
-    "inputs": {
-      "strength": 0.7,
-      "bypass": false,
-      "vae": [
-        "454",
-        0
-      ],
-      "image": [
-        "620",
-        0
-      ],
-      "latent": [
-        "624",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoConditionOnly",
-    "_meta": {
-      "title": "🅛🅣🅧 LTXV Img To Video Condition Only"
-    }
-  },
   "622": {
     "inputs": {
       "amount": 1,
@@ -960,27 +938,6 @@
     "class_type": "ImageToMask",
     "_meta": {
       "title": "Convert Image to Mask"
-    }
-  },
-  "624": {
-    "inputs": {
-      "grow_mask_by": 6,
-      "pixels": [
-        "635",
-        0
-      ],
-      "vae": [
-        "454",
-        0
-      ],
-      "mask": [
-        "623",
-        0
-      ]
-    },
-    "class_type": "VAEEncodeForInpaint",
-    "_meta": {
-      "title": "VAE Encode (for Inpainting)"
     }
   },
   "625": {
@@ -1211,6 +1168,22 @@
     "class_type": "LTXICLoRALoaderModelOnly",
     "_meta": {
       "title": "🅛🅣🅧 IC-LoRA Loader Model Only"
+    }
+  },
+  "644": {
+    "inputs": {
+      "pixels": [
+        "635",
+        0
+      ],
+      "vae": [
+        "454",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
     }
   }
 }

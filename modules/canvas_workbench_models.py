@@ -296,6 +296,41 @@ def _raw_model_list_from_node(preset_node):
     return raw if isinstance(raw, list) else []
 
 
+def _previous_default_info_from_node(preset_node):
+    requirements = preset_node.get("model_requirements") if isinstance(preset_node.get("model_requirements"), dict) else {}
+    preset = preset_node.get("preset") if isinstance(preset_node.get("preset"), dict) else {}
+    default_model = (
+        requirements.get("default_model")
+        or preset_node.get("default_model")
+        or preset.get("default_model")
+        or ""
+    )
+    previous_default_models = (
+        requirements.get("previous_default_models")
+        or preset_node.get("previous_default_models")
+        or preset.get("previous_default_models")
+        or []
+    )
+    default_refiner = (
+        requirements.get("default_refiner")
+        or preset_node.get("default_refiner")
+        or preset.get("default_refiner")
+        or ""
+    )
+    previous_default_refiners = (
+        requirements.get("previous_default_refiners")
+        or preset_node.get("previous_default_refiners")
+        or preset.get("previous_default_refiners")
+        or []
+    )
+    return {
+        "default_model": default_model,
+        "previous_default_models": previous_default_models if isinstance(previous_default_models, list) else [],
+        "default_refiner": default_refiner,
+        "previous_default_refiners": previous_default_refiners if isinstance(previous_default_refiners, list) else [],
+    }
+
+
 def _has_model_probe(preset_node, preset_name, raw_model_list, user_did):
     requirements = preset_node.get("model_requirements") if isinstance(preset_node.get("model_requirements"), dict) else {}
     if raw_model_list:
@@ -312,12 +347,13 @@ def _has_model_probe(preset_node, preset_name, raw_model_list, user_did):
     return False
 
 
-def _missing_models_for_preset(preset_name, raw_model_list, user_did):
+def _missing_models_for_preset(preset_name, raw_model_list, user_did, previous_default_info=None):
     if raw_model_list:
         return preset_name, model_loader.get_missing_model_list_from_entries(
             preset_name,
             raw_model_list,
             user_did=user_did,
+            previous_default_info=previous_default_info,
         )
 
     missing = model_loader.get_missing_model_list(preset_name, user_did=user_did)
@@ -398,7 +434,12 @@ def get_preset_model_status(payload):
         }
 
     raw_model_list = _raw_model_list_from_node(preset_node)
-    checked_preset, missing_models = _missing_models_for_preset(preset_name, raw_model_list, user_did)
+    checked_preset, missing_models = _missing_models_for_preset(
+        preset_name,
+        raw_model_list,
+        user_did,
+        previous_default_info=_previous_default_info_from_node(preset_node),
+    )
     missing_rows = _missing_model_dicts(missing_models)
     has_requirements = _has_model_probe(preset_node, checked_preset, raw_model_list, user_did)
     ready = len(missing_rows) == 0

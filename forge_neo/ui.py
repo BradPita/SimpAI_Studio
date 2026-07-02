@@ -4125,6 +4125,8 @@ def _low_bit_choices() -> list[object]:
         (_label("Automatic", "自动"), "Automatic"),
         "Float8 e4m3fn",
         "Float8 e5m2",
+        "Int8",
+        "Int8 (fp16 LoRA)",
         "NF4",
         (_label("None", "无"), "None"),
     ]

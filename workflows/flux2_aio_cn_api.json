@@ -5727,7 +5727,7 @@
   },
   "808": {
     "inputs": {
-      "clip_name": "clip_l.safetensors",
+      "clip_name": "placeholder.safetensors",
       "type": "flux2"
     },
     "class_type": "CLIPLoaderGGUF",

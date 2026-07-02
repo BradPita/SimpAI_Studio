@@ -65,6 +65,27 @@ def _value_with_default_alias(source_dict, key, default=None):
     return source_dict.get(f"default_{key}", default)
 
 
+def _resolve_previous_default_model(source_dict, model_name, previous_key):
+    if not isinstance(source_dict, dict) or not model_name:
+        return model_name
+    if str(model_name).strip().lower() in ("none", "auto", "default (model)"):
+        return model_name
+    try:
+        from modules.model_loader import resolve_preset_default_model_choice
+
+        return resolve_preset_default_model_choice(model_name, source_dict.get(previous_key, []))
+    except Exception:
+        return model_name
+
+
+def _resolve_previous_default_base_model(source_dict, base_model):
+    return _resolve_previous_default_model(source_dict, base_model, "previous_default_models")
+
+
+def _resolve_previous_default_refiner_model(source_dict, refiner_model):
+    return _resolve_previous_default_model(source_dict, refiner_model, "previous_default_refiners")
+
+
 def scene_disvisible_with_optional_inputs(scenes):
     if not isinstance(scenes, dict):
         return []
@@ -875,7 +896,9 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
 
     engine_class_display = template_engine if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image'] else 'SD15' if template_engine=='Comfy' and task_method=='sd15_aio' else 'Illustrious' if template_engine=='Comfy' and task_method=='il_v_pre_aio' else 'SDXL'
     preset_base_model = presetdata_dict.get('base_model') or presetdata_dict.get('Base Model') or presetdata_dict.get('default_model')
+    preset_base_model = _resolve_previous_default_base_model(presetdata_dict, preset_base_model)
     preset_refiner_model = presetdata_dict.get('refiner_model') or presetdata_dict.get('Refiner Model') or presetdata_dict.get('default_refiner')
+    preset_refiner_model = _resolve_previous_default_refiner_model(presetdata_dict, preset_refiner_model)
     preset_negative_prompt = _preset_str_value('negative_prompt', 'Negative Prompt')
     preset_performance = _preset_str_value('performance', 'Performance')
     preset_steps = _preset_steps_value()
@@ -1830,6 +1853,11 @@ def parse_meta_from_preset(preset_content):
         clip_model = engine_params.get('clip_model')
         if isinstance(clip_model, str) and clip_model:
             preset_prepared['clip_model'] = default_clip if clip_model == 'auto' else clip_model.replace('\\', os.sep).replace('/', os.sep)
+
+    if "base_model" in preset_prepared:
+        preset_prepared["base_model"] = _resolve_previous_default_base_model(items, preset_prepared.get("base_model"))
+    if "refiner_model" in preset_prepared:
+        preset_prepared["refiner_model"] = _resolve_previous_default_refiner_model(items, preset_prepared.get("refiner_model"))
 
     return preset_prepared
 

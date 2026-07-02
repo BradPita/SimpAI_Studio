@@ -132,6 +132,26 @@ def mixed_precision_ops(quant_config={}, compute_dtype=torch.bfloat16, full_prec
                             orig_dtype=MixedPrecisionOps._compute_dtype,
                             orig_shape=(self.out_features, self.in_features),
                         )
+                    elif self.quant_format == "int8_tensorwise":
+                        scale = self._load_scale_param(state_dict, prefix, "weight_scale", device, manually_loaded_keys)
+
+                        if scale is None:
+                            raise ValueError(f"Missing INT8 weight scale for layer {layer_name}")
+
+                        params_conf = layer_conf.get("params", {})
+                        if not isinstance(params_conf, dict):
+                            params_conf = {}
+
+                        params_kwargs = {
+                            "scale": scale,
+                            "orig_dtype": MixedPrecisionOps._compute_dtype,
+                            "orig_shape": (self.out_features, self.in_features),
+                        }
+                        if layer_conf.get("convrot", params_conf.get("convrot", False)):
+                            params_kwargs["convrot"] = True
+                            params_kwargs["convrot_groupsize"] = int(layer_conf.get("convrot_groupsize", params_conf.get("convrot_groupsize", 256)))
+
+                        params = layout_cls.Params(**params_kwargs)
                     else:
                         raise ValueError(f"Unsupported quantization format: {self.quant_format}")
 
@@ -171,6 +191,10 @@ def mixed_precision_ops(quant_config={}, compute_dtype=torch.bfloat16, full_prec
                     quant_conf = {"format": self.quant_format}
                     if self._full_precision_mm_config:
                         quant_conf["full_precision_matrix_mult"] = True
+                    params = getattr(self.weight, "_params", None)
+                    if self.quant_format == "int8_tensorwise" and getattr(params, "convrot", False):
+                        quant_conf["convrot"] = True
+                        quant_conf["convrot_groupsize"] = getattr(params, "convrot_groupsize", 256)
                     sd["{}comfy_quant".format(prefix)] = torch.tensor(list(json.dumps(quant_conf).encode("utf-8")), dtype=torch.uint8)
 
                     input_scale = getattr(self, "input_scale", None)
@@ -185,7 +209,10 @@ def mixed_precision_ops(quant_config={}, compute_dtype=torch.bfloat16, full_prec
                 reshaped_3d = False
                 compute_dtype = input.dtype
 
-                if getattr(self, "layout_type", None) is not None and not isinstance(input, QuantizedTensor) and not self._full_precision_mm and not getattr(self, "forge_force_cast_weights", False) and len(self.weight_function) == 0 and len(self.bias_function) == 0:
+                use_quantized = getattr(self, "layout_type", None) is not None and not isinstance(input, QuantizedTensor) and not self._full_precision_mm and not getattr(self, "forge_force_cast_weights", False) and len(self.weight_function) == 0 and len(self.bias_function) == 0
+                quantize_input = QUANT_ALGOS.get(getattr(self, "quant_format", None), {}).get("quantize_input", True)
+
+                if use_quantized and quantize_input:
                     input_reshaped = input.reshape(-1, input_shape[2]) if input.ndim == 3 else input
 
                     if input_reshaped.ndim == 2:

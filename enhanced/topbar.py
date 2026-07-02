@@ -973,6 +973,12 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     state_params.update({"task_method": initial_task_method})
     state_params['__preset_prepared'] = initial_preset_prepared
     state_params['__preset_model_list_raw'] = initial_config_preset.get('model_list', []) if isinstance(initial_config_preset, dict) else []
+    state_params['__preset_previous_default_model_info'] = {
+        'default_model': initial_config_preset.get('default_model', '') if isinstance(initial_config_preset, dict) else '',
+        'previous_default_models': initial_config_preset.get('previous_default_models', []) if isinstance(initial_config_preset, dict) else [],
+        'default_refiner': initial_config_preset.get('default_refiner', '') if isinstance(initial_config_preset, dict) else '',
+        'previous_default_refiners': initial_config_preset.get('previous_default_refiners', []) if isinstance(initial_config_preset, dict) else [],
+    }
     state_params['__preset_output_format'] = initial_config_preset.get('default_output_format', None) if isinstance(initial_config_preset, dict) else None
     state_params['__preset_output_format_loaded'] = True
     results = [gr.update(value=get_welcome_image(state_params["__preset"],state_params["__is_mobile"],no_welcome=ads.get_admin_default("no_welcome_checkbox")))]
@@ -2580,6 +2586,12 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
 
     state_params['__preset_prepared'] = preset_prepared # Cache for reset_layout_values
     state_params['__preset_model_list_raw'] = config_preset.get('model_list', []) if isinstance(config_preset, dict) else []
+    state_params['__preset_previous_default_model_info'] = {
+        'default_model': config_preset.get('default_model', '') if isinstance(config_preset, dict) else '',
+        'previous_default_models': config_preset.get('previous_default_models', []) if isinstance(config_preset, dict) else [],
+        'default_refiner': config_preset.get('default_refiner', '') if isinstance(config_preset, dict) else '',
+        'previous_default_refiners': config_preset.get('previous_default_refiners', []) if isinstance(config_preset, dict) else [],
+    }
     state_params['__preset_output_format'] = config_preset.get('default_output_format', None) if isinstance(config_preset, dict) else None
     state_params['__preset_output_format_loaded'] = True
     preset_url = preset_prepared.get('reference') or get_preset_inc_url(preset, state_params.get("__lang"))

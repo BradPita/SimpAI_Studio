@@ -119,7 +119,10 @@
             }
         }
     },
-    "default_model": "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+    "default_model": "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+    "previous_default_models": [
+        "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors"
+    ],
     "default_refiner": "None",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
@@ -162,7 +165,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors,25016398608,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+        "diffusion_models,ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors,21505993064,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
         "loras,ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,2741024390,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
         "loras,ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors,628203616,0,https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors",
         "text_encoders,ltx-2.3_text_projection_bf16.safetensors,2312149072,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors",

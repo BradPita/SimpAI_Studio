@@ -98,6 +98,7 @@
 | `model_list` | 缺失模型检查和下载入口。新预置优先维护这个字段。 |
 | `checkpoint_downloads` / `embeddings_downloads` / `lora_downloads` / `vae_downloads` | 旧下载字段，保留兼容。当前内置预置多为空对象。 |
 | `previous_default_models` | 旧模型名迁移提示，只有少数预置需要。 |
+| `previous_default_refiners` | 旧 refiner 模型名迁移提示，适合双模型或 high/low noise 预置。 |
 
 ## `default_engine`
 

@@ -199,7 +199,7 @@
       "target_preset_id": "scail_preset",
       "config": {
         "defaults": {
-          "base_model": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "base_model": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "refiner_model": "None",
           "clip_model": "umt5-xxl-encoder-Q8_0.gguf",
           "vae": "wan_2.1_vae.safetensors",
@@ -217,7 +217,7 @@
           ]
         },
         "values": {
-          "base_model": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "base_model": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "refiner_model": "None",
           "clip_model": "umt5-xxl-encoder-Q8_0.gguf",
           "vae": "wan_2.1_vae.safetensors",
@@ -547,7 +547,7 @@
       "models_config": {
         "mode": "external_override",
         "defaults": {
-          "base_model": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "base_model": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "refiner_model": "None",
           "clip_model": "umt5-xxl-encoder-Q8_0.gguf",
           "vae": "wan_2.1_vae.safetensors",
@@ -565,7 +565,7 @@
           ]
         },
         "overrides": {
-          "base_model": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "base_model": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "refiner_model": "None",
           "clip_model": "umt5-xxl-encoder-Q8_0.gguf",
           "vae": "wan_2.1_vae.safetensors",
@@ -672,8 +672,12 @@
         "updated_at": "2026-05-23T00:00:00Z"
       },
       "model_requirements": {
+        "default_model": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
+        "previous_default_models": [
+          "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors"
+        ],
         "model_list": [
-          "diffusion_models,wan2.1_14B_SCAIL_2_fp8_scaled.safetensors,17694586857,0,https://modelscope.cn/models/Comfy-Org/SCAIL-2/resolve/master/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "diffusion_models,wan2.1_14B_SCAIL_2_int8_convrot.safetensors,16654506256,0,https://modelscope.cn/models/Comfy-Org/SCAIL-2/resolve/master/diffusion_models/wan2.1_14B_SCAIL_2_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/SCAIL-2/resolve/main/diffusion_models/wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "text_encoders,umt5-xxl-encoder-Q8_0.gguf,6043068256,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf",
           "clip_vision,clip_vision_h.safetensors,1264219396,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/clip_vision/clip_vision_h.safetensors,https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors",
           "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors,https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
@@ -887,7 +891,7 @@
         "zh": "需要 SCAIL-2、SAM3.1、UMT5、CLIP vision、Wan VAE、lightx2v/DPO LoRA 和 RIFE。"
       },
       "models": [
-        "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+        "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
         "umt5-xxl-encoder-Q8_0.gguf",
         "clip_vision_h.safetensors",
         "wan_2.1_vae.safetensors",

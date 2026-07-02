@@ -63,8 +63,14 @@
             "overwrite_step_max": 20
         }
     },
-    "default_model": "wan2.2_bernini_r_high_noise_fp8_scaled.safetensors",
-    "default_refiner": "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+    "default_model": "wan2.2_bernini_r_high_noise_int8_convrot.safetensors",
+    "previous_default_models": [
+        "wan2.2_bernini_r_high_noise_fp8_scaled.safetensors"
+    ],
+    "default_refiner": "wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
+    "previous_default_refiners": [
+        "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors"
+    ],
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
     "default_vae": "wan_2.1_vae.safetensors",
@@ -111,8 +117,8 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,wan2.2_bernini_r_high_noise_fp8_scaled.safetensors,15574833216,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_high_noise_fp8_scaled.safetensors",
-        "diffusion_models,wan2.2_bernini_r_low_noise_fp8_scaled.safetensors,15574833216,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+        "diffusion_models,wan2.2_bernini_r_high_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_high_noise_int8_convrot.safetensors",
+        "diffusion_models,wan2.2_bernini_r_low_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
         "loras,lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors,738005744,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
         "text_encoders,umt5-xxl-encoder-Q8_0.gguf,6043068256,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf",
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",

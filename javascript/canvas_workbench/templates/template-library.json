@@ -253,7 +253,7 @@
         },
         "models": [
           "Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors",
-          "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+          "wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
           "nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
           "wan_2.1_vae.safetensors",
           "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
@@ -291,7 +291,7 @@
         },
         "models": [
           "Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors",
-          "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+          "wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
           "nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
           "wan_2.1_vae.safetensors",
           "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
@@ -574,7 +574,7 @@
           "zh": "需要 LTX2.3 transformer、文本编码器、音频/视频 VAE、蒸馏 LoRA、upscaler、RIFE，以及一段音频。"
         },
         "models": [
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
           "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
           "gemma_3_12B_it_fpmixed.safetensors",
           "LTX23_audio_vae_bf16.safetensors",
@@ -614,7 +614,7 @@
         "models": [
           "Qwen/Qwen3-TTS-Tokenizer-12Hz",
           "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
           "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
           "gemma_3_12B_it_fpmixed.safetensors",
           "LTX23_audio_vae_bf16.safetensors",
@@ -1034,7 +1034,7 @@
           "zh": "需要 SCAIL-2、SAM3.1、UMT5、CLIP vision、Wan VAE、lightx2v/DPO LoRA 和 RIFE。"
         },
         "models": [
-          "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
           "clip_vision_h.safetensors",
           "wan_2.1_vae.safetensors",
@@ -1152,7 +1152,7 @@
           "zh": "需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。"
         },
         "models": [
-          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+          "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
           "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
           "gemma_3_12B_it_fpmixed.safetensors",
           "LTX23_video_vae_bf16.safetensors",

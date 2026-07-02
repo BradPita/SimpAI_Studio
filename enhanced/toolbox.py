@@ -747,6 +747,12 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         state_params["__preset_switched"] = False
     if isinstance(preset_json, dict):
         state_params["__preset_model_list_raw"] = preset_json.get("model_list", [])
+        state_params["__preset_previous_default_model_info"] = {
+            "default_model": preset_json.get("default_model", ""),
+            "previous_default_models": preset_json.get("previous_default_models", []),
+            "default_refiner": preset_json.get("default_refiner", ""),
+            "previous_default_refiners": preset_json.get("previous_default_refiners", []),
+        }
         state_params["__preset_output_format"] = preset_json.get("default_output_format", None)
         state_params["__preset_output_format_loaded"] = True
     preset_prepared["is_mobile"] = state_params.get("__is_mobile", False)

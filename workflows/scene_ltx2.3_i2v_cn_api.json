@@ -346,7 +346,7 @@
   },
   "453": {
     "inputs": {
-      "unet_name": "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+      "unet_name": "placeholder.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",

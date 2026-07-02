@@ -29,6 +29,11 @@ LEGACY_CATEGORY_SEARCH_PATHS = {
     "grounding-dino": ("inpaint",),
     "ipadapter": ("controlnet",),
 }
+DEFAULT_MODEL_CATEGORIES = {"checkpoints", "diffusion_models", "unet"}
+PREVIOUS_DEFAULT_MODEL_FIELDS = (
+    ("default_model", "previous_default_models"),
+    ("default_refiner", "previous_default_refiners"),
+)
 
 
 class DownloadCancelled(Exception):
@@ -426,6 +431,7 @@ def load_file_from_url(
 
 
 presets_model_list = {}
+presets_previous_default_models = {}
 presets_mtime = {}
 missing_model_list_cache = {}
 missing_model_list_cache_ttl = 12.0
@@ -451,6 +457,87 @@ def _get_cached_preset_model_list(preset_name, user_did=None):
             return cache_name, model_list, presets_mtime.get(cache_name, 0)
 
     return None, None, 0
+
+def _clean_model_name(value):
+    return str(value or "").strip().replace('\\', os.sep).replace('/', os.sep).lstrip(os.sep)
+
+def _clean_previous_model_list(values):
+    if isinstance(values, str):
+        values = [values]
+    previous = []
+    for value in values or []:
+        name = _clean_model_name(value)
+        if name and name not in previous:
+            previous.append(name)
+    return previous
+
+
+def _preset_previous_default_model_info(config_preset):
+    if not isinstance(config_preset, dict):
+        return {}
+    info = {}
+    for current_key, previous_key in PREVIOUS_DEFAULT_MODEL_FIELDS:
+        info[current_key] = _clean_model_name(config_preset.get(current_key))
+        info[previous_key] = _clean_previous_model_list(config_preset.get(previous_key, []))
+    return info
+
+
+def _iter_previous_default_model_entries(previous_default_info):
+    if isinstance(previous_default_info, dict):
+        for current_key, previous_key in PREVIOUS_DEFAULT_MODEL_FIELDS:
+            current_model = _clean_model_name(previous_default_info.get(current_key))
+            previous_models = _clean_previous_model_list(previous_default_info.get(previous_key, []))
+            if current_model and previous_models:
+                yield current_model, previous_models
+        return
+    if isinstance(previous_default_info, (list, tuple)) and len(previous_default_info) >= 2:
+        current_model = _clean_model_name(previous_default_info[0])
+        previous_models = _clean_previous_model_list(previous_default_info[1])
+        if current_model and previous_models:
+            yield current_model, previous_models
+
+def _same_model_name(left, right):
+    left_name = _clean_model_name(left)
+    right_name = _clean_model_name(right)
+    if not left_name or not right_name:
+        return False
+    return left_name.casefold() == right_name.casefold() or os.path.basename(left_name).casefold() == os.path.basename(right_name).casefold()
+
+def _is_default_model_entry(cata, path_file, default_model):
+    if str(cata or "").strip().casefold() not in DEFAULT_MODEL_CATEGORIES:
+        return False
+    return _same_model_name(path_file, default_model)
+
+def _existing_previous_default_model(cata, previous_default_info, path_file=None):
+    if str(cata or "").strip().casefold() not in DEFAULT_MODEL_CATEGORIES:
+        return ""
+    for current_model, previous_models in _iter_previous_default_model_entries(previous_default_info):
+        if path_file is not None and not _same_model_name(path_file, current_model):
+            continue
+        for previous_model in previous_models:
+            file_path = _resolve_model_filepath(cata, previous_model)
+            if file_path and os.path.exists(file_path):
+                return previous_model
+    return ""
+
+def resolve_preset_default_model_choice(default_model, previous_default_models=None, catalogs=("checkpoints", "diffusion_models", "unet")):
+    current = _clean_model_name(default_model)
+    if not current:
+        return current
+    search_catalogs = [str(cata or "").strip() for cata in catalogs or () if str(cata or "").strip()]
+    for cata in search_catalogs:
+        file_path = _resolve_model_filepath(cata, current)
+        if file_path and os.path.exists(file_path):
+            return current
+    for previous_model in previous_default_models or []:
+        previous_name = _clean_model_name(previous_model)
+        if not previous_name:
+            continue
+        for cata in search_catalogs:
+            file_path = _resolve_model_filepath(cata, previous_name)
+            if file_path and os.path.exists(file_path):
+                return previous_name
+    return current
 
 def _get_preset_file_for_missing_models(preset_name, user_did=None):
     if preset_name.endswith('.'):
@@ -496,8 +583,9 @@ def _parse_model_list_entries(raw_model_list):
         model_list.append((cata, path_file, size, hash10, url))
     return model_list
 
-def _build_missing_model_details(model_list):
+def _build_missing_model_details(model_list, previous_default_info=None):
     missing_models_with_details = []
+    previous_default_info = previous_default_info or {}
 
     for cata, path_file, size, hash10, url in model_list:
         url = str(url or '').strip().strip('`')
@@ -511,6 +599,8 @@ def _build_missing_model_details(model_list):
             if file_path and os.path.exists(file_path):
                 if not size or os.path.getsize(file_path) == size:
                     continue
+            if _existing_previous_default_model(cata, previous_default_info, path_file):
+                continue
 
         human_size = format_size(size)
         if not url:
@@ -605,6 +695,7 @@ def refresh_model_list(presets, user_did=None):
                     if 'model_list' in config_preset:
                         model_list = _parse_model_list_entries(config_preset.get('model_list', []))
                         presets_model_list[preset] = model_list
+                        presets_previous_default_models[preset] = _preset_previous_default_model_info(config_preset)
                         _clear_missing_model_list_cache()
             except Exception as e:
                 logger.info(f'load preset file failed: {preset_file}')
@@ -621,6 +712,7 @@ def check_models_exists(preset, user_did=None):
             return False
         preset = f'{preset}{user_did[:7]}'
     model_list = [] if preset not in presets_model_list else presets_model_list[preset]
+    previous_default_info = presets_previous_default_models.get(preset, {})
     if len(model_list)>0:
         for cata, path_file, size, hash10, url in model_list:
             if path_file[:1]=='[' and path_file[-1:]==']':
@@ -633,6 +725,8 @@ def check_models_exists(preset, user_did=None):
                 file_path = _resolve_model_filepath(cata, path_file)
 
                 if file_path is None or file_path == '' or not _file_size_matches(file_path, size):
+                    if _existing_previous_default_model(cata, previous_default_info, path_file):
+                        continue
                     logger.debug(f'Missing model file in preset({preset}): {cata}, {path_file}')
                     return False
         return True
@@ -668,6 +762,7 @@ def is_models_file_absent(preset_name, user_did=None):
     if os.path.exists(preset_path):
         with open(preset_path, "r", encoding="utf-8") as json_file:
             config_preset = json.load(json_file)
+        previous_default_info = _preset_previous_default_model_info(config_preset)
 
         if config_preset.get("model_list"):
             for model_entry in config_preset["model_list"]:
@@ -679,6 +774,8 @@ def is_models_file_absent(preset_name, user_did=None):
                     # 检查文件是否存在
                     file_path = _resolve_model_filepath(cata, path_file)
                     if file_path is None or file_path == '' or not os.path.exists(file_path):
+                        if _existing_previous_default_model(cata, previous_default_info, path_file):
+                            continue
                         # 记录缺失的文件信息
                         logger.debug(f'Missing model file in preset({preset_name}): {cata}, {path_file}')
                         return True
@@ -692,6 +789,8 @@ def is_models_file_absent(preset_name, user_did=None):
                         # 检查文件是否存在
                         file_path = _resolve_model_filepath(cata, path_file)
                         if file_path is None or file_path == '' or not os.path.exists(file_path):
+                            if _existing_previous_default_model(cata, previous_default_info, path_file):
+                                continue
                             # 记录缺失的文件信息
                             logger.debug(f'Missing model file in preset({preset_name}): {cata}, {path_file}')
                             return True
@@ -728,12 +827,17 @@ def get_missing_model_list(preset_name, user_did=None):
     if cached and now - cached[0] <= missing_model_list_cache_ttl:
         return list(cached[1])
 
+    previous_default_info = {}
+    if cached_name:
+        previous_default_info = presets_previous_default_models.get(cached_name, {})
+
     if model_list is None:
         with open(preset_path, "r", encoding="utf-8") as json_file:
             config_preset = json.load(json_file)
         model_list = _parse_model_list_entries(config_preset.get('model_list', []))
+        previous_default_info = _preset_previous_default_model_info(config_preset)
 
-    missing_models_with_details = _build_missing_model_details(model_list)
+    missing_models_with_details = _build_missing_model_details(model_list, previous_default_info)
     missing_model_list_cache[cache_key] = (now, tuple(missing_models_with_details))
 
     if len(missing_model_list_cache) > 64:
@@ -743,20 +847,25 @@ def get_missing_model_list(preset_name, user_did=None):
 
     return missing_models_with_details
 
-def get_missing_model_list_from_entries(preset_name, raw_model_list, user_did=None, source_mtime=0):
+def get_missing_model_list_from_entries(preset_name, raw_model_list, user_did=None, source_mtime=0, previous_default_info=None):
     global missing_model_list_cache
 
     if not raw_model_list:
         return []
 
-    cache_key = (f'inline:{preset_name}', user_did or '', source_mtime or 0, len(raw_model_list or ()))
+    if isinstance(previous_default_info, dict):
+        previous_default_info = _preset_previous_default_model_info(previous_default_info)
+    elif previous_default_info is None:
+        previous_default_info = {}
+
+    cache_key = (f'inline:{preset_name}', user_did or '', source_mtime or 0, len(raw_model_list or ()), repr(previous_default_info))
     now = time.monotonic()
     cached = missing_model_list_cache.get(cache_key)
     if cached and now - cached[0] <= missing_model_list_cache_ttl:
         return list(cached[1])
 
     model_list = _parse_model_list_entries(raw_model_list)
-    missing_models_with_details = _build_missing_model_details(model_list)
+    missing_models_with_details = _build_missing_model_details(model_list, previous_default_info)
     missing_model_list_cache[cache_key] = (now, tuple(missing_models_with_details))
     return missing_models_with_details
 

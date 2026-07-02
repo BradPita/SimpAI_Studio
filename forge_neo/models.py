@@ -15,7 +15,7 @@ SOURCE_LICENSE = "AGPL-3.0"
 
 UI_PRESETS = ["sd", "xl", "flux", "klein", "qwen", "krea2", "lumina", "zit", "anima"]
 FORGE_NEO_LOCAL_CONFIG_KEYS = {"forge_preset"}
-LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "NF4", "None"]
+LOW_BIT_CHOICES = ["Automatic", "Float8 e4m3fn", "Float8 e5m2", "Int8", "Int8 (fp16 LoRA)", "NF4", "None"]
 MODEL_EXTENSIONS = {".pth", ".ckpt", ".bin", ".safetensors", ".fooocus.patch", ".patch", ".gguf", ".pt", ".onnx"}
 UPSCALER_MODEL_EXTENSIONS = {".pt", ".pth", ".safetensors"}
 CONFIG_PATH_KEYS = {
@@ -752,6 +752,8 @@ def _low_bits_from_source(value: object) -> str:
         "float8_e4m3fn": "Float8 e4m3fn",
         "float8-e5m2": "Float8 e5m2",
         "float8_e5m2": "Float8 e5m2",
+        "int8": "Int8",
+        "int8 (fp16 lora)": "Int8 (fp16 LoRA)",
         "bnb-nf4": "NF4",
         "nf4": "NF4",
         "none": "None",
@@ -776,6 +778,7 @@ def _simpai_preset_model_defaults(preset: str) -> dict[str, object]:
         return {}
     result: dict[str, object] = {
         "checkpoint": data.get("default_model"),
+        "previous_checkpoints": data.get("previous_default_models"),
         "vae": data.get("default_vae"),
         "clip": data.get("default_clip_model"),
         "modules": _simpai_preset_required_modules(data),
@@ -871,6 +874,17 @@ def _simpai_preset_modules(defaults: dict[str, object]) -> list[str]:
     return _unique(modules)
 
 
+def _simpai_previous_checkpoint(defaults: dict[str, object], choices: list[str]) -> str:
+    raw_values = defaults.get("previous_checkpoints")
+    if not isinstance(raw_values, list):
+        return ""
+    for value in raw_values:
+        matched = _match_choice(_requested_model_name(value), choices)
+        if matched:
+            return matched
+    return ""
+
+
 def _simpai_preset_loras(defaults: dict[str, object], choices: list[str]) -> tuple[list[str], dict[str, float]]:
     raw_loras = _as_list(defaults.get("loras"))
     raw_weights = defaults.get("lora_weights")
@@ -905,20 +919,21 @@ def preset_model_defaults(preset: str, choices: ForgeNeoModelChoices | None = No
     global_checkpoint_value = _requested_model_name(_source_config_value("sd_model_checkpoint"))
     source_checkpoint = _match_choice(source_checkpoint_value, model_choices.checkpoints)
     simpai_checkpoint = _match_choice(simpai_checkpoint_value, model_choices.checkpoints)
+    previous_simpai_checkpoint = _simpai_previous_checkpoint(simpai_defaults, model_choices.checkpoints) if simpai_checkpoint_value and not simpai_checkpoint else ""
     global_checkpoint = _match_choice(global_checkpoint_value, model_choices.checkpoints)
     checkpoint_missing = False
     checkpoint_origin = ""
     if preset_key == "qwen" and simpai_checkpoint_value:
-        checkpoint = simpai_checkpoint or None
-        checkpoint_missing = not bool(simpai_checkpoint)
+        checkpoint = simpai_checkpoint or previous_simpai_checkpoint or None
+        checkpoint_missing = not bool(simpai_checkpoint or previous_simpai_checkpoint)
         checkpoint_origin = "simpai"
     elif source_checkpoint_value:
         checkpoint = source_checkpoint or None
         checkpoint_missing = not bool(source_checkpoint)
         checkpoint_origin = "source"
     elif simpai_checkpoint_value:
-        checkpoint = simpai_checkpoint or None
-        checkpoint_missing = not bool(simpai_checkpoint)
+        checkpoint = simpai_checkpoint or previous_simpai_checkpoint or None
+        checkpoint_missing = not bool(simpai_checkpoint or previous_simpai_checkpoint)
         checkpoint_origin = "simpai"
     elif has_simpai_model_suite:
         checkpoint = global_checkpoint or first_or_none(model_choices.checkpoints) or None

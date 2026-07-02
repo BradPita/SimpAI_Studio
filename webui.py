@@ -2888,10 +2888,12 @@ with shared.gradio_root:
                     if isinstance(state_params, dict) and state_params.get("__preset") == preset_name:
                         raw_model_list = state_params.get("__preset_model_list_raw") or []
                     if raw_model_list:
+                        previous_default_info = state_params.get("__preset_previous_default_model_info") if isinstance(state_params, dict) else None
                         missing_models = model_loader.get_missing_model_list_from_entries(
                             preset_name,
                             raw_model_list,
                             user_did=user_did,
+                            previous_default_info=previous_default_info,
                         )
                     else:
                         missing_models = model_loader.get_missing_model_list(preset_name, user_did=user_did)
