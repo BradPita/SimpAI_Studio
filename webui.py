@@ -8365,6 +8365,22 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] generation_button_prepare_failed", e);
             }
             try {
+                const generationState = args.find((value) => value && typeof value === "object" && (
+                    Object.prototype.hasOwnProperty.call(value, "gallery_state")
+                    || Object.prototype.hasOwnProperty.call(value, "__main_gallery_browser_folder")
+                    || Object.prototype.hasOwnProperty.call(value, "__preset")
+                ));
+                if (typeof prepareSimpleAIGenerationStartSurface === "function") {
+                    prepareSimpleAIGenerationStartSurface("generate_start", generationState);
+                } else if (typeof scheduleSimpleAIPresetGalleryClear === "function") {
+                    scheduleSimpleAIPresetGalleryClear("generate_start");
+                } else if (typeof clearSimpleAIPresetSwitchGalleryHidden === "function") {
+                    clearSimpleAIPresetSwitchGalleryHidden("generate_start");
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] generation_surface_prepare_failed", e);
+            }
+            try {
                 if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
             } catch (e) {
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
@@ -8379,6 +8395,17 @@ with shared.gradio_root:
             return args;
         }"""
         preview_start_js = """async () => {
+            try {
+                if (typeof prepareSimpleAIGenerationStartSurface === "function") {
+                    prepareSimpleAIGenerationStartSurface("preview_start");
+                } else if (typeof scheduleSimpleAIPresetGalleryClear === "function") {
+                    scheduleSimpleAIPresetGalleryClear("preview_start");
+                } else if (typeof clearSimpleAIPresetSwitchGalleryHidden === "function") {
+                    clearSimpleAIPresetSwitchGalleryHidden("preview_start");
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] preview_surface_prepare_failed", e);
+            }
             try {
                 if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
             } catch (e) {
@@ -9038,6 +9065,12 @@ with shared.gradio_root:
             return None
 
         def show_generation_preview_surface(state_params):
+            if isinstance(state_params, dict):
+                state_params["gallery_state"] = "preview"
+                state_params["gallery_preview_open"] = False
+                state_params["__skip_gallery_browser_refresh_once"] = True
+                gallery_util.clear_main_gallery_browser_state(state_params)
+                gallery_util.clear_post_generation_compare_state(state_params)
             return (
                 gr_update(visible=True),
                 gr_update(visible="hidden", value=None),

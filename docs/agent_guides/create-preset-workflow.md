@@ -225,6 +225,10 @@ Key points:
 - `backend_engine`: `"Comfy"` for standard ComfyUI, `"Z-image"` / `"Wan"` / `"Qwen"` for special engines.
 - `backend_params.task_method` must match the workflow filename (without `_api.json`).
 - `topbar.py` auto-scans `presets/*.json` to generate nav buttons. No manual registration needed.
+- For scene keep-input-area presets that should open at source size, use
+  `"origin|Original"` for both `default_aspect_ratio` and the first
+  `scene_frontend.aspect_ratio` entry. The top-level default is still read by
+  the older parameter loader.
 
 #### Model Resources
 

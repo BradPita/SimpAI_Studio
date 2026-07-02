@@ -118,7 +118,7 @@
                 "Remove Watermark": 24
             },
             "aspect_ratio": [
-                "Original",
+                "origin|Original",
                 "720|1:1",
                 "896|1:1",
                 "1024|1:1",
@@ -174,7 +174,7 @@
     "default_scheduler": "simple",
     "default_performance": "Speed",
     "default_styles": [],
-    "default_aspect_ratio": "720*720",
+    "default_aspect_ratio": "origin|Original",
     "default_image_number": 1,
     "default_overwrite_step": 5,
     "default_prompt": "",

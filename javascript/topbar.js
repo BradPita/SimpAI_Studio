@@ -1263,6 +1263,48 @@ function scheduleSimpleAIPresetGalleryClear(reason) {
     });
 }
 
+function prepareSimpleAIGenerationStartSurface(reason, state) {
+    const reasonText = String(reason || "generation_start");
+    const applyPreviewState = (params) => {
+        if (!params || typeof params !== "object") return null;
+        try {
+            SIMPLEAI_GALLERY_BROWSER_PARAM_KEYS.forEach((key) => {
+                try { delete params[key]; } catch (e) {}
+            });
+            params.gallery_state = "preview";
+            params.gallery_preview_open = false;
+            params.__skip_gallery_browser_refresh_once = true;
+        } catch (e) {}
+        return params;
+    };
+    const inputState = applyPreviewState(state);
+    const liveState = applyPreviewState(window.simpleaiTopbarSystemParams);
+    const cachedState = applyPreviewState(topbarLastSystemParams);
+    const nextState = inputState || liveState || cachedState || null;
+    if (nextState) {
+        try { window.simpleaiTopbarSystemParams = nextState; } catch (e) {}
+        try { topbarLastSystemParams = nextState; } catch (e) {}
+    }
+    try { clearSimpleAIPresetSwitchGalleryHidden(reasonText); } catch (e) {}
+    try { setFinishedGalleryBrowserHasMediaState(false, reasonText); } catch (e) {}
+    try { closeSimpleAICatalogLinkedGallery(reasonText, { markWrappers: false }); } catch (e) {}
+    try {
+        document.documentElement.classList.remove("simpai-post-generation-result-surface");
+        document.documentElement.classList.remove("simpai-gallery-browser-welcome-pending");
+        document.documentElement.classList.remove("simpai-gallery-browser-loading-silent");
+        document.documentElement.classList.remove("simpai-gallery-browser-overlay-active");
+        document.documentElement.classList.remove("simpai-video-result-preview");
+        document.documentElement.classList.remove("simpai-comparison-preview");
+        document.documentElement.classList.add("simpai-main-gallery-browser-closed");
+    } catch (e) {}
+    simpaiUiTrace("log", "[UI-TRACE] generation_start.surface_prepared", {
+        reason: reasonText,
+        hadState: !!nextState,
+    });
+    return nextState;
+}
+window.prepareSimpleAIGenerationStartSurface = prepareSimpleAIGenerationStartSurface;
+
 function shouldIgnorePresetGalleryClearClick(evt) {
     try {
         if (presetNavProgressActive || document.documentElement.classList.contains("simpai-preset-nav-active")) {

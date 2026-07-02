@@ -228,6 +228,7 @@ PRESET_STORE_ORDER = [
     "LTX2.3(T2V)",
     "LTX2.3(TA2V)",
     "LTX2.3(AudioGen)",
+    "LTX2.3(InsightTool)",
     "LTX-Outpaint",
     "Nvidia-VSR",
     "Hunyuan-Foley",
@@ -246,6 +247,8 @@ PRESET_STORE_ORDER = [
     "Relight",
     "SD1.5",
     "ReActor-FaceSwap",
+    "LivePortrait Exp",
+    "LivePortrait Video",
 ]
 
 def _strip_preset_marker(name):

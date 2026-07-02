@@ -5308,7 +5308,19 @@ function initResolutionControlWidget(widget, options = {}) {
             if (!base) continue;
             let dims = { width: base.width, height: base.height };
             if (base.origin) {
-                if (!source || !(source.width > 0 && source.height > 0)) continue;
+                if (!source || !(source.width > 0 && source.height > 0)) {
+                    const value = 'origin|Original';
+                    if (seen.has(value)) continue;
+                    seen.add(value);
+                    choices.push({
+                        value,
+                        label: base.label || 'Original',
+                        width: 0,
+                        height: 0,
+                        base,
+                    });
+                    continue;
+                }
                 dims = { width: source.width, height: source.height };
             } else if (source) {
                 dims = _rc_projectKeepInputArea(source.width, source.height, base.width, base.height, profileStep(profile) || readStep());
@@ -5357,6 +5369,13 @@ function initResolutionControlWidget(widget, options = {}) {
         const base = _rc_profileRatioBaseDims(text);
         if (base) return base.origin ? 'origin' : `${base.width}x${base.height}`;
         return text.toLowerCase().replace(/\s+/g, '');
+    };
+    const defaultProjectedChoiceKey = () => {
+        const selectedKey = projectedChoiceKey(readSelection());
+        if (selectedKey) return selectedKey;
+        const profile = getActiveProfile();
+        const ratios = Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : [];
+        return ratios.length ? projectedChoiceKey(ratios[0]) : '';
     };
     const getProjectedChoiceByKey = (key) => {
         const normalized = String(key || '').trim();
@@ -5681,14 +5700,28 @@ function initResolutionControlWidget(widget, options = {}) {
     };
 
     const commitProjectedChoice = (choice, commit = true) => {
-        if (!choice || !(choice.width > 0 && choice.height > 0)) return false;
+        if (!choice) return false;
+        const choiceKey = projectedChoiceKey(choice.value);
+        if (!(choice.width > 0 && choice.height > 0)) {
+            if (choiceKey === 'origin') {
+                setHiddenOverride(false, commit);
+                _ro_setSliderValue(targetWidthId, -1, { commit });
+                _ro_setSliderValue(targetHeightId, -1, { commit });
+                widget.__rc_projected_choice_key = 'origin';
+                widget.__rc_user_custom_resolution = false;
+                widget.__rc_force_projected_default = true;
+                writeSelection(useSceneSelection() ? choice.value : `${choice.value},${getActiveNonSceneTemplate(Object.keys(getRatios()))}`, commit);
+                return true;
+            }
+            return false;
+        }
         setHiddenOverride(true, commit);
         _ro_setSliderValue(targetWidthId, choice.width, { commit });
         _ro_setSliderValue(targetHeightId, choice.height, { commit });
         widget.__rc_last_committed_profile_resolution = `${choice.width}x${choice.height}`;
         widget.__rc_projected_choice_key = choice.custom && choice.area
             ? `custom-area:${choice.area}`
-            : projectedChoiceKey(choice.value);
+            : choiceKey;
         widget.__rc_user_custom_resolution = !!choice.custom;
         widget.__rc_force_projected_default = false;
         writeSelection(
@@ -5834,11 +5867,13 @@ function initResolutionControlWidget(widget, options = {}) {
             widget.__rc_profile_key = profileKey;
             widget.__rc_user_custom_resolution = false;
             widget.__rc_force_projected_default = true;
-            widget.__rc_projected_choice_key = "";
             widget.__rc_manual_draft = null;
             widget.__rc_manual_editing = false;
             if (profileUsesProjectedChoices(profile)) {
+                widget.__rc_projected_choice_key = defaultProjectedChoiceKey();
                 _rc_setTextValue(targetEditModeId, profilePreprocessFitMode(profile) || 'proportional', true);
+            } else {
+                widget.__rc_projected_choice_key = "";
             }
             _rc_applyResolutionAccordionDefaultOpen(_rc_getCurrentSceneFlag());
         }
@@ -5849,7 +5884,8 @@ function initResolutionControlWidget(widget, options = {}) {
             const currentHeight = _ro_getSliderValue(targetHeightId);
             const hasValidOverride = currentWidth > 0 && currentHeight > 0;
             const sourceReady = !!readImageSource(getSourceIds());
-            if ((widget.__rc_force_projected_default && sourceReady) || !hasValidOverride) {
+            const waitingForOriginalSource = !sourceReady && !hasValidOverride && projectedChoiceKey(widget.__rc_projected_choice_key || defaultProjectedChoiceKey()) === 'origin';
+            if (!waitingForOriginalSource && ((widget.__rc_force_projected_default && sourceReady) || !hasValidOverride)) {
                 commitProjectedChoice(getRememberedProjectedChoice() || getFirstProjectedChoice(), true);
             }
         }

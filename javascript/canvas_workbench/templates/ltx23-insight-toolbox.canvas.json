@@ -181,7 +181,7 @@
         "defaults": {
           "template": "Flux",
           "available_aspect_ratios_selection": "Flux",
-          "default_aspect_ratio": "720*720",
+          "default_aspect_ratio": "origin|Original",
           "aspect_ratios": [
             "origin|Original",
             "720|1:1",
@@ -270,7 +270,6 @@
           "scene_additional_prompt_2",
           "scene_var_number",
           "scene_var_number4",
-          "scene_steps",
           "scene_aspect_ratio",
           "scene_var_number5",
           "scene_var_number6",
@@ -539,7 +538,7 @@
         "defaults": {
           "template": "Flux",
           "available_aspect_ratios_selection": "Flux",
-          "default_aspect_ratio": "720*720",
+          "default_aspect_ratio": "origin|Original",
           "aspect_ratios": [
             "origin|Original",
             "720|1:1",

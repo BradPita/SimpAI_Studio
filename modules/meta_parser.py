@@ -1456,6 +1456,21 @@ def get_steps(key: str, fallback: str | None, source_dict: dict, results: list, 
         results.append(-1)
 
 
+def _normalize_original_resolution_choice(value):
+    if isinstance(value, dict):
+        return "origin|Original" if value.get("origin") else ""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    head = text.split(",", 1)[0].strip()
+    marker_text = head.lower().replace("-", "_").replace(" ", "_")
+    parts = [part.strip("_") for part in re.split(r"[|\[\]\(\)]", marker_text) if part.strip("_")]
+    for part in parts:
+        if part in ("origin", "original", "source", "no_resize", "noresize"):
+            return head or "origin|Original"
+    return ""
+
+
 def parse_resolution_pair_value(value, min_dimension=64):
     def coerce_pair(width_value, height_value):
         try:
@@ -1512,6 +1527,12 @@ def _resolve_backend_engine_key(value):
 def get_resolution(key: str, fallback: str | None, source_dict: dict, results: list, default=None, use_resolution_override=False):
     try:
         h = source_dict.get(key, source_dict.get(fallback, default))
+        original_choice = _normalize_original_resolution_choice(h)
+        if original_choice:
+            results.append(original_choice)
+            results.append(-1)
+            results.append(-1)
+            return
         parsed_resolution = parse_resolution_pair_value(h)
         if parsed_resolution is None:
             raise ValueError(f"invalid resolution value: {h!r}")
@@ -1759,11 +1780,23 @@ def parse_meta_from_preset(preset_content):
         elif settings_key == "default_aspect_ratio":
             if settings_key in items and items[settings_key] is not None:
                 default_aspect_ratio = items[settings_key]
-                width, height = default_aspect_ratio.split('*')
+                original_choice = _normalize_original_resolution_choice(default_aspect_ratio)
+                if original_choice:
+                    preset_prepared[meta_key] = original_choice
+                    continue
+                parsed_resolution = parse_resolution_pair_value(default_aspect_ratio)
+                if parsed_resolution is None:
+                    width, height = str(default_aspect_ratio).split('*')
+                else:
+                    width, height = parsed_resolution
             else:
                 default_aspect_ratio = getattr(modules.config, settings_key)
-                width, height = default_aspect_ratio.split('×')
-                height = height[:height.index(" ")]
+                parsed_resolution = parse_resolution_pair_value(default_aspect_ratio)
+                if parsed_resolution is None:
+                    width, height = default_aspect_ratio.split('×')
+                    height = height[:height.index(" ")]
+                else:
+                    width, height = parsed_resolution
             preset_prepared[meta_key] = (width, height)
         elif settings_key == "default_clip_model" and settings_key not in items:
             preset_prepared[meta_key] = modules.flags.default_clip
