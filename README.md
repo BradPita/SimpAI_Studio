@@ -70,7 +70,7 @@ SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作
 
 | ComfyUI Bridge / ComfyUI 节点界面 | Forge Neo / Forge Neo 界面 |
 | --- | --- |
-| ![ComfyUI Bridge / ComfyUI 节点界面](docs/image/readme/12-comfyui-bridge.jpg) | ![Forge Neo / Forge Neo 界面](docs/image/readme/12-forge-neo-bridge.jpg) |
+| ![ComfyUI Built-in / ComfyUI 节点界面](docs/image/readme/12-comfyui-bridge.jpg) | ![Forge Neo Built-in / Forge Neo 界面](docs/image/readme/12-forge-neo-bridge.jpg) |
 | 使用内置 ComfyUI 执行节点工作流，并与主 WebUI 共享资源。<br>Run node workflows with the built-in ComfyUI runtime and shared assets. | Gradio 6 风格的 Forge Neo 独立界面，与主 WebUI 共享模型目录。<br>Forge Neo provides a Gradio 6 interface and shares model folders with the main WebUI. |
 
 ## 能做什么
@@ -91,14 +91,14 @@ SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作
 - Batch Any 支持图片、文件和文本批次，适合多提示词、多素材、多参数对比批量任务。
 - 画布Agent 内置Canvas Skill，根据素材和预置包知识辅助用户选择、编排工作流，还拥有专业的Prompt SKILL，分别对自然语言、Danbooru Tags类型提示词进行优化，生成符合用户意图的优秀提示词。
 
-### Forge Neo
+### Forge Neo Built-in
 
 - `forge_neo/` 是从Gradio 4.40迁移到 Gradio 6.9 的 Forge 风格前端用户界面，运行独立于主 WebUI 的进程。
 - 提供 `webui-forge-neo.py` 主入口，并实现 SDAPI、ControlNet、Extra Networks、Settings、Extensions、PNG Info、Extras、Checkpoint Merger 等接口和页面。
 - 主动适配了 ControlNet、IPAdapter、MultiDiffusion、Regional Prompter、ADetailer-Neo、Qwen Vision Chat、SAM Matting、Trellis2、Tagcomplete 等扩展。
 - 为喜欢A1111界面风格的用户提供了新的选择，与主WebUI共享模型目录，不需要另外部署一个Python环境。
 
-### ComfyUI
+### ComfyUI Built-in
 
 - 从SimpAI Studio使用的comfyD后端进化而来，保留了所有功能和接口，并且专门优化了资源调度和性能。
 - 集成了大量常用节点（多达140+），覆盖了图像、视频、音频等任务的大部分功能。
@@ -123,6 +123,179 @@ SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作
 | `forge_neo/`                             | Forge Neo Gradio 6 迁移代码、API、设置、扩展适配和许可说明。                             |
 | `docs/`                                  | VLM 技能、检索用文档。                                                                   |
 | `users/`                                 | 本地用户工作区、输出、配置和运行时素材目录。                                             |
+| `.ci/`                                   | Windows 打包环境使用的 bat 模板，包含主 WebUI、ComfyUI、Forge Neo、模型检测和更新入口。 |
+
+## 安装与启动
+
+### Windows 一键整合包
+
+普通 Windows 用户建议使用一键整合包：
+
+- 下载地址：[SimpAI_Studio_win.zip](https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpAI_Studio_win.zip)
+- 用途：实际为[Windows版本启动器](https://pan.quark.cn/s/767d38736010)部署所使用的 Studio 运行包，包含 Windows embedded Python、Studio 代码和外层 bat 入口。
+- 启动器说明：[Windows 版本启动器说明](docs/windows-launcher-zh.md)
+- 解压位置：建议解压到空间充足、路径较短的目录，例如 `D:\SimpleAI\`。解压后常见入口类似 `G:\SimpleAI\SimpAI_Studio_win\run_SimpAI_常规启动.bat`。
+- 启动方式：解压后使用 Launcher 管理，或直接运行外层 bat：`run_SimpAI_常规启动.bat`、`run_ComfyUI_工作流模式.bat`、`run_ForgeNeo_传统界面.bat`。
+
+模型和用户数据仍建议放在外层 `SimpleModels/` 与 `users/`，这样更新 Studio 运行包时不需要移动已有模型和生成记录。
+
+### 当前打包限制
+
+- 目前一键整合包只提供 Windows + NVIDIA CUDA 版本。
+- 打包版默认面向 RTX 20 系及以上 NVIDIA 显卡。更老的 NVIDIA 显卡未做测试和适配。
+- Linux 目前提供源码启动和自建环境说明，但没有提供单独的一键整合包。
+- AMD、Intel 显卡尚未提供一键整合包，也尚未完成直接适配和打包验证。相关用户需要自行配置 PyTorch / ROCm / DirectML / IPEX 等环境，并按实际节点兼容情况处理。
+- 当前打包环境使用 Python `3.13`、PyTorch `2.9.1+cu130` 和 CUDA 13 路线。自建环境使用其他版本时，ONNX Runtime、bitsandbytes、视频节点和 3D 高斯节点可能需要额外调整。
+
+### 推荐文件夹结构
+
+Windows 打包版建议把代码、Python 环境、模型和用户数据分开放置。仓库内 `.ci` 目录里的 bat 模板，默认按下面的发布包结构工作：
+
+```text
+SimpleAI/
+├─ SimpAI_Studio_win/
+│  ├─ python_embeded/
+│  ├─ SimpAI_Studio/
+│  ├─ run_SimpAI_常规启动.bat
+│  ├─ run_ComfyUI_工作流模式.bat
+│  ├─ run_ForgeNeo_传统界面.bat
+│  ├─ model_checker_模型检测.bat
+│  └─ update_SimpAI_更新程序.bat
+├─ SimpleModels/
+└─ users/
+```
+
+- `SimpAI_Studio_win/`：Windows 发布包目录，外层 bat 放在这里。
+- `SimpAI_Studio_win/SimpAI_Studio/`：本仓库代码。
+- `SimpAI_Studio_win/python_embeded/`：Windows 打包版自带 Python，当前打包环境使用 Python `3.13` 与 PyTorch `2.9.1+cu130`。
+- `SimpleModels/`：共享模型目录。主 WebUI、ComfyUI 和 Forge Neo 都会从这里读取模型。
+- `users/`：用户配置、输出、工作区、Forge Neo 状态和 ComfyUI 独立输出目录。
+
+这种结构下，更新或者重置 `SimpAI_Studio/` 时不需要移动模型和用户数据。模型目录的主要子目录包括 `checkpoints/`、`diffusion_models/`、`unet/`、`loras/`、`vae/`、`clip/`、`text_encoders/`、`controlnet/`、`clip_vision/`、`upscale_models/`、`LLM/`、`llms/`、`sam3/`、`qwen-tts/`、`hunyuan_foley/` 等。更多路径会从 `users/config.txt` 和 `comfy/extra_model_paths.yaml` 同步给 ComfyUI。
+
+### Windows bat 启动
+
+`.ci` 目录内的 bat 是模板。它们的相对路径假设 bat 文件位于 `SimpAI_Studio_win/`，并且同级存在 `python_embeded/` 和 `SimpAI_Studio/`。
+
+| bat | 用途 |
+| --- | --- |
+| `run_SimpAI_常规启动.bat` | 启动主 WebUI，模型目录使用 `../../SimpleModels`，用户目录使用 `../../users`。 |
+| `run_ComfyUI_工作流模式.bat` | 启动内置 ComfyUI 节点界面，输出目录使用 `../../users/ComfyUI`。 |
+| `run_ForgeNeo_传统界面.bat` | 启动 Forge Neo 传统 WebUI，用户目录使用 `../../users`，主题为 dark。 |
+| `model_checker_模型检测.bat` | 打开预置包模型检测和下载工具。 |
+| `update_SimpAI_更新程序.bat` | 打开更新工具；没有 embedded Python 时会尝试使用系统 `python`。 |
+
+主 WebUI 是普通用户的默认入口。ComfyUI 适合直接编辑节点工作流。Forge Neo 适合使用 A1111 / Forge 风格页面和 SDAPI 生态。
+
+### Windows 命令行启动
+
+以下命令在 `SimpAI_Studio_win/` 发布包目录执行：
+
+```powershell
+.\python_embeded\python.exe -s SimpAI_Studio\entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users
+```
+
+常用变体：
+
+```powershell
+# 指定端口和监听地址
+.\python_embeded\python.exe -s SimpAI_Studio\entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --listen 127.0.0.1 --port 8186
+
+# 局域网或服务器访问
+.\python_embeded\python.exe -s SimpAI_Studio\entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --listen 0.0.0.0 --port 8186
+
+# 指定后端 ComfyUI 端口
+.\python_embeded\python.exe -s SimpAI_Studio\entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --backend-port 8188
+
+# 只启动前端，不自动启动生成后端
+.\python_embeded\python.exe -s SimpAI_Studio\entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --disable-comfyd
+
+# 启动 Forge Neo
+.\python_embeded\python.exe -s SimpAI_Studio\webui-forge-neo.py --theme dark --userhome-path ../../users --port 7860
+
+# 启动 ComfyUI 节点界面
+.\python_embeded\python.exe -s SimpAI_Studio\comfy\main_comfyd.py --windows-standalone-build --output-directory ../../users/ComfyUI --port 8188
+```
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--models-root PATH` | 指定共享模型根目录。打包结构推荐使用 `../../SimpleModels`。 |
+| `--userhome-path PATH` | 指定用户目录。打包结构推荐使用 `../../users`。 |
+| `--listen IP` | 指定监听地址。`127.0.0.1` 仅本机访问，`0.0.0.0` 允许外部访问。 |
+| `--port PORT` | 指定主 WebUI 或 Forge Neo 前端端口。 |
+| `--backend-port PORT` | 指定主 WebUI 自动启动的 ComfyUI 后端端口。 |
+| `--preset NAME` | 指定启动时加载的预置包，默认是 `Z-imageT`。 |
+| `--language cn|en` | 指定界面语言。国内环境默认会使用 `cn`。 |
+| `--theme dark|light` | 指定 Gradio 主题。 |
+| `--gpu-device-id ID` | 指定主 WebUI 使用的 GPU。 |
+| `--disable-comfyd` | 主 WebUI 不自动启动内置 ComfyUI 后端。 |
+| `--disable-backend` | 只启动界面和 API 层，不提供本地生成后端。 |
+| `--share` | 使用 Gradio share。公开访问前请配置访问控制，不建议把本地生成服务直接暴露到公网。 |
+
+### Linux 启动
+
+Linux 没有 Windows embedded Python。建议使用 venv 或 Conda，并把当前工作目录放在 `SimpAI_Studio/`：
+
+```bash
+cd /data/SimpleAI/SimpAI_Studio_win/SimpAI_Studio
+python -s entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --listen 127.0.0.1 --port 8186
+```
+
+Linux 服务器常用命令：
+
+```bash
+# 主 WebUI，允许内网访问
+python -s entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users --listen 0.0.0.0 --port 8186
+
+# Forge Neo
+python -s webui-forge-neo.py --theme dark --userhome-path ../../users --listen 0.0.0.0 --port 7860
+
+# ComfyUI 节点界面
+python -s comfy/main_comfyd.py --output-directory ../../users/ComfyUI --listen 0.0.0.0 --port 8188
+```
+
+服务器对外使用时建议放在反向代理或 VPN 后面，并配置防火墙、账号验证和独立工作目录。模型下载量大，`SimpleModels/` 建议放在空间充足的 SSD 或高速盘。
+
+### 自建 Python 环境
+
+自建环境适合源码开发、Linux 服务器和需要自定义 CUDA / PyTorch 的用户。普通 Windows 用户建议使用打包版 `python_embeded/`。
+
+基础流程：
+
+```bash
+cd /data/SimpleAI/SimpAI_Studio_win/SimpAI_Studio
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip wheel setuptools
+python -m pip install torch==2.9.1+cu130 torchvision==0.24.1+cu130 torchaudio==2.9.1+cu130 --index-url https://download.pytorch.org/whl/cu130
+python -m pip install -r requirements.txt
+python -m pip install -r comfy/requirements.txt
+python -s entry_without_update.py --models-root ../../SimpleModels --userhome-path ../../users
+```
+
+Windows PowerShell 对应写法：
+
+```powershell
+cd G:\SimpleAI\SimpAI_Studio_win\SimpAI_Studio
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip wheel setuptools
+python -m pip install torch==2.9.1+cu130 torchvision==0.24.1+cu130 torchaudio==2.9.1+cu130 --index-url https://download.pytorch.org/whl/cu130
+python -m pip install -r requirements.txt
+python -m pip install -r comfy\requirements.txt
+python -s entry_without_update.py --models-root ..\..\SimpleModels --userhome-path ..\..\users
+```
+
+环境注意事项：
+
+- 当前主启动流程面向 PyTorch `2.9.1+cu130`。使用其他 CUDA / PyTorch 组合时，ONNX Runtime、bitsandbytes、ComfyUI 节点和部分视频/3D 节点可能需要用户自行调整。
+- `requirements.txt` 不直接安装 `onnxruntime` / `onnxruntime-gpu`。CUDA 13 环境会在启动时安装匹配的 ONNX Runtime GPU 包；自定义 CUDA 12.x 环境需要用户安装对应的 `onnxruntime-gpu`。
+- `simpleai_base` 是必要组件。启动器会尝试从 `enhanced/libs/` 或 ModelScope 下载并安装匹配 wheel；离线环境需要提前准备对应平台的 wheel。
+- 建议 NVIDIA 驱动支持 CUDA 13.0；低版本驱动会在启动时提示更新。
+- 建议 RAM + SWAP 大于 64 GB，视频、3D 和大模型工作流还需要更大的显存和磁盘空间。
+- 中国大陆网络环境可以设置 `HF_ENDPOINT=https://hf-mirror.com`，或使用启动参数 `--hf-mirror`。
 
 ## 预置包与模板
 
@@ -138,11 +311,6 @@ SimpAI Studio 的目标是纵深整合，从快速起步的“预置包式创作
 - 增强：`Nvidia-VSR`、`Removebg`、`Relight`、`Tile`、`Eraser`。
 
 更多配置说明见 [presets/readme.md](presets/readme.md) 和 [javascript/canvas_workbench/templates/README.md](javascript/canvas_workbench/templates/README.md)。
-
-常用入口：
-
-- 一键部署用户：以 SimpAI 启动器4.0为准，根据指引创建文件夹，部署完毕选择 WebUI、ComfyUI 或 Forge Neo 相关入口。（Windows）
-- Git 克隆安装：从仓库克隆代码，根据本地环境配置。
 
 ## 对比旧版
 
