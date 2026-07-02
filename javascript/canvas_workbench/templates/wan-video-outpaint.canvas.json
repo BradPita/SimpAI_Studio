@@ -670,10 +670,10 @@
         "scene_video": "wan_outpaint_source_video"
       },
       "text_inputs": {
-        "prompt": "wan_outpaint_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "延展原视频画面边缘，补全更宽的环境空间，保持镜头运动、透视、光线、色彩和原视频风格一致。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -787,13 +787,6 @@
       "from": "wan_outpaint_source_video",
       "to": "wan_outpaint_preset",
       "slot": "scene_video"
-    },
-    {
-      "id": "wan_outpaint_edge_prompt",
-      "type": "text",
-      "from": "wan_outpaint_prompt",
-      "to": "wan_outpaint_preset",
-      "slot": "prompt"
     },
     {
       "id": "wan_outpaint_edge_models",

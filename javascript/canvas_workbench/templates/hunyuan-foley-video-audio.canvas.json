@@ -632,11 +632,11 @@
         "scene_video": "foley_source_video"
       },
       "text_inputs": {
-        "prompt": "foley_prompt",
-        "negative_prompt": "foley_negative"
+        "prompt": null,
+        "negative_prompt": null
       },
       "params": {
-        "prompt": "'''Audio Effects Prompt'''\n",
+        "prompt": "'''Audio Effects Prompt'''\nsoft footsteps on concrete, distant city ambience, light wind, subtle cloth movement, cinematic natural foley",
         "negative_prompt": "noisy, harsh, background music, BGM, singing, vocals, song, melody",
         "seed_random": true,
         "image_seed": 0,
@@ -748,20 +748,6 @@
       "from": "foley_source_video",
       "to": "foley_preset",
       "slot": "scene_video"
-    },
-    {
-      "id": "foley_edge_prompt",
-      "type": "text",
-      "from": "foley_prompt",
-      "to": "foley_preset",
-      "slot": "prompt"
-    },
-    {
-      "id": "foley_edge_negative",
-      "type": "text",
-      "from": "foley_negative",
-      "to": "foley_preset",
-      "slot": "negative_prompt"
     },
     {
       "id": "foley_edge_models",

@@ -754,10 +754,10 @@
         "scene_canvas_image": "swap_face_reference_image"
       },
       "text_inputs": {
-        "prompt": "swap_face_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "将源视频人物替换为参考图身份，保留源视频中的动作、表情节奏、光线和镜头运动，面部融合自然。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -879,13 +879,6 @@
       "from": "swap_face_reference_image",
       "to": "swap_face_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "swap_face_edge_prompt",
-      "type": "text",
-      "from": "swap_face_prompt",
-      "to": "swap_face_preset",
-      "slot": "prompt"
     },
     {
       "id": "swap_face_edge_models",

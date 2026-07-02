@@ -1,13 +1,13 @@
 {
   "schema": "simpai.canvas.workbench.v1",
-  "id": "ltx23_ta2v_basic",
-  "title": "LTX2.3 文本+音频生成视频",
-  "created_at": "2026-05-23T00:00:00Z",
-  "updated_at": "2026-06-05T06:43:45Z",
+  "id": "ltx23_insight_toolbox",
+  "title": "LTX2.3 Insight 视频修复工具箱",
+  "created_at": "2026-07-02T00:00:00Z",
+  "updated_at": "2026-07-02T06:53:10Z",
   "viewport": {
-    "x": 278,
-    "y": 133,
-    "zoom": 0.22413304692565988
+    "x": 381,
+    "y": 336,
+    "zoom": 0.6704245298971861
   },
   "settings": {
     "__lang": "cn",
@@ -20,36 +20,36 @@
   },
   "groups": [
     {
-      "id": "ltx23_ta2v_group_input",
-      "title": "1. Audio And Prompt / 音频与提示词",
+      "id": "ltx23_insight_group_input",
+      "title": "1. Video And Prompt / 视频与提示词",
       "x": -160,
-      "y": -190,
+      "y": -180,
       "w": 640,
-      "h": 780,
+      "h": 1250,
       "color": "#14b8a6",
       "alpha": 0.12,
       "shortcut": "1",
       "locked": false
     },
     {
-      "id": "ltx23_ta2v_group_config",
+      "id": "ltx23_insight_group_config",
       "title": "2. Configs / 配置",
       "x": 540,
-      "y": -190,
-      "w": 523,
-      "h": 1980,
+      "y": -180,
+      "w": 516,
+      "h": 996,
       "color": "#7c3aed",
       "alpha": 0.1,
       "shortcut": "2",
       "locked": false
     },
     {
-      "id": "ltx23_ta2v_group_run",
-      "title": "3. Generate / 生成",
+      "id": "ltx23_insight_group_run",
+      "title": "3. Run / 运行",
       "x": 1120,
-      "y": -190,
-      "w": 1054,
-      "h": 1221,
+      "y": -180,
+      "w": 1030,
+      "h": 1120,
       "color": "#f97316",
       "alpha": 0.11,
       "shortcut": "3",
@@ -58,14 +58,14 @@
   ],
   "nodes": [
     {
-      "id": "ltx23_ta2v_intro",
+      "id": "ltx23_insight_intro",
       "type": "note",
       "x": -96,
-      "y": -120,
+      "y": -112,
       "w": 520,
-      "h": 135,
-      "title": "Audio-Driven Video / 音频驱动视频",
-      "text": "Use LTX2.3 Text+Audio to Video when a soundtrack, speech, or rhythm should guide the generated clip. Replace the Audio node first. / 当音乐、语音或节奏需要引导生成视频时，使用 LTX2.3 Text+Audio to Video。请先替换 Audio 节点。",
+      "h": 140,
+      "title": "LTX2.3 Insight ToolBox / 视频修复工具箱",
+      "text": "Use this template for video restoration, HD enhancement, watermark removal, or subtitle removal. Replace the source video before production runs. / 用于视频修复、高清增强、水印移除或字幕移除。正式任务前请替换源视频。",
       "style": {
         "color": "#f8fafc",
         "background": "#164e63",
@@ -76,57 +76,34 @@
       }
     },
     {
-      "id": "ltx23_ta2v_audio",
-      "type": "audio",
-      "x": -96,
+      "id": "ltx23_insight_source_video",
+      "type": "video",
+      "x": -72,
       "y": 72,
-      "w": 520,
-      "h": 260,
-      "title": "Driving Audio / 驱动音频",
-      "asset": null,
+      "w": 480,
+      "h": 852,
+      "title": "Source Video / 源视频",
+      "asset": {
+        "kind": "reserved_input",
+        "name": "example.mp4",
+        "mime": "video/mp4",
+        "path": "presets/input_reserved/example.mp4",
+        "width": 816,
+        "height": 1216,
+        "duration": 5.06
+      },
       "status": {
-        "state": "waiting",
-        "message": "Required: replace this audio placeholder or connect an audio Result before Run."
+        "state": "ready",
+        "message": "Reserved sample video loaded. Replace it with the clip to restore or clean."
       },
       "source": {
         "kind": "template_input_placeholder",
-        "slot": "scene_audio"
+        "slot": "scene_video",
+        "reserved_asset": "presets/input_reserved/example.mp4"
       }
     },
     {
-      "id": "ltx23_ta2v_prompt",
-      "type": "text",
-      "x": -96,
-      "y": 480,
-      "w": 520,
-      "h": 155,
-      "title": "Video Prompt / 视频提示词",
-      "text": {
-        "value": "风格：现实 - 电影风格。夜晚城市天台上，一个角色跟随音乐节奏缓慢转身，霓虹光在脸上移动，镜头轻微环绕，画面节奏与音频起伏同步。",
-        "updated_at": "2026-05-23T00:00:00Z"
-      },
-      "source": {
-        "kind": "template_prompt"
-      }
-    },
-    {
-      "id": "ltx23_ta2v_negative",
-      "type": "text",
-      "x": -96,
-      "y": 792,
-      "w": 520,
-      "h": 130,
-      "title": "Negative Prompt / 负向提示词",
-      "text": {
-        "value": "字幕，中文字幕，水印，blurry, oversaturated, pixelated, low resolution, grainy, distorted, noise, compression artifacts, jpeg artifacts, glitches, watermark, text, logo, signature, copyright, subtitles, distorted sound, saturated sound, loud",
-        "updated_at": "2026-05-23T00:00:00Z"
-      },
-      "source": {
-        "kind": "template_prompt"
-      }
-    },
-    {
-      "id": "ltx23_ta2v_models",
+      "id": "ltx23_insight_models",
       "type": "config",
       "config_kind": "models",
       "x": 600,
@@ -134,7 +111,7 @@
       "w": 400,
       "h": 545,
       "title": "Models Config / 模型配置",
-      "target_preset_id": "ltx23_ta2v_preset",
+      "target_preset_id": "ltx23_insight_preset",
       "config": {
         "defaults": {
           "base_model": "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
@@ -182,29 +159,32 @@
             }
           ]
         },
-        "updated_at": "2026-05-23T00:00:00Z"
+        "updated_at": "2026-07-02T00:00:00Z"
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
-      }
+        "preset": "LTX2.3(InsightTool)"
+      },
+      "collapsed": true
     },
     {
-      "id": "ltx23_ta2v_resolution",
+      "id": "ltx23_insight_resolution",
       "type": "config",
       "config_kind": "resolution",
       "x": 600,
-      "y": 672,
+      "y": 24,
       "w": 400,
-      "h": 430,
+      "h": 450,
       "title": "Resolution Config / 分辨率配置",
-      "target_preset_id": "ltx23_ta2v_preset",
+      "target_preset_id": "ltx23_insight_preset",
       "config": {
         "defaults": {
           "template": "Flux",
           "available_aspect_ratios_selection": "Flux",
-          "default_aspect_ratio": "1024*1024",
+          "default_aspect_ratio": "720*720",
           "aspect_ratios": [
+            "origin|Original",
+            "720|1:1",
             "896|1:1",
             "1024|1:1",
             "1280|1:1",
@@ -213,48 +193,51 @@
             "1792|1:1"
           ],
           "resolution_control": {
-            "mode": "standard",
-            "source": "none",
-            "base_width": 1024,
-            "base_height": 1024,
+            "mode": "video_keep_input_area",
+            "source": "scene_video",
+            "base_width": 720,
+            "base_height": 720,
             "quantize": 16,
             "interactive": true,
             "frontend_preprocess": false,
-            "preprocess_target": "none",
-            "preprocess_fit": "scale"
+            "preprocess_target": "video",
+            "preprocess_fit": "scale",
+            "preserve_audio": true
           }
         },
         "values": {
           "template": "Preset",
-          "aspect_ratio": "1024|1:1",
-          "width": 1024,
-          "height": 1024,
+          "aspect_ratio": "origin|Original",
+          "width": 816,
+          "height": 1216,
           "quantize": 16,
           "multiplier": 1,
           "edit_mode": "proportional",
           "random_aspect_ratio": false,
           "ratio_lock": false,
           "ratio_lock_value": "current",
-          "ratio_lock_custom": "1:1"
+          "ratio_lock_custom": "1:1",
+          "manual": false
         },
-        "updated_at": "2026-05-23T00:00:00Z"
+        "updated_at": "2026-07-02T06:51:54.324Z"
       },
       "source": {
         "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
-      }
+        "preset": "LTX2.3(InsightTool)"
+      },
+      "collapsed": false
     },
     {
-      "id": "ltx23_ta2v_preset",
+      "id": "ltx23_insight_preset",
       "type": "preset",
       "x": 1176,
       "y": -96,
       "w": 445,
-      "h": 660,
-      "title": "LTX2.3 Text+Audio to Video",
+      "h": 670,
+      "title": "LTX2.3 Insight ToolBox",
       "preset": {
-        "name": "LTX2.3(TA2V)",
-        "display_name": "LTX2.3(TA2V)",
+        "name": "LTX2.3(InsightTool)",
+        "display_name": "LTX2.3(InsightTool)",
         "snapshot_hash": null,
         "snapshot": {
           "default_styles": [],
@@ -266,24 +249,28 @@
         "backend_engine": "LTX",
         "engine_type": "video",
         "scene_frontend": "v1.1",
-        "scene_theme": "Text+Audio to Video",
-        "task_method": "ltx2.3_ta2v_cn"
+        "scene_theme": "Video Restore",
+        "task_method": "ltx2.3_restore_cn"
       },
       "schema": {
         "version": "v1.1",
         "themes": [
-          "Text+Audio to Video"
+          "Video Upscale",
+          "Video Restore",
+          "Remove Subtitles",
+          "Remove Watermark"
         ],
-        "default_theme": "Text+Audio to Video",
-        "theme_title": "LTX2.3 Text+Audio to Video",
+        "default_theme": "Video Restore",
+        "theme_title": "LTX2.3 Insight ToolBox",
         "disvisible": [
           "scene_canvas_image",
           "scene_input_image1",
           "scene_input_image2",
           "scene_additional_prompt",
           "scene_additional_prompt_2",
-          "scene_video",
+          "scene_var_number",
           "scene_var_number4",
+          "scene_steps",
           "scene_aspect_ratio",
           "scene_var_number5",
           "scene_var_number6",
@@ -297,18 +284,35 @@
           "scene_refiner_model",
           "sam3_input_video",
           "sam3_mask_video",
-          "scene_input_image3",
-          "scene_input_image4"
+          "scene_switch_option1",
+          "scene_audio",
+          "scene_batch"
         ],
         "disinteractive": [],
         "divisible": [],
         "image_preprocessor_method": [],
         "disable_canvas_mask": false,
+        "director_capability": {
+          "image_policy": "forbidden",
+          "video_policy": "required",
+          "max_images": 0,
+          "min_images": 0,
+          "image_modes": [
+            "none"
+          ],
+          "video_modes": [
+            "explicit"
+          ],
+          "mixed_segments": false,
+          "audio_policy": "forbidden",
+          "duration_strategy": "video_min",
+          "audio_output": "source_audio"
+        },
         "upload_slots": [
           {
             "key": "scene_video",
             "label": "Scene Video",
-            "visible": false,
+            "visible": true,
             "interactive": true
           },
           {
@@ -326,7 +330,7 @@
           {
             "key": "scene_audio",
             "label": "Scene Audio",
-            "visible": true,
+            "visible": false,
             "interactive": true
           },
           {
@@ -365,17 +369,17 @@
             "key": "scene_video_duration",
             "label": "Video Duration(s)",
             "type": "number",
-            "default": 8,
+            "default": 0,
             "visible": true,
             "interactive": true,
-            "min": 0.1,
+            "min": 0,
             "max": 60
           },
           {
             "key": "scene_var_number2",
             "label": "Interpolate to total frames [no interpolation below generation FPS]",
             "type": "number",
-            "default": 30,
+            "default": 24,
             "visible": true,
             "interactive": true,
             "min": 24,
@@ -385,7 +389,7 @@
             "key": "scene_var_number7",
             "label": "Actual output FPS [higher uses more resources]",
             "type": "number",
-            "default": 30,
+            "default": 24,
             "visible": true,
             "interactive": true,
             "min": 24,
@@ -393,14 +397,69 @@
           }
         ],
         "per_theme": {
-          "Text+Audio to Video": {
-            "task_method": "ltx2.3_ta2v_cn",
+          "Video Upscale": {
+            "task_method": "ltx2.3_upscale_cn",
             "defaults": {
-              "scene_var_number": 8,
-              "scene_var_number2": 30,
-              "scene_var_number7": 30,
-              "prompt": "",
-              "scene_aspect_ratio": "896|1:1"
+              "scene_video_duration": 0,
+              "scene_var_number": 0,
+              "scene_var_number2": 24,
+              "scene_var_number7": 24,
+              "prompt": "Convert the video to ultra-high-definition quality, significantly improving clarity, fine detail richness, texture fidelity, and overall perceptual sharpness.",
+              "scene_aspect_ratio": "origin|Original"
+            },
+            "generation_config_props": {
+              "overwrite_step": {
+                "min": -1,
+                "max": 200,
+                "step": 1
+              }
+            }
+          },
+          "Video Restore": {
+            "task_method": "ltx2.3_restore_cn",
+            "defaults": {
+              "scene_video_duration": 0,
+              "scene_var_number": 0,
+              "scene_var_number2": 24,
+              "scene_var_number7": 24,
+              "prompt": "Convert the video to ultra-high-definition quality while removing artifacts and rebuilding high-frequency details.",
+              "scene_aspect_ratio": "origin|Original"
+            },
+            "generation_config_props": {
+              "overwrite_step": {
+                "min": -1,
+                "max": 200,
+                "step": 1
+              }
+            }
+          },
+          "Remove Subtitles": {
+            "task_method": "ltx2.3_subtitles_remove_cn",
+            "defaults": {
+              "scene_video_duration": 0,
+              "scene_var_number": 0,
+              "scene_var_number2": 24,
+              "scene_var_number7": 24,
+              "prompt": "Remove subtitles, captions, and related text occlusions from the video, restoring a clean and natural underlying image.",
+              "scene_aspect_ratio": "origin|Original"
+            },
+            "generation_config_props": {
+              "overwrite_step": {
+                "min": -1,
+                "max": 200,
+                "step": 1
+              }
+            }
+          },
+          "Remove Watermark": {
+            "task_method": "ltx2.3_watermark_remove_cn",
+            "defaults": {
+              "scene_video_duration": 0,
+              "scene_var_number": 0,
+              "scene_var_number2": 24,
+              "scene_var_number7": 24,
+              "prompt": "Remove short-video platform watermarks and related occlusions from the video, restoring a clean, clear, and natural original image.",
+              "scene_aspect_ratio": "origin|Original"
             },
             "generation_config_props": {
               "overwrite_step": {
@@ -410,6 +469,18 @@
               }
             }
           }
+        },
+        "resolution_control": {
+          "mode": "video_keep_input_area",
+          "source": "scene_video",
+          "base_width": 720,
+          "base_height": 720,
+          "quantize": 16,
+          "interactive": true,
+          "frontend_preprocess": false,
+          "preprocess_target": "video",
+          "preprocess_fit": "scale",
+          "preserve_audio": true
         }
       },
       "models_config": {
@@ -460,16 +531,18 @@
             }
           ]
         },
-        "source_node_id": "ltx23_ta2v_models",
-        "updated_at": "2026-05-23T00:00:00Z"
+        "source_node_id": "ltx23_insight_models",
+        "updated_at": "2026-07-02T00:00:00Z"
       },
       "resolution_config": {
         "mode": "external_override",
         "defaults": {
           "template": "Flux",
           "available_aspect_ratios_selection": "Flux",
-          "default_aspect_ratio": "1024*1024",
+          "default_aspect_ratio": "720*720",
           "aspect_ratios": [
+            "origin|Original",
+            "720|1:1",
             "896|1:1",
             "1024|1:1",
             "1280|1:1",
@@ -478,39 +551,41 @@
             "1792|1:1"
           ],
           "resolution_control": {
-            "mode": "standard",
-            "source": "none",
-            "base_width": 1024,
-            "base_height": 1024,
+            "mode": "video_keep_input_area",
+            "source": "scene_video",
+            "base_width": 720,
+            "base_height": 720,
             "quantize": 16,
             "interactive": true,
             "frontend_preprocess": false,
-            "preprocess_target": "none",
-            "preprocess_fit": "scale"
+            "preprocess_target": "video",
+            "preprocess_fit": "scale",
+            "preserve_audio": true
           }
         },
         "overrides": {
           "template": "Preset",
-          "aspect_ratio": "1024|1:1",
-          "width": 1024,
-          "height": 1024,
+          "aspect_ratio": "origin|Original",
+          "width": 816,
+          "height": 1216,
           "quantize": 16,
           "multiplier": 1,
           "edit_mode": "proportional",
           "random_aspect_ratio": false,
           "ratio_lock": false,
           "ratio_lock_value": "current",
-          "ratio_lock_custom": "1:1"
+          "ratio_lock_custom": "1:1",
+          "manual": false
         },
-        "source_node_id": "ltx23_ta2v_resolution",
-        "updated_at": "2026-05-23T00:00:00Z"
+        "source_node_id": "ltx23_insight_resolution",
+        "updated_at": "2026-07-02T06:51:54.324Z"
       },
       "generation_config": {
-        "mode": "external_override",
+        "mode": "preset_default",
         "defaults": {
           "guidance_scale": 1,
           "sharpness": 2,
-          "overwrite_step": 11,
+          "overwrite_step": 5,
           "refiner_switch": 0.5,
           "sampler_name": "euler",
           "scheduler_name": "simple",
@@ -518,19 +593,9 @@
           "style_selections": [],
           "image_number": 1
         },
-        "overrides": {
-          "guidance_scale": 1,
-          "sharpness": 2,
-          "overwrite_step": 11,
-          "refiner_switch": 0.5,
-          "sampler_name": "euler",
-          "scheduler_name": "simple",
-          "performance_selection": "Speed",
-          "style_selections": [],
-          "image_number": 1
-        },
-        "source_node_id": "ltx23_ta2v_advanced",
-        "updated_at": "2026-05-23T00:00:00Z"
+        "overrides": {},
+        "source_node_id": null,
+        "updated_at": "2026-07-02T00:00:00Z"
       },
       "model_requirements": {
         "model_list": [
@@ -543,89 +608,54 @@
           "vae,LTX23_audio_vae_bf16.safetensors,364855188,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors",
           "vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors",
           "vae,taeltx2_3.safetensors,23531296,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors",
+          "loras,ltx/ltx2.3-video-restoration-general.safetensors,100767488,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-video-restoration-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-video-restoration-general.safetensors",
+          "loras,ltx/ltx2.3-ic-video-upscale-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-video-upscale-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-video-upscale-general.safetensors",
+          "loras,ltx/ltx2.3-ic-watermark-remove-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-watermark-remove-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-watermark-remove-general.safetensors",
+          "loras,ltx/ltx2.3-ic-subtitles-remove-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-subtitles-remove-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-subtitles-remove-general.safetensors",
           "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
         ],
         "has_model_probe": true,
-        "source": "presets/LTX2.3(TA2V).json"
+        "source": "presets/LTX2.3(InsightTool).json"
       },
       "model_status": {
         "state": "unknown",
         "missing_count": 0,
-        "message": "Model requirements loaded from presets/LTX2.3(TA2V).json; replace audio and check models before running."
+        "message": "Model requirements loaded from presets/LTX2.3(InsightTool).json; replace source video and check models before running."
       },
       "upload_slots": {
-        "scene_audio": "ltx23_ta2v_audio"
+        "scene_video": "ltx23_insight_source_video"
       },
       "text_inputs": {
         "prompt": null,
         "negative_prompt": null
       },
       "params": {
-        "prompt": "风格：现实 - 电影风格。夜晚城市天台上，一个角色跟随音乐节奏缓慢转身，霓虹光在脸上移动，镜头轻微环绕，画面节奏与音频起伏同步。",
+        "prompt": "Convert the video to ultra-high-definition quality while removing artifacts and rebuilding high-frequency details.",
         "negative_prompt": "字幕，中文字幕，水印，blurry, oversaturated, pixelated, low resolution, grainy, distorted, noise, compression artifacts, jpeg artifacts, glitches, watermark, text, logo, signature, copyright, subtitles, distorted sound, saturated sound, loud",
         "seed_random": true,
         "image_seed": 0,
-        "scene_var_number2": 30,
-        "scene_var_number7": 30,
-        "scene_video_duration": 8
+        "scene_var_number": 0,
+        "scene_var_number2": 24,
+        "scene_var_number7": 24,
+        "scene_video_duration": 0
       },
       "status": "idle",
       "collapsed": false,
       "source": {
         "kind": "template_runnable_preset",
-        "preset": "LTX2.3(TA2V)"
+        "preset": "LTX2.3(InsightTool)"
       }
     },
     {
-      "id": "ltx23_ta2v_advanced",
-      "type": "config",
-      "config_kind": "advanced",
-      "x": 648,
-      "y": 1368,
-      "w": 360,
-      "h": 285,
-      "title": "Advanced Config / 高级配置",
-      "target_preset_id": "ltx23_ta2v_preset",
-      "config": {
-        "defaults": {
-          "guidance_scale": 1,
-          "sharpness": 2,
-          "overwrite_step": 11,
-          "refiner_switch": 0.5,
-          "sampler_name": "euler",
-          "scheduler_name": "simple",
-          "performance_selection": "Speed",
-          "style_selections": [],
-          "image_number": 1
-        },
-        "values": {
-          "guidance_scale": 1,
-          "sharpness": 2,
-          "overwrite_step": 11,
-          "refiner_switch": 0.5,
-          "sampler_name": "euler",
-          "scheduler_name": "simple",
-          "performance_selection": "Speed",
-          "style_selections": [],
-          "image_number": 1
-        },
-        "updated_at": "2026-05-23T00:00:00Z"
-      },
-      "source": {
-        "kind": "template_config",
-        "preset": "LTX2.3(TA2V)"
-      }
-    },
-    {
-      "id": "ltx23_ta2v_result",
+      "id": "ltx23_insight_result",
       "type": "result",
       "x": 1680,
       "y": -96,
       "w": 360,
       "h": 330,
-      "title": "TA2V Result / 音频驱动视频结果",
+      "title": "Insight Result / 修复结果",
       "producer": {
-        "preset_node_id": "ltx23_ta2v_preset",
+        "preset_node_id": "ltx23_insight_preset",
         "run_id": null,
         "task_id": null
       },
@@ -633,9 +663,9 @@
         "state": "placeholder",
         "queue_position": 0,
         "step": 0,
-        "total_steps": 11,
+        "total_steps": 5,
         "percent": 0,
-        "message": "Replace audio, check models, then run LTX2.3 TA2V."
+        "message": "Replace source video, choose the task theme, check models, then run LTX2.3 Insight."
       },
       "preview": null,
       "asset": null,
@@ -644,14 +674,14 @@
       }
     },
     {
-      "id": "ltx23_ta2v_reuse_note",
+      "id": "ltx23_insight_theme_note",
       "type": "note",
       "x": 1680,
-      "y": 312,
-      "w": 445,
-      "h": 130,
-      "title": "Next Steps / 后续复用",
-      "text": "Completed video Results can feed Timeline, Wan-Extent, Hunyuan-Foley, or comparison nodes. / 完成的视频 Result 可接入 Timeline、Wan-Extent、Hunyuan-Foley 或对比节点。",
+      "y": 300,
+      "w": 420,
+      "h": 155,
+      "title": "Task Themes / 任务主题",
+      "text": "Themes map to four task LoRAs: Video Restore, Video Upscale, Remove Watermark, and Remove Subtitles. / 主题分别使用四个任务 LoRA：视频修复、视频增强、去水印、去字幕。",
       "style": {
         "color": "#052e16",
         "background": "#bbf7d0",
@@ -664,85 +694,85 @@
   ],
   "edges": [
     {
-      "id": "ltx23_ta2v_edge_audio",
+      "id": "ltx23_insight_edge_video",
       "type": "upload",
-      "from": "ltx23_ta2v_audio",
-      "to": "ltx23_ta2v_preset",
-      "slot": "scene_audio"
+      "from": "ltx23_insight_source_video",
+      "to": "ltx23_insight_preset",
+      "slot": "scene_video"
     },
     {
-      "id": "ltx23_ta2v_edge_models",
+      "id": "ltx23_insight_edge_models",
       "type": "config",
-      "from": "ltx23_ta2v_models",
-      "to": "ltx23_ta2v_preset",
+      "from": "ltx23_insight_models",
+      "to": "ltx23_insight_preset",
       "slot": "models"
     },
     {
-      "id": "ltx23_ta2v_edge_resolution",
+      "id": "ltx23_insight_edge_resolution",
       "type": "config",
-      "from": "ltx23_ta2v_resolution",
-      "to": "ltx23_ta2v_preset",
+      "from": "ltx23_insight_resolution",
+      "to": "ltx23_insight_preset",
       "slot": "resolution"
     },
     {
-      "id": "ltx23_ta2v_edge_advanced",
-      "type": "config",
-      "from": "ltx23_ta2v_advanced",
-      "to": "ltx23_ta2v_preset",
-      "slot": "advanced"
-    },
-    {
-      "id": "ltx23_ta2v_edge_result",
+      "id": "ltx23_insight_edge_result",
       "type": "generate",
-      "from": "ltx23_ta2v_preset",
-      "to": "ltx23_ta2v_result",
+      "from": "ltx23_insight_preset",
+      "to": "ltx23_insight_result",
       "slot": "preset"
     }
   ],
   "runs": [],
   "batch_jobs": [],
   "template": {
-    "id": "ltx23_ta2v_basic",
+    "id": "ltx23_insight_toolbox",
     "title": {
-      "en": "LTX2.3 Text+Audio to Video",
-      "zh": "LTX2.3 文本+音频生成视频"
+      "en": "LTX2.3 Insight ToolBox",
+      "zh": "LTX2.3 Insight 视频修复工具箱"
     },
     "description": {
-      "en": "A runnable audio-driven video template using LTX2.3 with a replaceable audio input, prompt, configs, model checks, and video Result placeholder.",
-      "zh": "可运行的 LTX2.3 音频驱动视频模板，包含可替换音频输入、提示词、配置、模型检查和视频 Result 占位。"
+      "en": "A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
+      "zh": "可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
     },
     "category": "video",
     "tags": [
       "video",
-      "audio",
       "ltx",
       "ltx2.3",
-      "ta2v",
-      "text-audio-to-video",
-      "soundtrack",
+      "insight",
+      "restoration",
+      "upscale",
+      "watermark-removal",
+      "subtitle-removal",
+      "ic-lora",
       "runnable",
-      "音频驱动"
+      "视频修复",
+      "去水印",
+      "去字幕"
     ],
     "type_label": {
-      "en": "Audio to video",
-      "zh": "音频生成视频"
+      "en": "Video restoration",
+      "zh": "视频修复"
     },
     "model_dependency": {
       "mode": "requires_models",
       "label": {
-        "en": "Requires audio + models",
-        "zh": "需要音频和模型"
+        "en": "Requires video + LTX models",
+        "zh": "需要视频和 LTX 模型"
       },
       "note": {
-        "en": "Requires LTX2.3 transformer, text encoders, audio/video VAEs, distilled LoRA, upscaler, RIFE, and an audio clip.",
-        "zh": "需要 LTX2.3 transformer、文本编码器、音频/视频 VAE、蒸馏 LoRA、upscaler、RIFE，以及一段音频。"
+        "en": "Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.",
+        "zh": "需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。"
       },
       "models": [
         "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
         "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
         "gemma_3_12B_it_fpmixed.safetensors",
-        "LTX23_audio_vae_bf16.safetensors",
         "LTX23_video_vae_bf16.safetensors",
+        "ltx2.3-video-restoration-general.safetensors",
+        "ltx2.3-ic-video-upscale-general.safetensors",
+        "ltx2.3-ic-watermark-remove-general.safetensors",
+        "ltx2.3-ic-subtitles-remove-general.safetensors",
         "flownet.pkl"
       ]
     },

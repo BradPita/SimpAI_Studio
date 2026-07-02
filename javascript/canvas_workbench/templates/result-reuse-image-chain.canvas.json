@@ -336,12 +336,12 @@
       },
       "upload_slots": {},
       "text_inputs": {
-        "prompt": "chain_anima_prompt",
-        "negative_prompt": "chain_anima_negative"
+        "prompt": null,
+        "negative_prompt": null
       },
       "params": {
-        "prompt": "",
-        "negative_prompt": "",
+        "prompt": "masterpiece, best quality, anime key visual, a stylish character portrait, soft window light, detailed eyes, clean linework, rich background details",
+        "negative_prompt": "worst quality, low quality, blurry, jpeg artifacts, sepia",
         "seed_random": true,
         "image_seed": 0,
         "image_number": 1
@@ -812,10 +812,10 @@
         "scene_canvas_image": "chain_anima_result"
       },
       "text_inputs": {
-        "prompt": "chain_flux_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "转成亚洲写实风格，保留原始构图和人物身份，写实摄影质感，自然肤色，柔和光线",
         "negative_prompt": "",
         "seed_random": true,
         "image_seed": 0,
@@ -914,20 +914,6 @@
   ],
   "edges": [
     {
-      "id": "chain_edge_anima_prompt",
-      "type": "text",
-      "from": "chain_anima_prompt",
-      "to": "chain_anima_classic",
-      "slot": "prompt"
-    },
-    {
-      "id": "chain_edge_anima_negative",
-      "type": "text",
-      "from": "chain_anima_negative",
-      "to": "chain_anima_classic",
-      "slot": "negative_prompt"
-    },
-    {
       "id": "chain_edge_anima_models",
       "type": "config",
       "from": "chain_anima_models",
@@ -961,13 +947,6 @@
       "from": "chain_anima_result",
       "to": "chain_flux_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "chain_edge_flux_prompt",
-      "type": "text",
-      "from": "chain_flux_prompt",
-      "to": "chain_flux_preset",
-      "slot": "prompt"
     },
     {
       "id": "chain_edge_flux_models",

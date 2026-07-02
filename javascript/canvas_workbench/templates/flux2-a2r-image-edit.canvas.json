@@ -564,10 +564,10 @@
         "scene_canvas_image": "flux_a2r_source_image"
       },
       "text_inputs": {
-        "prompt": "flux_a2r_prompt_text"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "转成亚洲写实风格，保留原始构图和人物身份，写实摄影质感，自然肤色，柔和光线",
         "negative_prompt": "",
         "seed_random": true,
         "image_seed": 0,
@@ -673,13 +673,6 @@
       "slot": "scene_canvas_image"
     },
     {
-      "id": "flux_a2r_edge_prompt",
-      "type": "text",
-      "from": "flux_a2r_prompt_text",
-      "to": "flux_a2r_preset",
-      "slot": "prompt"
-    },
-    {
       "id": "flux_a2r_edge_models",
       "type": "config",
       "from": "flux_a2r_models_config",
@@ -717,8 +710,8 @@
       "zh": "Flux2-A2R 图像编辑"
     },
     "description": {
-      "en": "A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, prompt text, configs, and Result placeholder.",
-      "zh": "可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、提示词、配置节点和结果占位。"
+      "en": "A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, internal prompt defaults, configs, and Result placeholder.",
+      "zh": "可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、Preset 内部提示词默认值、配置节点和结果占位。"
     },
     "category": "image",
     "tags": [

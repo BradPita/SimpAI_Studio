@@ -800,10 +800,10 @@
         "sam3_mask_video": "wan_object_sam3_mask"
       },
       "text_inputs": {
-        "prompt": "wan_object_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "把遮罩区域替换为参考图中的主体，保持源视频镜头运动、光线方向和背景一致，边缘自然融合。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -939,13 +939,6 @@
       "from": "wan_object_reference_image",
       "to": "wan_object_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "wan_object_edge_prompt",
-      "type": "text",
-      "from": "wan_object_prompt",
-      "to": "wan_object_preset",
-      "slot": "prompt"
     },
     {
       "id": "wan_object_edge_models",

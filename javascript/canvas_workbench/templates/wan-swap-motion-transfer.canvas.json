@@ -754,10 +754,10 @@
         "scene_canvas_image": "swap_motion_reference_image"
       },
       "text_inputs": {
-        "prompt": "swap_motion_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "把动作视频中的姿态、节奏和镜头运动迁移到参考图主体，保持主体身份和服饰细节稳定。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -879,13 +879,6 @@
       "from": "swap_motion_reference_image",
       "to": "swap_motion_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "swap_motion_edge_prompt",
-      "type": "text",
-      "from": "swap_motion_prompt",
-      "to": "swap_motion_preset",
-      "slot": "prompt"
     },
     {
       "id": "swap_motion_edge_models",

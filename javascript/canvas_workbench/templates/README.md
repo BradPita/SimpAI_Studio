@@ -49,7 +49,7 @@ Edit `template-library.json` to add workbench templates.
 
 - Put runnable templates in `image`, `video`, or `audio`, not `starter`.
 - Use real preset names and runtime values from `presets/*.json`; for example, Anima classic T2I uses `preset.name: "Anima"`, `runtime.backend_engine: "Comfy"`, and `runtime.task_method: "anima_aio"`.
-- Include connected `text` nodes for `prompt` and `negative_prompt` when the template is meant to teach prompt reuse.
+- Do not connect `text` nodes to built-in scene/classic generation nodes (`preset` or `classic`) through `prompt` or `negative_prompt`. Store default prompt text in the generation node `params`; scene multi-theme nodes can also use `schema.per_theme.*.defaults`. External text edges override theme defaults.
 - Include connected `models`, `styles`, `resolution`, and `advanced` config nodes when the workflow should expose those controls on canvas. Use `styles_config` for Style panel selections instead of storing `style_selections` only inside `generation_config`.
 - Runnable templates may preload replaceable sample assets from `presets/input_reserved/` when an empty node would make the graph hard to understand. Reference these files by path on the node `asset`; do not copy them into templates or inline base64 data.
 - Reserved input assets are teaching placeholders. The node `status`, `source.reserved_asset`, or note must tell users to replace or confirm them before production runs.
@@ -65,6 +65,8 @@ Edit `template-library.json` to add workbench templates.
 - Wan-Remover templates should use `sam3_input_video` plus `sam3_mask_video`; Wan-Outpaint templates should use `scene_video` and hide SAM3 slots.
 - Wan-SCAIL2 and Wan-Swap templates should use `scene_video` plus `scene_canvas_image`; use `motion_signal.mp4` for motion examples, `example.mp4` for generic video examples, and the reserved portrait/reference images for replaceable image examples.
 - Video enhancement templates such as Nvidia-VSR should expose `scene_video`, keep hidden media slots explicit, and document any optional model dependency such as RIFE interpolation.
+- LTX2.3 Insight-style video restoration templates should expose `scene_video`, keep audio and unrelated media slots hidden, mirror all task themes in the Preset node schema, and keep task IC-LoRA files in `model_requirements.model_list`.
+- For a multi-theme Preset node, keep `runtime.scene_theme`, `runtime.task_method`, and `params.prompt` aligned with `schema.default_theme` / `schema.per_theme`. Theme changes update prompt-like params only while their current value still matches the previous theme default.
 - Result reuse templates may preconnect an upstream `result` node to a downstream upload slot. The downstream node's `upload_slots` map and the `upload` edge must both point to the same Result id.
 - Keep `model_requirements.model_list` in sync with the source preset file so Check/download models can work before Run.
 - Use `model_dependency.mode: "requires_models"` in the manifest and list the primary filenames in `models`.
@@ -127,6 +129,7 @@ Edit `template-library.json` to add workbench templates.
 - User templates are loaded into the same library UI, use `path: "user:<template_id>"` internally, and are shown under the separate `User` sidebar tab.
 - User templates can be deleted from their template cards in the library; built-in templates are read-only.
 - User-saved canvases should still follow the same schema and media category rules (`starter`, `image`, `video`, or `audio`); the `User` tab is derived from `source: "user"`, not from a manifest category value.
+- When turning a user-saved canvas into a built-in template, replace the temporary user id/title/tags, remove user-only settings such as `settings.canvasAgent`, `settings.__template_source`, and `source: "user"`, and restore the manifest-style metadata used by `template-library.json`.
 
 ## Acceptance Checklist
 

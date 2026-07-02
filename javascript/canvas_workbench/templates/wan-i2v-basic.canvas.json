@@ -750,12 +750,12 @@
         "scene_input_image1": "wan_i2v_last_frame"
       },
       "text_inputs": {
-        "prompt": "wan_i2v_prompt_text",
-        "negative_prompt": "wan_i2v_negative_text"
+        "prompt": null,
+        "negative_prompt": null
       },
       "params": {
-        "prompt": "",
-        "negative_prompt": "",
+        "prompt": "人物轻轻转头看向镜头，发丝和衣服随微风轻微摆动，镜头缓慢前推，整体动作自然平稳。",
+        "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -869,20 +869,6 @@
       "from": "wan_i2v_last_frame",
       "to": "wan_i2v_preset",
       "slot": "scene_input_image1"
-    },
-    {
-      "id": "wan_i2v_edge_prompt",
-      "type": "text",
-      "from": "wan_i2v_prompt_text",
-      "to": "wan_i2v_preset",
-      "slot": "prompt"
-    },
-    {
-      "id": "wan_i2v_edge_negative",
-      "type": "text",
-      "from": "wan_i2v_negative_text",
-      "to": "wan_i2v_preset",
-      "slot": "negative_prompt"
     },
     {
       "id": "wan_i2v_edge_models",

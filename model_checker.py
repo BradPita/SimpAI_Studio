@@ -663,7 +663,7 @@ def print_instructions():
     time.sleep(0.1)
     print(f"{Fore.GREEN}★{Style.RESET_ALL}打开默认浏览器设置，关闭GPU加速、或图形加速的选项。{Fore.GREEN}★{Style.RESET_ALL}大内存(64+)与固态硬盘存放模型有助于减少模型加载时间。{Fore.GREEN}★{Style.RESET_ALL}")
     time.sleep(0.1)
-    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.06.29{Fore.GREEN}★{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.07.02{Fore.GREEN}★{Style.RESET_ALL}")
     print()
     time.sleep(0.1)
 
@@ -2761,6 +2761,10 @@ packages = {'base_package': {'id': 1,
                         'vae,LTX23_video_vae_bf16.safetensors,1452258578,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors',
                         'vae,taeltx2_3.safetensors,23531296,0,https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors,https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/taeltx2_3.safetensors',
                         'text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors',
+                        'loras,ltx/ltx2.3-video-restoration-general.safetensors,100767488,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-video-restoration-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-video-restoration-general.safetensors',
+                        'loras,ltx/ltx2.3-ic-video-upscale-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-video-upscale-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-video-upscale-general.safetensors',
+                        'loras,ltx/ltx2.3-ic-watermark-remove-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-watermark-remove-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-watermark-remove-general.safetensors',
+                        'loras,ltx/ltx2.3-ic-subtitles-remove-general.safetensors,327287384,0,https://www.modelscope.cn/models/joyfox/LTX2.3-ICEdit-Insight/resolve/master/ltx2.3-ic-subtitles-remove-general.safetensors,https://huggingface.co/joyfox/LTX2.3-ICEdit-Insight/resolve/main/ltx2.3-ic-subtitles-remove-general.safetensors',
                         'controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/rife/flownet.pkl'],
                     'info_links': ['https://www.modelscope.cn/models/Lightricks/LTX-2.3'],
                     'preset_sample': []},

@@ -676,12 +676,12 @@
       },
       "upload_slots": {},
       "text_inputs": {
-        "prompt": "wan_t2v_prompt_text",
-        "negative_prompt": "wan_t2v_negative_text"
+        "prompt": null,
+        "negative_prompt": null
       },
       "params": {
-        "prompt": "",
-        "negative_prompt": "",
+        "prompt": "镜头缓慢后拉，拍摄一位年轻插画师坐在温暖的工作室窗边整理画稿，纸张轻轻翻动，阳光穿过窗帘，人物偶尔抬头微笑。",
+        "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -762,20 +762,6 @@
     }
   ],
   "edges": [
-    {
-      "id": "wan_t2v_edge_prompt",
-      "type": "text",
-      "from": "wan_t2v_prompt_text",
-      "to": "wan_t2v_preset",
-      "slot": "prompt"
-    },
-    {
-      "id": "wan_t2v_edge_negative",
-      "type": "text",
-      "from": "wan_t2v_negative_text",
-      "to": "wan_t2v_preset",
-      "slot": "negative_prompt"
-    },
     {
       "id": "wan_t2v_edge_models",
       "type": "config",

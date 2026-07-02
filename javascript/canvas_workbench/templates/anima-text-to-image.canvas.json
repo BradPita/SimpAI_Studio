@@ -414,12 +414,12 @@
       },
       "upload_slots": {},
       "text_inputs": {
-        "prompt": "anima_prompt_text",
-        "negative_prompt": "anima_negative_text"
+        "prompt": null,
+        "negative_prompt": null
       },
       "params": {
-        "prompt": "",
-        "negative_prompt": "",
+        "prompt": "masterpiece, best quality, anime key visual, a young illustrator sitting at a cozy studio desk, warm window light, art books, sketch papers, detailed background, clean linework, soft color harmony",
+        "negative_prompt": "worst quality, low quality, blurry, jpeg artifacts, sepia",
         "seed_random": true,
         "image_seed": 0,
         "image_number": 1,
@@ -535,20 +535,6 @@
     }
   ],
   "edges": [
-    {
-      "id": "anima_edge_prompt",
-      "type": "text",
-      "from": "anima_prompt_text",
-      "to": "anima_classic",
-      "slot": "prompt"
-    },
-    {
-      "id": "anima_edge_negative",
-      "type": "text",
-      "from": "anima_negative_text",
-      "to": "anima_classic",
-      "slot": "negative_prompt"
-    },
     {
       "id": "anima_edge_models",
       "type": "config",

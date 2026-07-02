@@ -65,7 +65,7 @@
       "w": 350,
       "h": 120,
       "title": "Prompt Helper Flow / 提示词辅助流程",
-      "text": "Start with a simple Text node. Connect it to helper nodes, then copy or connect the final text into a preset prompt port. / 先从 Text 节点写基础描述，再连接到辅助节点，最后接入 preset 的 prompt 接口。",
+      "text": "Start with a simple Text node. Connect it to helper nodes, then copy the final text into a prompt field when needed. Built-in scene/classic preset templates keep default prompt text inside the generation node. / 先从 Text 节点写基础描述，再连接到辅助节点；需要时把最终文本复制到提示词字段。内置 scene/classic preset 模板的默认提示词保存在生成节点内部。",
       "style": {
         "color": "#f8fafc",
         "background": "#164e63",
@@ -168,8 +168,8 @@
       "y": -48,
       "w": 380,
       "h": 140,
-      "title": "Connect To Prompt / 接入 Prompt",
-      "text": "Preset and Classic nodes expose Prompt and Negative Prompt text ports. Drag a text output into the prompt port, or copy the text manually. / Preset 和 Classic 节点会暴露 Prompt、Negative Prompt 文本接口。",
+      "title": "Prompt Draft / 提示词草稿",
+      "text": "Text nodes can prepare Prompt and Negative Prompt drafts. Built-in scene/classic preset templates keep prompt defaults inside the generation node, not through prewired Prompt or Negative Prompt text ports, so theme defaults still work. / Text 节点可以用于整理 Prompt、Negative Prompt 草稿。内置 scene/classic preset 模板应把默认提示词保存在生成节点内部，不能通过预连线的 Prompt 或 Negative Prompt 文本接口提供，避免覆盖 theme 默认值。",
       "style": {
         "color": "#422006",
         "background": "#fde68a",

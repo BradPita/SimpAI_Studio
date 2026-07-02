@@ -800,10 +800,10 @@
         "sam3_mask_video": "wan_face_sam3_mask"
       },
       "text_inputs": {
-        "prompt": "wan_face_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "保持源视频中的动作、表情节奏、镜头和光线，替换为参考图人物身份，皮肤和五官自然融合。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -939,13 +939,6 @@
       "from": "wan_face_reference_image",
       "to": "wan_face_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "wan_face_edge_prompt",
-      "type": "text",
-      "from": "wan_face_prompt",
-      "to": "wan_face_preset",
-      "slot": "prompt"
     },
     {
       "id": "wan_face_edge_models",

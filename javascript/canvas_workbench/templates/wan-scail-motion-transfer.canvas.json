@@ -695,10 +695,10 @@
         "scene_canvas_image": "scail_reference_image"
       },
       "text_inputs": {
-        "prompt": "scail_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "Animate the reference character using the driving video motion. Keep the subject identity, outfit, body proportions, and temporal consistency natural and stable.",
+        "prompt": "Replace the tracked person in the driving video with the reference character. Keep the body motion, camera movement, lighting, and scene context natural and temporally consistent.",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 60,
@@ -815,13 +815,6 @@
       "from": "scail_reference_image",
       "to": "scail_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "scail_edge_prompt",
-      "type": "text",
-      "from": "scail_prompt",
-      "to": "scail_preset",
-      "slot": "prompt"
     },
     {
       "id": "scail_edge_models",

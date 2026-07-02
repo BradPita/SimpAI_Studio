@@ -647,10 +647,10 @@
         "scene_audio": "infinitetalk_audio"
       },
       "text_inputs": {
-        "prompt": "infinitetalk_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "人物正面对镜头自然说话，表情轻松，头部有轻微自然动作，背景稳定，口型与语音同步。",
         "negative_prompt": "",
         "seed_random": true,
         "image_seed": 0,
@@ -765,13 +765,6 @@
       "from": "infinitetalk_audio",
       "to": "infinitetalk_preset",
       "slot": "scene_audio"
-    },
-    {
-      "id": "infinitetalk_edge_prompt",
-      "type": "text",
-      "from": "infinitetalk_prompt",
-      "to": "infinitetalk_preset",
-      "slot": "prompt"
     },
     {
       "id": "infinitetalk_edge_models",

@@ -194,8 +194,8 @@
         "zh": "Flux2-A2R 图像编辑"
       },
       "description": {
-        "en": "A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, prompt text, configs, and Result placeholder.",
-        "zh": "可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、提示词、配置节点和结果占位。"
+        "en": "A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, internal prompt defaults, configs, and Result placeholder.",
+        "zh": "可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、Preset 内部提示词默认值、配置节点和结果占位。"
       },
       "category": "image",
       "tags": ["image", "flux", "flux2", "a2r", "edit", "anime-to-real", "preset", "runnable"],
@@ -1123,6 +1123,47 @@
         ]
       },
       "path": "javascript/canvas_workbench/templates/wan-swap-motion-transfer.canvas.json",
+      "preview": ""
+    },
+    {
+      "id": "ltx23_insight_toolbox",
+      "title": {
+        "en": "LTX2.3 Insight ToolBox",
+        "zh": "LTX2.3 Insight 视频修复工具箱"
+      },
+      "description": {
+        "en": "A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.",
+        "zh": "可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。"
+      },
+      "category": "video",
+      "tags": ["video", "ltx", "ltx2.3", "insight", "restoration", "upscale", "watermark-removal", "subtitle-removal", "ic-lora", "runnable", "视频修复", "去水印", "去字幕"],
+      "type_label": {
+        "en": "Video restoration",
+        "zh": "视频修复"
+      },
+      "model_dependency": {
+        "mode": "requires_models",
+        "label": {
+          "en": "Requires video + LTX models",
+          "zh": "需要视频和 LTX 模型"
+        },
+        "note": {
+          "en": "Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.",
+          "zh": "需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。"
+        },
+        "models": [
+          "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+          "ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
+          "gemma_3_12B_it_fpmixed.safetensors",
+          "LTX23_video_vae_bf16.safetensors",
+          "ltx2.3-video-restoration-general.safetensors",
+          "ltx2.3-ic-video-upscale-general.safetensors",
+          "ltx2.3-ic-watermark-remove-general.safetensors",
+          "ltx2.3-ic-subtitles-remove-general.safetensors",
+          "flownet.pkl"
+        ]
+      },
+      "path": "javascript/canvas_workbench/templates/ltx23-insight-toolbox.canvas.json",
       "preview": ""
     },
     {

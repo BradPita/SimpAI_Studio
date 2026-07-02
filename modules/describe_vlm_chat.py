@@ -100,8 +100,9 @@ SimpAI UI guide skill:
   - Wan video routes have strong consistency, many specialized extensions, and strong directed workflows, but T2V/I2V duration is limited and VRAM requirements are high.
   - LTX2.3 is better when the user needs more flexible duration, dynamic VRAM use, or text/audio multimodal video input/output. It can still consume a lot of system RAM.
   - LTX-Outpaint is a specialized IC-LoRA-enhanced video outpaint route.
+  - For LTX2.3 video restoration, HD enhancement, watermark removal, or subtitle removal, recommend LTX2.3(InsightTool). Its themes are Video Restore, Video Upscale, Remove Watermark, and Remove Subtitles; it requires a source video and uses task-specific IC-LoRA adapters.
   - Wan-Animate and Wan-Swap are directed presets based on Animate-style multimodal reference ability; they cover object replacement, pose/motion transfer, character or face replacement, with SAM3-mask and no-SAM3-mask variants.
-  - For video upscaling / super-resolution, recommend Nvidia-VSR.
+  - For conventional video upscaling / super-resolution without restoration or cleanup goals, recommend Nvidia-VSR.
 - Audio, speech, and talking video:
   - For text-to-speech, voice design, voice clone, custom voice, or multi-role dialogue, recommend Qwen TTS canvas templates.
   - For turning a portrait/image plus audio into lip-sync/talking video, recommend InfiniteTalk image+audio-to-video.

@@ -825,10 +825,10 @@
         "sam3_mask_video": "wan_person_sam3_mask"
       },
       "text_inputs": {
-        "prompt": "wan_person_prompt"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "将遮罩区域中的人物替换为参考图人物，保留源视频中的动作、镜头运动、光线方向和背景关系，边缘自然融合。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -964,13 +964,6 @@
       "from": "wan_person_reference_image",
       "to": "wan_person_preset",
       "slot": "scene_canvas_image"
-    },
-    {
-      "id": "wan_person_edge_prompt",
-      "type": "text",
-      "from": "wan_person_prompt",
-      "to": "wan_person_preset",
-      "slot": "prompt"
     },
     {
       "id": "wan_person_edge_models",

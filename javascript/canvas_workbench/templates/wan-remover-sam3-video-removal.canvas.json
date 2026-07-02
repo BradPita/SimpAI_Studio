@@ -651,10 +651,10 @@
         "sam3_mask_video": "wan_remover_sam3_mask"
       },
       "text_inputs": {
-        "prompt": "wan_remover_hint"
+        "prompt": null
       },
       "params": {
-        "prompt": "",
+        "prompt": "移除遮罩区域中的主体，并根据周围背景自然补全，不要留下边缘痕迹。",
         "seed_random": true,
         "image_seed": 0,
         "scene_var_number2": 30,
@@ -778,13 +778,6 @@
       "from": "wan_remover_sam3_mask",
       "to": "wan_remover_preset",
       "slot": "sam3_mask_video"
-    },
-    {
-      "id": "wan_remover_edge_hint",
-      "type": "text",
-      "from": "wan_remover_hint",
-      "to": "wan_remover_preset",
-      "slot": "prompt"
     },
     {
       "id": "wan_remover_edge_models",

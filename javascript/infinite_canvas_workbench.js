@@ -15386,6 +15386,27 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         return perTheme[theme] || {};
     }
 
+    function getPresetThemeDefaults(node, theme) {
+        const schema = getPresetSchema(node);
+        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
+        const themeInfo = theme ? (perTheme[theme] || {}) : getPresetThemeInfo(node);
+        return themeInfo.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
+    }
+
+    function presetDefaultValuesEqual(value, defaultValue) {
+        if (defaultValue === undefined) return false;
+        return value === defaultValue || String(value) === String(defaultValue);
+    }
+
+    function shouldApplyPresetThemeDefault(current, param, previousDefaults) {
+        if (current === undefined || current === null || current === '') return true;
+        if (presetDefaultValuesEqual(current, param?.default)) return true;
+        if (previousDefaults && Object.prototype.hasOwnProperty.call(previousDefaults, param.key)) {
+            return presetDefaultValuesEqual(current, previousDefaults[param.key]);
+        }
+        return false;
+    }
+
     function getPresetSceneFrontend(node) {
         const schema = getPresetSchema(node);
         const candidates = [
@@ -29455,7 +29476,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
             {
                 id: 'flux2_a2r_image_edit',
                 title: t('Flux2-A2R Image Edit', 'Flux2-A2R 图像编辑'),
-                description: t('A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, prompt text, configs, and Result placeholder.', '可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、提示词、配置节点和结果占位。'),
+                description: t('A runnable Image-edit template for Flux2-A2R anime-to-real conversion with a source image placeholder, internal prompt defaults, configs, and Result placeholder.', '可运行的 Flux2-A2R 动漫转写实图像编辑模板，包含源图占位、Preset 内部提示词默认值、配置节点和结果占位。'),
                 category: 'image',
                 tags: ['image', 'flux', 'flux2', 'a2r', 'edit', 'anime-to-real', 'preset', 'runnable'],
                 typeLabel: t('Image edit preset', '图像编辑预设'),
@@ -29685,6 +29706,32 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     ]
                 },
                 path: 'javascript/canvas_workbench/templates/qwen-tts-director-ltx23-ta2v.canvas.json',
+                preview: ''
+            },
+            {
+                id: 'ltx23_insight_toolbox',
+                title: t('LTX2.3 Insight ToolBox', 'LTX2.3 Insight 视频修复工具箱'),
+                description: t('A runnable LTX2.3 Insight video template for restoration, HD enhancement, watermark removal, and subtitle removal.', '可运行的 LTX2.3 Insight 视频模板，用于视频修复、高清增强、水印移除和字幕移除。'),
+                category: 'video',
+                tags: ['video', 'ltx', 'ltx2.3', 'insight', 'restoration', 'upscale', 'watermark-removal', 'subtitle-removal', 'ic-lora', 'runnable', '视频修复', '去水印', '去字幕'],
+                typeLabel: t('Video restoration', '视频修复'),
+                modelDependency: {
+                    mode: 'requires_models',
+                    label: t('Requires video + LTX models', '需要视频和 LTX 模型'),
+                    note: t('Requires the LTX2.3 transformer, text encoders, video VAE, distilled LoRA, task IC-LoRAs, RIFE, and a source video.', '需要 LTX2.3 transformer、文本编码器、视频 VAE、蒸馏 LoRA、任务 IC-LoRA、RIFE，以及源视频。'),
+                    models: [
+                        'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',
+                        'ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors',
+                        'gemma_3_12B_it_fpmixed.safetensors',
+                        'LTX23_video_vae_bf16.safetensors',
+                        'ltx2.3-video-restoration-general.safetensors',
+                        'ltx2.3-ic-video-upscale-general.safetensors',
+                        'ltx2.3-ic-watermark-remove-general.safetensors',
+                        'ltx2.3-ic-subtitles-remove-general.safetensors',
+                        'flownet.pkl'
+                    ]
+                },
+                path: 'javascript/canvas_workbench/templates/ltx23-insight-toolbox.canvas.json',
                 preview: ''
             }
         ];
@@ -34949,17 +34996,19 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             showToast('Locked node cannot be edited');
             return;
         }
+        const previousTheme = getPresetTheme(node);
+        const previousDefaults = getPresetThemeDefaults(node, previousTheme);
         pushHistory('Change preset theme');
         node.runtime = node.runtime || {};
         node.runtime.scene_theme = theme;
         const themeInfo = getPresetThemeInfo(node);
         if (themeInfo.task_method) node.runtime.task_method = themeInfo.task_method;
         node.params = node.params || {};
-        const defaults = themeInfo.defaults || {};
+        const defaults = getPresetThemeDefaults(node, theme);
         getVisiblePresetParams(node).forEach((param) => {
             if (!Object.prototype.hasOwnProperty.call(defaults, param.key)) return;
             const current = node.params[param.key];
-            if (current === undefined || current === null || current === '' || current === param.default) {
+            if (shouldApplyPresetThemeDefault(current, param, previousDefaults)) {
                 node.params[param.key] = defaults[param.key];
             }
         });

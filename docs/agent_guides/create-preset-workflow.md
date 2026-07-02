@@ -160,6 +160,12 @@ aligned:
 - `workflows/{task_method}_api.json`: ComfyUI API graph and placeholder inputs.
 - `javascript/canvas_workbench/templates/template-library.json` and matching
   `.canvas.json` files, when the preset is exposed in Infinite Canvas templates.
+  Built-in template files must keep stable template ids and manifest-style
+  metadata; remove user-saved template fields such as `settings.canvasAgent`,
+  `settings.__template_source`, `source: "user"`, temporary ids, and user-only
+  tags before committing them.
+- `docs/vlm_skills/simpai_preset_guide.md`, when Describe Chat or Canvas Agent
+  should recommend the new preset for user workflow questions.
 - `presets/scene_prompt_recommendations/*.csv`, when the scene theme should
   provide prompt suggestions.
 - Tests that check preset defaults, workflow inputs, model paths, and canvas
@@ -524,6 +530,15 @@ Scene-specific notes:
   grouped by the same theme keys.
 - Use `Additional Prompt` for the secondary scene prompt label; do not name it
   another `Prompt`.
+- For Infinite Canvas scene templates, keep `runtime.scene_theme`,
+  `runtime.task_method`, and `params.prompt` aligned with the default theme.
+  `schema.per_theme.*.defaults.prompt` should contain the per-theme prompt text
+  so Canvas theme changes can update the Preset node while leaving user-edited
+  prompt text intact.
+- Built-in Canvas templates must not connect `text` nodes to scene/classic
+  generation nodes (`preset` or `classic`) via `prompt` or `negative_prompt`.
+  Those text edges override theme defaults. Put default prompt text in the
+  generation node `params`; scene multi-theme nodes can also use theme defaults.
 - If a scene requires audio before generation, set the preset media policy such
   as `audio_policy: "required"` and let the UI block submission with a user
   message.
@@ -557,6 +572,8 @@ Use the narrowest relevant checks for the target:
   `python -m pytest tests/test_preset_defaults_dry_run.py -q`.
 - For Infinite Canvas templates:
   `python -m pytest tests/test_canvas_workbench_template_scene_slots.py -q`.
+- For agent preset recommendations:
+  `python -m pytest tests/test_canvas_vlm_agent_preset_guide_contract.py tests/test_describe_vlm_chat_contract.py -q`.
 - For model path and backend launch contracts:
   `python -m pytest tests/test_comfyd_launch_args_contract.py tests/test_model_checker_paths.py -q`.
 - For director-capable templates:
