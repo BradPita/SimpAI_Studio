@@ -14105,7 +14105,13 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 }
 
 #missing_model_modal_content.minimized #missing_model_modal_handle {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
 #missing_model_modal_content.minimized #missing_model_modal_header {
@@ -14116,7 +14122,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   gap: 4px;
   flex: 0 0 auto !important;
   flex-shrink: 0 !important;
-  order: 2; /* Move buttons to the right */
+  order: 2;
   display: flex;
   flex-wrap: nowrap;
 }
@@ -14127,7 +14133,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   min-width: 0;
   max-width: 178px;
   overflow: hidden !important;
-  order: 1; /* Move progress to the left */
+  order: 1;
 }
 
 #missing_model_modal_content.minimized #missing_model_total_progress .mm-progress {
@@ -14178,7 +14184,10 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 
 #missing_model_modal_content.minimized #missing_model_dataframe_container,
 #missing_model_modal_content.minimized #missing_model_list,
-#missing_model_modal_content.minimized #missing_model_modal_actions {
+#missing_model_modal_content.minimized #missing_model_modal_actions,
+#missing_model_modal_content.minimized .sai-gradio-hidden-bridge,
+#missing_model_modal_content.minimized .form:has(.sai-gradio-hidden-bridge),
+#missing_model_modal_content.minimized .simpleai-popup-resize-handle {
   display: none;
 }
 

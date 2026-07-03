@@ -74,13 +74,34 @@ def _mark_download_error(task_id, message, file_name=""):
 def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size=0):
     if not task_id:
         return
+    previous = download_task_metadata.get(task_id) or {}
     download_task_metadata[task_id] = {
         "task_id": task_id,
         "file_name": file_name or os.path.basename(str(task_id)),
         "model_dir": model_dir or "",
         "url": url or "",
         "size": _normalize_expected_size(size),
-        "created_at": time.time(),
+        "created_at": float(previous.get("created_at") or time.time()),
+    }
+
+
+def _queue_download_restart(task_id, *, file_name="", model_dir="", url="", size=0):
+    if not task_id:
+        return
+    previous = download_task_metadata.get(task_id) or {}
+    download_task_metadata[task_id] = {
+        "task_id": task_id,
+        "file_name": file_name or previous.get("file_name") or os.path.basename(str(task_id)),
+        "model_dir": model_dir or previous.get("model_dir") or "",
+        "url": url or previous.get("url") or "",
+        "size": _normalize_expected_size(size or previous.get("size") or 0),
+        "created_at": float(previous.get("created_at") or time.time()),
+        "restart_request": {
+            "file_name": file_name or previous.get("file_name") or os.path.basename(str(task_id)),
+            "model_dir": model_dir or previous.get("model_dir") or "",
+            "url": url or previous.get("url") or "",
+            "size": _normalize_expected_size(size or previous.get("size") or 0),
+        },
     }
 
 
@@ -381,6 +402,7 @@ def load_file_from_url(
             raise RuntimeError("No download URL available")
 
         def _download_task():
+            restart_request = None
             try:
                 _download_with_progress_from_urls()
             except DownloadCancelled as e:
@@ -391,12 +413,47 @@ def load_file_from_url(
                 with task_lock:
                     download_tasks.discard(effective_task_id)
                     download_cancel_requests.discard(effective_task_id)
-                    if effective_task_id not in download_progress:
+                    meta = dict(download_task_metadata.get(effective_task_id) or {})
+                    restart_request = dict(meta.get("restart_request") or {}) if isinstance(meta.get("restart_request"), dict) else None
+                    if restart_request:
+                        download_task_metadata.pop(effective_task_id, None)
+                    elif effective_task_id not in download_progress:
                         download_task_metadata.pop(effective_task_id, None)
                     logger.info(f"下载任务:{effective_task_id} 已完成, 从任务队列中清除.")
+                if restart_request:
+                    try:
+                        if effective_task_id in download_progress and isinstance(download_progress.get(effective_task_id), dict):
+                            current_progress = download_progress.get(effective_task_id) or {}
+                            if current_progress.get("cancelled") or current_progress.get("error"):
+                                del download_progress[effective_task_id]
+                    except Exception:
+                        pass
+                    logger.info("下载任务:%s 已停止，准备按最新请求重新加入队列。", effective_task_id)
+                    load_file_from_url(
+                        url=restart_request.get("url"),
+                        model_dir=restart_request.get("model_dir"),
+                        file_name=restart_request.get("file_name"),
+                        async_task=True,
+                        size=restart_request.get("size", 0),
+                        task_id=effective_task_id,
+                    )
         if async_task:
             with task_lock:
                 if effective_task_id in download_tasks:
+                    current_progress = download_progress.get(effective_task_id)
+                    if (
+                        effective_task_id in download_cancel_requests
+                        or (isinstance(current_progress, dict) and current_progress.get("cancelled"))
+                    ):
+                        _queue_download_restart(
+                            effective_task_id,
+                            file_name=file_name,
+                            model_dir=model_dir,
+                            url=url,
+                            size=expected_size,
+                        )
+                        print(f"下载任务:{effective_task_id} 正在停止，已记录重试请求。")
+                        return
                     print(f"下载任务:{effective_task_id} 已经在任务队列中.")
                     return
                 try:

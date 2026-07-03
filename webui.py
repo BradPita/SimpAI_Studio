@@ -3427,38 +3427,6 @@ with shared.gradio_root:
                     return gr_update(visible=False)
 
                 close_missing_model_btn.click(close_missing_model_modal, outputs=missing_model_modal)
-                missing_model_minimize_btn.click(
-                    fn=None,
-                    js="""() => {
-                        const app = (typeof gradioApp === 'function') ? gradioApp() : document;
-                        const content = app.getElementById('missing_model_modal_content');
-                        if (!content) return;
-                        const isMin = content.classList.contains('minimized');
-                        if (!isMin) {
-                            content.dataset.prevLeft = content.style.getPropertyValue('left') || '';
-                            content.dataset.prevTop = content.style.getPropertyValue('top') || '';
-                            content.dataset.prevLeftPriority = content.style.getPropertyPriority('left') || '';
-                            content.dataset.prevTopPriority = content.style.getPropertyPriority('top') || '';
-                            content.classList.add('minimized');
-                            requestAnimationFrame(() => {
-                                const r = content.getBoundingClientRect();
-                                const margin = 12;
-                                content.style.setProperty('left', `${Math.max(margin, window.innerWidth - margin - r.width)}px`, 'important');
-                                content.style.setProperty('top', `${Math.max(margin, window.innerHeight - margin - r.height)}px`, 'important');
-                            });
-                        } else {
-                            content.classList.remove('minimized');
-                            const prevLeft = content.dataset.prevLeft || '';
-                            const prevTop = content.dataset.prevTop || '';
-                            if (prevLeft) content.style.setProperty('left', prevLeft, content.dataset.prevLeftPriority || '');
-                            else content.style.removeProperty('left');
-                            if (prevTop) content.style.setProperty('top', prevTop, content.dataset.prevTopPriority || '');
-                            else content.style.removeProperty('top');
-                        }
-                    }""",
-                    show_progress=False,
-                    queue=False
-                )
                 missing_model_download_finish_js = "(html, state)=>{try{if(typeof startMissingModelDownloadNavMonitor === 'function') startMissingModelDownloadNavMonitor('download_finish'); if(state&&typeof refresh_topbar_status_js === 'function') refresh_topbar_status_js(state); syncMissingModelDownloadCompleteUi(html, state);}catch(e){console.warn('[UI-TRACE] missing_model_modal.download_finish_failed', e);}}"
                 missing_model_refresh_finish_js = "(html, state)=>{try{window.__missingModelRefreshInFlight=false; if(state&&typeof refresh_topbar_status_js === 'function') refresh_topbar_status_js(state); syncMissingModelDownloadCompleteUi(html, state);}catch(e){window.__missingModelRefreshInFlight=false; console.warn('[UI-TRACE] missing_model_modal.refresh_failed', e);}}"
                 missing_model_nav_refresh_finish_js = "(state)=>{try{if(typeof finishMissingModelNavRefresh === 'function') finishMissingModelNavRefresh(state);}catch(e){window.__missingModelNavRefreshInFlight=false; console.warn('[UI-TRACE] missing_model_nav.refresh_failed', e);}}"

@@ -78,7 +78,7 @@
         "insightface,models/antelopev2/scrfd_10g_bnkps.onnx,16923827,0,",
         "upscale_models,4x-UltraSharp.pth,66961958,0,",
         "text_encoders,t5xxl_fp8_e4m3fn.safetensors,4893934904,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors",
-        "clip,clip_l.safetensors,246144152,0,",
+        "clip,clip_l.safetensors,246144152,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/clip_l.safetensors",
         "clip_vision,sigclip_vision_patch14_384.safetensors,856505640,0,",
         "vae,ae.safetensors,335304388,0,",
 	"style_models,flux1-redux-dev.safetensors,129063232,0,",

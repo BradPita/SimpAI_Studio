@@ -6475,10 +6475,16 @@ function installResizablePopup(content, options = {}) {
         e.preventDefault();
     };
 
+    const clearResizeActive = () => {
+        delete content.dataset.simpleaiResizeActive;
+    };
+
     const onResizeUp = () => {
         resizing = false;
+        clearResizeActive();
         window.removeEventListener('pointermove', onResizeMove, true);
         window.removeEventListener('pointerup', onResizeUp, true);
+        window.removeEventListener('pointercancel', onResizeUp, true);
         ensureWithinViewport(true);
     };
 
@@ -6490,6 +6496,7 @@ function installResizablePopup(content, options = {}) {
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
         resizing = true;
+        content.dataset.simpleaiResizeActive = '1';
         resizeStartWidth = rect.width;
         resizeStartHeight = rect.height;
         resizeStartX = e.clientX ?? 0;
@@ -6497,6 +6504,7 @@ function installResizablePopup(content, options = {}) {
 
         window.addEventListener('pointermove', onResizeMove, true);
         window.addEventListener('pointerup', onResizeUp, true);
+        window.addEventListener('pointercancel', onResizeUp, true);
         e.preventDefault();
         e.stopPropagation();
     };
@@ -6508,7 +6516,7 @@ function installResizablePopup(content, options = {}) {
 
     window.addEventListener('resize', () => ensureWithinViewport(false));
 
-    const state = { ensureWithinViewport, syncCurrentRectToInline };
+    const state = { ensureWithinViewport, syncCurrentRectToInline, isInteracting: () => resizing };
     content.__simpleaiResizeState = state;
     return state;
 }
@@ -7018,9 +7026,13 @@ function initMissingModelPopup() {
     const modal = document.getElementById('missing_model_modal') || content;
     const handle = document.getElementById('missing_model_modal_handle');
     const header = document.getElementById('missing_model_modal_header');
+    const progress = document.getElementById('missing_model_total_progress');
+    const minimizeBtn = document.getElementById('missing_model_modal_minimize_btn');
+    const closeBtn = document.getElementById('missing_model_modal_close_btn');
     if (!modal || !content || !handle) return;
     if (content.dataset.mm_inited === '1') return;
     content.dataset.mm_inited = '1';
+    content.dataset.simpleaiMissingModelMinimized = content.classList.contains('minimized') ? '1' : '0';
 
     const popupResize = installResizablePopup(content, {
         modal,
@@ -7028,8 +7040,72 @@ function initMissingModelPopup() {
         minHeight: 260,
         disabled: () => content.classList.contains('minimized'),
     });
+    content.__simpleaiMissingModelPopupResize = popupResize;
 
     const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const ensureCapsuleVisibility = () => {
+        try { restoreGradioComponentVisibility(content, { interactive: false }); } catch (e) {}
+        try { restoreGradioComponentVisibility(header, { interactive: false }); } catch (e) {}
+        try { restoreGradioComponentVisibility(progress, { interactive: false }); } catch (e) {}
+        try { restoreGradioComponentVisibility(minimizeBtn); } catch (e) {}
+        try { restoreGradioComponentVisibility(closeBtn); } catch (e) {}
+        try {
+            content.classList.remove('hidden', 'hide');
+            header?.classList?.remove('hidden', 'hide');
+            progress?.classList?.remove('hidden', 'hide');
+            minimizeBtn?.classList?.remove('hidden', 'hide');
+            closeBtn?.classList?.remove('hidden', 'hide');
+        } catch (e) {}
+        try {
+            content.removeAttribute('hidden');
+            header?.removeAttribute?.('hidden');
+            progress?.removeAttribute?.('hidden');
+            minimizeBtn?.removeAttribute?.('hidden');
+            closeBtn?.removeAttribute?.('hidden');
+        } catch (e) {}
+        content.style.removeProperty('display');
+        content.style.removeProperty('visibility');
+        header?.style?.removeProperty?.('display');
+        header?.style?.removeProperty?.('visibility');
+        progress?.style?.removeProperty?.('display');
+        progress?.style?.removeProperty?.('visibility');
+    };
+    const isMinimized = () => content.classList.contains('minimized') || content.dataset.simpleaiMissingModelMinimized === '1';
+    const setMinimized = (nextValue) => {
+        if (nextValue) {
+            ensureCapsuleVisibility();
+            const rect = content.getBoundingClientRect();
+            content.dataset.prevWidth = content.style.width || `${Math.round(rect.width)}px`;
+            content.dataset.prevHeight = content.style.height || `${Math.round(rect.height)}px`;
+            content.classList.add('minimized');
+            content.dataset.simpleaiMissingModelMinimized = '1';
+            setImportantStyle(content, 'width', '280px');
+            setImportantStyle(content, 'min-width', '0');
+            setImportantStyle(content, 'max-width', 'calc(100vw - 24px)');
+            setImportantStyle(content, 'height', '54px');
+            setImportantStyle(content, 'min-height', '54px');
+            setImportantStyle(content, 'max-height', '54px');
+            setImportantStyle(content, 'overflow', 'hidden');
+            return;
+        }
+        content.classList.remove('minimized');
+        content.dataset.simpleaiMissingModelMinimized = '0';
+        if (content.dataset.prevWidth) {
+            setImportantStyle(content, 'width', content.dataset.prevWidth);
+        } else {
+            content.style.removeProperty('width');
+        }
+        if (content.dataset.prevHeight) {
+            setImportantStyle(content, 'height', content.dataset.prevHeight);
+        } else {
+            content.style.removeProperty('height');
+        }
+        content.style.removeProperty('min-width');
+        content.style.removeProperty('max-width');
+        content.style.removeProperty('min-height');
+        content.style.removeProperty('max-height');
+        content.style.removeProperty('overflow');
+    };
 
     const placeDefault = () => {
         const w = content.getBoundingClientRect().width || 970;
@@ -7049,13 +7125,18 @@ function initMissingModelPopup() {
     const onStyle = () => {
         const hidden = (getComputedStyle(modal).display === 'none');
         if (hidden) {
-            content.classList.remove('minimized');
+            setMinimized(false);
             delete content.dataset.prevLeft;
             delete content.dataset.prevTop;
             return;
         }
         if (content.style.display === 'none') {
             content.style.removeProperty('display');
+        }
+        if (isMinimized()) {
+            ensureCapsuleVisibility();
+            setMinimized(true);
+            return;
         }
         if (!content.style.left && !content.style.top) {
             placeDefault();
@@ -7070,6 +7151,15 @@ function initMissingModelPopup() {
     let dragging = false;
     let offsetX = 0;
     let offsetY = 0;
+    let dragPointerId = null;
+    let dragPointerTarget = null;
+
+    const clearDragState = () => {
+        dragging = false;
+        dragPointerId = null;
+        dragPointerTarget = null;
+        delete content.dataset.simpleaiDragActive;
+    };
 
     const onMove = (e) => {
         if (!dragging) return;
@@ -7087,9 +7177,15 @@ function initMissingModelPopup() {
     };
 
     const onUp = () => {
-        dragging = false;
+        if (dragPointerTarget && dragPointerId !== null) {
+            try {
+                dragPointerTarget.releasePointerCapture(dragPointerId);
+            } catch (err) {}
+        }
+        clearDragState();
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
+        window.removeEventListener('pointercancel', onUp, true);
         popupResize.ensureWithinViewport(true);
     };
 
@@ -7106,10 +7202,19 @@ function initMissingModelPopup() {
         if (getComputedStyle(modal).display === 'none') return;
         const rect = content.getBoundingClientRect();
         dragging = true;
+        content.dataset.simpleaiDragActive = '1';
         offsetX = e.clientX - rect.left;
         offsetY = e.clientY - rect.top;
+        dragPointerId = e.pointerId ?? null;
+        dragPointerTarget = e.currentTarget || handle;
+        if (dragPointerTarget && dragPointerId !== null) {
+            try {
+                dragPointerTarget.setPointerCapture(dragPointerId);
+            } catch (err) {}
+        }
         window.addEventListener('pointermove', onMove, true);
         window.addEventListener('pointerup', onUp, true);
+        window.addEventListener('pointercancel', onUp, true);
         e.preventDefault();
     };
 
@@ -7119,7 +7224,6 @@ function initMissingModelPopup() {
         onDown(e);
     }, { passive: false });
 
-    const minimizeBtn = document.getElementById('missing_model_modal_minimize_btn');
     if (minimizeBtn && minimizeBtn.dataset.simpleaiMinimizeBound !== '1') {
         minimizeBtn.dataset.simpleaiMinimizeBound = '1';
         minimizeBtn.addEventListener('click', (e) => {
@@ -7127,10 +7231,10 @@ function initMissingModelPopup() {
             e.stopPropagation();
             e.stopImmediatePropagation();
             const rect = content.getBoundingClientRect();
-            if (!content.classList.contains('minimized')) {
+            if (!isMinimized()) {
                 content.dataset.prevLeft = content.style.left || `${rect.left}px`;
                 content.dataset.prevTop = content.style.top || `${rect.top}px`;
-                content.classList.add('minimized');
+                setMinimized(true);
                 requestAnimationFrame(() => {
                     const w = content.getBoundingClientRect().width || 280;
                     const h = content.getBoundingClientRect().height || 54;
@@ -7140,7 +7244,7 @@ function initMissingModelPopup() {
                     setImportantStyle(content, 'bottom', 'auto');
                 });
             } else {
-                content.classList.remove('minimized');
+                setMinimized(false);
                 setImportantStyle(content, 'left', content.dataset.prevLeft || `${Math.max(12, window.innerWidth - 982)}px`);
                 setImportantStyle(content, 'top', content.dataset.prevTop || '160px');
                 setImportantStyle(content, 'right', 'auto');
@@ -7150,14 +7254,13 @@ function initMissingModelPopup() {
         }, true);
     }
 
-    const closeBtn = document.getElementById('missing_model_modal_close_btn');
     if (closeBtn && closeBtn.dataset.simpleaiCloseBound !== '1') {
         closeBtn.dataset.simpleaiCloseBound = '1';
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            content.classList.remove('minimized');
+            setMinimized(false);
             setImportantStyle(content, 'display', 'none');
             if (modal && modal !== content) {
                 setImportantStyle(modal, 'display', 'none');
@@ -7165,7 +7268,7 @@ function initMissingModelPopup() {
         }, true);
     }
     content.addEventListener('pointerdown', (e) => {
-        if (!content.classList.contains('minimized')) return;
+        if (!isMinimized()) return;
         if (isOnButtons(e.target)) return;
         onDown(e);
     }, { passive: false });
@@ -7556,17 +7659,24 @@ function reopenMissingModelPopupIfNeeded(html) {
     const progress = document.getElementById('missing_model_total_progress');
     if (!content) return;
     const hasRows = (typeof html === 'string') && (html.includes('missing-model-row') || html.includes('missing-model-queue-row'));
+    const wasMinimized = content.classList.contains('minimized') || content.dataset.simpleaiMissingModelMinimized === '1';
 
     if (!hasRows) {
         hideMissingModelPopupSurface();
         return;
     }
 
-    content.classList.remove('minimized');
     content.style.removeProperty('display');
-    content.style.removeProperty('height');
-    content.style.removeProperty('min-height');
-    content.style.removeProperty('overflow');
+    if (wasMinimized) {
+        content.classList.add('minimized');
+        content.dataset.simpleaiMissingModelMinimized = '1';
+    } else {
+        content.classList.remove('minimized');
+        content.dataset.simpleaiMissingModelMinimized = '0';
+        content.style.removeProperty('height');
+        content.style.removeProperty('min-height');
+        content.style.removeProperty('overflow');
+    }
     try { content.removeAttribute('hidden'); } catch (e) {}
     try {
         if (content.classList) {
@@ -7591,7 +7701,7 @@ function reopenMissingModelPopupIfNeeded(html) {
         try { progress.removeAttribute('hidden'); } catch (e) {}
     }
 
-    if (!content.style.left && !content.style.top) {
+    if (!wasMinimized && !content.style.left && !content.style.top) {
         const margin = 12;
         const width = content.getBoundingClientRect().width || 970;
         const height = content.getBoundingClientRect().height || 520;
@@ -7613,6 +7723,7 @@ function hideMissingModelPopupSurface() {
     const progress = document.getElementById('missing_model_total_progress');
     if (content) {
         content.classList.remove('minimized');
+        content.dataset.simpleaiMissingModelMinimized = '0';
         setImportantStyle(content, 'display', 'none');
     }
     if (modal && modal !== content) {
@@ -7937,6 +8048,10 @@ function isMissingModelPopupVisibleForRefresh() {
 function requestMissingModelModalRefresh() {
     if (window.__missingModelRefreshInFlight) return;
     if (!isMissingModelPopupVisibleForRefresh()) return;
+    const content = document.getElementById('missing_model_modal_content');
+    if (content && (content.dataset.simpleaiDragActive === '1' || content.dataset.simpleaiResizeActive === '1')) {
+        return;
+    }
     startMissingModelDownloadNavMonitor('modal_refresh');
     window.__missingModelRefreshInFlight = true;
     window.setTimeout(() => {
