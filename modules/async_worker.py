@@ -683,9 +683,21 @@ def worker():
             p2p_task.call_remote_stop(async_task, processing_start_time, status)
         return
 
-    def interrupt_processing():
+    def interrupt_processing(prompt_id=None):
         _restore_standard_streams_if_closed()
-        comfyd.interrupt()
+        target_prompt_id = None
+        if isinstance(prompt_id, str):
+            target_prompt_id = str(prompt_id).strip() or None
+        elif prompt_id is not None:
+            target_prompt_id = str(getattr(prompt_id, "simpleai_comfy_prompt_id", "") or "").strip() or None
+        if target_prompt_id:
+            logger.info("[Generate] interrupt_processing: prompt_id=%s", target_prompt_id)
+            try:
+                comfypipeline.interrupt(prompt_id=target_prompt_id)
+            except TypeError:
+                comfyd.interrupt()
+        else:
+            comfyd.interrupt()
         ldm_patched.modules.model_management.interrupt_current_processing()
 
     def build_image_wall(async_task):
@@ -799,6 +811,14 @@ def worker():
                         async_task.task_id,
                         prompt_id,
                     )
+                    if async_task.last_stop in ['stop', 'skip']:
+                        logger.info(
+                            "[Generate] replay_cancel_after_prompt_accept: task_id=%s, prompt_id=%s, action=%s",
+                            async_task.task_id,
+                            prompt_id,
+                            async_task.last_stop,
+                        )
+                        interrupt_processing(prompt_id)
 
                 extra_data = {
                     "extra_pnginfo": {

@@ -2708,7 +2708,7 @@ with shared.gradio_root:
 
                 _MISSING_MODEL_TEXTS = {
                     "en": {
-                        "title": "### The following model files are missing. Click download to fetch them.",
+                        "title": "### Missing models or compatibility fallback detected. Download or upgrade the required models below.",
                         "total_download": "Total download",
                         "empty": "All required models are ready.",
                         "model": "Model",
@@ -2725,9 +2725,14 @@ with shared.gradio_root:
                         "queue_empty": "No active downloads.",
                         "stop": "Stop",
                         "stopped": "Stopped",
+                        "compatibility": "Compatibility fallback",
+                        "compatible": "Using legacy model",
+                        "using_legacy": "Using legacy",
+                        "upgrade": "Download New",
+                        "upgrade_replace": "Replace Old",
                     },
                     "cn": {
-                        "title": "### 以下模型文件缺失，请点击下载获取",
+                        "title": "### 检测到模型缺失或兼容回退，可在下方下载或升级",
                         "total_download": "总下载",
                         "empty": "所需模型已就绪。",
                         "model": "模型",
@@ -2744,6 +2749,11 @@ with shared.gradio_root:
                         "queue_empty": "没有正在下载的任务。",
                         "stop": "停止",
                         "stopped": "已停止",
+                        "compatibility": "兼容模式",
+                        "compatible": "正在使用旧版模型",
+                        "using_legacy": "当前旧版",
+                        "upgrade": "仅下载新版",
+                        "upgrade_replace": "下载替换旧版",
                     },
                 }
                 missing_model_active_contexts = {}
@@ -2883,6 +2893,22 @@ with shared.gradio_root:
                     version = str(status.get("version") or params.get("version") or VLM.DEFAULT_VERSION)
                     return f"VLM: {version}", _missing_models_from_vlm_status(status), status
 
+                def _fallback_progress_rows(fallback_models):
+                    rows = []
+                    for item in fallback_models or []:
+                        if not isinstance(item, dict):
+                            continue
+                        rows.append(
+                            (
+                                str(item.get("cata") or ""),
+                                str(item.get("path_file") or ""),
+                                str(item.get("human_size") or ""),
+                                str(item.get("url") or ""),
+                                item.get("size") or 0,
+                            )
+                        )
+                    return rows
+
                 def _get_missing_models_for_preset(preset_name, user_did=None, state_params=None):
                     raw_model_list = []
                     if isinstance(state_params, dict) and state_params.get("__preset") == preset_name:
@@ -2895,25 +2921,34 @@ with shared.gradio_root:
                             user_did=user_did,
                             previous_default_info=previous_default_info,
                         )
+                        fallback_models = model_loader.get_fallback_model_list_from_entries(
+                            preset_name,
+                            raw_model_list,
+                            user_did=user_did,
+                            previous_default_info=previous_default_info,
+                        )
                     else:
                         missing_models = model_loader.get_missing_model_list(preset_name, user_did=user_did)
-                    if missing_models:
-                        return preset_name, missing_models
+                        fallback_models = model_loader.get_fallback_model_list(preset_name, user_did=user_did)
+                    if missing_models or fallback_models:
+                        return preset_name, missing_models, fallback_models
                     variant_names = []
                     if preset_name and (not preset_name.endswith("_fp4")) and (not preset_name.endswith("_int4")):
                         variant_names = [f"{preset_name}_fp4", f"{preset_name}_int4"]
                     for variant_name in variant_names:
                         variant_missing = model_loader.get_missing_model_list(variant_name, user_did=user_did)
-                        if variant_missing:
+                        variant_fallback = model_loader.get_fallback_model_list(variant_name, user_did=user_did)
+                        if variant_missing or variant_fallback:
                             util.log_ui_trace(
                                 logger,
-                                "[UI-TRACE] missing_model_modal.variant_hit | preset=%r, variant=%r, missing=%s",
+                                "[UI-TRACE] missing_model_modal.variant_hit | preset=%r, variant=%r, missing=%s, fallback=%s",
                                 preset_name,
                                 variant_name,
                                 len(variant_missing),
+                                len(variant_fallback),
                             )
-                            return variant_name, variant_missing
-                    return preset_name, []
+                            return variant_name, variant_missing, variant_fallback
+                    return preset_name, [], []
 
                 def _get_missing_model_status(cata, path_file):
                     status_key = (str(cata) + "/" + str(path_file)).replace("\\", "/").strip("/")
@@ -3043,8 +3078,10 @@ with shared.gradio_root:
                         '</div>'
                     )
 
-                def _render_missing_model_required_html(preset_name, missing_models, state_params=None, payload_extra=None):
+                def _render_missing_model_required_html(preset_name, missing_models, state_params=None, payload_extra=None, show_empty=True):
                     if not missing_models:
+                        if not show_empty:
+                            return ""
                         return (
                             '<div class="missing-model-preset-section">'
                             f'<div class="missing-model-html empty">{html.escape(_missing_model_text("empty", state_params))}</div>'
@@ -3129,16 +3166,122 @@ with shared.gradio_root:
                         '</div></div>'
                     )
 
-                def _render_missing_model_list_html(preset_name, missing_models, state_params=None, payload_extra=None):
-                    current_html = _render_missing_model_required_html(preset_name, missing_models, state_params, payload_extra)
+                def _render_missing_model_fallback_html(preset_name, fallback_models, state_params=None, payload_extra=None):
+                    if not fallback_models:
+                        return ""
+
+                    rows = []
+                    for item in fallback_models:
+                        if not isinstance(item, dict):
+                            continue
+                        cata = str(item.get("cata") or "")
+                        path_file = str(item.get("path_file") or "")
+                        human_size = str(item.get("human_size") or "")
+                        url = str(item.get("url") or "")
+                        size = item.get("size") or 0
+                        legacy_model = str(item.get("legacy_model") or "")
+                        legacy_human_name = str(item.get("legacy_human_name") or legacy_model or "")
+                        model_name = os.path.basename(path_file.strip("[]")) or path_file
+                        status_key, status = _get_missing_model_status(cata, path_file)
+                        row_payload = {
+                            "preset": preset_name,
+                            "cata": cata,
+                            "path_file": path_file,
+                            "url": url,
+                            "size": size,
+                            "legacy_model": legacy_model,
+                            "legacy_path": str(item.get("legacy_path") or ""),
+                        }
+                        if isinstance(payload_extra, dict):
+                            row_payload.update(payload_extra)
+                        upgrade_payload = json.dumps(row_payload, ensure_ascii=False)
+                        replace_payload = json.dumps({**row_payload, "delete_legacy": True}, ensure_ascii=False)
+                        status_html = '<span class="mm-row-status idle">{}</span>'.format(html.escape(_missing_model_text("compatible", state_params)))
+                        action_html = (
+                            f'<button type="button" class="missing-model-download-one" data-model-payload="{html.escape(upgrade_payload, quote=True)}">{html.escape(_missing_model_text("upgrade", state_params))}</button>'
+                            f'<button type="button" class="missing-model-download-one" data-model-payload="{html.escape(replace_payload, quote=True)}">{html.escape(_missing_model_text("upgrade_replace", state_params))}</button>'
+                        )
+                        if status:
+                            if status.get("cancelled"):
+                                status_html = f'<span class="mm-row-status cancelled">{html.escape(_missing_model_text("stopped", state_params))}</span>'
+                                action_html = f'<button type="button" class="missing-model-download-one" data-model-payload="{html.escape(upgrade_payload, quote=True)}">{html.escape(_missing_model_text("retry", state_params))}</button>'
+                            elif "error" in status:
+                                err_msg = html.escape(str(status.get("error", "")))
+                                status_html = f'<span class="mm-row-status error" title="{err_msg}">{html.escape(_missing_model_text("error", state_params))}</span>'
+                                action_html = f'<button type="button" class="missing-model-download-one" data-model-payload="{html.escape(upgrade_payload, quote=True)}">{html.escape(_missing_model_text("retry", state_params))}</button>'
+                            else:
+                                try:
+                                    percent = float(status.get("percent", 0.0))
+                                except Exception:
+                                    percent = 0.0
+                                downloading_text = html.escape(_missing_model_text("downloading", state_params))
+                                status_html = (
+                                    f'<span class="mm-row-status downloading">{downloading_text} {percent:.1f}%</span>'
+                                    f'<progress value="{int(max(0, min(100, percent)))}" max="100"></progress>'
+                                )
+                                cancel_payload = json.dumps(
+                                    {
+                                        "preset": preset_name,
+                                        "cata": cata,
+                                        "path_file": path_file,
+                                        **(payload_extra or {}),
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                action_html = f'<button type="button" class="missing-model-cancel-one" data-model-payload="{html.escape(cancel_payload, quote=True)}">{html.escape(_missing_model_text("stop", state_params))}</button>'
+                        rows.append(
+                            '<div class="missing-model-row missing-model-fallback-row" data-status-key="{status_key}">'
+                            '<div class="mm-model-main">'
+                            '<div class="mm-model-name" title="{full_name}">{model_name}</div>'
+                            '<div class="mm-model-meta"><span>{cata}</span><span>{human_size}</span><span>{using_legacy}: {legacy_name}</span></div>'
+                            '</div>'
+                            '<div class="mm-model-status">{status_html}</div>'
+                            '<div class="mm-model-action">{action_html}</div>'
+                            '</div>'
+                        .format(
+                                status_key=html.escape(status_key),
+                                full_name=html.escape(path_file),
+                                model_name=html.escape(model_name),
+                                cata=html.escape(cata),
+                                human_size=html.escape(human_size),
+                                using_legacy=html.escape(_missing_model_text("using_legacy", state_params)),
+                                legacy_name=html.escape(legacy_human_name),
+                                status_html=status_html,
+                                action_html=action_html,
+                            )
+                        )
+                    return (
+                        '<div class="missing-model-preset-section">'
+                        f'<div class="missing-model-section-title">{html.escape(_missing_model_text("compatibility", state_params))}</div>'
+                        '<div class="missing-model-html">'
+                        '<div class="missing-model-html-head">'
+                        f'<span>{html.escape(_missing_model_text("model", state_params))}</span>'
+                        f'<span>{html.escape(_missing_model_text("status", state_params))}</span>'
+                        f'<span>{html.escape(_missing_model_text("action", state_params))}</span>'
+                        '</div>'
+                        + "".join(rows) +
+                        '</div></div>'
+                    )
+
+                def _render_missing_model_list_html(preset_name, missing_models, fallback_models=None, state_params=None, payload_extra=None):
+                    fallback_models = fallback_models or []
+                    current_html = _render_missing_model_required_html(
+                        preset_name,
+                        missing_models,
+                        state_params,
+                        payload_extra,
+                        show_empty=(not fallback_models),
+                    )
+                    fallback_html = _render_missing_model_fallback_html(preset_name, fallback_models, state_params, payload_extra)
                     queue_html = _render_download_queue_html(state_params)
+                    body_html = current_html + fallback_html
                     if queue_html:
-                        return '<div class="missing-model-panel">' + current_html + queue_html + '</div>'
-                    return current_html
+                        return '<div class="missing-model-panel">' + body_html + queue_html + '</div>'
+                    return body_html
 
                 def _missing_model_panel_has_visible_rows(html_value):
                     text = str(html_value or "")
-                    return "missing-model-row" in text or "missing-model-queue-row" in text
+                    return "missing-model-row" in text or "missing-model-queue-row" in text or "missing-model-fallback-row" in text
 
                 def check_and_show_missing_models(button_value, state_params):
                     """Check whether models are missing and show the prompt modal."""
@@ -3179,7 +3322,7 @@ with shared.gradio_root:
                                 progress_value = _make_missing_model_progress_html(0, state_params)
                                 progress_visible = True
                             payload_extra = {"kind": "vlm", "version": version_name}
-                            html_value = _render_missing_model_list_html(preset_name, missing_models, state_params, payload_extra=payload_extra)
+                            html_value = _render_missing_model_list_html(preset_name, missing_models, [], state_params, payload_extra=payload_extra)
                             return [gr_update(visible=True),
                                     _missing_model_title_update(state_params),
                                     gr_update(value=html_value),
@@ -3195,7 +3338,7 @@ with shared.gradio_root:
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value=""), gr_update(visible=False)]
                     user_did = _get_state_user_did(state_params)
                     start_perf = time.perf_counter()
-                    preset_name, missing_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                    preset_name, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     _set_missing_model_active_context(
                         state_params,
                         {"kind": "preset", "preset": preset_name},
@@ -3204,15 +3347,16 @@ with shared.gradio_root:
                     after_missing = time.perf_counter()
                     util.log_ui_trace(
                         logger,
-                        "[UI-TRACE] missing_model_modal.check | preset=%r, missing=%s, missing_scan=%.3fs",
+                        "[UI-TRACE] missing_model_modal.check | preset=%r, missing=%s, fallback=%s, missing_scan=%.3fs",
                         preset_name,
                         len(missing_models or []),
+                        len(fallback_models or []),
                         after_missing - start_perf,
                     )
 
-                    if missing_models:
+                    if missing_models or fallback_models:
                         total_size = 0
-                        for cata, path_file, human_size, url, size in missing_models:
+                        for cata, path_file, human_size, url, size in list(missing_models or []) + _fallback_progress_rows(fallback_models):
                             try:
                                 total_size += int(size or 0)
                             except Exception:
@@ -3223,13 +3367,14 @@ with shared.gradio_root:
                         if total_size > 0:
                             progress_value = _make_missing_model_progress_html(0, state_params)
                             progress_visible = True
-                        html_value = _render_missing_model_list_html(preset_name, missing_models, state_params)
+                        html_value = _render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params)
                         after_render = time.perf_counter()
                         util.log_ui_trace(
                             logger,
-                            "[UI-TRACE] missing_model_modal.render | preset=%r, rows=%s, render=%.3fs, total=%.3fs",
+                            "[UI-TRACE] missing_model_modal.render | preset=%r, rows=%s, fallback=%s, render=%.3fs, total=%.3fs",
                             preset_name,
                             len(missing_models or []),
+                            len(fallback_models or []),
                             after_render - after_missing,
                             after_render - start_perf,
                         )
@@ -3239,7 +3384,7 @@ with shared.gradio_root:
                                 gr_update(visible=progress_visible, value=progress_value),
                                 gr_update(visible=True, value=_missing_model_text("download_all", state_params))]
                     else:
-                        html_value = _render_missing_model_list_html(preset_name, [], state_params)
+                        html_value = _render_missing_model_list_html(preset_name, [], [], state_params)
                         if _missing_model_panel_has_visible_rows(html_value):
                             return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=html_value), gr_update(visible=False, value=""), gr_update(visible=False)]
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value=""), gr_update(visible=False)]
@@ -3249,19 +3394,20 @@ with shared.gradio_root:
                     payload_extra = None
                     if active_context.get("kind") == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(active_context, user_did=user_did)
+                        fallback_models = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or active_context.get("version") or VLM.DEFAULT_VERSION)}
                     elif active_context.get("kind") == "preset":
                         preset_name = str(active_context.get("preset") or "").strip()
-                        _, missing_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     else:
                         preset_name = str(state_params.get('__preset', '') or '').strip() if isinstance(state_params, dict) else ""
-                        _, missing_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params) if preset_name else ("", [])
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params) if preset_name else ("", [], [])
 
-                    html_value = _render_missing_model_list_html(preset_name, missing_models, state_params, payload_extra=payload_extra)
+                    html_value = _render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)
                     if not _missing_model_panel_has_visible_rows(html_value):
                         return [gr_update(visible=False), _missing_model_title_update(state_params), gr_update(value=""), gr_update(visible=False, value="")]
 
-                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(missing_models)
+                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
                     progress_visible = bool(has_in_progress)
                     progress_html = _make_missing_model_progress_html(percent_total, state_params) if progress_visible else ""
                     return [
@@ -3346,19 +3492,27 @@ with shared.gradio_root:
                     payload_extra = None
                     if payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
+                        fallback_models = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or payload.get("version") or VLM.DEFAULT_VERSION)}
                     else:
-                        _, missing_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
                     allowed = None
+                    cleanup_file_path = None
                     for item in missing_models:
                         if str(item[0]) == cata and str(item[1]) == path_file:
                             allowed = item
                             break
                     if allowed is None:
-                        return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=_render_missing_model_list_html(preset_name, missing_models, state_params, payload_extra=payload_extra)), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
+                        for item in fallback_models:
+                            if str(item.get("cata") or "") == cata and str(item.get("path_file") or "") == path_file:
+                                allowed = item
+                                cleanup_file_path = str(item.get("legacy_path") or "") if payload.get("delete_legacy") else None
+                                break
+                    if allowed is None:
+                        return [gr_update(visible=True), _missing_model_title_update(state_params), gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)), gr_update(visible=False, value="")] + empty_buttons_update + empty_system_update
 
                     util.log_ui_trace(logger, "[UI-TRACE] missing_model_modal.download_one | preset=%r, cata=%r, path=%r", preset_name, cata, path_file)
-                    model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True)
+                    model_loader.download_model_entry(cata, path_file, size=size, url=url, user_did=user_did, async_task=True, cleanup_file_path=cleanup_file_path)
                     return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
 
                 def cancel_one_missing_model_download(request_payload, state_params):
@@ -3386,17 +3540,18 @@ with shared.gradio_root:
                         return _render_active_missing_model_modal_updates(state_params, user_did=user_did) + empty_buttons_update + empty_system_update
                     elif payload_kind == "vlm":
                         preset_name, missing_models, status = _get_missing_models_for_vlm_request(payload, user_did=user_did)
+                        fallback_models = []
                         payload_extra = {"kind": "vlm", "version": str(status.get("version") or payload.get("version") or VLM.DEFAULT_VERSION)}
                     else:
-                        _, missing_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
+                        _, missing_models, fallback_models = _get_missing_models_for_preset(preset_name, user_did=user_did, state_params=state_params)
 
-                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(missing_models)
+                    percent_total, _has_error, has_in_progress = _calculate_missing_model_progress(list(missing_models or []) + _fallback_progress_rows(fallback_models))
                     progress_visible = bool(has_in_progress)
                     progress_html = _make_missing_model_progress_html(percent_total, state_params) if progress_visible else ""
                     return [
                         gr_update(visible=True),
                         _missing_model_title_update(state_params),
-                        gr_update(value=_render_missing_model_list_html(preset_name, missing_models, state_params, payload_extra=payload_extra)),
+                        gr_update(value=_render_missing_model_list_html(preset_name, missing_models, fallback_models, state_params, payload_extra=payload_extra)),
                         gr_update(visible=progress_visible, value=progress_html),
                     ] + empty_buttons_update + empty_system_update
 
@@ -4377,13 +4532,13 @@ with shared.gradio_root:
                         def stop_clicked(currentTask):
                             currentTask.last_stop = 'stop'
                             if (currentTask.processing):
-                                worker.worker.interrupt_processing()
+                                worker.worker.interrupt_processing(currentTask)
                             return currentTask
 
                         def skip_clicked(currentTask):
                             currentTask.last_stop = 'skip'
                             if (currentTask.processing):
-                                worker.worker.interrupt_processing()
+                                worker.worker.interrupt_processing(currentTask)
                             return currentTask
 
                         stop_button.click(stop_clicked, inputs=currentTask, outputs=currentTask, queue=False, show_progress=False, js='cancelGenerateForever')
@@ -9302,7 +9457,7 @@ with shared.gradio_root:
                 progress_value = _make_missing_model_progress_html(0, state_params)
                 progress_visible = True
             payload_extra = {"kind": "vlm", "version": version_name}
-            html_value = _render_missing_model_list_html(preset_name, missing_models, state_params, payload_extra=payload_extra)
+            html_value = _render_missing_model_list_html(preset_name, missing_models, [], state_params, payload_extra=payload_extra)
             return [
                 gr_update(visible=True),
                 _missing_model_title_update(state_params),

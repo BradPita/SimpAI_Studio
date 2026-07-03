@@ -26,6 +26,7 @@ from modules.access_mode import is_local_mode
 logger = logging.getLogger(format_name(__name__))
 
 comfy_prompt_compat.install_queue_prompt_normalizer(comfyclient_pipeline)
+comfy_prompt_compat.install_prompt_cancel_support(comfyclient_pipeline)
 
 def is_advanced_logs_enabled():
     return ads.get_admin_default('advanced_logs')

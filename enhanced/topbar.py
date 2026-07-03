@@ -2299,6 +2299,8 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         state_params["absent_model"] = True
         # if shared.token.is_admin(state_params["user"].get_did()):
         #     download_model_files(state_params["__preset"], state_params["user"].get_did(), True)
+    elif not args_manager.args.disable_backend:
+        notify_compat_fallback_once(state_params, state_params["__preset"], user_did=user_did)
 
     superprompter.remove_superprompt()
     vlm.free_model()
@@ -2459,6 +2461,7 @@ def sync_message(state_params):
 preset_down_note_info = 'The model file is missing. You can click to download the required models. You can also use the model_checker to complete the model files.'
 preset_downing_note_info = 'Downloading the model file required for image generation, please wait for a moment...'
 preset_absent_model_note_info = 'The preset package being loaded has model files that need to be downloaded.'
+preset_compat_fallback_note_template = '当前预设正在兼容模式下运行，实际使用旧版模型: {legacy_model}。点击打开升级面板。'
 
 def check_absent_model(bar_button, state_params):
     #logger.info(f'check_absent_model,state_params:{state_params}')
@@ -2468,6 +2471,33 @@ def check_absent_model(bar_button, state_params):
 def down_absent_model(state_params):
     state_params.update({'bar_button': state_params["bar_button"].replace('\u2B07', '')})
     return gr.update(visible=False), state_params
+
+
+def notify_compat_fallback_once(state_params, preset_name, user_did=None):
+    preset_name = str(preset_name or "").strip()
+    if not preset_name or not isinstance(state_params, dict):
+        return
+    notified = state_params.get("__compat_fallback_notified_presets")
+    if not isinstance(notified, list):
+        notified = []
+        state_params["__compat_fallback_notified_presets"] = notified
+    if preset_name in notified:
+        return
+    try:
+        fallback_models = model_loader.get_fallback_model_list_from_entries(
+            preset_name,
+            state_params.get("__preset_model_list_raw") or [],
+            user_did=user_did,
+            previous_default_info=state_params.get("__preset_previous_default_model_info"),
+        )
+    except Exception:
+        fallback_models = model_loader.get_fallback_model_list(preset_name, user_did=user_did)
+    if not fallback_models:
+        return
+    legacy_model = str((fallback_models[0] or {}).get("legacy_human_name") or (fallback_models[0] or {}).get("legacy_model") or "")
+    state_params["__compat_fallback_notice"] = preset_compat_fallback_note_template.format(legacy_model=legacy_model or "")
+    state_params["__compat_fallback_notice_token"] = f"{preset_name}:{len(notified) + 1}"
+    notified.append(preset_name)
 
 reset_layout_num = 0
 reset_layout_ui_outputs_len = 0
@@ -2594,6 +2624,8 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
     }
     state_params['__preset_output_format'] = config_preset.get('default_output_format', None) if isinstance(config_preset, dict) else None
     state_params['__preset_output_format_loaded'] = True
+    if not args_manager.args.disable_backend and not is_models_file_absent(preset, current_user_did):
+        notify_compat_fallback_once(state_params, preset, user_did=current_user_did)
     preset_url = preset_prepared.get('reference') or get_preset_inc_url(preset, state_params.get("__lang"))
     state_params.update({"__preset_url":preset_url})
     state_params.update({'preset_store': False})
@@ -3691,6 +3723,8 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __refiner_switch_visible=refiner_switch_visible,
         preset_store=state["preset_store"],
         __message='' if "__message" not in state else state["__message"],
+        __compat_fallback_notice=str(state.get("__compat_fallback_notice", "") or ""),
+        __compat_fallback_notice_token=str(state.get("__compat_fallback_notice_token", "") or ""),
         __webpath=state["__webpath"],
         __lang=state.get("__lang"),
         __preset_url=state.get("__preset_url"),

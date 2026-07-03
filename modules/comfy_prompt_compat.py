@@ -182,3 +182,30 @@ def install_queue_prompt_normalizer(comfyclient_pipeline):
     queue_prompt_with_enum_path_normalization._simpai_original_queue_prompt = queue_prompt
     comfyclient_pipeline.queue_prompt = queue_prompt_with_enum_path_normalization
     return True
+
+
+def install_prompt_cancel_support(comfyclient_pipeline):
+    interrupt = getattr(comfyclient_pipeline, "interrupt", None)
+    if not callable(interrupt) or getattr(interrupt, "_simpai_prompt_cancel_support", False):
+        return False
+
+    def interrupt_with_prompt_id(prompt_id=None):
+        target_prompt_id = str(prompt_id or "").strip()
+        if not target_prompt_id:
+            return interrupt()
+
+        endpoint = str(comfyclient_pipeline.server_address())
+        try:
+            with httpx.Client(timeout=20.0) as client:
+                client.post(f"http://{endpoint}/queue", json={"delete": [target_prompt_id]})
+                client.post(f"http://{endpoint}/interrupt", json={"prompt_id": target_prompt_id})
+            logger.info("Cancelled Comfy prompt by id: %s", target_prompt_id)
+            return
+        except Exception as exc:
+            logger.warning("Targeted Comfy prompt cancel failed for %s: %s", target_prompt_id, exc)
+            return interrupt()
+
+    interrupt_with_prompt_id._simpai_prompt_cancel_support = True
+    interrupt_with_prompt_id._simpai_original_interrupt = interrupt
+    comfyclient_pipeline.interrupt = interrupt_with_prompt_id
+    return True

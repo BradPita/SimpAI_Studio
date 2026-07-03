@@ -85,7 +85,25 @@ def _remember_download_task(task_id, *, file_name="", model_dir="", url="", size
     }
 
 
-def _queue_download_restart(task_id, *, file_name="", model_dir="", url="", size=0):
+def _delete_model_file(file_path):
+    file_path = os.path.abspath(str(file_path or "").strip())
+    if not file_path:
+        return False, "empty path"
+    if not os.path.exists(file_path):
+        return False, "file not found"
+    try:
+        os.remove(file_path)
+        try:
+            shared.modelsinfo.refresh_file('delete', file_path, "")
+        except Exception:
+            pass
+        _clear_missing_model_list_cache()
+        return True, ""
+    except Exception as e:
+        return False, str(e or "delete failed")
+
+
+def _queue_download_restart(task_id, *, file_name="", model_dir="", url="", size=0, cleanup_file_path=""):
     if not task_id:
         return
     previous = download_task_metadata.get(task_id) or {}
@@ -101,6 +119,7 @@ def _queue_download_restart(task_id, *, file_name="", model_dir="", url="", size
             "model_dir": model_dir or previous.get("model_dir") or "",
             "url": url or previous.get("url") or "",
             "size": _normalize_expected_size(size or previous.get("size") or 0),
+            "cleanup_file_path": cleanup_file_path or previous.get("cleanup_file_path") or "",
         },
     }
 
@@ -333,6 +352,7 @@ def load_file_from_url(
         async_task: bool = False,
         size: int = 0,
         task_id: Optional[str] = None,
+        cleanup_file_path: Optional[str] = None,
 ) -> str:
     global download_queue
 
@@ -403,8 +423,15 @@ def load_file_from_url(
 
         def _download_task():
             restart_request = None
+            cleanup_error = ""
             try:
                 _download_with_progress_from_urls()
+                if cleanup_file_path:
+                    deleted, cleanup_error = _delete_model_file(cleanup_file_path)
+                    if deleted:
+                        logger.info("旧版兼容模型已删除: %s", cleanup_file_path)
+                    elif cleanup_error not in ("", "file not found"):
+                        logger.warning("删除旧版兼容模型失败: %s (%s)", cleanup_file_path, cleanup_error)
             except DownloadCancelled as e:
                 print(f'下载任务:{effective_task_id} 已停止: {e}')
             except Exception as e:
@@ -414,6 +441,9 @@ def load_file_from_url(
                     download_tasks.discard(effective_task_id)
                     download_cancel_requests.discard(effective_task_id)
                     meta = dict(download_task_metadata.get(effective_task_id) or {})
+                    if cleanup_error:
+                        meta["cleanup_error"] = cleanup_error
+                        download_task_metadata[effective_task_id] = meta
                     restart_request = dict(meta.get("restart_request") or {}) if isinstance(meta.get("restart_request"), dict) else None
                     if restart_request:
                         download_task_metadata.pop(effective_task_id, None)
@@ -436,6 +466,7 @@ def load_file_from_url(
                         async_task=True,
                         size=restart_request.get("size", 0),
                         task_id=effective_task_id,
+                        cleanup_file_path=restart_request.get("cleanup_file_path"),
                     )
         if async_task:
             with task_lock:
@@ -451,6 +482,7 @@ def load_file_from_url(
                             model_dir=model_dir,
                             url=url,
                             size=expected_size,
+                            cleanup_file_path=cleanup_file_path,
                         )
                         print(f"下载任务:{effective_task_id} 正在停止，已记录重试请求。")
                         return
@@ -469,6 +501,8 @@ def load_file_from_url(
                     url=url,
                     size=expected_size,
                 )
+                if cleanup_file_path:
+                    download_task_metadata.setdefault(effective_task_id, {})["cleanup_file_path"] = cleanup_file_path
                 download_progress[effective_task_id] = {
                     "percent": 0.0,
                     "current": 0,
@@ -484,6 +518,12 @@ def load_file_from_url(
                 _download_with_progress_from_urls()
             else:
                 _download_direct_from_urls()
+            if cleanup_file_path:
+                deleted, cleanup_error = _delete_model_file(cleanup_file_path)
+                if deleted:
+                    logger.info("旧版兼容模型已删除: %s", cleanup_file_path)
+                elif cleanup_error not in ("", "file not found"):
+                    logger.warning("删除旧版兼容模型失败: %s (%s)", cleanup_file_path, cleanup_error)
     return cached_file
 
 
@@ -566,16 +606,33 @@ def _is_default_model_entry(cata, path_file, default_model):
     return _same_model_name(path_file, default_model)
 
 def _existing_previous_default_model(cata, previous_default_info, path_file=None):
+    match = _find_previous_default_model_match(cata, previous_default_info, path_file)
+    return str(match.get("previous_model") or "")
+
+
+def _find_previous_default_model_match(cata, previous_default_info, path_file=None):
     if str(cata or "").strip().casefold() not in DEFAULT_MODEL_CATEGORIES:
-        return ""
-    for current_model, previous_models in _iter_previous_default_model_entries(previous_default_info):
+        return {}
+    for current_key, previous_key in PREVIOUS_DEFAULT_MODEL_FIELDS:
+        if not isinstance(previous_default_info, dict):
+            continue
+        current_model = _clean_model_name(previous_default_info.get(current_key))
+        previous_models = _clean_previous_model_list(previous_default_info.get(previous_key, []))
+        if not current_model or not previous_models:
+            continue
         if path_file is not None and not _same_model_name(path_file, current_model):
             continue
         for previous_model in previous_models:
             file_path = _resolve_model_filepath(cata, previous_model)
             if file_path and os.path.exists(file_path):
-                return previous_model
-    return ""
+                return {
+                    "current_key": current_key,
+                    "previous_key": previous_key,
+                    "current_model": current_model,
+                    "previous_model": previous_model,
+                    "file_path": file_path,
+                }
+    return {}
 
 def resolve_preset_default_model_choice(default_model, previous_default_models=None, catalogs=("checkpoints", "diffusion_models", "unet")):
     current = _clean_model_name(default_model)
@@ -665,6 +722,45 @@ def _build_missing_model_details(model_list, previous_default_info=None):
         missing_models_with_details.append((cata, path_file, human_size, url, size))
 
     return missing_models_with_details
+
+
+def _build_fallback_model_details(model_list, previous_default_info=None):
+    fallback_models_with_details = []
+    previous_default_info = previous_default_info or {}
+
+    for cata, path_file, size, hash10, url in model_list:
+        url = str(url or '').strip().strip('`')
+
+        if path_file[:1] == '[' and path_file[-1:] == ']':
+            continue
+
+        file_path = _resolve_model_filepath(cata, path_file)
+        if file_path and os.path.exists(file_path) and _file_size_matches(file_path, size):
+            continue
+
+        legacy_match = _find_previous_default_model_match(cata, previous_default_info, path_file)
+        if not legacy_match:
+            continue
+
+        human_size = format_size(size)
+        if not url:
+            url = f'{default_download_url_prefix}/{cata}/{path_file}'
+        fallback_models_with_details.append(
+            {
+                "cata": str(cata or ""),
+                "path_file": str(path_file or ""),
+                "human_size": human_size,
+                "url": url,
+                "size": size,
+                "legacy_model": str(legacy_match.get("previous_model") or ""),
+                "legacy_path": str(legacy_match.get("file_path") or ""),
+                "legacy_human_name": os.path.basename(str(legacy_match.get("previous_model") or "")) or str(legacy_match.get("previous_model") or ""),
+                "current_model": str(legacy_match.get("current_model") or path_file or ""),
+                "current_key": str(legacy_match.get("current_key") or ""),
+            }
+        )
+
+    return fallback_models_with_details
 
 def _resolve_model_filepath(cata: str, path_file: str) -> str:
     try:
@@ -904,6 +1000,41 @@ def get_missing_model_list(preset_name, user_did=None):
 
     return missing_models_with_details
 
+
+def get_fallback_model_list(preset_name, user_did=None):
+    global missing_model_list_cache
+
+    cached_name, model_list, source_mtime = _get_cached_preset_model_list(preset_name, user_did)
+    preset_path = ''
+    source_key = cached_name or preset_name
+
+    if model_list is None:
+        preset_path = _get_preset_file_for_missing_models(preset_name, user_did)
+        if not preset_path or not os.path.exists(preset_path):
+            return []
+        source_mtime = os.path.getmtime(preset_path)
+        source_key = preset_path
+
+    cache_key = (f'fallback:{source_key}', user_did or '', source_mtime, len(model_list or ()))
+    now = time.monotonic()
+    cached = missing_model_list_cache.get(cache_key)
+    if cached and now - cached[0] <= missing_model_list_cache_ttl:
+        return list(cached[1])
+
+    previous_default_info = {}
+    if cached_name:
+        previous_default_info = presets_previous_default_models.get(cached_name, {})
+
+    if model_list is None:
+        with open(preset_path, "r", encoding="utf-8") as json_file:
+            config_preset = json.load(json_file)
+        model_list = _parse_model_list_entries(config_preset.get('model_list', []))
+        previous_default_info = _preset_previous_default_model_info(config_preset)
+
+    fallback_models_with_details = _build_fallback_model_details(model_list, previous_default_info)
+    missing_model_list_cache[cache_key] = (now, tuple(fallback_models_with_details))
+    return fallback_models_with_details
+
 def get_missing_model_list_from_entries(preset_name, raw_model_list, user_did=None, source_mtime=0, previous_default_info=None):
     global missing_model_list_cache
 
@@ -926,13 +1057,36 @@ def get_missing_model_list_from_entries(preset_name, raw_model_list, user_did=No
     missing_model_list_cache[cache_key] = (now, tuple(missing_models_with_details))
     return missing_models_with_details
 
+
+def get_fallback_model_list_from_entries(preset_name, raw_model_list, user_did=None, source_mtime=0, previous_default_info=None):
+    global missing_model_list_cache
+
+    if not raw_model_list:
+        return []
+
+    if isinstance(previous_default_info, dict):
+        previous_default_info = _preset_previous_default_model_info(previous_default_info)
+    elif previous_default_info is None:
+        previous_default_info = {}
+
+    cache_key = (f'inline-fallback:{preset_name}', user_did or '', source_mtime or 0, len(raw_model_list or ()), repr(previous_default_info))
+    now = time.monotonic()
+    cached = missing_model_list_cache.get(cache_key)
+    if cached and now - cached[0] <= missing_model_list_cache_ttl:
+        return list(cached[1])
+
+    model_list = _parse_model_list_entries(raw_model_list)
+    fallback_models_with_details = _build_fallback_model_details(model_list, previous_default_info)
+    missing_model_list_cache[cache_key] = (now, tuple(fallback_models_with_details))
+    return fallback_models_with_details
+
 def get_download_status(file_name):
     global download_progress
     return download_progress.get(file_name)
 
 default_download_url_prefix = 'https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels'
 
-def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async_task=True):
+def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async_task=True, cleanup_file_path=None):
     from modules.config import path_models_root, model_cata_map
     global default_download_url_prefix
 
@@ -1014,6 +1168,7 @@ def download_model_entry(cata, path_file, size=0, url=None, user_did=None, async
         async_task=async_task,
         size=size,
         task_id=task_id,
+        cleanup_file_path=cleanup_file_path,
     )
     return task_id
 

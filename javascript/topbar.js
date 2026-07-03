@@ -4056,6 +4056,63 @@ if (!window.__simpaiSceneDirectorPresetVisibilityBound) {
     } catch (e) {}
 }
 
+let simpaiCompatFallbackToastTimer = null;
+let simpaiLastCompatFallbackNoticeToken = null;
+
+function showCompatFallbackToast(message, presetName) {
+    const text = String(message || "").trim();
+    if (!text) return;
+    let toast = document.getElementById("simpai_compat_fallback_toast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "simpai_compat_fallback_toast";
+        toast.setAttribute("role", "status");
+        toast.setAttribute("aria-live", "polite");
+        toast.style.cssText = [
+            "position:fixed",
+            "right:18px",
+            "bottom:18px",
+            "z-index:2147483000",
+            "max-width:min(420px,calc(100vw - 36px))",
+            "padding:10px 14px",
+            "border-radius:8px",
+            "background:rgba(32,34,39,.96)",
+            "color:#fff",
+            "border:1px solid rgba(255,255,255,.18)",
+            "box-shadow:0 12px 32px rgba(0,0,0,.32)",
+            "font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif",
+            "pointer-events:auto",
+            "cursor:pointer"
+        ].join(";");
+        toast.tabIndex = 0;
+        toast.addEventListener("click", () => {
+            const activePreset = String(toast.getAttribute("data-preset") || "").trim();
+            if (!activePreset) return;
+            try {
+                if (typeof triggerMissingModelCheckForPreset === "function") {
+                    triggerMissingModelCheckForPreset(activePreset);
+                }
+            } catch (e) {
+                console.warn("[UI-TRACE] compat_fallback_toast.open_panel_failed", e);
+            }
+        });
+        toast.addEventListener("keydown", (event) => {
+            if (!event || (event.key !== "Enter" && event.key !== " ")) return;
+            event.preventDefault();
+            toast.click();
+        });
+        (document.body || document.documentElement).appendChild(toast);
+    }
+    toast.setAttribute("data-preset", String(presetName || "").trim());
+    toast.setAttribute("title", text);
+    toast.textContent = text;
+    toast.hidden = false;
+    if (simpaiCompatFallbackToastTimer) clearTimeout(simpaiCompatFallbackToastTimer);
+    simpaiCompatFallbackToastTimer = window.setTimeout(() => {
+        toast.hidden = true;
+    }, 4200);
+}
+
 function refresh_topbar_status_js(system_params) {
     markUiAction("refresh_topbar_status_js");
     try {
@@ -4086,6 +4143,12 @@ function refresh_topbar_status_js(system_params) {
     preserveFinishedGalleryBrowserFolderInParams(system_params, "refresh_topbar_status_js");
     topbarLastSystemParams = system_params;
     window.simpleaiTopbarSystemParams = system_params;
+    const compatFallbackNoticeToken = String(system_params["__compat_fallback_notice_token"] || "");
+    const compatFallbackNotice = String(system_params["__compat_fallback_notice"] || "");
+    if (compatFallbackNotice && compatFallbackNoticeToken && compatFallbackNoticeToken !== simpaiLastCompatFallbackNoticeToken) {
+        simpaiLastCompatFallbackNoticeToken = compatFallbackNoticeToken;
+        showCompatFallbackToast(compatFallbackNotice, system_params["__preset"]);
+    }
     syncSceneDirectorPresetVisibility(system_params, "refresh_topbar_status_js");
     try {
         window.dispatchEvent(new CustomEvent("simpai:system-params-updated", { detail: system_params }));

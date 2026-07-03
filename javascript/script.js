@@ -7043,6 +7043,10 @@ function initMissingModelPopup() {
     content.__simpleaiMissingModelPopupResize = popupResize;
 
     const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const suspendModalRefresh = (holdMs = 0) => {
+        const until = Date.now() + Math.max(0, Number(holdMs) || 0);
+        window.__missingModelModalSuspendUntil = Math.max(window.__missingModelModalSuspendUntil || 0, until);
+    };
     const ensureCapsuleVisibility = () => {
         try { restoreGradioComponentVisibility(content, { interactive: false }); } catch (e) {}
         try { restoreGradioComponentVisibility(header, { interactive: false }); } catch (e) {}
@@ -7072,6 +7076,20 @@ function initMissingModelPopup() {
     };
     const isMinimized = () => content.classList.contains('minimized') || content.dataset.simpleaiMissingModelMinimized === '1';
     const setMinimized = (nextValue) => {
+        const currentMinimized = isMinimized();
+        if (nextValue === currentMinimized) {
+            if (nextValue) {
+                ensureCapsuleVisibility();
+                setImportantStyle(content, 'width', '280px');
+                setImportantStyle(content, 'min-width', '0');
+                setImportantStyle(content, 'max-width', 'calc(100vw - 24px)');
+                setImportantStyle(content, 'height', '54px');
+                setImportantStyle(content, 'min-height', '54px');
+                setImportantStyle(content, 'max-height', '54px');
+                setImportantStyle(content, 'overflow', 'hidden');
+            }
+            return;
+        }
         if (nextValue) {
             ensureCapsuleVisibility();
             const rect = content.getBoundingClientRect();
@@ -7163,6 +7181,7 @@ function initMissingModelPopup() {
 
     const onMove = (e) => {
         if (!dragging) return;
+        suspendModalRefresh(4000);
         const x = e.clientX ?? 0;
         const y = e.clientY ?? 0;
         const rect = content.getBoundingClientRect();
@@ -7182,6 +7201,7 @@ function initMissingModelPopup() {
                 dragPointerTarget.releasePointerCapture(dragPointerId);
             } catch (err) {}
         }
+        suspendModalRefresh(1200);
         clearDragState();
         window.removeEventListener('pointermove', onMove, true);
         window.removeEventListener('pointerup', onUp, true);
@@ -7200,6 +7220,7 @@ function initMissingModelPopup() {
     const onDown = (e) => {
         if (e.button !== 0) return;
         if (getComputedStyle(modal).display === 'none') return;
+        suspendModalRefresh(4000);
         const rect = content.getBoundingClientRect();
         dragging = true;
         content.dataset.simpleaiDragActive = '1';
@@ -7954,6 +7975,7 @@ window.triggerMissingModelCheckForPreset = triggerMissingModelCheckForPreset;
 window.__missingModelRefreshInFlight = false;
 window.__missingModelNavRefreshInFlight = false;
 window.__missingModelNavRefreshUntil = 0;
+window.__missingModelModalSuspendUntil = 0;
 
 function startMissingModelDownloadNavMonitor(reason) {
     window.__missingModelNavRefreshUntil = Math.max(window.__missingModelNavRefreshUntil || 0, Date.now() + 30 * 60 * 1000);
@@ -8048,6 +8070,7 @@ function isMissingModelPopupVisibleForRefresh() {
 function requestMissingModelModalRefresh() {
     if (window.__missingModelRefreshInFlight) return;
     if (!isMissingModelPopupVisibleForRefresh()) return;
+    if ((window.__missingModelModalSuspendUntil || 0) > Date.now()) return;
     const content = document.getElementById('missing_model_modal_content');
     if (content && (content.dataset.simpleaiDragActive === '1' || content.dataset.simpleaiResizeActive === '1')) {
         return;
@@ -8056,13 +8079,13 @@ function requestMissingModelModalRefresh() {
     window.__missingModelRefreshInFlight = true;
     window.setTimeout(() => {
         window.__missingModelRefreshInFlight = false;
-    }, 2500);
+    }, 4000);
     if (!clickGradioButton('missing_model_refresh_btn')) {
         window.__missingModelRefreshInFlight = false;
     }
 }
 
-setInterval(requestMissingModelModalRefresh, 1500);
+setInterval(requestMissingModelModalRefresh, 3000);
 setInterval(requestMissingModelNavRefresh, 3000);
 
 function resyncMissingModelCheckHintIfReady() {
