@@ -2798,6 +2798,7 @@
             exitPanFloating,
             beginPanGesture,
             endPanGesture,
+            hasImage: () => hasImage,
             isFullscreen: () => fullscreenMode,
             isPanFloating: () => panFloatingMode,
             enterCropMode,

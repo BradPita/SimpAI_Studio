@@ -4914,8 +4914,10 @@ function _rc_profileRatioBaseDims(value) {
         const label = text.includes("|") ? text.split("|").slice(1).join("|").trim() : "";
         return { origin: true, label: label || "Origin" };
     }
-    const size = parseInt(pipe, 10);
-    if (size > 0) return { width: size, height: size, label: pipe };
+    if (/^\d+$/.test(pipe)) {
+        const size = parseInt(pipe, 10);
+        if (size > 0) return { width: size, height: size, label: pipe };
+    }
     const explicit = text.replace("*", "x").replace("\u00d7", "x").match(/^(\d+)\s*x\s*(\d+)/i);
     if (explicit) {
         return { width: parseInt(explicit[1], 10), height: parseInt(explicit[2], 10), label: text };
@@ -4942,27 +4944,57 @@ function _rc_readImageSource(sourceIds) {
         if (!(width >= 64 && height >= 64)) return;
         candidates.push({ node, width, height, kind, area: width * height });
     };
+    const readSketchApi = (root) => {
+        if (!root) return null;
+        try {
+            if (window.SimpAISketch && typeof window.SimpAISketch.get === 'function') {
+                return window.SimpAISketch.get(root)
+                    || window.SimpAISketch.get(root.querySelector?.('[data-simpai-sketch="1"], .simpai-custom-sketch-source'));
+            }
+        } catch (e) {
+        }
+        return root.__simpaiSketch
+            || root.querySelector?.('[data-simpai-sketch="1"]')?.__simpaiSketch
+            || root.querySelector?.('.simpai-custom-sketch-source')?.__simpaiSketch
+            || null;
+    };
     const meta = _rc_readSourceMeta();
     for (const id of sourceIds || []) {
         const root = _rc_getRoot(id);
         if (!root) continue;
         const sourceMeta = meta && typeof meta === 'object' ? meta[id] : null;
+        const sketchRoot = root.matches?.('[data-simpai-sketch="1"], .simpai-custom-sketch-source')
+            ? root
+            : root.querySelector?.('[data-simpai-sketch="1"], .simpai-custom-sketch-source');
+        const sketchStage = sketchRoot?.querySelector?.('.simpai-sketch__stage');
+        const sketchLooksEmpty = !!(sketchRoot && sketchStage && !sketchStage.classList.contains('has-image'));
+        const sketchApi = readSketchApi(root) || readSketchApi(sketchRoot);
+        if (!(sourceMeta && sourceMeta.width > 0 && sourceMeta.height > 0) && sketchLooksEmpty) {
+            continue;
+        }
+        if (!(sourceMeta && sourceMeta.width > 0 && sourceMeta.height > 0) && sketchApi && typeof sketchApi.hasImage === 'function' && !sketchApi.hasImage()) {
+            continue;
+        }
         if (sourceMeta && sourceMeta.width > 0 && sourceMeta.height > 0) {
             const mediaNode = root.querySelector('video, img, canvas');
             if (mediaNode) pushCandidate(mediaNode, sourceMeta.width, sourceMeta.height, sourceMeta.kind || 'meta');
         }
         const images = Array.from(root.querySelectorAll('img'));
         for (const img of images) {
+            if (typeof simpleaiMediaNodeHasSource === 'function' && !simpleaiMediaNodeHasSource(img)) continue;
             const width = img.naturalWidth || img.videoWidth || img.width || img.clientWidth;
             const height = img.naturalHeight || img.videoHeight || img.height || img.clientHeight;
             pushCandidate(img, width, height, 'img');
         }
         const canvases = Array.from(root.querySelectorAll('canvas'));
         for (const canvas of canvases) {
+            const stage = canvas.closest?.('.simpai-sketch__stage');
+            if (stage && !stage.classList.contains('has-image')) continue;
             pushCandidate(canvas, canvas.width, canvas.height, 'canvas');
         }
         const videos = Array.from(root.querySelectorAll('video'));
         for (const video of videos) {
+            if (typeof simpleaiMediaNodeHasSource === 'function' && !simpleaiMediaNodeHasSource(video)) continue;
             const width = video.videoWidth || video.width || video.clientWidth;
             const height = video.videoHeight || video.height || video.clientHeight;
             pushCandidate(video, width, height, 'video');
@@ -5257,7 +5289,7 @@ function initResolutionControlWidget(widget, options = {}) {
         widget.classList.toggle('resolution-ratio-custom-active', !!customEnabled);
         syncOriginalInputControls();
     };
-    const syncAccordionTitle = (width, height) => {
+    const syncAccordionTitle = (width, height, options = {}) => {
         const accordion = widget.closest('#aspect_ratios_accordion') || _rc_getRoot('aspect_ratios_accordion');
         if (!accordion) return;
         const header = accordion.querySelector('summary, .label-wrap, [role="button"]');
@@ -5279,7 +5311,9 @@ function initResolutionControlWidget(widget, options = {}) {
         const titlePrefix = currentTitleText.startsWith('\u5206\u8fa8\u7387') ? '\u5206\u8fa8\u7387' : 'Resolution';
         const ratioMatch = selectedText.match(/(?:\||\s)(\d+\s*:\s*\d+)(?:\s|$|\])/);
         const ratio = ratioMatch ? ratioMatch[1].replace(/\s+/g, "") : _rc_simplifiedRatioLabel(width, height);
-        const title = `${titlePrefix} - ${width}\u00d7${height}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`;
+        const title = options && options.waitingOriginal
+            ? `${titlePrefix} - ${titlePrefix === '\u5206\u8fa8\u7387' ? '\u539f\u59cb\u5c3a\u5bf8' : 'Original'}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`
+            : `${titlePrefix} - ${width}\u00d7${height}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`;
         if (textNode) {
             textNode.nodeValue = textNode.nodeValue.replace(/(?:Resolution|\u5206\u8fa8\u7387)(?:\s*[-–].*)?/, title);
             return;
@@ -5298,6 +5332,7 @@ function initResolutionControlWidget(widget, options = {}) {
         const profile = getActiveProfile();
         if (!profileUsesProjectedChoices(profile)) return null;
         const source = readImageSource(getSourceIds());
+        const hasSource = !!(source && source.width > 0 && source.height > 0);
         const ratios = Array.isArray(profile.aspect_ratios) && profile.aspect_ratios.length
             ? profile.aspect_ratios
             : [`${profile.base_width || 640}|1:1`];
@@ -5308,7 +5343,7 @@ function initResolutionControlWidget(widget, options = {}) {
             if (!base) continue;
             let dims = { width: base.width, height: base.height };
             if (base.origin) {
-                if (!source || !(source.width > 0 && source.height > 0)) {
+                if (!hasSource) {
                     const value = 'origin|Original';
                     if (seen.has(value)) continue;
                     seen.add(value);
@@ -5322,7 +5357,7 @@ function initResolutionControlWidget(widget, options = {}) {
                     continue;
                 }
                 dims = { width: source.width, height: source.height };
-            } else if (source) {
+            } else if (hasSource) {
                 dims = _rc_projectKeepInputArea(source.width, source.height, base.width, base.height, profileStep(profile) || readStep());
             }
             const value = base.origin ? `${dims.width}\u00d7${dims.height}|origin` : `${dims.width}\u00d7${dims.height}|${base.width}x${base.height}`;
@@ -5334,6 +5369,7 @@ function initResolutionControlWidget(widget, options = {}) {
                 width: dims.width,
                 height: dims.height,
                 base,
+                pendingSource: !hasSource && !base.origin,
             });
         }
         return choices;
@@ -5370,12 +5406,18 @@ function initResolutionControlWidget(widget, options = {}) {
         if (base) return base.origin ? 'origin' : `${base.width}x${base.height}`;
         return text.toLowerCase().replace(/\s+/g, '');
     };
+    const projectedProfileBaseKeys = () => {
+        const profile = getActiveProfile();
+        const ratios = Array.isArray(profile.aspect_ratios) && profile.aspect_ratios.length
+            ? profile.aspect_ratios
+            : [`${profile.base_width || 640}|1:1`];
+        return ratios.map((item) => projectedChoiceKey(item)).filter(Boolean);
+    };
     const defaultProjectedChoiceKey = () => {
         const selectedKey = projectedChoiceKey(readSelection());
-        if (selectedKey) return selectedKey;
-        const profile = getActiveProfile();
-        const ratios = Array.isArray(profile.aspect_ratios) ? profile.aspect_ratios : [];
-        return ratios.length ? projectedChoiceKey(ratios[0]) : '';
+        const baseKeys = projectedProfileBaseKeys();
+        if (selectedKey && baseKeys.includes(selectedKey)) return selectedKey;
+        return baseKeys.length ? baseKeys[0] : (selectedKey || '');
     };
     const getProjectedChoiceByKey = (key) => {
         const normalized = String(key || '').trim();
@@ -5549,10 +5591,16 @@ function initResolutionControlWidget(widget, options = {}) {
         const mode = profileMode(profile);
         const ow = _ro_getSliderValue(targetWidthId);
         const oh = _ro_getSliderValue(targetHeightId);
+        const source = mode ? readImageSource(getSourceIds()) : null;
+        if (profileUsesProjectedChoices(profile)) {
+            const projectedKey = projectedChoiceKey(widget.__rc_projected_choice_key || defaultProjectedChoiceKey());
+            if (projectedKey === 'origin' && !source) {
+                return { width: 0, height: 0, manual: false, profileMode: mode, waitingOriginal: true };
+            }
+        }
         if (profileUsesProjectedChoices(profile) && _rc_getCheckboxValue(targetOverrideId) && ow != null && oh != null && ow > 0 && oh > 0 && !hasProjectedChoiceForHiddenSize()) {
             return { width: ow, height: oh, manual: true, profileMode: mode };
         }
-        const source = mode ? readImageSource(getSourceIds()) : null;
         if (mode === 'input_passthrough' && source) {
             return { width: source.width, height: source.height, manual: false, source, profileMode: mode };
         }
@@ -5702,6 +5750,16 @@ function initResolutionControlWidget(widget, options = {}) {
     const commitProjectedChoice = (choice, commit = true) => {
         if (!choice) return false;
         const choiceKey = projectedChoiceKey(choice.value);
+        if (choice.pendingSource) {
+            setHiddenOverride(false, commit);
+            _ro_setSliderValue(targetWidthId, -1, { commit });
+            _ro_setSliderValue(targetHeightId, -1, { commit });
+            widget.__rc_projected_choice_key = choiceKey;
+            widget.__rc_user_custom_resolution = false;
+            widget.__rc_force_projected_default = true;
+            writeSelection(useSceneSelection() ? choice.value : `${choice.value},${getActiveNonSceneTemplate(Object.keys(getRatios()))}`, commit);
+            return true;
+        }
         if (!(choice.width > 0 && choice.height > 0)) {
             if (choiceKey === 'origin') {
                 setHiddenOverride(false, commit);
@@ -5884,8 +5942,15 @@ function initResolutionControlWidget(widget, options = {}) {
             const currentHeight = _ro_getSliderValue(targetHeightId);
             const hasValidOverride = currentWidth > 0 && currentHeight > 0;
             const sourceReady = !!readImageSource(getSourceIds());
-            const waitingForOriginalSource = !sourceReady && !hasValidOverride && projectedChoiceKey(widget.__rc_projected_choice_key || defaultProjectedChoiceKey()) === 'origin';
-            if (!waitingForOriginalSource && ((widget.__rc_force_projected_default && sourceReady) || !hasValidOverride)) {
+            const projectedKey = projectedChoiceKey(widget.__rc_projected_choice_key || defaultProjectedChoiceKey());
+            if (!sourceReady && hasValidOverride && !widget.__rc_user_custom_resolution) {
+                setHiddenOverride(false, true);
+                _ro_setSliderValue(targetWidthId, -1, { commit: true });
+                _ro_setSliderValue(targetHeightId, -1, { commit: true });
+            }
+            const hasValidOverrideNow = _ro_getSliderValue(targetWidthId) > 0 && _ro_getSliderValue(targetHeightId) > 0;
+            const waitingForOriginalSource = !sourceReady && projectedKey === 'origin' && !hasValidOverrideNow;
+            if (!waitingForOriginalSource && ((widget.__rc_force_projected_default && sourceReady) || !hasValidOverrideNow)) {
                 commitProjectedChoice(getRememberedProjectedChoice() || getFirstProjectedChoice(), true);
             }
         }
@@ -5910,20 +5975,30 @@ function initResolutionControlWidget(widget, options = {}) {
 
     function render() {
         const dims = getCurrentDims();
+        const waitingOriginal = !!(dims && dims.waitingOriginal);
         syncRatioLockControls();
         const multiplier = parseFloat(multiplierInput.value || "1") || 1;
         const step = readStep();
         syncDimensionInputStep();
-        const effectiveW = _rc_quantize(dims.width * multiplier, step);
-        const effectiveH = _rc_quantize(dims.height * multiplier, step);
-        if (document.activeElement !== wInput) wInput.value = (dims.manual || dims.profileMode) ? String(dims.width) : "-1";
-        if (document.activeElement !== hInput) hInput.value = (dims.manual || dims.profileMode) ? String(dims.height) : "-1";
-        if (rectLabel) rectLabel.textContent = `${effectiveW}\u00d7${effectiveH}`;
-        syncAccordionTitle(effectiveW, effectiveH);
+        const effectiveW = waitingOriginal ? 0 : _rc_quantize(dims.width * multiplier, step);
+        const effectiveH = waitingOriginal ? 0 : _rc_quantize(dims.height * multiplier, step);
+        if (document.activeElement !== wInput) wInput.value = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1");
+        if (document.activeElement !== hInput) hInput.value = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.height) : "-1");
+        if (rectLabel) rectLabel.textContent = waitingOriginal ? ((ratioSelect && ratioSelect.selectedOptions && ratioSelect.selectedOptions[0] && (ratioSelect.selectedOptions[0].textContent || '').trim()) || 'Original') : `${effectiveW}\u00d7${effectiveH}`;
+        syncAccordionTitle(effectiveW, effectiveH, { waitingOriginal });
         if (status) {
-            const sourceText = dims.source ? `${dims.source.width}\u00d7${dims.source.height}` : `${dims.width}\u00d7${dims.height}`;
-            status.textContent = `${sourceText} \u2192 ${effectiveW}\u00d7${effectiveH}`;
+            if (waitingOriginal) {
+                status.textContent = '';
+            } else {
+                const sourceText = dims.source ? `${dims.source.width}\u00d7${dims.source.height}` : `${dims.width}\u00d7${dims.height}`;
+                status.textContent = `${sourceText} \u2192 ${effectiveW}\u00d7${effectiveH}`;
+            }
         }
+        if (waitingOriginal) {
+            rect.style.display = 'none';
+            return;
+        }
+        rect.style.display = '';
 
         const padW = Math.max(1, pad.clientWidth || 1);
         const padH = Math.max(1, pad.clientHeight || 1);
