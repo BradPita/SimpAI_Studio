@@ -31,6 +31,7 @@ import ldm_patched.modules.model_management
 import logging
 import threading
 import time
+from urllib.parse import urlsplit
 from ui.update_helpers import dataset_update, skip_update
 from gradio.route_utils import API_PREFIX
 from enhanced.logger import format_name
@@ -64,6 +65,97 @@ def _get_request_client_host_port(request):
     if isinstance(client, (tuple, list)) and len(client) >= 2:
         return str(client[0]), client[1]
     return str(getattr(client, "host", "") or ""), getattr(client, "port", "")
+
+def _first_forwarded_header_value(value):
+    return str(value or "").split(",", 1)[0].strip().strip('"')
+
+def _parse_forwarded_header(request):
+    forwarded = _get_request_header(request, "forwarded", "")
+    if not forwarded:
+        return {}
+    first_entry = str(forwarded).split(",", 1)[0]
+    values = {}
+    for part in first_entry.split(";"):
+        if "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        key = str(key or "").strip().lower()
+        value = str(raw_value or "").strip().strip('"')
+        if key and value:
+            values[key] = value
+    return values
+
+def _host_has_explicit_port(host):
+    text = str(host or "").strip()
+    if not text:
+        return False
+    if text.startswith("["):
+        return "]:" in text
+    return text.count(":") == 1
+
+def _append_port_to_host(host, port):
+    text = str(host or "").strip()
+    port_text = str(port or "").strip()
+    if not text or not port_text or _host_has_explicit_port(text):
+        return text
+    if ":" in text and not text.startswith("["):
+        return f"[{text}]:{port_text}"
+    return f"{text}:{port_text}"
+
+def _get_request_origin(request, default=""):
+    origin_header = _first_forwarded_header_value(_get_request_header(request, "origin", ""))
+    if origin_header.startswith(("http://", "https://")):
+        parsed_origin = urlsplit(origin_header)
+        if parsed_origin.scheme and parsed_origin.netloc:
+            return f"{parsed_origin.scheme}://{parsed_origin.netloc}"
+
+    forwarded = _parse_forwarded_header(request)
+    forwarded_host = _first_forwarded_header_value(
+        forwarded.get("host")
+        or _get_request_header(request, "x-forwarded-host", "")
+        or _get_request_host_header(request, "")
+    )
+    forwarded_port = _first_forwarded_header_value(
+        _get_request_header(request, "x-forwarded-port", "")
+    )
+    host = _append_port_to_host(forwarded_host, forwarded_port)
+    if not host:
+        return default
+
+    scheme = _first_forwarded_header_value(
+        forwarded.get("proto")
+        or _get_request_header(request, "x-forwarded-proto", "")
+        or _get_request_header(request, "x-forwarded-scheme", "")
+    )
+    if not scheme:
+        request_url = getattr(request, "url", None)
+        scheme = str(getattr(request_url, "scheme", "") or "").strip()
+    if not scheme:
+        scope = getattr(request, "scope", None)
+        if isinstance(scope, dict):
+            scheme = str(scope.get("scheme", "") or "").strip()
+    if scheme not in ("http", "https"):
+        scheme = "http"
+    return f"{scheme}://{host}"
+
+def _get_request_base_url(request, origin=None, default=""):
+    request_origin = str(origin or "").strip() or _get_request_origin(request, default="")
+    if not request_origin:
+        return default
+    webroot = str(getattr(args_manager.args, "webroot", "") or "").strip()
+    if webroot and not webroot.startswith("/"):
+        webroot = "/" + webroot
+    return f"{request_origin}{webroot.rstrip('/')}"
+
+def _update_request_web_state(state_params, request):
+    if not isinstance(state_params, dict):
+        return
+    if "__webpath" not in state_params.keys():
+        state_params.update({"__webpath": f'{args_manager.args.webroot}/file={os.getcwd()}'})
+    request_origin = _get_request_origin(request, "")
+    if request_origin:
+        state_params["__origin"] = request_origin
+        state_params["__base_url"] = _get_request_base_url(request, origin=request_origin)
 
 # app context
 system_message = ''
@@ -921,8 +1013,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
         state_params.update({"__preset": initial_preset})
     if "__is_mobile" not in state_params.keys():
         state_params.update({"__is_mobile": False if user_agent.find("Mobile")>0 and user_agent.find("AppleWebKit")>0 else False})
-    if "__webpath" not in state_params.keys():
-        state_params.update({"__webpath": f'{args_manager.args.webroot}/file={os.getcwd()}'})
+    _update_request_web_state(state_params, request)
     if "__max_per_page" not in state_params.keys():
         if state_params["__is_mobile"]:
             state_params.update({"__max_per_page": 9})
