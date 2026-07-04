@@ -106,6 +106,9 @@ _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = False
 _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = 0
 _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
+_SOURCE_BACKEND_BOOTSTRAP_PACKAGES: tuple[tuple[str, str], ...] = (
+    ("comfy-kitchen", "0.2.16"),
+)
 
 
 def _default_data_root() -> Path:
@@ -194,6 +197,75 @@ def _source_backend_python_executable(data_root: Path) -> str:
     if source_python_no_ext.is_file():
         return str(source_python_no_ext)
     return sys.executable
+
+
+def _python_package_version(python_executable: str, package: str) -> str | None:
+    probe_code = (
+        "import importlib.metadata as m, sys\n"
+        "package = sys.argv[1]\n"
+        "try:\n"
+        "    print(m.version(package))\n"
+        "except Exception:\n"
+        "    raise SystemExit(1)\n"
+    )
+    try:
+        result = subprocess.run(
+            [python_executable, "-s", "-c", probe_code, package],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    version = str(result.stdout or "").strip()
+    return version or None
+
+
+def _ensure_source_backend_bootstrap_packages(python_executable: str) -> None:
+    for package, version in _SOURCE_BACKEND_BOOTSTRAP_PACKAGES:
+        installed_version = _python_package_version(python_executable, package)
+        if installed_version == version:
+            continue
+
+        requirement = f"{package}=={version}"
+        if installed_version:
+            _print_source_backend_log(
+                f"source backend bootstrap requires {requirement}; found {package}=={installed_version}, upgrading."
+            )
+        else:
+            _print_source_backend_log(
+                f"source backend bootstrap requires {requirement}; package is missing, installing."
+            )
+
+        try:
+            result = subprocess.run(
+                [python_executable, "-s", "-m", "pip", "install", "-U", "--prefer-binary", requirement],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                cwd=str(ROOT),
+            )
+        except Exception as exc:
+            _print_source_backend_log(f"source backend bootstrap failed to install {requirement}: {type(exc).__name__}: {exc}")
+            continue
+
+        if result.returncode == 0:
+            _print_source_backend_log(f"source backend bootstrap installed {requirement}.")
+            continue
+
+        output = _tail(str(result.stdout or ""))
+        suffix = f" output={output}" if output else ""
+        _print_source_backend_log(
+            f"source backend bootstrap failed to install {requirement}; exit_code={result.returncode}.{suffix}"
+        )
 
 
 def _tail(text: str, limit: int = 4000) -> str:
@@ -976,6 +1048,7 @@ class _SourceBackendSession:
             return self._process
         self.stop()
         python_executable = _source_backend_python_executable(data_root)
+        _ensure_source_backend_bootstrap_packages(python_executable)
         command = [
             python_executable,
             "-s",

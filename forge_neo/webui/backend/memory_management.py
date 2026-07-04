@@ -583,6 +583,35 @@ def bake_gguf_model(model):
 current_loaded_models: list["LoadedModel"] = []
 
 
+def _loaded_model_name(model: object) -> str:
+    model_obj = getattr(model, "model", None)
+    if model_obj is None:
+        return type(model).__name__
+    return model_obj.__class__.__name__
+
+
+def _detach_loaded_model_finalizer(finalizer, *, model_name: str, reason: str) -> bool:
+    if finalizer is None:
+        logger.debug("Skipping model finalizer detach for {} during {} because finalizer is None".format(model_name, reason))
+        return False
+    finalizer.detach()
+    return True
+
+
+def _is_text_encoder_model(model: object) -> bool:
+    return _loaded_model_name(model) == "JointTextEncoder"
+
+
+def _model_weight_reserve_memory(model: "ModelPatcher") -> float:
+    if _is_text_encoder_model(model):
+        return extra_reserved_memory()
+    return sampling_headroom_memory()
+
+
+def _model_enforces_sampling_headroom(model: "ModelPatcher") -> bool:
+    return not _is_text_encoder_model(model)
+
+
 def module_size(module: torch.nn.Module) -> int:
     module_mem = 0
     sd = module.state_dict()
@@ -663,7 +692,11 @@ class LoadedModel:
                 if freed >= memory_to_free:
                     return False
         self.model.detach(unpatch_weights)
-        self.model_finalizer.detach()
+        _detach_loaded_model_finalizer(
+            self.model_finalizer,
+            model_name=_loaded_model_name(self.model),
+            reason="model_unload",
+        )
         self.model_finalizer = None
         self.real_model = None
         return True
@@ -815,7 +848,17 @@ def _reload_model_with_adaptive_lowvram_budget(loaded_model: "LoadedModel", mode
     current_free_mem = _weight_budget_free_memory(model, torch_dev, loaded_memory)
     lowvram_model_memory = _adaptive_lowvram_model_memory(model_memory, current_free_mem, headroom, loaded_memory)
     load_margin = _source_patcher_weight_load_margin(model_memory, headroom)
-    logger.info("Reloading {} with adaptive low VRAM budget, margin {:.2f} MB, budget {}".format(model.model.__class__.__name__, load_margin / (1024 * 1024), _format_lowvram_budget(lowvram_model_memory)))
+    model_name = _loaded_model_name(model)
+    logger.info(
+        "Reloading {} with adaptive low VRAM budget, margin {:.2f} MB, budget {}, loaded {:.2f} MB, has_finalizer={}, has_real_model={}".format(
+            model_name,
+            load_margin / (1024 * 1024),
+            _format_lowvram_budget(lowvram_model_memory),
+            loaded_memory / (1024 * 1024),
+            loaded_model.model_finalizer is not None,
+            loaded_model.real_model is not None,
+        )
+    )
     loaded_model.model_unload(None, unpatch_weights=True)
     loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
 
@@ -907,8 +950,23 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
                 to_unload = [i] + to_unload
         for i in to_unload:
             model_to_unload = current_loaded_models.pop(i)
+            model_name = _loaded_model_name(model_to_unload.model)
             model_to_unload.model.detach(unpatch_all=False)
-            model_to_unload.model_finalizer.detach()
+            detached = _detach_loaded_model_finalizer(
+                model_to_unload.model_finalizer,
+                model_name=model_name,
+                reason="clone_unload_before_reload",
+            )
+            logger.info(
+                "Clone unload before reload for {}: detached_finalizer={}, had_finalizer={}, had_real_model={}".format(
+                    model_name,
+                    detached,
+                    model_to_unload.model_finalizer is not None,
+                    model_to_unload.real_model is not None,
+                )
+            )
+            model_to_unload.model_finalizer = None
+            model_to_unload.real_model = None
 
     total_memory_required = {}
     for loaded_model in models_to_load:
@@ -936,7 +994,7 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
         if lowvram_available and vram_set_state in (VRAMState.LOW_VRAM, VRAMState.NORMAL_VRAM) and not force_full_load:
             loaded_memory = loaded_model.model_loaded_memory()
             model_memory = loaded_model.model_memory_required(torch_dev)
-            reserved_model_memory = sampling_headroom_memory()
+            reserved_model_memory = _model_weight_reserve_memory(model)
             current_free_mem = _weight_budget_free_memory(model, torch_dev, loaded_memory)
             lowvram_model_memory = _adaptive_lowvram_model_memory(model_memory, current_free_mem, reserved_model_memory, loaded_memory)
 
@@ -946,7 +1004,7 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
             lowvram_model_memory = 0.1
 
         loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
-        if not is_device_cpu(torch_dev):
+        if not is_device_cpu(torch_dev) and _model_enforces_sampling_headroom(model):
             headroom = sampling_headroom_memory()
             free_after_load = get_free_memory(torch_dev)
             if free_after_load < headroom:

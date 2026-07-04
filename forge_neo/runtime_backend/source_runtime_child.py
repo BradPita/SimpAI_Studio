@@ -35,7 +35,6 @@ _SOURCE_ADAPTER_SCRIPT_IMPORTS: set[str] = set()
 _SOURCE_CONTROLNET_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".safetensors", ".bin"}
 _SOURCE_BACKEND_DEFAULT_PERFORMANCE_ARGS = [
     "--normalvram",
-    "--cuda-malloc",
     "--cuda-stream",
     "--pin-shared-memory",
     "--disable-sage",
@@ -43,6 +42,11 @@ _SOURCE_BACKEND_DEFAULT_PERFORMANCE_ARGS = [
 _SOURCE_BACKEND_DISABLED_VALUES = {"0", "false", "no", "off", "disabled", "none"}
 _SOURCE_BACKEND_DEFAULT_VALUES = {"", "1", "true", "yes", "on", "default", "source", "source7890", "source_7890"}
 _SOURCE_BACKEND_VRAM_FLAGS = {"--gpu-only", "--highvram", "--normalvram", "--lowvram", "--novram", "--cpu"}
+_SOURCE_BACKEND_GPU_VENDOR_NVIDIA = "10DE"
+_SOURCE_BACKEND_GPU_VENDOR_AMD = "1002"
+_SOURCE_BACKEND_GPU_VENDOR_INTEL = "8086"
+_SOURCE_DEFAULT_CUDA_MALLOC_DECISION_LOGGED = False
+_SOURCE_DEFAULT_ACCEL_GUARDS_LOGGED = False
 _SOURCE_BACKEND_PROGRESS_POLL_SECONDS = 1.0
 _SOURCE_BACKEND_PREVIEW_INTERVAL_SECONDS = 2.0
 _SOURCE_ADETAILER_PREVIEW_LIMIT = 8
@@ -860,6 +864,148 @@ def _has_source_arg(tokens: list[str], name: str) -> bool:
     return any(token == name or token.startswith(f"{name}=") for token in tokens)
 
 
+def _source_windows_display_vendor_ids() -> set[str]:
+    if os.name != "nt":
+        return set()
+
+    try:
+        import ctypes
+
+        class DISPLAY_DEVICEA(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("DeviceName", ctypes.c_char * 32),
+                ("DeviceString", ctypes.c_char * 128),
+                ("StateFlags", ctypes.c_ulong),
+                ("DeviceID", ctypes.c_char * 128),
+                ("DeviceKey", ctypes.c_char * 128),
+            ]
+
+        user32 = ctypes.windll.user32
+        vendor_ids: set[str] = set()
+        device_info = DISPLAY_DEVICEA()
+        device_info.cb = ctypes.sizeof(device_info)
+        device_index = 0
+        while user32.EnumDisplayDevicesA(None, device_index, ctypes.byref(device_info), 0):
+            device_index += 1
+            device_id = device_info.DeviceID.decode("utf-8", errors="ignore").upper()
+            match = re.search(r"VEN_([0-9A-F]{4})", device_id)
+            if match:
+                vendor_ids.add(match.group(1))
+        return vendor_ids
+    except Exception:
+        return set()
+
+
+def _source_torch_runtime_backend_kind() -> str | None:
+    try:
+        import torch
+
+        if getattr(torch.version, "hip", None):
+            return "hip"
+        if getattr(torch.version, "cuda", None):
+            return "cuda"
+        return "cpu"
+    except Exception:
+        pass
+
+    try:
+        torch_spec = importlib.util.find_spec("torch")
+        search_locations = getattr(torch_spec, "submodule_search_locations", None) or []
+        for folder in search_locations:
+            version_file = os.path.join(folder, "version.py")
+            if not os.path.isfile(version_file):
+                continue
+            spec = importlib.util.spec_from_file_location("forge_neo_source_torch_version_probe", version_file)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if getattr(module, "hip", None):
+                return "hip"
+            if getattr(module, "cuda", None):
+                return "cuda"
+            return "cpu"
+    except Exception:
+        pass
+    return None
+
+
+def _log_source_default_cuda_malloc_decision(message: str) -> None:
+    global _SOURCE_DEFAULT_CUDA_MALLOC_DECISION_LOGGED
+    if _SOURCE_DEFAULT_CUDA_MALLOC_DECISION_LOGGED:
+        return
+    _SOURCE_DEFAULT_CUDA_MALLOC_DECISION_LOGGED = True
+    print(f"[Forge Neo source_backend] {message}", flush=True)
+
+
+def _log_source_default_accel_guard(message: str) -> None:
+    global _SOURCE_DEFAULT_ACCEL_GUARDS_LOGGED
+    if _SOURCE_DEFAULT_ACCEL_GUARDS_LOGGED:
+        return
+    _SOURCE_DEFAULT_ACCEL_GUARDS_LOGGED = True
+    print(f"[Forge Neo source_backend] {message}", flush=True)
+
+
+def _source_backend_default_cuda_malloc_arg() -> str | None:
+    override = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_CUDA_MALLOC", "") or "").strip().casefold()
+    if override in _SOURCE_BACKEND_DISABLED_VALUES:
+        _log_source_default_cuda_malloc_decision(
+            "Detected FORGE_NEO_SOURCE_BACKEND_CUDA_MALLOC override; defaulting to --disable-cuda-malloc."
+        )
+        return "--disable-cuda-malloc"
+    if override in {"1", "true", "yes", "on", "enabled", "cuda", "cuda-malloc"}:
+        _log_source_default_cuda_malloc_decision(
+            "Detected FORGE_NEO_SOURCE_BACKEND_CUDA_MALLOC override; defaulting to --cuda-malloc."
+        )
+        return "--cuda-malloc"
+
+    backend_kind = _source_torch_runtime_backend_kind()
+    if backend_kind == "cuda":
+        _log_source_default_cuda_malloc_decision(
+            "Detected torch backend: cuda; leaving cuda-malloc to backend defaults."
+        )
+        return None
+    if backend_kind in {"hip", "cpu"}:
+        _log_source_default_cuda_malloc_decision(
+            f"Detected torch backend: {backend_kind}; defaulting to --disable-cuda-malloc."
+        )
+        return "--disable-cuda-malloc"
+
+    vendor_ids = _source_windows_display_vendor_ids()
+    if vendor_ids and vendor_ids.issubset({_SOURCE_BACKEND_GPU_VENDOR_NVIDIA}):
+        _log_source_default_cuda_malloc_decision(
+            f"Detected Windows GPU vendor IDs: {sorted(vendor_ids)}; treating system as NVIDIA and leaving cuda-malloc to backend defaults."
+        )
+        return None
+    if vendor_ids & {_SOURCE_BACKEND_GPU_VENDOR_AMD, _SOURCE_BACKEND_GPU_VENDOR_INTEL}:
+        _log_source_default_cuda_malloc_decision(
+            f"Detected Windows GPU vendor IDs: {sorted(vendor_ids)}; defaulting to --disable-cuda-malloc."
+        )
+        return "--disable-cuda-malloc"
+    _log_source_default_cuda_malloc_decision(
+        "Unable to confirm a CUDA/NVIDIA backend; defaulting to --disable-cuda-malloc."
+    )
+    return "--disable-cuda-malloc"
+
+
+def _source_backend_default_accel_guard_args() -> list[str]:
+    backend_kind = _source_torch_runtime_backend_kind()
+    if backend_kind in {"hip", "cpu"}:
+        _log_source_default_accel_guard(
+            f"Detected torch backend: {backend_kind}; defaulting to compatibility guards: --disable-xformers --disable-flash."
+        )
+        return ["--disable-xformers", "--disable-flash"]
+
+    vendor_ids = _source_windows_display_vendor_ids()
+    if vendor_ids & {_SOURCE_BACKEND_GPU_VENDOR_AMD, _SOURCE_BACKEND_GPU_VENDOR_INTEL}:
+        _log_source_default_accel_guard(
+            f"Detected Windows GPU vendor IDs: {sorted(vendor_ids)}; defaulting to compatibility guards: --disable-xformers --disable-flash."
+        )
+        return ["--disable-xformers", "--disable-flash"]
+    return []
+
+
 def _source_backend_performance_args(extra_args: list[str]) -> list[str]:
     mode = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_PERFORMANCE_ARGS", "") or "").strip()
     lowered = mode.casefold()
@@ -878,6 +1024,24 @@ def _source_backend_performance_args(extra_args: list[str]) -> list[str]:
         args = [arg for arg in args if arg != "--cuda-stream"]
     if _has_source_arg(extra_args, "--pin-shared-memory"):
         args = [arg for arg in args if arg != "--pin-shared-memory"]
+    has_explicit_cuda_malloc = (
+        _has_source_arg(extra_args, "--cuda-malloc")
+        or _has_source_arg(extra_args, "--disable-cuda-malloc")
+        or _has_source_arg(args, "--cuda-malloc")
+        or _has_source_arg(args, "--disable-cuda-malloc")
+    )
+    if not has_explicit_cuda_malloc:
+        default_cuda_malloc_arg = _source_backend_default_cuda_malloc_arg()
+        if default_cuda_malloc_arg:
+            args.append(default_cuda_malloc_arg)
+    has_explicit_attention_override = any(
+        _has_source_arg(extra_args, flag) or _has_source_arg(args, flag)
+        for flag in ("--disable-xformers", "--disable-flash", "--use-pytorch-cross-attention")
+    )
+    if not has_explicit_attention_override:
+        for guard_arg in _source_backend_default_accel_guard_args():
+            if not _has_source_arg(extra_args, guard_arg) and not _has_source_arg(args, guard_arg):
+                args.append(guard_arg)
     return args
 
 

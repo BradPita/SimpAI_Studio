@@ -1,0 +1,5 @@
+# Optional accelerator packages that should not block AMD/Intel compatibility.
+# NVIDIA-aware launch paths install this file when appropriate.
+
+bitsandbytes==0.42.0; platform_system == "Darwin"
+bitsandbytes==0.45.5; platform_system == "Linux" or platform_system == "Windows"

@@ -10,6 +10,7 @@ import importlib.metadata
 import packaging.version
 import pygit2
 from pathlib import Path
+from typing import NamedTuple
 from build_launcher import python_embeded_path
 import logging
 from enhanced.logger import format_name
@@ -35,6 +36,16 @@ re_pip_raw_progress = re.compile(r"^Progress\s+(\d+)\s+of\s+(\d+)\s*$")
 modules_path = os.path.dirname(os.path.realpath(__file__))
 script_path = os.path.dirname(modules_path)
 dir_repos = "repos"
+_GPU_VENDOR_NVIDIA = "10DE"
+_GPU_VENDOR_AMD = "1002"
+_GPU_VENDOR_INTEL = "8086"
+
+
+class RuntimeProfile(NamedTuple):
+    profile_name: str
+    backend_kind: str | None
+    vendor_ids: tuple[str, ...]
+    detection_source: str
 
 def _format_download_size(byte_count):
     value = float(max(0, byte_count))
@@ -45,6 +56,91 @@ def _format_download_size(byte_count):
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} GB"
+
+
+def _windows_display_vendor_ids():
+    if os.name != "nt":
+        return set()
+
+    try:
+        import ctypes
+
+        class DISPLAY_DEVICEA(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("DeviceName", ctypes.c_char * 32),
+                ("DeviceString", ctypes.c_char * 128),
+                ("StateFlags", ctypes.c_ulong),
+                ("DeviceID", ctypes.c_char * 128),
+                ("DeviceKey", ctypes.c_char * 128),
+            ]
+
+        user32 = ctypes.windll.user32
+        vendor_ids = set()
+        device_info = DISPLAY_DEVICEA()
+        device_info.cb = ctypes.sizeof(device_info)
+        device_index = 0
+
+        while user32.EnumDisplayDevicesA(None, device_index, ctypes.byref(device_info), 0):
+            device_index += 1
+            device_id = device_info.DeviceID.decode("utf-8", errors="ignore").upper()
+            match = re.search(r"VEN_([0-9A-F]{4})", device_id)
+            if match:
+                vendor_ids.add(match.group(1))
+        return vendor_ids
+    except Exception:
+        return set()
+
+
+def _torch_backend_kind(torch_module=None):
+    module = torch_module
+    if module is None:
+        try:
+            import torch as imported_torch
+        except Exception:
+            return None
+        module = imported_torch
+
+    try:
+        version_info = getattr(module, "version", None)
+        if getattr(version_info, "hip", None):
+            return "hip"
+        if getattr(version_info, "cuda", None):
+            return "cuda"
+    except Exception:
+        pass
+
+    xpu = getattr(module, "xpu", None)
+    if xpu is not None:
+        try:
+            if xpu.is_available():
+                return "xpu"
+        except Exception:
+            pass
+
+    return None
+
+
+def detect_runtime_profile(torch_module=None):
+    backend_kind = _torch_backend_kind(torch_module)
+    vendor_ids = tuple(sorted(_windows_display_vendor_ids()))
+
+    if backend_kind == "cuda":
+        return RuntimeProfile("nvidia_cuda", backend_kind, vendor_ids, "torch")
+    if backend_kind == "hip":
+        return RuntimeProfile("amd_compatible", backend_kind, vendor_ids, "torch")
+    if backend_kind == "xpu":
+        return RuntimeProfile("intel_compatible", backend_kind, vendor_ids, "torch")
+
+    if vendor_ids and _GPU_VENDOR_NVIDIA not in vendor_ids:
+        if _GPU_VENDOR_AMD in vendor_ids:
+            return RuntimeProfile("amd_compatible", backend_kind, vendor_ids, "vendor_id")
+        if _GPU_VENDOR_INTEL in vendor_ids:
+            return RuntimeProfile("intel_compatible", backend_kind, vendor_ids, "vendor_id")
+        return RuntimeProfile("other_compatible", backend_kind, vendor_ids, "vendor_id")
+
+    # Preserve the existing NVIDIA-first path unless we can clearly prove otherwise.
+    return RuntimeProfile("nvidia_cuda", backend_kind, vendor_ids, "default")
 
 
 def _format_progress_bar(current, total, width=24):

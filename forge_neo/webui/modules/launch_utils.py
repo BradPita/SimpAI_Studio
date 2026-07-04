@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -28,6 +29,11 @@ index_url = os.environ.get("INDEX_URL", "")
 dir_repos = "repositories"
 
 default_command_live = os.environ.get("WEBUI_LAUNCH_LIVE_OUTPUT") == "1"
+_GPU_VENDOR_NVIDIA = "10DE"
+_GPU_VENDOR_AMD = "1002"
+_GPU_VENDOR_INTEL = "8086"
+_COMPAT_OPTIONAL_PACKAGES = {"bitsandbytes"}
+_OPTIONAL_ACCEL_REQUIREMENTS_FILE = os.environ.get("OPTIONAL_ACCEL_REQUIREMENTS_FILE", "requirements-optional-accel.txt")
 
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
 
@@ -103,6 +109,140 @@ def _torch_version() -> tuple[str, str]:
         m = re.search(r"(\d+\.\d+\.\d+)(?:[^+]+)?\+(.+)", ver)
 
     return m.group(1), m.group(2)
+
+
+def _windows_display_vendor_ids() -> tuple[str, ...]:
+    if os.name != "nt":
+        return tuple()
+
+    try:
+        import ctypes
+
+        class DISPLAY_DEVICEA(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("DeviceName", ctypes.c_char * 32),
+                ("DeviceString", ctypes.c_char * 128),
+                ("StateFlags", ctypes.c_ulong),
+                ("DeviceID", ctypes.c_char * 128),
+                ("DeviceKey", ctypes.c_char * 128),
+            ]
+
+        user32 = ctypes.windll.user32
+        vendor_ids = set()
+        device_info = DISPLAY_DEVICEA()
+        device_info.cb = ctypes.sizeof(device_info)
+        device_index = 0
+
+        while user32.EnumDisplayDevicesA(None, device_index, ctypes.byref(device_info), 0):
+            device_index += 1
+            device_id = device_info.DeviceID.decode("utf-8", errors="ignore").upper()
+            match = re.search(r"VEN_([0-9A-F]{4})", device_id)
+            if match:
+                vendor_ids.add(match.group(1))
+        return tuple(sorted(vendor_ids))
+    except Exception:
+        return tuple()
+
+
+def _detect_runtime_profile() -> tuple[str, str | None, tuple[str, ...], str]:
+    backend_kind = None
+    try:
+        import torch
+
+        if getattr(torch.version, "hip", None):
+            backend_kind = "hip"
+        elif getattr(torch.version, "cuda", None):
+            backend_kind = "cuda"
+        else:
+            xpu = getattr(torch, "xpu", None)
+            if xpu is not None:
+                try:
+                    if xpu.is_available():
+                        backend_kind = "xpu"
+                except Exception:
+                    pass
+    except Exception:
+        backend_kind = None
+
+    vendor_ids = _windows_display_vendor_ids()
+    if backend_kind == "cuda":
+        return ("nvidia_cuda", backend_kind, vendor_ids, "torch")
+    if backend_kind == "hip":
+        return ("amd_compatible", backend_kind, vendor_ids, "torch")
+    if backend_kind == "xpu":
+        return ("intel_compatible", backend_kind, vendor_ids, "torch")
+    if vendor_ids and _GPU_VENDOR_NVIDIA not in vendor_ids:
+        if _GPU_VENDOR_AMD in vendor_ids:
+            return ("amd_compatible", backend_kind, vendor_ids, "vendor_id")
+        if _GPU_VENDOR_INTEL in vendor_ids:
+            return ("intel_compatible", backend_kind, vendor_ids, "vendor_id")
+        return ("other_compatible", backend_kind, vendor_ids, "vendor_id")
+    return ("nvidia_cuda", backend_kind, vendor_ids, "default")
+
+
+def _runtime_profile_summary(profile_name: str, backend_kind: str | None, vendor_ids: tuple[str, ...], source: str) -> str:
+    vendor_text = ",".join(vendor_ids) if vendor_ids else "unknown"
+    return f"profile={profile_name}, backend={backend_kind or 'unknown'}, vendor_ids={vendor_text}, source={source}"
+
+
+def _compat_requirements_file(requirements_file: str, profile_name: str) -> tuple[str, bool]:
+    if profile_name == "nvidia_cuda":
+        return requirements_file, False
+
+    with open(requirements_file, "r", encoding="utf8") as src:
+        temp = tempfile.NamedTemporaryFile("w", encoding="utf8", suffix="-compat-reqs.txt", delete=False)
+        with temp:
+            for line in src:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    temp.write(line)
+                    continue
+                m = re.match(re_requirement, stripped)
+                package = (m.group(1).lower() if m else "")
+                if package in _COMPAT_OPTIONAL_PACKAGES:
+                    temp.write(f"# skipped in non-NVIDIA compatibility mode: {line}")
+                    continue
+                temp.write(line)
+    return temp.name, True
+
+
+def _optional_accel_requirements_file() -> str:
+    if os.path.isfile(_OPTIONAL_ACCEL_REQUIREMENTS_FILE):
+        return _OPTIONAL_ACCEL_REQUIREMENTS_FILE
+    return os.path.join(script_path, _OPTIONAL_ACCEL_REQUIREMENTS_FILE)
+
+
+def _package_install_spec(package: str, pkg_version: str | None = None, version_specifier: str | None = None) -> str:
+    if pkg_version:
+        return f"{package}=={pkg_version}"
+    if version_specifier:
+        return f"{package}{version_specifier}"
+    return package
+
+
+def _package_requirement_met(package: str, pkg_version: str | None = None, version_specifier: str | None = None) -> bool:
+    try:
+        version_installed = importlib.metadata.version(package)
+    except Exception:
+        return False
+
+    if version_installed is None:
+        return False
+
+    if not pkg_version and not version_specifier:
+        return True
+
+    import packaging.specifiers
+    import packaging.version
+
+    try:
+        installed = packaging.version.parse(version_installed)
+        if pkg_version:
+            return installed == packaging.version.parse(pkg_version)
+        return installed in packaging.specifiers.SpecifierSet(version_specifier)
+    except Exception:
+        return False
 
 
 def is_installed(package):
@@ -286,6 +426,8 @@ def requirements_met(requirements_file):
 
 
 def prepare_environment():
+    runtime_profile_name, runtime_backend_kind, runtime_vendor_ids, runtime_source = _detect_runtime_profile()
+    compatibility_mode = runtime_profile_name != "nvidia_cuda"
     torch_index_url = os.environ.get("TORCH_INDEX_URL", "https://download.pytorch.org/whl/cu130")
     torch_command = os.environ.get("TORCH_COMMAND", f"pip install torch==2.11.0+cu130 torchvision==0.26.0+cu130 --extra-index-url {torch_index_url}")
     xformers_package = os.environ.get("XFORMERS_PACKAGE", f"xformers==0.0.35 --extra-index-url {torch_index_url}")
@@ -294,6 +436,9 @@ def prepare_environment():
     packaging_package = os.environ.get("PACKAGING_PACKAGE", "packaging==26.0")
     gradio_package = os.environ.get("GRADIO_PACKAGE", "gradio==4.40.0 gradio_rangeslider==0.0.8")
     requirements_file = os.environ.get("REQS_FILE", "requirements.txt")
+    compat_requirements_file = None
+    compat_requirements_cleanup = False
+    optional_accel_requirements_file = _optional_accel_requirements_file()
 
     try:
         # the existence of this file is a signal to webui.sh/bat that webui needs to be restarted when it stops execution
@@ -311,8 +456,17 @@ def prepare_environment():
 
     print(f"Python {sys.version}")
     print(f"Version: {tag}")
+    print(f"Runtime profile: {_runtime_profile_summary(runtime_profile_name, runtime_backend_kind, runtime_vendor_ids, runtime_source)}")
 
-    if args.reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
+    missing_torch_family = not is_installed("torch") or not is_installed("torchvision")
+    if compatibility_mode:
+        print("Non-NVIDIA compatibility mode detected; CUDA-specific auto installation is disabled.")
+        if (args.reinstall_torch or missing_torch_family) and "TORCH_COMMAND" in os.environ:
+            run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
+            startup_timer.record("install torch")
+        elif args.reinstall_torch or missing_torch_family:
+            print("Skipping automatic CUDA torch installation in compatibility mode. Please provide TORCH_COMMAND or install an AMD/Intel compatible torch build manually.")
+    elif args.reinstall_torch or missing_torch_family:
         run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
         startup_timer.record("install torch")
 
@@ -327,7 +481,7 @@ assert cuda or xpu or mps
 
         success, err = check_run_python(TORCH_CHECK, return_error=True)
         if not success:
-            if "older driver" in str(err).lower():
+            if not compatibility_mode and "older driver" in str(err).lower():
                 raise SystemError("Please update your GPU driver to support cu130 ; or manually install older PyTorch")
             raise RuntimeError("PyTorch is not able to access GPU")
         startup_timer.record("torch GPU test")
@@ -335,86 +489,106 @@ assert cuda or xpu or mps
     if not is_installed("packaging"):
         run_pip(f"install {packaging_package}", "packaging")
 
-    ver_PY = f"cp{sys.version_info.major}{sys.version_info.minor}"
-    ver_SAGE = "2.2.0"
-    ver_FLASH = "2.8.3"
-    ver_TRITON = "3.6.0"
-    ver_NUNCHAKU = "1.2.1"
-    ver_TORCH, ver_CUDA = _torch_version()
-    v_TORCH = ver_TORCH.rsplit(".", 1)[0]
-    v_CUDA = f"{ver_CUDA[0:-1]}.{ver_CUDA[-1]}"
+    update_pkgs = [
+        ("comfy-kitchen", "0.2.16", None),
+    ]
+    for update_pkg_name, update_pkg_version, update_pkg_specifier in update_pkgs:
+        if not _package_requirement_met(update_pkg_name, update_pkg_version, update_pkg_specifier):
+            update_spec = _package_install_spec(update_pkg_name, update_pkg_version, update_pkg_specifier)
+            run_pip(f'install -U "{update_spec}"', update_pkg_name)
+            startup_timer.record(f"install {update_pkg_name}")
 
-    if os.name == "nt":
-        ver_TRITON += ".post26"
-
-        sage_package = os.environ.get("SAGE_PACKAGE", f"https://github.com/woct0rdho/SageAttention/releases/download/v{ver_SAGE}-windows.post4/sageattention-{ver_SAGE}+{ver_CUDA}torch2.9.0andhigher.post4-cp39-abi3-win_amd64.whl")
-        flash_package = os.environ.get("FLASH_PACKAGE", f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-{ver_FLASH}+{ver_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-win_amd64.whl")
-        triton_package = os.environ.get("TRITION_PACKAGE", f"triton-windows=={ver_TRITON}")
-        nunchaku_package = os.environ.get("NUNCHAKU_PACKAGE", f"https://github.com/nunchaku-ai/nunchaku/releases/download/v{ver_NUNCHAKU}/nunchaku-{ver_NUNCHAKU}+{v_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-win_amd64.whl")
-
+    if compatibility_mode:
+        if args.xformers:
+            print("Skipping xformers installation in non-NVIDIA compatibility mode.")
+        if args.sage:
+            print("Skipping SageAttention/triton installation in non-NVIDIA compatibility mode.")
+        if args.flash:
+            print("Skipping flash_attn installation in non-NVIDIA compatibility mode.")
+        if args.nunchaku:
+            print("Skipping nunchaku installation in non-NVIDIA compatibility mode.")
+        if args.bnb:
+            print("Skipping bitsandbytes installation in non-NVIDIA compatibility mode.")
     else:
-        sage_package = os.environ.get("SAGE_PACKAGE", f"sageattention=={ver_SAGE}")
-        flash_package = os.environ.get("FLASH_PACKAGE", f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-{ver_FLASH}+{ver_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-linux_x86_64.whl")
-        triton_package = os.environ.get("TRITION_PACKAGE", f"triton=={ver_TRITON}")
-        nunchaku_package = os.environ.get("NUNCHAKU_PACKAGE", f"https://github.com/nunchaku-ai/nunchaku/releases/download/v{ver_NUNCHAKU}/nunchaku-{ver_NUNCHAKU}+{v_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-linux_x86_64.whl")
+        ver_PY = f"cp{sys.version_info.major}{sys.version_info.minor}"
+        ver_SAGE = "2.2.0"
+        ver_FLASH = "2.8.3"
+        ver_TRITON = "3.6.0"
+        ver_NUNCHAKU = "1.2.1"
+        ver_TORCH, ver_CUDA = _torch_version()
+        v_TORCH = ver_TORCH.rsplit(".", 1)[0]
+        v_CUDA = f"{ver_CUDA[0:-1]}.{ver_CUDA[-1]}"
 
-    def _verify_nunchaku() -> bool:
-        if not is_installed("nunchaku"):
-            return False
+        if os.name == "nt":
+            ver_TRITON += ".post26"
 
-        import importlib.metadata
+            sage_package = os.environ.get("SAGE_PACKAGE", f"https://github.com/woct0rdho/SageAttention/releases/download/v{ver_SAGE}-windows.post4/sageattention-{ver_SAGE}+{ver_CUDA}torch2.9.0andhigher.post4-cp39-abi3-win_amd64.whl")
+            flash_package = os.environ.get("FLASH_PACKAGE", f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-{ver_FLASH}+{ver_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-win_amd64.whl")
+            triton_package = os.environ.get("TRITION_PACKAGE", f"triton-windows=={ver_TRITON}")
+            nunchaku_package = os.environ.get("NUNCHAKU_PACKAGE", f"https://github.com/nunchaku-ai/nunchaku/releases/download/v{ver_NUNCHAKU}/nunchaku-{ver_NUNCHAKU}+{v_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-win_amd64.whl")
 
-        import packaging.version
+        else:
+            sage_package = os.environ.get("SAGE_PACKAGE", f"sageattention=={ver_SAGE}")
+            flash_package = os.environ.get("FLASH_PACKAGE", f"https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-{ver_FLASH}+{ver_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-linux_x86_64.whl")
+            triton_package = os.environ.get("TRITION_PACKAGE", f"triton=={ver_TRITON}")
+            nunchaku_package = os.environ.get("NUNCHAKU_PACKAGE", f"https://github.com/nunchaku-ai/nunchaku/releases/download/v{ver_NUNCHAKU}/nunchaku-{ver_NUNCHAKU}+{v_CUDA}torch{v_TORCH}-{ver_PY}-{ver_PY}-linux_x86_64.whl")
 
-        ver_installed: str = importlib.metadata.version("nunchaku")
-        current: tuple[int] = packaging.version.parse(ver_installed)
-        target: tuple[int] = packaging.version.parse(ver_NUNCHAKU)
+        def _verify_nunchaku() -> bool:
+            if not is_installed("nunchaku"):
+                return False
 
-        return current >= target
+            import importlib.metadata
+            import packaging.version
 
-    if args.xformers and (not is_installed("xformers") or args.reinstall_xformers):
-        run_pip(f"install -U -I --no-deps {xformers_package}", "xformers")
-        startup_timer.record("install xformers")
+            ver_installed: str = importlib.metadata.version("nunchaku")
+            current: tuple[int] = packaging.version.parse(ver_installed)
+            target: tuple[int] = packaging.version.parse(ver_NUNCHAKU)
 
-    if args.sage:
-        if not is_installed("triton"):
+            return current >= target
+
+        if args.xformers and (not is_installed("xformers") or args.reinstall_xformers):
+            run_pip(f"install -U -I --no-deps {xformers_package}", "xformers")
+            startup_timer.record("install xformers")
+
+        if args.sage:
+            if not is_installed("triton"):
+                try:
+                    run_pip(f"install -U -I --no-deps {triton_package}", "triton")
+                except RuntimeError:
+                    print("Failed to install triton; Please manually install it")
+                else:
+                    startup_timer.record("install triton")
+            if not is_installed("sageattention"):
+                try:
+                    run_pip(f"install -U -I --no-deps {sage_package}", "sageattention")
+                except RuntimeError:
+                    print("Failed to install sageattention; Please manually install it")
+                else:
+                    startup_timer.record("install sageattention")
+
+        if args.flash and not is_installed("flash_attn"):
             try:
-                run_pip(f"install -U -I --no-deps {triton_package}", "triton")
+                run_pip(f"install {flash_package}", "flash_attn")
             except RuntimeError:
-                print("Failed to install triton; Please manually install it")
+                print("Failed to install flash_attn; Please manually install it")
             else:
-                startup_timer.record("install triton")
-        if not is_installed("sageattention"):
+                startup_timer.record("install flash_attn")
+
+        if args.nunchaku and not _verify_nunchaku():
             try:
-                run_pip(f"install -U -I --no-deps {sage_package}", "sageattention")
+                run_pip(f"install {nunchaku_package}", "nunchaku")
             except RuntimeError:
-                print("Failed to install sageattention; Please manually install it")
+                print("Failed to install nunchaku; Please manually install it")
             else:
-                startup_timer.record("install sageattention")
+                startup_timer.record("install nunchaku")
 
-    if args.flash and not is_installed("flash_attn"):
-        try:
-            run_pip(f"install {flash_package}", "flash_attn")
-        except RuntimeError:
-            print("Failed to install flash_attn; Please manually install it")
-        else:
-            startup_timer.record("install flash_attn")
-
-    if args.nunchaku and not _verify_nunchaku():
-        try:
-            run_pip(f"install {nunchaku_package}", "nunchaku")
-        except RuntimeError:
-            print("Failed to install nunchaku; Please manually install it")
-        else:
-            startup_timer.record("install nunchaku")
-
-    if args.bnb and not is_installed("bitsandbytes"):
-        try:
-            run_pip(f"install {bnb_package}", "bitsandbytes")
-        except RuntimeError:
-            print("Failed to install bitsandbytes; Please manually install it")
-        else:
-            startup_timer.record("install bitsandbytes")
+        if args.bnb and not is_installed("bitsandbytes"):
+            try:
+                run_pip(f"install {bnb_package}", "bitsandbytes")
+            except RuntimeError:
+                print("Failed to install bitsandbytes; Please manually install it")
+            else:
+                startup_timer.record("install bitsandbytes")
 
     if not is_installed("ngrok") and args.ngrok:
         run_pip("install ngrok", "ngrok")
@@ -426,11 +600,20 @@ assert cuda or xpu or mps
     if not os.path.isfile(requirements_file):
         requirements_file = os.path.join(script_path, requirements_file)
 
-    if not requirements_met(requirements_file):
-        run_pip(f'install -r "{requirements_file}"', "requirements")
+    compat_requirements_file, compat_requirements_cleanup = _compat_requirements_file(requirements_file, runtime_profile_name)
+
+    if not requirements_met(compat_requirements_file):
+        run_pip(f'install -r "{compat_requirements_file}"', "requirements")
         startup_timer.record("install requirements")
 
-    if args.onnxruntime_gpu and not is_installed("onnxruntime-gpu"):
+    if runtime_profile_name == "nvidia_cuda" and os.path.isfile(optional_accel_requirements_file):
+        if not requirements_met(optional_accel_requirements_file):
+            run_pip(f'install -r "{optional_accel_requirements_file}"', "optional accelerator requirements")
+            startup_timer.record("install optional accelerator requirements")
+
+    if args.onnxruntime_gpu and compatibility_mode:
+        print("Skipping onnxruntime-gpu installation in non-NVIDIA compatibility mode.")
+    elif args.onnxruntime_gpu and not is_installed("onnxruntime-gpu"):
         # https://onnxruntime.ai/docs/install/#nightly-for-cuda-13x
         _deps = "coloredlogs flatbuffers numpy packaging protobuf sympy"
         onnxruntime_package = os.environ.get("ONNX_PACKAGE", "onnxruntime-gpu --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-13-nightly/pypi/simple/")
@@ -445,9 +628,15 @@ assert cuda or xpu or mps
         git_pull_recursive(extensions_dir)
         startup_timer.record("update extensions")
 
-    if not requirements_met(requirements_file):
-        run_pip(f'install -r "{requirements_file}"', "requirements")
+    if not requirements_met(compat_requirements_file):
+        run_pip(f'install -r "{compat_requirements_file}"', "requirements")
         startup_timer.record("enforce requirements")
+
+    if compat_requirements_cleanup:
+        try:
+            os.remove(compat_requirements_file)
+        except OSError:
+            pass
 
     if "--exit" in sys.argv:
         print("Exiting because of --exit argument")

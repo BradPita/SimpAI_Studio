@@ -3,6 +3,7 @@ import sys
 import shutil
 import re
 import json
+import importlib.util
 import gradio as gr
 import shared
 import cv2
@@ -245,6 +246,134 @@ def _enum_value(value):
     return getattr(value, "value", value)
 
 
+_GPU_VENDOR_NVIDIA = "10DE"
+_GPU_VENDOR_AMD = "1002"
+_GPU_VENDOR_INTEL = "8086"
+_DEFAULT_CUDA_MALLOC_DECISION_LOGGED = False
+
+
+def _load_torch_version_probe():
+    try:
+        torch_spec = importlib.util.find_spec("torch")
+        search_locations = getattr(torch_spec, "submodule_search_locations", None) or []
+        for folder in search_locations:
+            ver_file = os.path.join(folder, "version.py")
+            if not os.path.isfile(ver_file):
+                continue
+            spec = importlib.util.spec_from_file_location("simpleai_torch_version_probe", ver_file)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    except Exception:
+        pass
+    return None
+
+
+def _torch_runtime_backend_kind():
+    directml_device = _launch_arg_value("directml")
+    if directml_device not in (None, -1):
+        return "directml"
+
+    module = _load_torch_version_probe()
+    if module is None:
+        return None
+
+    if getattr(module, "hip", None):
+        return "hip"
+    if getattr(module, "cuda", None):
+        return "cuda"
+    return "cpu"
+
+
+def _windows_display_vendor_ids():
+    if os.name != "nt":
+        return set()
+
+    try:
+        import ctypes
+
+        class DISPLAY_DEVICEA(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("DeviceName", ctypes.c_char * 32),
+                ("DeviceString", ctypes.c_char * 128),
+                ("StateFlags", ctypes.c_ulong),
+                ("DeviceID", ctypes.c_char * 128),
+                ("DeviceKey", ctypes.c_char * 128),
+            ]
+
+        user32 = ctypes.windll.user32
+        vendor_ids = set()
+        device_info = DISPLAY_DEVICEA()
+        device_info.cb = ctypes.sizeof(device_info)
+        device_index = 0
+        while user32.EnumDisplayDevicesA(None, device_index, ctypes.byref(device_info), 0):
+            device_index += 1
+            device_id = device_info.DeviceID.decode("utf-8", errors="ignore").upper()
+            match = re.search(r"VEN_([0-9A-F]{4})", device_id)
+            if match:
+                vendor_ids.add(match.group(1))
+        return vendor_ids
+    except Exception:
+        return set()
+
+
+def _log_default_comfyd_cuda_malloc_decision(message):
+    global _DEFAULT_CUDA_MALLOC_DECISION_LOGGED
+    if _DEFAULT_CUDA_MALLOC_DECISION_LOGGED:
+        return
+    _DEFAULT_CUDA_MALLOC_DECISION_LOGGED = True
+    logger.info(message)
+
+
+def _default_comfyd_cuda_malloc_arg(argv=None):
+    if _launch_arg_was_set("--async-cuda-allocation", argv) or _launch_arg_was_set("--disable-async-cuda-allocation", argv):
+        return None
+    if getattr(shared.args, "async_cuda_allocation", False) or getattr(shared.args, "disable_async_cuda_allocation", False):
+        return None
+
+    backend_kind = _torch_runtime_backend_kind()
+    if backend_kind == "cuda":
+        _log_default_comfyd_cuda_malloc_decision(
+            "Detected torch backend: cuda; leaving cuda-malloc to Comfy defaults."
+        )
+        return None
+    if backend_kind in {"hip", "directml", "cpu"}:
+        _log_default_comfyd_cuda_malloc_decision(
+            f"Detected torch backend: {backend_kind}; defaulting to --disable-cuda-malloc."
+        )
+        return "--disable-cuda-malloc"
+
+    vendor_ids = _windows_display_vendor_ids()
+    if vendor_ids and vendor_ids.issubset({_GPU_VENDOR_NVIDIA}):
+        _log_default_comfyd_cuda_malloc_decision(
+            f"Detected Windows GPU vendor IDs: {sorted(vendor_ids)}; treating system as NVIDIA and leaving cuda-malloc to Comfy defaults."
+        )
+        return None
+    if vendor_ids & {_GPU_VENDOR_AMD, _GPU_VENDOR_INTEL}:
+        _log_default_comfyd_cuda_malloc_decision(
+            f"Detected Windows GPU vendor IDs: {sorted(vendor_ids)}; defaulting to --disable-cuda-malloc."
+        )
+        return "--disable-cuda-malloc"
+    _log_default_comfyd_cuda_malloc_decision(
+        "Unable to confirm a non-NVIDIA backend; preserving NVIDIA-first defaults and leaving cuda-malloc to Comfy defaults."
+    )
+    return None
+
+
+def _default_non_nvidia_comfyd_guards(argv=None):
+    backend_kind = _torch_runtime_backend_kind()
+    if backend_kind in {"hip", "directml", "cpu"}:
+        return ["--disable-xformers"]
+
+    vendor_ids = _windows_display_vendor_ids()
+    if vendor_ids & {_GPU_VENDOR_AMD, _GPU_VENDOR_INTEL}:
+        return ["--disable-xformers"]
+    return []
+
+
 def _build_comfyd_launch_args(argv=None):
     mapped = []
 
@@ -301,6 +430,18 @@ def _build_comfyd_launch_args(argv=None):
 
     if _launch_arg_was_set("--use-flash-attention", argv) and not _launch_arg_was_set("--disable-xformers", argv):
         _append_comfyd_arg(mapped, "--disable-xformers")
+
+    explicit_attention_flags = (
+        "--disable-xformers",
+        "--use-flash-attention",
+        "--use-sage-attention",
+        "--attention-pytorch",
+        "--attention-split",
+        "--attention-quad",
+    )
+    if not any(_launch_arg_was_set(flag, argv) for flag in explicit_attention_flags):
+        for guard_flag in _default_non_nvidia_comfyd_guards(argv):
+            _append_comfyd_arg(mapped, guard_flag)
 
     explicit_vram_flags = (
         "--always-gpu",
@@ -377,7 +518,8 @@ def reset_simpleai_args():
     windows_standalone = [["--windows-standalone-build"]] if is_win32_standalone_build else []
     fast_mode = [['--fast', 'fp16_accumulation']] if ads.get_admin_default('fast_comfyd_checkbox') else []
     args_comfyd = _build_comfyd_launch_args() + [["--listen"], ["--port", f'{shared.sysinfo["loopback_port"]}']] + smart_memory + windows_standalone + reserve_vram + fast_mode + cache_ram + cache_clear_on_finish
-    args_comfyd += [["--cuda-malloc"]] if not shared.args.disable_async_cuda_allocation and not shared.args.async_cuda_allocation else []
+    default_cuda_malloc_arg = _default_comfyd_cuda_malloc_arg()
+    args_comfyd += [[default_cuda_malloc_arg]] if default_cuda_malloc_arg else []
     _, comfyd_intput, comfyd_output = update_comfyd_io_paths(update_runtime=False, update_startup=False)
     args_comfyd += [["--output-directory", comfyd_output], ["--temp-directory", shared.temp_path], ["--input-directory", comfyd_intput]]
     cors_origin = os.environ.get("SIMPAI_COMFYD_CORS", "").strip()

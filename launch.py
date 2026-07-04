@@ -19,7 +19,18 @@ import subprocess
 import torch
 import requests
 from build_launcher import download_if_updated
-from modules.launch_util import is_installed, is_installed_version, run, python, requirements_met, delete_folder_content, index_url, extra_index_url, target_path_install
+from modules.launch_util import (
+    detect_runtime_profile,
+    is_installed,
+    is_installed_version,
+    run,
+    python,
+    requirements_met,
+    delete_folder_content,
+    index_url,
+    extra_index_url,
+    target_path_install,
+)
 from enhanced.logger import setup_logger, now_string, get_log_file
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 os.environ["RUST_LOG"] = os.environ.get("SIMPAI_RUST_LOG", "off")
@@ -32,6 +43,22 @@ def _launch_arg_was_set(flag, argv=None):
     argv = sys.argv if argv is None else argv
     prefix = f"{flag}="
     return any(str(arg) == flag or str(arg).startswith(prefix) for arg in argv)
+
+
+def _runtime_profile_summary(runtime_profile):
+    vendor_text = ",".join(runtime_profile.vendor_ids) if runtime_profile.vendor_ids else "unknown"
+    backend_text = runtime_profile.backend_kind or "unknown"
+    return (
+        f"profile={runtime_profile.profile_name}, "
+        f"backend={backend_text}, vendor_ids={vendor_text}, source={runtime_profile.detection_source}"
+    )
+
+
+def _optional_accel_requirements_path():
+    req_file = OPTIONAL_ACCEL_REQUIREMENTS_FILE
+    if os.path.isfile(req_file):
+        return req_file
+    return os.path.join(root, req_file)
 
 root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root)
@@ -61,6 +88,7 @@ ORT_CUDA13_WHEEL_URL = os.environ.get(
     _default_ort_cuda13_wheel_url() if "ORT_CUDA13_PACKAGE" not in os.environ else "",
 )
 ORT_CUDA13_INFO_PREFIX = "SIMPAI_ORT_INFO="
+OPTIONAL_ACCEL_REQUIREMENTS_FILE = os.environ.get("OPTIONAL_ACCEL_REQUIREMENTS_FILE", "requirements-optional-accel.txt")
 
 OBSOLETE_CUSTOM_NODE_FOLDERS = ()
 
@@ -139,7 +167,7 @@ def _simpleai_base_wheel_filename(ver_required):
     platform_os = platform.system()
     if platform_os == "Windows":
         cp313_filename = f"simpleai_base-{ver_required}-cp313-cp313-win_amd64.whl"
-        if current_tag == "cp313" or os.path.exists(os.path.join(root, "enhanced", "libs", cp313_filename)):
+        if current_tag == "cp313":
             return cp313_filename
         return f"simpleai_base-{ver_required}-{current_tag}-{current_tag}-win_amd64.whl"
 
@@ -464,38 +492,55 @@ def check_base_environment():
                 else:
                     logger.warning(f"无法下载或校验更新包 {base_pkg}，将继续使用当前版本 {version_installed}。")
 
-    if torch.__version__ == '2.9.1+cu130':
+    runtime_profile = detect_runtime_profile(torch)
+
+    if runtime_profile.profile_name == "nvidia_cuda" and torch.__version__ == '2.9.1+cu130':
         logger.info(f'当前环境：PyTorch 2.9.1+CUDA 13.0. 50系以上显卡支持Nvfp4模型加速推理.')
         if not install_onnxruntime_gpu_cuda13():
             logger.error("无法安装 ONNX Runtime CUDA 13 nightly，DWPose/ReActor 等 ONNX 节点可能降到 CPU。")
-        update_pkgs = [
-            ('comfyui-frontend-package', '1.45.20', None),
-            ('comfyui-workflow-templates', '0.11.1', None),
-            ('comfyui-embedded-docs', '0.5.6', None),
-            ('comfy-kitchen', '0.2.16', None),
-            ('comfy-aimdo', '0.4.10', None),
-            ('av', '17.0.0', None),
-            ('PyOpenGL', None, '>=3.1.8'),
-            ('comfy-angle', None, None),
-            ('lmdb', '2.2.1', None),
-            ('shtab', '1.8.0', None),
-            ('tyro', '0.8.5', None)
-        ]
-        for (update_pkg_name, update_pkg_version, update_pkg_specifier) in update_pkgs:
-            if not _package_requirement_met(update_pkg_name, update_pkg_version, update_pkg_specifier):
-                success = install_package_with_retry(
-                    update_pkg_name,
-                    update_pkg_version,
-                    version_specifier=update_pkg_specifier,
-                )
-                if not success:
-                    logger.error(f"无法安装{update_pkg_name}，请检查网络状态")
-    else:
+    elif runtime_profile.profile_name == "nvidia_cuda":
         logger.warning(f'Current PyTorch is {torch.__version__}; SimpAI_Studio now targets PyTorch 2.9.1+cu130.')
         logger.warning(f'当前 PyTorch 是 {torch.__version__}；SimpAI_Studio 当前启动流程只保留 PyTorch 2.9.1+cu130 路径。')
-
         logger.info(f'环境缺失必要组件或系统不匹配。请参考SimpAI.cn的安装说明重新部署。')
         logger.info(f'The program running environment lacks necessary components or the system does not match. Please refer to the installation instructions on SimpAI.cn to redeploy.')
+    else:
+        logger.info(
+            f"检测到非 NVIDIA 兼容运行模式 ({_runtime_profile_summary(runtime_profile)})，"
+            "将跳过 CUDA 13 专属安装流程并保留当前环境。"
+        )
+        logger.info(
+            "Detected a non-NVIDIA compatibility runtime. CUDA 13 specific launch steps are skipped and the current environment is preserved."
+        )
+
+    update_pkgs = [
+        ('comfyui-frontend-package', '1.45.20', None),
+        ('comfyui-workflow-templates', '0.11.1', None),
+        ('comfyui-embedded-docs', '0.5.6', None),
+        ('comfy-kitchen', '0.2.16', None),
+        ('comfy-aimdo', '0.4.10', None),
+        ('av', '17.0.0', None),
+        ('PyOpenGL', None, '>=3.1.8'),
+        ('comfy-angle', None, None),
+        ('lmdb', '2.2.1', None),
+        ('shtab', '1.8.0', None),
+        ('tyro', '0.8.5', None)
+    ]
+    for (update_pkg_name, update_pkg_version, update_pkg_specifier) in update_pkgs:
+        if not _package_requirement_met(update_pkg_name, update_pkg_version, update_pkg_specifier):
+            success = install_package_with_retry(
+                update_pkg_name,
+                update_pkg_version,
+                version_specifier=update_pkg_specifier,
+            )
+            if not success:
+                logger.error(f"无法安装{update_pkg_name}，请检查网络状态")
+
+    if runtime_profile.profile_name == "nvidia_cuda" and platform.system() in ("Windows", "Linux"):
+        bnb_version = "0.45.5"
+        if not _package_requirement_met("bitsandbytes", bnb_version, None):
+            success = install_package_with_retry("bitsandbytes", bnb_version)
+            if not success:
+                logger.error("无法安装 bitsandbytes，请检查网络状态")
 
     if not is_installed(base_pkg):
         logger.error(f"FATAL ERROR: {base_pkg} is not installed and could not be downloaded/installed.")
@@ -508,11 +553,12 @@ def check_base_environment():
     sysinfo = json.loads(token.get_sysinfo().to_json())
     sysinfo.update(dict(did=token.get_sys_did()))
     logger.info(f'GPU: {sysinfo.get("gpu_name")}, RAM: {sysinfo.get("ram_total")}MB, SWAP: {sysinfo.get("ram_swap")}MB, VRAM: {sysinfo.get("gpu_memory")}MB, DiskFree: {sysinfo.get("disk_free")}MB, CUDA: {sysinfo.get("cuda")}, HOST: {sysinfo.get("host_type")}')
+    logger.info(f"Launch runtime profile: {_runtime_profile_summary(runtime_profile)}")
     #print(f'[SimpleAI] root: {sysinfo["root_dir"]}, sys_name: {sysinfo["root_name"]}, dev_name:{sysinfo["host_name"]}')
 
     cuda_raw = sysinfo.get("cuda", None) if isinstance(sysinfo, dict) else None
     min_cuda_code = 12040
-    if torch.__version__ == '2.9.1+cu130':
+    if runtime_profile.profile_name == "nvidia_cuda" and torch.__version__ == '2.9.1+cu130':
         min_cuda_code = 13000
     cuda_code = None
 
@@ -545,7 +591,7 @@ def check_base_environment():
     except Exception:
         cuda_code = None
 
-    if cuda_code is not None and cuda_code < min_cuda_code:
+    if runtime_profile.profile_name == "nvidia_cuda" and cuda_code is not None and cuda_code < min_cuda_code:
         cuda_display = cuda_code_to_string(cuda_code)
         min_display = cuda_code_to_string(min_cuda_code)
         min_cu_display = f"cu{(min_cuda_code // 1000) * 10 + ((min_cuda_code % 1000) // 10)}"
@@ -566,6 +612,8 @@ def check_base_environment():
 
 def prepare_environment():
     REINSTALL_ALL = False
+    runtime_profile = detect_runtime_profile(torch)
+    compatibility_mode = runtime_profile.profile_name != "nvidia_cuda"
     torch_ver = '2.9.1+cu130'
     torchvision_ver = '0.24.1+cu130'
     torchaudio_ver = '2.9.1+cu130'
@@ -575,14 +623,32 @@ def prepare_environment():
         f'pip install torch=={torch_ver} torchvision=={torchvision_ver} torchaudio=={torchaudio_ver} --extra-index-url {torch_index_url}',
     )
     requirements_file = os.environ.get('REQS_FILE', 'requirements.txt')
+    optional_accel_requirements = _optional_accel_requirements_path()
     torch_command += target_path_install
     torch_command += f' -i {index_url} '
 
-    if REINSTALL_ALL or not is_installed('torch') or not is_installed('torchvision') or not is_installed('torchaudio'):
+    missing_torch_family = not is_installed('torch') or not is_installed('torchvision') or not is_installed('torchaudio')
+
+    if compatibility_mode:
+        logger.info(
+            f"当前启动使用非 NVIDIA 兼容模式 ({_runtime_profile_summary(runtime_profile)})，"
+            "将保留现有 torch 环境，不自动覆盖为 CUDA 13 构建。"
+        )
+        if (REINSTALL_ALL or missing_torch_family) and 'TORCH_COMMAND' in os.environ:
+            run(f'"{python}" -m {torch_command}', 'Installing torch, torchvision and torchaudio', 'Could not install PyTorch', live=True)
+        elif REINSTALL_ALL or missing_torch_family:
+            logger.warning(
+                "检测到当前环境缺少 torch/torchvision/torchaudio，但兼容模式不会自动安装 CUDA 13 版本。"
+                "如需继续，请通过 TORCH_COMMAND 或手动安装适配 AMD/Intel 的 PyTorch。"
+            )
+    elif REINSTALL_ALL or missing_torch_family:
         run(f'"{python}" -m {torch_command}', 'Installing torch, torchvision and torchaudio', 'Could not install PyTorch', live=True)
 
     if REINSTALL_ALL or not requirements_met(requirements_file):
         logger.info('Runtime dependencies do not match requirements.txt. Please redeploy the environment if startup fails.')
+    if runtime_profile.profile_name == "nvidia_cuda" and os.path.isfile(optional_accel_requirements):
+        if REINSTALL_ALL or not requirements_met(optional_accel_requirements):
+            logger.info('Optional accelerator dependencies do not match requirements-optional-accel.txt. NVIDIA launch flow will try to repair them during startup.')
     return
 
 def create_placeholder_files():
@@ -837,6 +903,19 @@ if shared.sysinfo["gpu_memory"]<4000 and not shared.args.disable_backend:
     logger.info(f'有任何疑问可到QQ群交流: 1005085136')
     shared.args.async_cuda_allocation = False
     shared.args.disable_async_cuda_allocation = True
+
+launch_runtime_profile = detect_runtime_profile(torch)
+if (
+    launch_runtime_profile.profile_name != "nvidia_cuda"
+    and not _launch_arg_was_set('--async-cuda-allocation')
+    and not _launch_arg_was_set('--disable-async-cuda-allocation')
+):
+    shared.args.async_cuda_allocation = False
+    shared.args.disable_async_cuda_allocation = True
+    logger.info(
+        f"Detected non-NVIDIA launch profile ({_runtime_profile_summary(launch_runtime_profile)}); "
+        "defaulting to disable async cuda allocation in launcher."
+    )
 
 if shared.args.async_cuda_allocation:
     env_var = os.environ.get('PYTORCH_CUDA_ALLOC_CONF', None)
