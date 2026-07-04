@@ -19,7 +19,10 @@
             "preprocess_fit": "scale"
         }
     	},
-    "default_model": "z_image_turbo_bf16.safetensors",
+    "default_model": "z_image_turbo_int8_convrot.safetensors",
+    "previous_default_models": [
+        "z_image_turbo_bf16.safetensors"
+    ],
     "default_refiner": "None",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "4x-UltraSharp.pth",
@@ -63,7 +66,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,z_image_turbo_bf16.safetensors,12309866400,0,https://modelscope.cn/models/VerStella/z_image_turbo_comfyui/resolve/master/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+        "diffusion_models,z_image_turbo_int8_convrot.safetensors,6201001296,0,https://modelscope.cn/models/Comfy-Org/z_image_turbo/resolve/master/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
         "text_encoders,qwen_3_4b.safetensors,8044982048,0,https://modelscope.cn/models/VerStella/z_image_turbo_comfyui/resolve/master/split_files/text_encoders/qwen_3_4b.safetensors",
         "controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,",
         "controlnet,parsing_bisenet.pth,53289463,0,",

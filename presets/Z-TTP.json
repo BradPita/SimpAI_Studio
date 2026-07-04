@@ -67,7 +67,10 @@
             }
         }
     },
-    "default_model": "z_image_turbo_bf16.safetensors",
+    "default_model": "z_image_turbo_int8_convrot.safetensors",
+    "previous_default_models": [
+        "z_image_turbo_bf16.safetensors"
+    ],
     "default_refiner": "None",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
@@ -110,7 +113,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,z_image_turbo_bf16.safetensors,12309866400,0,https://modelscope.cn/models/VerStella/z_image_turbo_comfyui/resolve/master/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+        "diffusion_models,z_image_turbo_int8_convrot.safetensors,6201001296,0,https://modelscope.cn/models/Comfy-Org/z_image_turbo/resolve/master/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
         "text_encoders,qwen_3_4b.safetensors,8044982048,0,https://modelscope.cn/models/VerStella/z_image_turbo_comfyui/resolve/master/split_files/text_encoders/qwen_3_4b.safetensors",
         "vae,ae.safetensors,335304388,0,",
         "vae,UltraFlux-vae_v1.safetensors,335306212,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/vae/UltraFlux-vae_v1.safetensors",

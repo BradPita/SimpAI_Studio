@@ -581,6 +581,31 @@ def bake_gguf_model(model):
 
 
 current_loaded_models: list["LoadedModel"] = []
+ADAPTIVE_LOWVRAM_SYNC_TRANSFERS = 0
+
+
+def adaptive_lowvram_disables_async_transfers() -> bool:
+    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS > 0:
+        return True
+
+    for loaded_model in current_loaded_models:
+        model = loaded_model.model
+        if model is not None and getattr(model.model, "model_lowvram", False):
+            return True
+    return False
+
+
+def _enter_adaptive_lowvram_sync_transfers() -> None:
+    global ADAPTIVE_LOWVRAM_SYNC_TRANSFERS
+    ADAPTIVE_LOWVRAM_SYNC_TRANSFERS += 1
+    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS == 1:
+        logger.info("Adaptive low VRAM mode disables async weight offloading and pinned shared memory")
+
+
+def _leave_adaptive_lowvram_sync_transfers() -> None:
+    global ADAPTIVE_LOWVRAM_SYNC_TRANSFERS
+    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS > 0:
+        ADAPTIVE_LOWVRAM_SYNC_TRANSFERS -= 1
 
 
 def _loaded_model_name(model: object) -> str:
@@ -991,7 +1016,8 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
         else:
             vram_set_state = vram_state
         lowvram_model_memory = 0
-        if lowvram_available and vram_set_state in (VRAMState.LOW_VRAM, VRAMState.NORMAL_VRAM) and not force_full_load:
+        adaptive_lowvram_enabled = lowvram_available and vram_set_state in (VRAMState.LOW_VRAM, VRAMState.NORMAL_VRAM) and not force_full_load
+        if adaptive_lowvram_enabled:
             loaded_memory = loaded_model.model_loaded_memory()
             model_memory = loaded_model.model_memory_required(torch_dev)
             reserved_model_memory = _model_weight_reserve_memory(model)
@@ -1003,18 +1029,24 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
         if vram_set_state is VRAMState.NO_VRAM:
             lowvram_model_memory = 0.1
 
-        loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
-        if not is_device_cpu(torch_dev) and _model_enforces_sampling_headroom(model):
-            headroom = sampling_headroom_memory()
-            free_after_load = get_free_memory(torch_dev)
-            if free_after_load < headroom:
-                memory_to_free = headroom - free_after_load
-                logger.info("Adjusted model load to keep sampling headroom: freeing {:.2f} MB".format(memory_to_free / (1024 * 1024)))
-                loaded_model.model_unload(memory_to_free, unpatch_weights=False)
-                free_after_adjustment = get_free_memory(torch_dev)
-                if free_after_adjustment < headroom:
-                    logger.info("Partial unload did not restore sampling headroom; reloading with adaptive low VRAM budget")
-                    _reload_model_with_adaptive_lowvram_budget(loaded_model, model, torch_dev, headroom, force_patch_weights)
+        if adaptive_lowvram_enabled:
+            _enter_adaptive_lowvram_sync_transfers()
+        try:
+            loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
+            if adaptive_lowvram_enabled and not is_device_cpu(torch_dev) and _model_enforces_sampling_headroom(model):
+                headroom = sampling_headroom_memory()
+                free_after_load = get_free_memory(torch_dev)
+                if free_after_load < headroom:
+                    memory_to_free = headroom - free_after_load
+                    logger.info("Adjusted model load to keep sampling headroom: freeing {:.2f} MB".format(memory_to_free / (1024 * 1024)))
+                    loaded_model.model_unload(memory_to_free, unpatch_weights=False)
+                    free_after_adjustment = get_free_memory(torch_dev)
+                    if free_after_adjustment < headroom:
+                        logger.info("Partial unload did not restore sampling headroom; reloading with adaptive low VRAM budget")
+                        _reload_model_with_adaptive_lowvram_budget(loaded_model, model, torch_dev, headroom, force_patch_weights)
+        finally:
+            if adaptive_lowvram_enabled:
+                _leave_adaptive_lowvram_sync_transfers()
         current_loaded_models.insert(0, loaded_model)
 
     if (moving_time := time.perf_counter() - execution_start_time) > 0.1:
@@ -1308,6 +1340,8 @@ def pick_weight_dtype(dtype: torch.dtype, fallback_dtype: torch.dtype, device: t
 def device_supports_non_blocking(device: torch.device) -> bool:
     if args.force_non_blocking:
         return True
+    if adaptive_lowvram_disables_async_transfers():
+        return False
     if is_device_mps(device):
         return False
     if is_intel_xpu():
@@ -1320,19 +1354,36 @@ def device_supports_non_blocking(device: torch.device) -> bool:
 
 
 def cast_to(weight: torch.nn.Parameter, dtype: torch.dtype = None, device: torch.device = None, non_blocking: bool = False, copy: bool = False, *, context=None):
-    if device is None or weight.device == device:
-        if not copy and (dtype is None or weight.dtype == dtype):
-            return weight
+    try:
+        if device is None or weight.device == device:
+            if not copy and (dtype is None or weight.dtype == dtype):
+                return weight
+            with context or nullcontext():
+                return weight.to(dtype=dtype, copy=copy)
+
+        if type(weight) not in (torch.Tensor, torch.nn.Parameter, QuantizedTensor):  # GGUF / BnB
+            with context or nullcontext():
+                return weight.to(dtype=dtype, device=device, non_blocking=non_blocking, copy=copy)
+
         with context or nullcontext():
+            r = torch.empty_like(weight, dtype=dtype, device=device)
+            r.copy_(weight, non_blocking=non_blocking)
+            return r
+    except Exception as e:
+        if not _should_retry_sync_transfer(e, weight=weight, device=device, non_blocking=non_blocking, context=context):
+            raise
+        _disable_async_weight_offloading("async tensor copy failed; retrying synchronously")
+        _disable_pinned_memory("async tensor copy failed; disabling pinned shared memory")
+        discard_cuda_async_error()
+
+        if device is None or weight.device == device:
             return weight.to(dtype=dtype, copy=copy)
 
-    if type(weight) not in (torch.Tensor, torch.nn.Parameter, QuantizedTensor):  # GGUF / BnB
-        with context or nullcontext():
-            return weight.to(dtype=dtype, device=device, non_blocking=non_blocking, copy=copy)
+        if type(weight) not in (torch.Tensor, torch.nn.Parameter, QuantizedTensor):  # GGUF / BnB
+            return weight.to(dtype=dtype, device=device, non_blocking=False, copy=copy)
 
-    with context or nullcontext():
         r = torch.empty_like(weight, dtype=dtype, device=device)
-        r.copy_(weight, non_blocking=non_blocking)
+        r.copy_(weight, non_blocking=False)
         return r
 
 
@@ -1720,6 +1771,26 @@ if NUM_STREAMS > 0:
     logger.info("Using async weight offloading with {} streams".format(NUM_STREAMS))
 
 
+def should_use_streams(device: torch.device = None) -> bool:
+    if adaptive_lowvram_disables_async_transfers():
+        return False
+    if NUM_STREAMS <= 0:
+        return False
+    if device is None:
+        return True
+    return current_stream(device) is not None
+
+
+def _disable_async_weight_offloading(reason: str) -> None:
+    global NUM_STREAMS
+    if NUM_STREAMS <= 0:
+        return
+    NUM_STREAMS = 0
+    STREAMS.clear()
+    stream_counters.clear()
+    logger.warning("Disabled async weight offloading: {}".format(reason))
+
+
 def current_stream(device: torch.device):
     if device is None:
         return None
@@ -1735,6 +1806,8 @@ stream_counters: dict[torch.device, int] = {}
 
 
 def get_offload_stream(device: torch.device):
+    if adaptive_lowvram_disables_async_transfers():
+        return None
     if NUM_STREAMS == 0:
         return None
     if torch.compiler.is_compiling():
@@ -1794,18 +1867,55 @@ if args.pin_shared_memory:
         logger.info("Pinned Memory: {} MB".format(round(MAX_PINNED_MEMORY / (1024 * 1024))))
 
 
+def _disable_pinned_memory(reason: str) -> None:
+    global MAX_PINNED_MEMORY
+    global TOTAL_PINNED_MEMORY
+    if MAX_PINNED_MEMORY <= 0 and len(PINNED_MEMORY) == 0:
+        return
+    MAX_PINNED_MEMORY = 0
+    TOTAL_PINNED_MEMORY = 0
+    PINNED_MEMORY.clear()
+    logger.warning("Disabled pinned shared memory: {}".format(reason))
+
+
 def discard_cuda_async_error():
     try:
         a = torch.tensor([1], dtype=torch.uint8, device=get_torch_device())
         b = torch.tensor([1], dtype=torch.uint8, device=get_torch_device())
         _ = a + b
         torch.cuda.synchronize()
-    except torch.AcceleratorError:
+    except ACCELERATOR_ERROR:
         pass
+    except Exception:
+        pass
+
+
+def _should_retry_sync_transfer(error: Exception, *, weight: object, device: torch.device = None, non_blocking: bool = False, context=None) -> bool:
+    if not (non_blocking or context is not None):
+        return False
+    if device is None:
+        return False
+
+    src_device = getattr(weight, "device", None)
+    if src_device is None:
+        return False
+
+    src_type = getattr(src_device, "type", None)
+    dst_type = getattr(device, "type", None)
+    if {src_type, dst_type} != {"cpu", "cuda"}:
+        return False
+
+    if isinstance(error, ACCELERATOR_ERROR):
+        return True
+
+    message = str(error).lower()
+    return "cuda error: invalid argument" in message or "invalid argument" in message
 
 
 def pin_memory(tensor):
     global TOTAL_PINNED_MEMORY
+    if adaptive_lowvram_disables_async_transfers():
+        return False
     if MAX_PINNED_MEMORY <= 0:
         return False
 
@@ -1829,12 +1939,20 @@ def pin_memory(tensor):
     if ptr == 0:
         return False
 
-    if torch.cuda.cudart().cudaHostRegister(ptr, size, 1) == 0:
+    try:
+        result = torch.cuda.cudart().cudaHostRegister(ptr, size, 1)
+    except Exception as error:
+        _disable_pinned_memory("cudaHostRegister raised {!r}".format(error))
+        discard_cuda_async_error()
+        return False
+
+    if result == 0:
         PINNED_MEMORY[ptr] = size
         TOTAL_PINNED_MEMORY += size
         return True
-    else:
-        discard_cuda_async_error()
+
+    _disable_pinned_memory("cudaHostRegister returned error code {}".format(result))
+    discard_cuda_async_error()
 
     return False
 
@@ -1857,13 +1975,23 @@ def unpin_memory(tensor):
     if size != size_stored:
         return False
 
-    if torch.cuda.cudart().cudaHostUnregister(ptr) == 0:
+    try:
+        result = torch.cuda.cudart().cudaHostUnregister(ptr)
+    except Exception as error:
+        PINNED_MEMORY.pop(ptr, None)
+        _disable_pinned_memory("cudaHostUnregister raised {!r}".format(error))
+        discard_cuda_async_error()
+        return False
+
+    if result == 0:
         TOTAL_PINNED_MEMORY -= PINNED_MEMORY.pop(ptr)
         if len(PINNED_MEMORY) == 0:
             TOTAL_PINNED_MEMORY = 0
         return True
-    else:
-        discard_cuda_async_error()
+
+    PINNED_MEMORY.pop(ptr, None)
+    _disable_pinned_memory("cudaHostUnregister returned error code {}".format(result))
+    discard_cuda_async_error()
 
     return False
 

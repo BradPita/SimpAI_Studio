@@ -1045,6 +1045,12 @@ def _source_backend_performance_args(extra_args: list[str]) -> list[str]:
     return args
 
 
+def _ensure_source_backend_vram_arg(args: list[str]) -> list[str]:
+    if any(_has_source_arg(args, flag) for flag in _SOURCE_BACKEND_VRAM_FLAGS):
+        return args
+    return [*args, "--normalvram"]
+
+
 def _source_code_root(data_root: Path, backend_root: Path) -> Path:
     override = str(os.environ.get("FORGE_NEO_SOURCE_BACKEND_CODE_ROOT", "") or "").strip()
     if override:
@@ -1132,6 +1138,7 @@ def _setup_source_imports(backend_root: Path, data_root: Path, model_ref: Path |
         args.append("--disable-extra-extensions")
     if extra_arg_tokens:
         args.extend(extra_arg_tokens)
+    args = _ensure_source_backend_vram_arg(args)
 
     def quote_arg(value: object) -> str:
         return '"' + str(value).replace('"', '\\"') + '"'

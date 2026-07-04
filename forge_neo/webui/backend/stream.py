@@ -27,7 +27,7 @@ def get_vae_stream():
 
 
 def should_use_stream():
-    return current_stream is not None and mover_stream is not None
+    return memory_management.should_use_streams(device)
 
 
 current_stream = get_current_stream()

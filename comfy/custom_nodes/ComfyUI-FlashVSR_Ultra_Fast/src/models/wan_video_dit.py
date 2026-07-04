@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +9,8 @@ import time
 from typing import Tuple, Optional, List
 from einops import rearrange
 from .utils import hash_state_dict_keys
+
+logger = logging.getLogger(__name__)
 
 try:
     import flash_attn_interface
@@ -33,7 +36,18 @@ try:
 except:
     BLOCK_ATTN_AVAILABLE = False
 
-from .sparse_sage.core import sparse_sageattn
+try:
+    from .sparse_sage.core import sparse_sageattn
+    SPARSE_SAGE_AVAILABLE = True
+    _SPARSE_SAGE_IMPORT_ERROR = None
+except Exception as sparse_sage_error:
+    sparse_sageattn = None
+    SPARSE_SAGE_AVAILABLE = False
+    _SPARSE_SAGE_IMPORT_ERROR = sparse_sage_error
+    logger.warning(
+        "[FlashVSR] Sparse SageAttention unavailable; falling back to PyTorch attention. error=%s",
+        sparse_sage_error,
+    )
 from PIL import Image
 import numpy as np
 
@@ -256,13 +270,16 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads
                 return_attn_probs=False,
             ).unsqueeze(0)
             x = rearrange(x, "b s n d -> b s (n d)", n=num_heads)
-        else:
+        elif SPARSE_SAGE_AVAILABLE:
             x = sparse_sageattn(
                 q, k, v,
                 mask_id=base_blockmask.to(torch.int8),
                 is_causal=False,
                 tensor_layout="HND"
             )
+            x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
+        else:
+            x = F.scaled_dot_product_attention(q, k, v, attn_mask=base_blockmask.to(dtype=torch.bool))
             x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
     elif compatibility_mode:
         q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)

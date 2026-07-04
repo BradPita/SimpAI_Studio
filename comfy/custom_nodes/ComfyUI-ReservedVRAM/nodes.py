@@ -3,9 +3,15 @@ from comfy import model_management
 import random
 import time
 import gc
-# 尝试导入pynvml库，如果没有安装则提供相应提示
+# 尝试导入 pynvml；在部分 AMD/Intel 环境里，导入阶段本身就可能因为缺少 NVML DLL 直接抛异常。
 try:
     import pynvml
+except Exception as e:
+    pynvml_installed = False
+    pynvml = None
+    print("[ReservedVRAM]警告：pynvml不可用，auto选项将不可用。")
+    print(f"[ReservedVRAM]pynvml导入失败: {e}")
+else:
     try:
         pynvml.nvmlInit()
         pynvml_installed = True
@@ -14,10 +20,6 @@ try:
         pynvml = None
         print("[ReservedVRAM]警告：pynvml可导入但NVML初始化失败，auto选项将不可用。")
         print(f"[ReservedVRAM]NVML初始化失败: {e}")
-except ImportError:
-    pynvml_installed = False
-    pynvml = None
-    print("[ReservedVRAM]警告：未安装pynvml库，auto选项将不可用。")
 
 # 初始化随机状态
 initial_random_state = random.getstate()
