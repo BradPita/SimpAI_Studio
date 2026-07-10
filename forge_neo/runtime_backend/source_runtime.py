@@ -104,6 +104,7 @@ _SOURCE_BACKEND_MODEL_ARG_CATALOGS: tuple[tuple[str, tuple[str, ...]], ...] = (
 _SOURCE_BACKEND_SINGLE_MODEL_ARGS = {"--esrgan-models-path"}
 _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = False
 _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = 0
+_SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = ""
 _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 _SOURCE_BACKEND_TQDM_PARTIAL_BLOCKS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 _SOURCE_BACKEND_BOOTSTRAP_PACKAGES: tuple[tuple[str, str], ...] = (
@@ -396,16 +397,17 @@ def _source_result_log_line(result: dict[str, Any]) -> str:
 
 
 def _finish_source_backend_progress_line() -> None:
-    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
+    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
     if _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE:
-        completion = str(_SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE or "").strip()
-        if completion:
-            rendered = f"[Forge Neo]: {completion}"
+        current_line = str(_SOURCE_BACKEND_CONSOLE_PROGRESS_LINE or "").strip()
+        if current_line:
+            rendered = f"[Forge Neo]: {current_line}"
             width = max(_SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, len(rendered))
             print("\r" + rendered.ljust(width), end="", flush=True)
         print("", flush=True)
         _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = False
         _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = 0
+        _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = ""
         _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = ""
 
 
@@ -417,7 +419,7 @@ def _print_source_backend_log(message: str) -> None:
 
 
 def _print_source_backend_progress_line(message: str, *, completion_line: str = "") -> None:
-    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
+    global _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE, _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH, _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE, _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE
     text = str(message or "").strip()
     if not text:
         return
@@ -428,6 +430,7 @@ def _print_source_backend_progress_line(message: str, *, completion_line: str = 
     print("\r" + rendered.ljust(width), end="", flush=True)
     _SOURCE_BACKEND_CONSOLE_PROGRESS_ACTIVE = True
     _SOURCE_BACKEND_CONSOLE_PROGRESS_WIDTH = width
+    _SOURCE_BACKEND_CONSOLE_PROGRESS_LINE = text
     _SOURCE_BACKEND_CONSOLE_PROGRESS_COMPLETION_LINE = completion
 
 

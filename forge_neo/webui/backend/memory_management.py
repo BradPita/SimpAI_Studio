@@ -156,6 +156,24 @@ def get_torch_device() -> torch.device:
             return torch.device(torch.cuda.current_device())
 
 
+def flash_attention_unavailable_reason(device: torch.device = None) -> str | None:
+    if not is_nvidia():
+        return "non-NVIDIA GPU"
+
+    try:
+        props = torch.cuda.get_device_properties(device or get_torch_device())
+    except Exception as error:
+        return f"failed to query CUDA device properties: {error}"
+
+    major = int(getattr(props, "major", 0))
+    minor = int(getattr(props, "minor", 0))
+    gpu_name = str(getattr(props, "name", "unknown"))
+
+    if major >= 8:
+        return None
+    return f"FlashAttention requires Ampere or newer (sm_80+); detected {gpu_name} (sm_{major}{minor})"
+
+
 def get_total_memory(dev: torch.device = None, torch_total_too: bool = False):
     dev = dev or get_torch_device()
 
@@ -398,7 +416,12 @@ else:
     except Exception:
         FLASH_IS_AVAILABLE = False
     else:
-        FLASH_IS_AVAILABLE = True
+        flash_disabled_reason = flash_attention_unavailable_reason()
+        if flash_disabled_reason is None:
+            FLASH_IS_AVAILABLE = True
+        else:
+            FLASH_IS_AVAILABLE = False
+            logger.info("Disabled FlashAttention: {}".format(flash_disabled_reason))
 
 try:
     import bitsandbytes  # noqa: F401
@@ -581,31 +604,14 @@ def bake_gguf_model(model):
 
 
 current_loaded_models: list["LoadedModel"] = []
-ADAPTIVE_LOWVRAM_SYNC_TRANSFERS = 0
 
 
-def adaptive_lowvram_disables_async_transfers() -> bool:
-    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS > 0:
-        return True
-
+def adaptive_lowvram_disables_async_weight_offloading() -> bool:
     for loaded_model in current_loaded_models:
         model = loaded_model.model
         if model is not None and getattr(model.model, "model_lowvram", False):
             return True
     return False
-
-
-def _enter_adaptive_lowvram_sync_transfers() -> None:
-    global ADAPTIVE_LOWVRAM_SYNC_TRANSFERS
-    ADAPTIVE_LOWVRAM_SYNC_TRANSFERS += 1
-    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS == 1:
-        logger.info("Adaptive low VRAM mode disables async weight offloading and pinned shared memory")
-
-
-def _leave_adaptive_lowvram_sync_transfers() -> None:
-    global ADAPTIVE_LOWVRAM_SYNC_TRANSFERS
-    if ADAPTIVE_LOWVRAM_SYNC_TRANSFERS > 0:
-        ADAPTIVE_LOWVRAM_SYNC_TRANSFERS -= 1
 
 
 def _loaded_model_name(model: object) -> str:
@@ -792,9 +798,9 @@ def extra_reserved_memory() -> float:
 
 def _sampling_headroom_memory_from_env() -> float:
     try:
-        return max(0.0, float(os.environ.get("FORGE_NEO_SOURCE_BACKEND_SAMPLING_HEADROOM_MB", "2048"))) * 1024 * 1024
+        return max(0.0, float(os.environ.get("FORGE_NEO_SOURCE_BACKEND_SAMPLING_HEADROOM_MB", "1024"))) * 1024 * 1024
     except (TypeError, ValueError):
-        return float(2048 * 1024 * 1024)
+        return float(1024 * 1024 * 1024)
 
 
 def _weight_load_margin_from_env() -> float:
@@ -1029,24 +1035,18 @@ def load_models_gpu(models: list["ModelPatcher"], memory_required: float = 0, fo
         if vram_set_state is VRAMState.NO_VRAM:
             lowvram_model_memory = 0.1
 
-        if adaptive_lowvram_enabled:
-            _enter_adaptive_lowvram_sync_transfers()
-        try:
-            loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
-            if adaptive_lowvram_enabled and not is_device_cpu(torch_dev) and _model_enforces_sampling_headroom(model):
-                headroom = sampling_headroom_memory()
-                free_after_load = get_free_memory(torch_dev)
-                if free_after_load < headroom:
-                    memory_to_free = headroom - free_after_load
-                    logger.info("Adjusted model load to keep sampling headroom: freeing {:.2f} MB".format(memory_to_free / (1024 * 1024)))
-                    loaded_model.model_unload(memory_to_free, unpatch_weights=False)
-                    free_after_adjustment = get_free_memory(torch_dev)
-                    if free_after_adjustment < headroom:
-                        logger.info("Partial unload did not restore sampling headroom; reloading with adaptive low VRAM budget")
-                        _reload_model_with_adaptive_lowvram_budget(loaded_model, model, torch_dev, headroom, force_patch_weights)
-        finally:
-            if adaptive_lowvram_enabled:
-                _leave_adaptive_lowvram_sync_transfers()
+        loaded_model.model_load(lowvram_model_memory, force_patch_weights=force_patch_weights)
+        if adaptive_lowvram_enabled and not is_device_cpu(torch_dev) and _model_enforces_sampling_headroom(model):
+            headroom = sampling_headroom_memory()
+            free_after_load = get_free_memory(torch_dev)
+            if free_after_load < headroom:
+                memory_to_free = headroom - free_after_load
+                logger.info("Adjusted model load to keep sampling headroom: freeing {:.2f} MB".format(memory_to_free / (1024 * 1024)))
+                loaded_model.model_unload(memory_to_free, unpatch_weights=False)
+                free_after_adjustment = get_free_memory(torch_dev)
+                if free_after_adjustment < headroom:
+                    logger.info("Partial unload did not restore sampling headroom; reloading with adaptive low VRAM budget")
+                    _reload_model_with_adaptive_lowvram_budget(loaded_model, model, torch_dev, headroom, force_patch_weights)
         current_loaded_models.insert(0, loaded_model)
 
     if (moving_time := time.perf_counter() - execution_start_time) > 0.1:
@@ -1340,8 +1340,6 @@ def pick_weight_dtype(dtype: torch.dtype, fallback_dtype: torch.dtype, device: t
 def device_supports_non_blocking(device: torch.device) -> bool:
     if args.force_non_blocking:
         return True
-    if adaptive_lowvram_disables_async_transfers():
-        return False
     if is_device_mps(device):
         return False
     if is_intel_xpu():
@@ -1772,7 +1770,7 @@ if NUM_STREAMS > 0:
 
 
 def should_use_streams(device: torch.device = None) -> bool:
-    if adaptive_lowvram_disables_async_transfers():
+    if adaptive_lowvram_disables_async_weight_offloading():
         return False
     if NUM_STREAMS <= 0:
         return False
@@ -1806,7 +1804,7 @@ stream_counters: dict[torch.device, int] = {}
 
 
 def get_offload_stream(device: torch.device):
-    if adaptive_lowvram_disables_async_transfers():
+    if adaptive_lowvram_disables_async_weight_offloading():
         return None
     if NUM_STREAMS == 0:
         return None
@@ -1914,8 +1912,6 @@ def _should_retry_sync_transfer(error: Exception, *, weight: object, device: tor
 
 def pin_memory(tensor):
     global TOTAL_PINNED_MEMORY
-    if adaptive_lowvram_disables_async_transfers():
-        return False
     if MAX_PINNED_MEMORY <= 0:
         return False
 

@@ -21,6 +21,31 @@ from backend.sampling.condition import (
 )
 
 
+_LOW_MEMORY_WARNING_JOB_KEY: str | None = None
+
+
+def _current_sampling_job_key() -> str:
+    try:
+        from modules import shared
+
+        state = getattr(shared, "state", None)
+        if state is None:
+            return ""
+        return str(getattr(state, "job", "") or "")
+    except Exception:
+        return ""
+
+
+def _should_log_low_memory_warning() -> bool:
+    global _LOW_MEMORY_WARNING_JOB_KEY
+
+    job_key = _current_sampling_job_key()
+    if job_key != _LOW_MEMORY_WARNING_JOB_KEY:
+        _LOW_MEMORY_WARNING_JOB_KEY = job_key
+        return True
+    return False
+
+
 def get_area_and_mult(conds, x_in, timestep_in):
     area = (x_in.shape[2], x_in.shape[3], 0, 0)
     strength = 1.0
@@ -197,7 +222,7 @@ def calc_cond_uncond_batch(model, cond, uncond, x_in, timestep, model_options):
         if (not args.disable_gpu_warning) and x_in.device.type == "cuda":
             free_memory_mb = free_memory / (1024.0 * 1024.0)
             safe_memory_mb = 1536.0
-            if free_memory_mb < safe_memory_mb:
+            if free_memory_mb < safe_memory_mb and _should_log_low_memory_warning():
                 logger = memory_management.logger
 
                 logger.warning("The current free memory for GPU is {:.2f} MB".format(free_memory_mb))
