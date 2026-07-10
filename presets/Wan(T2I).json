@@ -30,11 +30,11 @@
     "default_loras": [
         [
             "WAN2.1_SmartphoneSnapshotPhotoReality_v1_by-AI_Characters.safetensors",
-            0.5
+            1.0
         ],
         [
-            "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-            2.0
+            "Bernini-R_LightX2V_low_noise.safetensors",
+            1.1
         ],
         [
             "None",
@@ -59,7 +59,7 @@
     "default_prompt_negative": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
     "default_styles": [],
     "default_aspect_ratio": "896*1152",
-    "default_overwrite_step": 8,
+    "default_overwrite_step": 4,
     "default_resolution_quantize_step": 16,
     "default_resolution_multiplier": 1.0,
     "default_resolution_edit_mode": "scale",
@@ -67,7 +67,7 @@
     "lora_downloads": {},
     "model_list": [
         "diffusion_models,wan2.2_bernini_r_low_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
-        "loras,lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors,630697104,0,https://modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+        "loras,Bernini-R_LightX2V_low_noise.safetensors,1244141856,0,https://modelscope.cn/models/rzgar/Bernini-R-LightX2V-4step-loras/resolve/master/Bernini-R_LightX2V_low_noise.safetensors",
         "diffusion_models,Wan2_1-VACE_module_14B_fp8_e4m3fn.safetensors,3052113849,0,https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/Wan2_1-VACE_module_14B_fp8_e4m3fn.safetensors",
         "text_encoders,nsfw_wan_umt5-xxl_bf16_fixed.safetensors,11366399625,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5-xxl_bf16_fixed.safetensors",
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",

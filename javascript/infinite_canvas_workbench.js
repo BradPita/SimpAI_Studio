@@ -29512,7 +29512,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                         'Wan2.2_T2V_Low_Noise_14B_VACE-Q4_K_M.gguf',
                         'umt5-xxl-encoder-Q8_0.gguf',
                         'wan_2.1_vae.safetensors',
-                        'lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors',
+                        'Bernini-R_LightX2V_low_noise.safetensors',
                         'flownet.pkl'
                     ]
                 },
@@ -29535,7 +29535,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                         'wan2.2_bernini_r_low_noise_fp8_scaled.safetensors',
                         'nsfw_wan_umt5-xxl_bf16_fixed.safetensors',
                         'wan_2.1_vae.safetensors',
-                        'lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors',
+                        'Bernini-R_LightX2V_low_noise.safetensors',
                         'flownet.pkl'
                     ]
                 },

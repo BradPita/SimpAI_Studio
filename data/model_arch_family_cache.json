@@ -43,6 +43,8 @@
     "loras/Hyper-SDXL-8steps-lora.safetensors": {"arch_family": "sdxl"},
     "loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": {"arch_family": "wan"},
     "loras/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors": {"arch_family": "wan"},
+    "loras/Bernini-R_LightX2V_high_noise.safetensors": {"arch_family": "wan"},
+    "loras/Bernini-R_LightX2V_low_noise.safetensors": {"arch_family": "wan"},
     "loras/ltx/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors": {"arch_family": "ltx2"},
     "loras/ltx/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors": {"arch_family": "ltx2"},
     "loras/ltx/ltx-2.3-22b-ic-lora-outpaint.safetensors": {"arch_family": "ltx2"},

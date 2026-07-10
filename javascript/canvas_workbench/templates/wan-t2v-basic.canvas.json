@@ -195,8 +195,8 @@
             },
             {
               "enabled": true,
-              "model": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-              "weight": 2
+              "model": "Bernini-R_LightX2V_low_noise.safetensors",
+              "weight": 1
             }
           ]
         },
@@ -233,8 +233,8 @@
             },
             {
               "enabled": true,
-              "model": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-              "weight": 2
+              "model": "Bernini-R_LightX2V_low_noise.safetensors",
+              "weight": 1
             },
             {
               "enabled": true,
@@ -523,8 +523,8 @@
             },
             {
               "enabled": true,
-              "model": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-              "weight": 2
+              "model": "Bernini-R_LightX2V_low_noise.safetensors",
+              "weight": 1
             }
           ]
         },
@@ -561,8 +561,8 @@
             },
             {
               "enabled": true,
-              "model": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-              "weight": 2
+              "model": "Bernini-R_LightX2V_low_noise.safetensors",
+              "weight": 1
             },
             {
               "enabled": true,
@@ -665,7 +665,7 @@
         "model_list": [
           "diffusion_models,Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors,14289633352,0,https://www.modelscope.cn/models/huyuefeitool/wan2.2-Remix/resolve/master/Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors ",
           "diffusion_models,wan2.2_bernini_r_low_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
-          "loras,lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors,630697104,0,https://modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+          "loras,Bernini-R_LightX2V_low_noise.safetensors,1244141856,0,https://modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LightX2V_low_noise.safetensors",
           "text_encoders,nsfw_wan_umt5-xxl_bf16_fixed.safetensors,11366399625,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5-xxl_bf16_fixed.safetensors",
           "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",
           "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
@@ -836,7 +836,7 @@
         "wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
         "nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
         "wan_2.1_vae.safetensors",
-        "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+        "Bernini-R_LightX2V_low_noise.safetensors",
         "flownet.pkl"
       ]
     },

@@ -1300,6 +1300,27 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }
 
     let activeModelsSelectMenu = null;
+    let suppressNextModelsSelectDocumentClick = false;
+
+    function clearModelsSelectOpeningGesture(menuState = activeModelsSelectMenu) {
+        suppressNextModelsSelectDocumentClick = false;
+        if (!menuState) return;
+        menuState.openingPointerId = null;
+        menuState.ignoreOpeningClick = false;
+    }
+
+    function shouldIgnoreModelsSelectOpeningActivation(select, event) {
+        const menuState = activeModelsSelectMenu;
+        if (!menuState || menuState.select !== select) return false;
+        if (event.type === 'pointerup' && menuState.openingPointerId === event.pointerId) {
+            return true;
+        }
+        if (event.type === 'click' && menuState.ignoreOpeningClick) {
+            clearModelsSelectOpeningGesture(menuState);
+            return true;
+        }
+        return false;
+    }
 
     function readModelsPanelPxVar(element, name, fallback) {
         const raw = window.getComputedStyle?.(element)?.getPropertyValue(name) || '';
@@ -1311,6 +1332,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         if (!activeModelsSelectMenu) return;
         activeModelsSelectMenu.menu.remove();
         activeModelsSelectMenu = null;
+        suppressNextModelsSelectDocumentClick = false;
         document.dispatchEvent(new CustomEvent('simpai:models-select-menu-close'));
     }
 
@@ -1396,13 +1418,23 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             option.title = choice;
             option.setAttribute('aria-selected', choice === currentValue ? 'true' : 'false');
             if (choice === currentValue) option.classList.add('is-selected');
-            option.addEventListener('pointerover', () => dispatchModelsSelectOptionPreview(select, option, choice));
-            option.addEventListener('mouseover', () => dispatchModelsSelectOptionPreview(select, option, choice));
-            option.addEventListener('click', (event) => {
+            let optionCommitted = false;
+            const commitOption = (event) => {
                 event.preventDefault();
                 event.stopPropagation();
+                if (shouldIgnoreModelsSelectOpeningActivation(select, event)) return;
+                if (optionCommitted) return;
+                optionCommitted = true;
                 selectModelsSelectOption(select, choice);
+            };
+            option.addEventListener('pointerover', () => dispatchModelsSelectOptionPreview(select, option, choice));
+            option.addEventListener('mouseover', () => dispatchModelsSelectOptionPreview(select, option, choice));
+            option.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
             });
+            option.addEventListener('pointerup', commitOption);
+            option.addEventListener('click', commitOption);
             if (index === 0) option.dataset.simpaiFirstMatch = '1';
             fragment.appendChild(option);
         });
@@ -1764,8 +1796,19 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         }
         event.preventDefault();
         event.stopPropagation();
+        suppressNextModelsSelectDocumentClick = true;
         localizeModelsJsPanel(select.closest('[data-simpai-models-js-root]'));
         openModelsSelectMenu(select);
+        if (activeModelsSelectMenu?.select === select) {
+            activeModelsSelectMenu.openingPointerId = event.pointerId;
+            activeModelsSelectMenu.ignoreOpeningClick = true;
+            const menuState = activeModelsSelectMenu;
+            setTimeout(() => {
+                if (activeModelsSelectMenu === menuState && menuState.ignoreOpeningClick) {
+                    clearModelsSelectOpeningGesture(menuState);
+                }
+            }, 500);
+        }
     }, true);
 
     document.addEventListener('pointerover', (event) => {
@@ -1811,6 +1854,15 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }, true);
 
     document.addEventListener('click', (event) => {
+        if (suppressNextModelsSelectDocumentClick) {
+            const menuState = activeModelsSelectMenu;
+            clearModelsSelectOpeningGesture(menuState);
+            if (menuState) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+        }
         if (!event.target?.closest?.('.simpai-models-js-select, .simpai-models-js-select-menu')) {
             closeModelsSelectMenu();
         }
