@@ -100,6 +100,8 @@ def _config_paths(config, key, default_value=None):
         paths.append(os.path.abspath(os.path.join(script_dir, pp)) if not os.path.isabs(pp) else pp)
     return paths
 
+download_path_mapping = {}
+
 MODEL_SCAN_CATEGORIES = [
     'checkpoints', 'loras', 'controlnet', 'embeddings', 'diffusion_models',
     'vae_approx', 'vae', 'upscale_models', 'inpaint', 'grounding-dino', 'ipadapter',
@@ -222,7 +224,7 @@ def _find_config_path():
     return None
 
 def load_model_paths():
-    global simplemodels_root
+    global simplemodels_root, download_path_mapping
 
     config_path = _find_config_path()
     path_mapping = {}
@@ -432,6 +434,11 @@ def load_model_paths():
             "hunyuan_foley": [os.path.join(simplemodels_root, "hunyuan_foley")],
         }
 
+    download_path_mapping = {
+        key: list(value or [])
+        for key, value in path_mapping.items()
+    }
+
     for key in list(path_mapping):
         path_mapping[key] = _dedupe_keep_order(
             _model_root_category_dirs(key)
@@ -454,9 +461,31 @@ def load_model_paths():
             normalized_paths.append(pp)
         path_mapping[key] = normalized_paths
 
+    for key in download_path_mapping:
+        normalized_paths = []
+        seen = set()
+        for p in download_path_mapping[key]:
+            pp = str(p or "").strip()
+            if not pp:
+                continue
+            pp = os.path.abspath(pp) if not os.path.isabs(pp) else pp
+            norm_key = os.path.normcase(os.path.normpath(pp))
+            if norm_key in seen:
+                continue
+            seen.add(norm_key)
+            normalized_paths.append(pp)
+        download_path_mapping[key] = normalized_paths
+
     ensure_model_root_exists(simplemodels_root)
 
     return path_mapping
+
+def _get_download_base_dirs(path_type, path_mapping):
+    # Download targets must follow the declared package category exactly.
+    base_dirs = download_path_mapping.get(path_type, []) or []
+    if base_dirs:
+        return base_dirs
+    return path_mapping.get(path_type, []) or [os.path.join(simplemodels_root, path_type)]
 
 def _get_search_dirs(path_mapping, path_type):
     if not path_mapping or not path_type:
@@ -1697,7 +1726,7 @@ def trigger_manual_download():
             continue
 
         sorted_base_dir = sorted(
-            path_mapping.get(path_type, []),
+            _get_download_base_dirs(path_type, path_mapping),
             key=lambda x: (
                 0 if "SimpleModels" in x else
                 1 if any(part == "models" for part in x.split(os.sep)) else 2,
@@ -1710,6 +1739,16 @@ def trigger_manual_download():
             if os.path.exists(base_dir):
                 target_base_dir = base_dir
                 break
+        if not target_base_dir:
+            for base_dir in sorted_base_dir:
+                if not _path_drive_available(base_dir):
+                    continue
+                try:
+                    os.makedirs(base_dir, exist_ok=True)
+                    target_base_dir = base_dir
+                    break
+                except Exception:
+                    continue
         if not target_base_dir:
             continue
 
@@ -1793,7 +1832,7 @@ def auto_download_missing_files_with_retry(max_threads=5):
                     rel_path = os.path.basename(link)
 
                 sorted_base_dir = sorted(
-                    path_mapping.get(path_type, []),
+                    _get_download_base_dirs(path_type, path_mapping),
                     key=lambda x: (
                         0 if "SimpleModels" in x else
                         1 if any(part == "models" for part in x.split(os.sep)) else
@@ -1812,7 +1851,7 @@ def auto_download_missing_files_with_retry(max_threads=5):
 
                 if not target_base_dir:
                     default_base_dir = os.path.join(simplemodels_root, path_type)
-                    if ensure_model_root_exists(simplemodels_root):
+                    if ensure_model_root_exists(simplemodels_root) and not sorted_base_dir:
                         try:
                             os.makedirs(default_base_dir, exist_ok=True)
                             target_base_dir = default_base_dir
