@@ -138,6 +138,7 @@ def compare_button_gr_update(value=None, visible=True, ready=False):
     return gr_update(
         value=COMPARE_BUTTON_ICON if value is None else value,
         visible=visible,
+        interactive=bool(ready),
         size='sm',
         variant='primary' if ready else 'secondary',
     )
@@ -3700,10 +3701,16 @@ with shared.gradio_root:
                             image_tools_box_title = gr.Markdown('<b>ToolBox</b>', visible=True)
                             open_folder_btn = gr.Button(value='📁', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             open_folder_btn.click(toolbox.open_output_folder, inputs=state_topbar, outputs=[open_folder_btn], show_progress=False)
-                            compare_btn = gr.Button(COMPARE_BUTTON_ICON, visible=True, size='sm', elem_id='compare_btn', elem_classes=['toolbox_icon_btn'])
+                            compare_btn = gr.Button(COMPARE_BUTTON_ICON, visible=True, interactive=False, size='sm', elem_id='compare_btn', elem_classes=['toolbox_icon_btn'])
                             prompt_info_button = gr.Button(value='ℹ️', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             prompt_regen_button = gr.Button(value='🔁', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             prompt_delete_button = gr.Button(value='🗑️', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
+                            gallery_delete_target = gr.Textbox(
+                                value="",
+                                visible=True,
+                                elem_id="gallery_delete_target",
+                                elem_classes=["sai-gradio-hidden-bridge"],
+                            )
                             prompt_info_evt = prompt_info_button.click(toolbox.toggle_prompt_info, inputs=state_topbar, outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar], show_progress=False)
                             prompt_info_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showPromptInfoOverlayFromInfobox(); traceResultPanelStateSoon("prompt_info.click.after");}catch(e){console.warn("[UI-TRACE] prompt_info.dom_trace_failed", e);}}')
                             prompt_info_close_evt = prompt_info_close_btn.click(toolbox.close_prompt_info, inputs=state_topbar, outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, state_topbar], show_progress=False)
@@ -8918,18 +8925,6 @@ with shared.gradio_root:
 
         def toggle_comparison(is_comp, input_img, gallery_output, final_gallery, state_params, scene1, scene_canvas):
             state_params = dict(state_params or {})
-            if not is_comp:
-                had_main_gallery_browser_state = bool(state_params.get("gallery_state") == "main_browser")
-                gallery_util.clear_main_gallery_browser_state(state_params)
-                if had_main_gallery_browser_state or state_params.get("gallery_state") == "main_browser":
-                    state_params["gallery_state"] = "finished_index"
-                state_params["gallery_preview_open"] = True
-                state_params["__post_generation_has_output"] = True
-                state_params["__post_generation_gallery_output"] = True
-                state_params["__post_generation_video_output"] = False
-                state_params["__post_generation_compare_ready"] = True
-                state_params["__post_generation_compare_visible"] = True
-                state_params["__post_generation_compare_cleared"] = False
 
             def mark_compare_state_ready(ready, cleared):
                 state_params["__post_generation_compare_ready"] = bool(ready)
@@ -8964,10 +8959,27 @@ with shared.gradio_root:
                 state_params.get("gallery_state") == "main_browser"
                 and not post_generation_compare_available
             )
+            if main_browser_without_post_generation_compare:
+                util.log_ui_trace(
+                    logger,
+                    "[UI-TRACE] compare.toggle_blocked_gallery_browser | gallery_state=%r, input=%r",
+                    state_params.get("gallery_state"),
+                    describe_slider_image_source(input_img),
+                )
+                return (
+                    False,
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    compare_button_gr_update(ready=False),
+                    skip_component_update(),
+                    state_params,
+                )
             compare_state_invalid = bool(
                 compare_toolbox_disabled
                 or state_params.get("__post_generation_compare_cleared")
-                or main_browser_without_post_generation_compare
             )
             if compare_state_invalid:
                 util.log_ui_trace(
@@ -8978,15 +8990,14 @@ with shared.gradio_root:
                     state_params.get("__post_generation_compare_ready"),
                     state_params.get("__image_tools_enabled"),
                 )
-                mark_compare_state_ready(False, True)
                 toolbox_update = gr_update(visible=False) if compare_toolbox_disabled else skip_component_update()
                 return (
                     False,
-                    gr_update(visible=False),
-                    gr_update(visible=True),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
                     compare_button_gr_update(visible=not compare_toolbox_disabled, ready=False),
                     toolbox_update,
                     state_params,
@@ -8995,14 +9006,13 @@ with shared.gradio_root:
             input_img = resolve_comparison_input(input_img, state_params, scene1, scene_canvas)
             if input_img is None:
                 util.log_ui_trace(logger, "[UI-TRACE] compare.toggle_missing_input")
-                mark_compare_state_ready(False, True)
                 return (
                     False,
-                    gr_update(visible=False),
-                    gr_update(visible=True),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
                     compare_button_gr_update(ready=False),
                     skip_component_update(),
                     state_params,
@@ -9023,18 +9033,28 @@ with shared.gradio_root:
                     describe_slider_image_source(gallery_output),
                     describe_slider_image_source(final_gallery),
                 )
-                mark_compare_state_ready(False, True)
                 return (
                     False,
-                    gr_update(visible=False),
-                    gr_update(visible=True),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
-                    gr_update(visible=False),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
+                    skip_component_update(),
                     compare_button_gr_update(ready=False),
                     skip_component_update(),
                     state_params,
                 )
+            had_main_gallery_browser_state = bool(state_params.get("gallery_state") == "main_browser")
+            gallery_util.clear_main_gallery_browser_state(state_params)
+            if had_main_gallery_browser_state or state_params.get("gallery_state") == "main_browser":
+                state_params["gallery_state"] = "finished_index"
+            state_params["gallery_preview_open"] = True
+            state_params["__post_generation_has_output"] = True
+            state_params["__post_generation_gallery_output"] = True
+            state_params["__post_generation_video_output"] = False
+            state_params["__post_generation_compare_ready"] = True
+            state_params["__post_generation_compare_visible"] = True
+            state_params["__post_generation_compare_cleared"] = False
             mark_compare_state_ready(True, False)
             state_params["gallery_state"] = "finished_index"
             state_params["gallery_preview_open"] = True
@@ -9747,10 +9767,17 @@ with shared.gradio_root:
             bind_auto_describe_button(describe_enhance_button, enhance_input_image, "enhance")
 
     note_box_outputs = [params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, state_topbar]
+    gallery_delete_capture_js = r'''(state,target)=>{try{const app=(typeof gradioApp==="function"?gradioApp():document);const roots=[app.querySelector("#finished_gallery"),app.querySelector("#final_gallery")].filter(Boolean);let root=roots.find((node)=>node.offsetParent!==null&&node.querySelector(".thumbnail-item.thumbnail-small.selected"));if(!root)root=roots.find((node)=>node.querySelector(".thumbnail-item.thumbnail-small.selected"));const button=root?root.querySelector(".thumbnail-item.thumbnail-small.selected"):null;const buttons=root?Array.from(root.querySelectorAll(".thumbnail-item.thumbnail-small")):[];const selectedIndex=button?buttons.indexOf(button):-1;const media=(button&&button.querySelector("img,video"))||(root&&root.querySelector(".preview img,.preview video"));const mediaSrc=media?(media.currentSrc||media.src||media.getAttribute("src")||""):"";const live=(window.simpleaiTopbarSystemParams&&typeof window.simpleaiTopbarSystemParams==="object")?window.simpleaiTopbarSystemParams:((state&&typeof state==="object")?state:{});const paths=Array.isArray(live.__main_gallery_browser_paths)?live.__main_gallery_browser_paths:[];let mediaPath="";try{const url=new URL(mediaSrc,document.baseURI||window.location.href);const decoded=decodeURIComponent(url.pathname||"");for(const marker of ["/gradio_api/file=","/file="]){const markerIndex=decoded.indexOf(marker);if(markerIndex>=0){mediaPath=decoded.slice(markerIndex+marker.length);if(/^\/[A-Za-z]:[\\/]/.test(mediaPath))mediaPath=mediaPath.slice(1);break;}}if(!mediaPath){const name=decodeURIComponent(decoded.split("/").filter(Boolean).pop()||"");const match=name.match(/^simpai_gprev__([A-Za-z0-9_-]+)__[0-9a-f]{16}\.jpg$/);if(match){const encoded=match[1].replace(/-/g,"+").replace(/_/g,"/");const padded=encoded+"=".repeat((4-encoded.length%4)%4);const bytes=Uint8Array.from(atob(padded),(char)=>char.charCodeAt(0));mediaPath=(window.TextDecoder?new TextDecoder("utf-8").decode(bytes):"");}}}catch(_e){}if(!mediaPath&&selectedIndex>=0&&selectedIndex<paths.length)mediaPath=String(paths[selectedIndex]||"");const normalized=String(mediaPath||"").replace(/\\/g,"/");const promptInfo=Array.isArray(live.prompt_info)?live.prompt_info:[];const snapshot={version:1,request_id:`${Date.now()}:${Math.random().toString(36).slice(2,10)}`,captured_at:Date.now(),selected_index:selectedIndex,media_src:mediaSrc,media_path:mediaPath,file_name:normalized.split("/").pop()||"",source_id:(root&&root.id)||"",gallery_state:String(live.gallery_state||""),choice:promptInfo.length?promptInfo[0]:null,engine_type:String(live.__gallery_engine_type||live.engine_type||""),valid:selectedIndex>=0&&!!(mediaPath||mediaSrc)};window.__simpleaiPendingGalleryDeleteTarget=snapshot;return [state,JSON.stringify(snapshot)];}catch(e){window.__simpleaiPendingGalleryDeleteTarget=null;console.warn("[UI-TRACE] gallery_delete.capture_failed",e);return [state,target||""];}}'''
 
-    prompt_delete_evt = prompt_delete_button.click(toolbox.toggle_note_box_delete, inputs=state_topbar, outputs=note_box_outputs, show_progress=False)
+    prompt_delete_evt = prompt_delete_button.click(
+        fn=toolbox.toggle_note_box_delete,
+        inputs=[state_topbar, gallery_delete_target],
+        outputs=note_box_outputs + [gallery_delete_target],
+        show_progress=False,
+        js=gallery_delete_capture_js,
+    )
     prompt_delete_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("delete");}catch(e){console.warn("[UI-TRACE] toolbox_note.delete_overlay_failed", e);}}')
-    params_note_delete_button.click(toolbox.delete_image, inputs=state_topbar, outputs=[gallery, progress_gallery, progress_window, gallery_index, params_note_delete_button, params_note_box, gallery_index_stat], show_progress=False) \
+    params_note_delete_button.click(toolbox.delete_image, inputs=[state_topbar, gallery_delete_target], outputs=[gallery, progress_gallery, progress_window, gallery_index, params_note_delete_button, params_note_box, gallery_index_stat], show_progress=False, js=gallery_delete_capture_js) \
             .then(toolbox.close_note_box, inputs=state_topbar, outputs=note_box_outputs, show_progress=False) \
             .then(lambda x, state: None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type)); try{traceResultPanelStateSoon("delete_image.after_refresh");}catch(e){console.warn("[UI-TRACE] delete_image.dom_trace_failed", e);}}')
 

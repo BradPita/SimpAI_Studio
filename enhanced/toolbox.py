@@ -4,6 +4,7 @@ import copy
 import re
 import math
 import time
+from urllib.parse import unquote, urlparse
 import gradio as gr
 import modules.config as config
 import modules.util as util
@@ -187,8 +188,11 @@ def toggle_note_box(item, state_params):
         state_params
     )
 
-def toggle_note_box_delete(state_params):
-    return toggle_note_box('delete', state_params)
+def toggle_note_box_delete(state_params, delete_target=None):
+    result = toggle_note_box('delete', state_params)
+    if delete_target is None:
+        return result
+    return result + (delete_target,)
 
 
 def toggle_note_box_regen(*args):
@@ -358,7 +362,80 @@ def _output_choice_from_media_path(file_path, user_path_outputs):
     return folder_name[2:] if folder_name.startswith("20") else folder_name
 
 
-def delete_image(state_params):
+def _parse_gallery_delete_target(delete_target):
+    if isinstance(delete_target, dict):
+        return dict(delete_target)
+    if not isinstance(delete_target, str) or not delete_target.strip():
+        return None
+    try:
+        value = json.loads(delete_target)
+    except Exception:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _gallery_delete_media_path_from_src(media_src):
+    media_src = str(media_src or "").strip()
+    if not media_src:
+        return None
+    try:
+        parsed = urlparse(media_src)
+        decoded_path = unquote(parsed.path or "")
+    except Exception:
+        return None
+
+    preview_route = f"{gallery.GALLERY_DISPLAY_PREVIEW_ROUTE}/"
+    if preview_route in decoded_path:
+        preview_name = os.path.basename(decoded_path)
+        return gallery._gallery_display_preview_original_path_from_name(preview_name)
+
+    for marker in ("/gradio_api/file=", "/file="):
+        marker_index = decoded_path.find(marker)
+        if marker_index < 0:
+            continue
+        file_path = decoded_path[marker_index + len(marker):]
+        if re.match(r"^/[A-Za-z]:[\\/]", file_path):
+            file_path = file_path[1:]
+        return file_path.replace("/", os.sep)
+    return None
+
+
+def _resolve_gallery_delete_target(delete_target, state_params, user_path_outputs):
+    target = _parse_gallery_delete_target(delete_target)
+    if not target or target.get("version") != 1 or not target.get("valid"):
+        return None, target, "invalid_snapshot"
+
+    try:
+        selected_index = gallery.normalize_gallery_selected_index(target.get("selected_index"))
+    except Exception:
+        selected_index = 0
+
+    candidates = [
+        _gallery_delete_media_path_from_src(target.get("media_src")),
+        target.get("media_path"),
+    ]
+    browser_paths = state_params.get("__main_gallery_browser_paths") if isinstance(state_params, dict) else None
+    if isinstance(browser_paths, list) and selected_index < len(browser_paths):
+        candidates.append(browser_paths[selected_index])
+
+    expected_name = os.path.basename(str(target.get("file_name") or ""))
+    for candidate in candidates:
+        safe_path = _safe_output_media_path(candidate, user_path_outputs)
+        if not safe_path:
+            continue
+        if expected_name and os.path.normcase(os.path.basename(safe_path)) != os.path.normcase(expected_name):
+            continue
+        target["selected_index"] = selected_index
+        return safe_path, target, None
+    return None, target, "target_not_in_outputs"
+
+
+def delete_image(state_params, delete_target=None):
+    logger.info(
+        "[UI-TRACE] toolbox.delete_media.target_received | type=%s, size=%s",
+        type(delete_target).__name__,
+        len(delete_target) if isinstance(delete_target, str) else 0,
+    )
     prompt_info = state_params.get("prompt_info") or [None, 0]
     if len(prompt_info) < 2:
         prompt_info = [None, 0]
@@ -371,21 +448,43 @@ def delete_image(state_params):
     max_per_page = state_params["__max_per_page"]
     max_catalog = state_params["__max_catalog"]
     user_did = state_params["user"].get_did()
-    engine_type = gallery.get_gallery_engine_type(state_params)
-    media_label = "video" if engine_type == "video" else "image"
     user_path_outputs = config.get_user_path_outputs(user_did)
-    remembered_path = _safe_output_media_path(state_params.get("__selected_gallery_media_path"), user_path_outputs)
-    direct_path = gallery.get_main_gallery_browser_selected_path(state_params, selected)
-    direct_path = _safe_output_media_path(direct_path, user_path_outputs)
-    if state_params.get("gallery_state") == "main_browser":
-        selected_path = direct_path or remembered_path
-    else:
-        selected_path = remembered_path or direct_path
-    if selected_path is None and choice is not None:
-        selected_path = _safe_output_media_path(
-            gallery.get_media_path_from_gallery_index(choice, selected, max_per_page, user_did, engine_type),
+    engine_type = gallery.get_gallery_engine_type(state_params)
+    direct_path = None
+    resolved_target = None
+    if delete_target is not None:
+        selected_path, resolved_target, target_error = _resolve_gallery_delete_target(
+            delete_target,
+            state_params,
             user_path_outputs,
         )
+        if selected_path is None:
+            logger.error(
+                "Delete media blocked: current gallery target could not be verified, reason=%s, target=%r",
+                target_error,
+                resolved_target,
+            )
+            return [skip_update() for _ in range(6)] + [state_params['__finished_nums_pages']]
+        selected = gallery.normalize_gallery_selected_index(resolved_target.get("selected_index"))
+        extension = os.path.splitext(selected_path)[1].lower()
+        if extension in set(getattr(gallery, "video_types", []) or []):
+            engine_type = "video"
+        elif extension in set(getattr(gallery, "image_types", []) or []):
+            engine_type = "image"
+    else:
+        remembered_path = _safe_output_media_path(state_params.get("__selected_gallery_media_path"), user_path_outputs)
+        direct_path = gallery.get_main_gallery_browser_selected_path(state_params, selected)
+        direct_path = _safe_output_media_path(direct_path, user_path_outputs)
+        if state_params.get("gallery_state") == "main_browser":
+            selected_path = direct_path or remembered_path
+        else:
+            selected_path = remembered_path or direct_path
+        if selected_path is None and choice is not None:
+            selected_path = _safe_output_media_path(
+                gallery.get_media_path_from_gallery_index(choice, selected, max_per_page, user_did, engine_type),
+                user_path_outputs,
+            )
+    media_label = "video" if engine_type == "video" else "image"
     info = gallery.read_embedded_metadata_from_file(selected_path, engine_type) if selected_path else None
     if info is None:
         info = gallery.get_images_prompt(choice, selected, max_per_page, user_did=user_did, media_type=engine_type)
@@ -399,6 +498,8 @@ def delete_image(state_params):
     if selected_path:
         output_choice = _output_choice_from_media_path(selected_path, user_path_outputs)
         file_path = selected_path
+        if str(choice or "").split("/")[0] != output_choice:
+            choice = output_choice
     else:
         output_index = str(choice or "").split('/')
         output_choice = output_index[0] if output_index else ""

@@ -1024,6 +1024,11 @@ function setSimpleAICompareButtonReadyState(el, ready) {
     getSimpleAICompareButtonElements(el).forEach((node) => {
         ensureSimpleAICompareButtonLabel(node);
         restoreSimpleAICompareButtonNodeInteractivity(node);
+        try {
+            if ("disabled" in node) node.disabled = !ready;
+            if (ready) node.removeAttribute("aria-disabled");
+            else node.setAttribute("aria-disabled", "true");
+        } catch (e) {}
         try { node.classList.toggle("simpleai-compare-ready", !!ready); } catch (e) {}
         if (ready) {
             try {
@@ -2497,6 +2502,22 @@ function showToolboxNoteOverlayFromSource(kind) {
                 : kind === "preset"
                     ? "Save a new preset for the current params and configuration."
                     : "Extract parameters to backfill for regeneration.";
+        }
+        if (kind === "delete") {
+            const target = window.__simpleaiPendingGalleryDeleteTarget;
+            const params = topbarLastSystemParams && typeof topbarLastSystemParams === "object" ? topbarLastSystemParams : {};
+            const isEnglish = String(params.__lang || "cn").toLowerCase() === "en";
+            const fileName = target && target.valid ? String(target.file_name || "") : "";
+            body.textContent = fileName
+                ? (isEnglish
+                    ? `Delete “${fileName}”? The file and its log entry will be removed.`
+                    : `确认删除“${fileName}”？文件和对应日志记录都会删除。`)
+                : (isEnglish
+                    ? "The current gallery item could not be identified. Close the preview and open it again before deleting."
+                    : "无法识别当前相册项目。请关闭预览并重新打开后再删除。");
+            if (confirm) confirm.disabled = !fileName;
+        } else if (confirm) {
+            confirm.disabled = false;
         }
         body.dataset.rawText = String(body.textContent || "");
         try {

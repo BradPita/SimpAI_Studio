@@ -67,6 +67,65 @@ function selected_gallery_index() {
     return all_gallery_buttons().findIndex(elem => elem.classList.contains('selected'));
 }
 
+function simpleaiGalleryFilePathFromSrc(src) {
+    const value = String(src || '');
+    if (!value) return '';
+    let url = null;
+    try {
+        url = new URL(value, document.baseURI || window.location?.href || location.href);
+    } catch (e) {
+        return '';
+    }
+    const decodedPath = decodeURIComponent(url.pathname || '');
+    for (const marker of ['/gradio_api/file=', '/file=']) {
+        const markerIndex = decodedPath.indexOf(marker);
+        if (markerIndex < 0) continue;
+        let filePath = decodedPath.slice(markerIndex + marker.length);
+        if (/^\/[A-Za-z]:[\\/]/.test(filePath)) filePath = filePath.slice(1);
+        return filePath.replace(/\//g, '\\');
+    }
+    return '';
+}
+
+function simpleaiGalleryDeleteTargetSnapshot() {
+    const button = selected_gallery_button();
+    const selectedIndex = selected_gallery_index();
+    const media = simpleaiGalleryButtonMedia(button);
+    const mediaSrc = simpleaiMediaSrc(media);
+    const state = (window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object')
+        ? window.simpleaiTopbarSystemParams
+        : ((typeof topbarLastSystemParams !== 'undefined' && topbarLastSystemParams && typeof topbarLastSystemParams === 'object')
+            ? topbarLastSystemParams
+            : {});
+    const browserPaths = Array.isArray(state.__main_gallery_browser_paths) ? state.__main_gallery_browser_paths : [];
+    let mediaPath = simpleaiGalleryFilePathFromSrc(mediaSrc);
+    if (!mediaPath) {
+        mediaPath = simpleaiGalleryFilePathFromSrc(simpleaiGalleryDisplayPreviewOriginalSrc(mediaSrc));
+    }
+    if (!mediaPath && selectedIndex >= 0 && selectedIndex < browserPaths.length) {
+        mediaPath = String(browserPaths[selectedIndex] || '');
+    }
+    const normalizedPath = String(mediaPath || '').replace(/\\/g, '/');
+    const source = button?.closest?.('#finished_gallery, #final_gallery');
+    const promptInfo = Array.isArray(state.prompt_info) ? state.prompt_info : [];
+    const snapshot = {
+        version: 1,
+        request_id: `${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
+        captured_at: Date.now(),
+        selected_index: selectedIndex,
+        media_src: mediaSrc,
+        media_path: mediaPath,
+        file_name: normalizedPath.split('/').pop() || '',
+        source_id: source?.id || '',
+        gallery_state: String(state.gallery_state || ''),
+        choice: promptInfo.length ? promptInfo[0] : null,
+        engine_type: String(state.__gallery_engine_type || state.engine_type || ''),
+        valid: selectedIndex >= 0 && !!(mediaPath || mediaSrc),
+    };
+    window.__simpleaiPendingGalleryDeleteTarget = snapshot;
+    return JSON.stringify(snapshot);
+}
+
 function simpleaiGalleryButtonMedia(button) {
     return button?.querySelector?.('img, video') || null;
 }
