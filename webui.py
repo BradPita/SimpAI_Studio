@@ -9767,7 +9767,62 @@ with shared.gradio_root:
             bind_auto_describe_button(describe_enhance_button, enhance_input_image, "enhance")
 
     note_box_outputs = [params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, state_topbar]
-    gallery_delete_capture_js = r'''(state,target)=>{try{const app=(typeof gradioApp==="function"?gradioApp():document);const roots=[app.querySelector("#finished_gallery"),app.querySelector("#final_gallery")].filter(Boolean);let root=roots.find((node)=>node.offsetParent!==null&&node.querySelector(".thumbnail-item.thumbnail-small.selected"));if(!root)root=roots.find((node)=>node.querySelector(".thumbnail-item.thumbnail-small.selected"));const button=root?root.querySelector(".thumbnail-item.thumbnail-small.selected"):null;const buttons=root?Array.from(root.querySelectorAll(".thumbnail-item.thumbnail-small")):[];const selectedIndex=button?buttons.indexOf(button):-1;const media=(button&&button.querySelector("img,video"))||(root&&root.querySelector(".preview img,.preview video"));const mediaSrc=media?(media.currentSrc||media.src||media.getAttribute("src")||""):"";const live=(window.simpleaiTopbarSystemParams&&typeof window.simpleaiTopbarSystemParams==="object")?window.simpleaiTopbarSystemParams:((state&&typeof state==="object")?state:{});const paths=Array.isArray(live.__main_gallery_browser_paths)?live.__main_gallery_browser_paths:[];let mediaPath="";try{const url=new URL(mediaSrc,document.baseURI||window.location.href);const decoded=decodeURIComponent(url.pathname||"");for(const marker of ["/gradio_api/file=","/file="]){const markerIndex=decoded.indexOf(marker);if(markerIndex>=0){mediaPath=decoded.slice(markerIndex+marker.length);if(/^\/[A-Za-z]:[\\/]/.test(mediaPath))mediaPath=mediaPath.slice(1);break;}}if(!mediaPath){const name=decodeURIComponent(decoded.split("/").filter(Boolean).pop()||"");const match=name.match(/^simpai_gprev__([A-Za-z0-9_-]+)__[0-9a-f]{16}\.jpg$/);if(match){const encoded=match[1].replace(/-/g,"+").replace(/_/g,"/");const padded=encoded+"=".repeat((4-encoded.length%4)%4);const bytes=Uint8Array.from(atob(padded),(char)=>char.charCodeAt(0));mediaPath=(window.TextDecoder?new TextDecoder("utf-8").decode(bytes):"");}}}catch(_e){}if(!mediaPath&&selectedIndex>=0&&selectedIndex<paths.length)mediaPath=String(paths[selectedIndex]||"");const normalized=String(mediaPath||"").replace(/\\/g,"/");const promptInfo=Array.isArray(live.prompt_info)?live.prompt_info:[];const snapshot={version:1,request_id:`${Date.now()}:${Math.random().toString(36).slice(2,10)}`,captured_at:Date.now(),selected_index:selectedIndex,media_src:mediaSrc,media_path:mediaPath,file_name:normalized.split("/").pop()||"",source_id:(root&&root.id)||"",gallery_state:String(live.gallery_state||""),choice:promptInfo.length?promptInfo[0]:null,engine_type:String(live.__gallery_engine_type||live.engine_type||""),valid:selectedIndex>=0&&!!(mediaPath||mediaSrc)};window.__simpleaiPendingGalleryDeleteTarget=snapshot;return [state,JSON.stringify(snapshot)];}catch(e){window.__simpleaiPendingGalleryDeleteTarget=null;console.warn("[UI-TRACE] gallery_delete.capture_failed",e);return [state,target||""];}}'''
+    gallery_delete_capture_js = r'''(state,target)=>{
+            try{
+            const app=(typeof gradioApp==="function"?gradioApp():document);
+            const roots=[app.querySelector("#finished_gallery"),app.querySelector("#final_gallery")].filter(Boolean);
+            let root=roots.find((node)=>node.offsetParent!==null&&node.querySelector(".thumbnail-item.thumbnail-small.selected"));
+            if(!root)root=roots.find((node)=>node.querySelector(".thumbnail-item.thumbnail-small.selected"));
+            if(!root)root=roots.find((node)=>node.offsetParent!==null&&node.querySelector(".preview img,.preview video"));
+            if(!root)root=roots.find((node)=>node.querySelector(".preview img,.preview video"));
+            const button=root?root.querySelector(".thumbnail-item.thumbnail-small.selected"):null;
+            const buttons=root?Array.from(root.querySelectorAll(".thumbnail-item.thumbnail-small")):[];
+            const selectedIndexFromButton=button?buttons.indexOf(button):-1;
+            const live=(window.simpleaiTopbarSystemParams&&typeof window.simpleaiTopbarSystemParams==="object")?window.simpleaiTopbarSystemParams:((state&&typeof state==="object")?state:{});
+            const paths=Array.isArray(live.__main_gallery_browser_paths)?live.__main_gallery_browser_paths:[];
+            const postGenerationUrl=String(live.__post_generation_image_url||"");
+            const media=(button&&button.querySelector("img,video"))||(root&&root.querySelector(".preview img,.preview video"));
+            let mediaSrc=media?(media.currentSrc||media.src||media.getAttribute("src")||""):"";
+            if(!mediaSrc&&postGenerationUrl)mediaSrc=postGenerationUrl;
+            function decodeMediaPath(src){
+                src=String(src||"");
+                if(!src)return "";
+                let mediaPath="";
+                try{
+                    const url=new URL(src,document.baseURI||window.location.href);
+                    const decoded=decodeURIComponent(url.pathname||"");
+                    for(const marker of ["/gradio_api/file=","/file="]){
+                        const markerIndex=decoded.indexOf(marker);
+                        if(markerIndex>=0){
+                            mediaPath=decoded.slice(markerIndex+marker.length);
+                            if(/^\/[A-Za-z]:[\\/]/.test(mediaPath))mediaPath=mediaPath.slice(1);
+                            return mediaPath;
+                        }
+                    }
+                    const name=decodeURIComponent(decoded.split("/").filter(Boolean).pop()||"");
+                    const match=name.match(/^simpai_gprev__([A-Za-z0-9_-]+)__[0-9a-f]{16}\.jpg$/);
+                    if(match){
+                        const encoded=match[1].replace(/-/g,"+").replace(/_/g,"/");
+                        const padded=encoded+"=".repeat((4-encoded.length%4)%4);
+                        const bytes=Uint8Array.from(atob(padded),(char)=>char.charCodeAt(0));
+                        return window.TextDecoder?new TextDecoder("utf-8").decode(bytes):"";
+                    }
+                }catch(_e){}
+                return mediaPath;
+            }
+            let mediaPath=decodeMediaPath(mediaSrc);
+            if(!mediaPath&&postGenerationUrl)mediaPath=decodeMediaPath(postGenerationUrl);
+            if(!mediaPath&&selectedIndexFromButton>=0&&selectedIndexFromButton<paths.length)mediaPath=String(paths[selectedIndexFromButton]||"");
+            const normalized=String(mediaPath||"").replace(/\\/g,"/");
+            const promptInfo=Array.isArray(live.prompt_info)?live.prompt_info:[];
+            const isPostGenerationPreview=!button&&!!(mediaPath||mediaSrc||postGenerationUrl)&&String(live.gallery_state||"")==="finished_index";
+            const selectedIndex=selectedIndexFromButton>=0?selectedIndexFromButton:(isPostGenerationPreview?0:-1);
+            const fileName=normalized.split("/").pop()||String(mediaSrc||postGenerationUrl).split("/").filter(Boolean).pop()||"";
+            const snapshot={version:1,request_id:`${Date.now()}:${Math.random().toString(36).slice(2,10)}`,captured_at:Date.now(),selected_index:selectedIndex,media_src:mediaSrc,media_path:mediaPath,file_name:fileName,source_id:(root&&root.id)||"",gallery_state:String(live.gallery_state||""),choice:promptInfo.length?promptInfo[0]:null,engine_type:String(live.__gallery_engine_type||live.engine_type||""),valid:selectedIndex>=0&&!!(mediaPath||mediaSrc||postGenerationUrl)&&!!fileName};
+            window.__simpleaiPendingGalleryDeleteTarget=snapshot;
+            return [state,JSON.stringify(snapshot)];
+            }catch(e){window.__simpleaiPendingGalleryDeleteTarget=null;console.warn("[UI-TRACE] gallery_delete.capture_failed",e);return [state,target||""];}
+            }'''
 
     prompt_delete_evt = prompt_delete_button.click(
         fn=toolbox.toggle_note_box_delete,

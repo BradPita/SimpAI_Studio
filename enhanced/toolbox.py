@@ -410,15 +410,34 @@ def _resolve_gallery_delete_target(delete_target, state_params, user_path_output
     except Exception:
         selected_index = 0
 
-    candidates = [
+    state_params = state_params if isinstance(state_params, dict) else {}
+    candidates = []
+
+    for state_path in (
+        state_params.get("__selected_gallery_media_path"),
+        _gallery_delete_media_path_from_src(state_params.get("__post_generation_image_url")),
+    ):
+        if state_path:
+            candidates.append(state_path)
+
+    candidates.extend([
         _gallery_delete_media_path_from_src(target.get("media_src")),
         target.get("media_path"),
-    ]
+    ])
     browser_paths = state_params.get("__main_gallery_browser_paths") if isinstance(state_params, dict) else None
     if isinstance(browser_paths, list) and selected_index < len(browser_paths):
         candidates.append(browser_paths[selected_index])
 
     expected_name = os.path.basename(str(target.get("file_name") or ""))
+    prompt_info = state_params.get("prompt_info") or []
+    choice = target.get("choice") or (prompt_info[0] if prompt_info else None)
+    choice_folder = str(choice or "").split("/", 1)[0]
+    if re.fullmatch(r"\d{2}-\d{2}-\d{2}", choice_folder):
+        candidates.append(os.path.join(user_path_outputs, f"20{choice_folder}", expected_name))
+    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})", expected_name)
+    if date_match:
+        candidates.append(os.path.join(user_path_outputs, date_match.group(1), expected_name))
+
     for candidate in candidates:
         safe_path = _safe_output_media_path(candidate, user_path_outputs)
         if not safe_path:

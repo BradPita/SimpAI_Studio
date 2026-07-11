@@ -1553,7 +1553,7 @@ RANDOM_PROMPT_ADULT_BLOCKED_FRAGMENTS = (
 RANDOM_PROMPT_ADULT_CHARACTER_BLOCK_FRAGMENTS = (
     "child", "children", "loli", "shota", "minor", "kindergarten",
     "elementary", "klee", "qiqi", "yaoyao", "paimon", "edogawa_conan",
-    "detective_conan",
+    "detective_conan", "bald",
 )
 
 RANDOM_PROMPT_ADULT_NEGATIVE_MIN_SCORE = 2500.0
