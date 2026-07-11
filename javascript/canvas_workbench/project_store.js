@@ -154,6 +154,16 @@
                 if (!node.w || Number(node.w) < size.w) node.w = size.w;
                 if (!node.h || Number(node.h) < size.h) node.h = size.h;
             }
+            if (node && node.type === 'text_merge') {
+                const size = nodeSize('text_merge');
+                if (!node.w || Number(node.w) < size.w) node.w = size.w;
+                if (!node.h || Number(node.h) < size.h) node.h = size.h;
+                node.input_slots = Array.isArray(node.input_slots) && node.input_slots.length
+                    ? Array.from(new Set(node.input_slots.map(slot => String(slot || '').trim()).filter(Boolean)))
+                    : ['input_1', 'input_2'];
+                node.text_inputs = node.text_inputs && typeof node.text_inputs === 'object' ? node.text_inputs : {};
+                node.params = Object.assign({ separator: '' }, node.params || {});
+            }
             if (node && node.type === 'note') {
                 if (!node.w || Number(node.w) < 180) node.w = 260;
                 if (!node.h || Number(node.h) < 120) node.h = 160;

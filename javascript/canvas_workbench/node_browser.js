@@ -26,6 +26,7 @@
             style_selector: 'fa-palette',
             translation: 'fa-language',
             text: 'fa-font',
+            text_merge: 'fa-code-merge',
             timeline: 'fa-clapperboard',
             director_timeline: 'fa-timeline',
             video: 'fa-film',
@@ -132,7 +133,7 @@
         ];
         const nodeNotes = [
             t('Image / Video / Audio: imported media sources.', 'Image / Video / Audio：导入的媒体源。'),
-            t('Text / Translation / Tag Cart / WD14 / VLM: text-producing helpers for prompts and descriptions.', 'Text / Translation / 标签选择器 / WD14 / VLM：用于提示词和描述的文本辅助节点。'),
+            t('Text / Text Merge / Translation / Tag Cart / WD14 / VLM: text-producing helpers for prompts and descriptions.', 'Text / 文本合并 / Translation / 标签选择器 / WD14 / VLM：用于提示词和描述的文本辅助节点。'),
             t('Tip Note: non-running annotation node with editable font color, size, and background.', 'Tip Note：不参与运行的标注节点，可编辑字体颜色、大小和底色。'),
             t('Config nodes: Models, Styles, Resolution, Detection and other structured preset inputs.', 'Config 节点：Models、Styles、Resolution、Detection 等结构化 preset 输入。'),
             t('Timeline and Compare: arrange media over time or compare two image sources.', 'Timeline 和 Compare：用于时间线编排或两路图像对比。'),

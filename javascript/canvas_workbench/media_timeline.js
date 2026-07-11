@@ -143,6 +143,7 @@
 
     function isTimelineSource(source, context) {
         if (!source || !['image', 'video', 'audio', 'result'].includes(source.type)) return false;
+        if (['image', 'video', 'audio'].includes(source.type)) return true;
         const asset = sourceAsset(source, context);
         return !!asset && ['image', 'video', 'audio'].includes(assetMediaKind(asset));
     }
@@ -325,7 +326,7 @@
     function createClipFromSource(source, options, context) {
         const opts = options || {};
         const asset = sourceAsset(source, context) || {};
-        const kind = assetMediaKind(asset);
+        const kind = assetMediaKind(asset) || (['image', 'video', 'audio'].includes(source?.type) ? source.type : '');
         const range = mediaEditRange(asset);
         const sourceDuration = Math.max(0, Number(range.end || 0) - Number(range.start || 0));
         const duration = kind === 'image' ? Number(opts.imageDuration || 4) : (sourceDuration || Number(asset.duration || 1) || 1);

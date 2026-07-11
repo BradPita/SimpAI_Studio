@@ -648,6 +648,14 @@
     };
     const nodeLayoutRects = new Map();
     const renderedNodeElsById = new Map();
+    const INPUT_PORT_HANDLE_SELECTOR = [
+        '[data-handle-in]', '[data-config-in]', '[data-handle-in-result]', '[data-text-in]', '[data-text-node-in]',
+        '[data-translation-text-in]', '[data-tagcart-text-in]', '[data-wd14-image-in]', '[data-vlm-image-in]',
+        '[data-mask-source-in]', '[data-sam3-video-in]', '[data-pose-studio-reference-in]', '[data-gaussian-studio-reference-in]',
+        '[data-liveportrait-expression-source-in]', '[data-liveportrait-expression-reference-in]', '[data-qwen-tts-audio-in]',
+        '[data-director-media-in]', '[data-director-media-group-in]', '[data-compare-image-in]', '[data-batch-any-in]',
+        '[data-timeline-track-in]', '[data-timeline-media-in]'
+    ].join(',');
 
     let canvasProjectAssetCatalog = [];
     let storageScope = getStorageScope();
@@ -684,6 +692,7 @@
     let timelinePlaybackState = null;
     let suppressWheelUntil = 0;
     let pendingConnection = null;
+    let pendingInputTarget = null;
     let saveTimer = 0;
     let viewportSaveTimer = 0;
     let backendLoadedStorageKey = '';
@@ -1713,7 +1722,7 @@
 
     function isQwenTtsAudioSource(node) {
         if (!node) return false;
-        if (node.type === 'audio') return !!node.asset;
+        if (node.type === 'audio') return true;
         if (node.type === 'result') {
             const asset = getSelectedResultAsset(node);
             return !!asset && assetMediaKind(asset) === 'audio';
@@ -2515,6 +2524,7 @@
     ${sideButton('add-preset', 'fa-diagram-project', t('Add preset', '添加预设'))}
     ${sideButton('add-style-selector', 'fa-palette', t('Add Style Selector node', '添加风格选择器节点'))}
     ${sideButton('add-text', 'fa-font', t('Add text node', '添加文本节点'))}
+    ${sideButton('add-text-merge', 'fa-code-merge', t('Add multi-text merge node', '添加多文本合并节点'))}
     ${sideButton('add-wildcards-helper', 'fa-dice', t('Add Wildcards Helper node', '添加通配符小助手节点'))}
     ${sideButton('add-translation', 'fa-language', t('Add translation node', '添加翻译节点'))}
     ${sideButton('add-tag-cart', 'sai-tag-cart-glyph', t('Add Tag Cart node', '添加标签选择器节点'))}
@@ -4042,6 +4052,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
                 break;
             case 'add-text':
                 addTextNode(viewportCenterWorld());
+                break;
+            case 'add-text-merge':
+                addTextMergeNode(viewportCenterWorld());
                 break;
             case 'add-wildcards-helper':
                 addWildcardsHelperNode(viewportCenterWorld());
@@ -15133,6 +15146,7 @@ ${[0, 1, 2].map((index) => {
         if (node.type === 'note') return renderNoteNodeHtml(node);
         if (node.type === 'wildcards_helper') return renderWildcardsHelperNodeHtml(node);
         if (node.type === 'text') return renderTextNodeHtml(node);
+        if (node.type === 'text_merge') return renderTextMergeNodeHtml(node);
         if (node.type === 'translation') return renderTranslationNodeHtml(node);
         if (node.type === 'tag_cart') return renderTagCartNodeHtml(node);
         if (node.type === 'wd14') return renderWd14NodeHtml(node);
@@ -15193,6 +15207,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'gaussian_studio') return '3DGS';
         if (node.type === 'liveportrait_expression') return t('Live Exp', '表情');
         if (node.type === 'wildcards_helper') return t('Wildcards', '通配符');
+        if (node.type === 'text_merge') return t('Text Merge', '文本合并');
         return String(node.type || 'Node').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
     }
 
@@ -15206,6 +15221,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'pose_studio') return 'fa-person';
         if (node.type === 'gaussian_studio') return 'fa-cube';
         if (node.type === 'liveportrait_expression') return 'fa-face-smile';
+        if (node.type === 'text_merge') return 'fa-code-merge';
         if (['text', 'translation', 'tag_cart', 'wildcards_helper', 'vlm'].includes(node.type)) return 'fa-align-left';
         if (node.type === 'config') return configIconForKind(node.config_kind);
         if (node.type === 'compare') return 'fa-code-compare';
@@ -15280,6 +15296,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (port.kind === 'config') return `data-config-in="${slot}"`;
         if (port.kind === 'text') return `data-text-in="${slot}"`;
         if (port.kind === 'text_node') return 'data-text-node-in';
+        if (port.kind === 'text_merge') return `data-text-node-in="${slot}"`;
         if (port.kind === 'translation_text') return 'data-translation-text-in';
         if (port.kind === 'tagcart_text') return 'data-tagcart-text-in';
         if (port.kind === 'wd14') return 'data-wd14-image-in';
@@ -15310,6 +15327,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
             ['prompt', 'negative_prompt'].forEach(slot => add('text', slot, slot === 'prompt' ? 'Prompt' : 'Negative prompt'));
         } else if (node.type === 'result') add('generate', 'generate', 'Generation input');
         else if (node.type === 'text') add('text_node', 'input', 'Text input');
+        else if (node.type === 'text_merge') textMergeInputSlots(node).forEach((slot, index) => add('text_merge', slot, t('Text input {number}', '文本输入 {number}').replace('{number}', index + 1)));
         else if (node.type === 'translation') add('translation_text', 'input', 'Text input');
         else if (node.type === 'tag_cart') add('tagcart_text', 'input', 'Text input');
         else if (node.type === 'wd14') add('wd14', 'image', 'Image input');
@@ -15352,7 +15370,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'video' || node.type === 'sam3_video_mask') return 'video';
         if (node.type === 'audio') return 'audio';
         if (node.type === 'result') return 'result';
-        if (['text', 'translation', 'tag_cart', 'wd14', 'vlm', 'wildcards_helper', 'style_selector'].includes(node.type)) return 'text';
+        if (['text', 'text_merge', 'translation', 'tag_cart', 'wd14', 'vlm', 'wildcards_helper', 'style_selector'].includes(node.type)) return 'text';
         if (node.type === 'timeline') return 'timeline';
         if (isDirectorTimelineNode(node)) return 'text';
         return '';
@@ -17629,6 +17647,83 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
   <i class="fa-solid fa-align-left"></i><span>${escapeHtml(t('Input', '输入'))}</span><b>${source ? escapeHtml(source.title || source.id) : escapeHtml(t('Manual', '手动'))}</b>
 </div>
 <label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Output', '输出'))} ${source ? `<small>${escapeHtml(t('linked', '已连接'))}</small>` : ''}</span>${renderTranslatableTextarea(`data-text-value rows="7" ${source ? 'readonly' : ''}`, value, { target: 'text-value', disabled: !!source, tagCart: !source, state: getTranslationFieldState(node, 'text-value', '', value) })}</label>
+<button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(t('Text output', '文本输出'))}"></button>`;
+    }
+
+    function textMergeInputSlots(node) {
+        if (!node || node.type !== 'text_merge') return [];
+        const stored = Array.isArray(node.input_slots) ? node.input_slots : [];
+        const edgeSlots = project.edges
+            .filter(edge => edge.type === 'text' && edge.to === node.id && edge.slot)
+            .map(edge => String(edge.slot));
+        const slots = Array.from(new Set([...stored, ...edgeSlots].map(slot => String(slot || '').trim()).filter(Boolean)));
+        slots.sort((a, b) => {
+            const aNumber = Number(String(a).match(/(\d+)$/)?.[1] || Number.MAX_SAFE_INTEGER);
+            const bNumber = Number(String(b).match(/(\d+)$/)?.[1] || Number.MAX_SAFE_INTEGER);
+            return aNumber - bNumber || a.localeCompare(b);
+        });
+        let nextNumber = 1;
+        while (slots.length < 2) {
+            while (slots.includes(`input_${nextNumber}`)) nextNumber += 1;
+            slots.push(`input_${nextNumber}`);
+            nextNumber += 1;
+        }
+        node.input_slots = slots;
+        node.text_inputs = Object.assign({}, node.text_inputs || {});
+        return slots;
+    }
+
+    function getTextMergeInputSource(node, slot) {
+        if (!node || node.type !== 'text_merge' || !slot) return null;
+        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === slot);
+        const fromId = node.text_inputs?.[slot] || edge?.from || '';
+        const source = fromId ? getNode(fromId) : null;
+        return isTextOutputNode(source) ? source : null;
+    }
+
+    function decodeTextMergeSeparator(value) {
+        return String(value ?? '')
+            .replace(/\\r/g, '\r')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t');
+    }
+
+    function getTextMergeOutput(node, visited) {
+        const seen = visited || new Set();
+        const values = textMergeInputSlots(node)
+            .map(slot => getTextMergeInputSource(node, slot))
+            .filter(Boolean)
+            .map(source => getNodeTextOutput(source, new Set(seen)))
+            .filter(value => value !== '');
+        return values.join(decodeTextMergeSeparator(node.params?.separator || ''));
+    }
+
+    function renderTextMergeNodeHtml(node) {
+        const slots = textMergeInputSlots(node);
+        const output = getTextMergeOutput(node, new Set([node.id]));
+        const separator = String(node.params?.separator || '');
+        const inputRows = slots.map((slot, index) => {
+            const source = getTextMergeInputSource(node, slot);
+            const removeButton = slots.length > 2
+                ? `<button type="button" data-node-action="text-merge-remove-input:${escapeHtml(slot)}" title="${escapeHtml(t('Remove input', '删除输入'))}"><i class="fa-solid fa-minus"></i></button>`
+                : '';
+            return `
+<div class="sai-text-input-row sai-text-merge-input-row">
+  <button type="button" class="sai-node-handle sai-node-handle-in" data-text-node-in="${escapeHtml(slot)}" title="${escapeHtml(t('Text input {number}', '文本输入 {number}').replace('{number}', index + 1))}"></button>
+  <i class="fa-solid fa-align-left"></i><span>${escapeHtml(t('Input {number}', '输入 {number}').replace('{number}', index + 1))}</span><b>${escapeHtml(source?.title || t('Not connected', '未连接'))}</b>${removeButton}
+</div>`;
+        }).join('');
+        return `
+<div class="sai-node-head">
+  <span class="sai-node-kind">${escapeHtml(t('Text Merge', '文本合并'))}</span>
+  <span class="sai-node-title">${escapeHtml(node.title || t('Multi-text Merge', '多文本合并'))}</span>
+  ${renderNodeStateBadges(node)}
+  <button type="button" data-node-action="delete" title="${escapeHtml(t('Delete', '删除'))}"><i class="fa-solid fa-xmark"></i></button>
+</div>
+<div class="sai-text-merge-inputs">${inputRows}</div>
+<button type="button" class="sai-node-secondary" data-node-action="text-merge-add-input"><i class="fa-solid fa-plus"></i><span>${escapeHtml(t('Add input', '添加输入'))}</span></button>
+<label class="sai-node-field"><span>${escapeHtml(t('Separator (optional)', '分隔符（可选）'))}</span><input data-text-merge-separator value="${escapeHtml(separator)}" placeholder="${escapeHtml(t('Empty, comma, space, or \\n', '留空、逗号、空格或 \\n'))}"></label>
+<label class="sai-node-field sai-text-node-field"><span>${escapeHtml(t('Merged output', '合并输出'))}</span><textarea data-text-merge-output rows="5" readonly>${escapeHtml(output)}</textarea></label>
 <button type="button" class="sai-node-handle sai-node-handle-out" data-handle-out="text" title="${escapeHtml(t('Text output', '文本输出'))}"></button>`;
     }
 
@@ -23238,6 +23333,23 @@ ${actions}
                 createMediaNodeFromResultAsset(node, index);
                 return;
             }
+            const inputPortHandle = evt.target.closest(INPUT_PORT_HANDLE_SELECTOR);
+            if (inputPortHandle) {
+                const target = getConnectionTargetFromHandle(inputPortHandle);
+                if (target) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    const edges = inputTargetEdges(target);
+                    if (edges.length && !inputTargetAcceptsMultiple(target)) {
+                        const source = getNode(edges[0].from);
+                        if (source) focusNode(source);
+                        else showToast(t('Connected source is missing.', '已连接的来源节点不存在。'));
+                    } else {
+                        createDefaultInputSource(target);
+                    }
+                    return;
+                }
+            }
             const uploadRow = evt.target.closest('[data-slot-row]');
             const uploadHandle = evt.target.closest('[data-handle-in]');
             if ((uploadRow || uploadHandle) && ['preset', 'classic'].includes(node.type)) {
@@ -23446,6 +23558,11 @@ ${actions}
             }
             if (textValue) {
                 updateTextNodeValue(node.id, textValue.value);
+                return;
+            }
+            const textMergeSeparator = evt.target.closest('[data-text-merge-separator]');
+            if (textMergeSeparator) {
+                updateTextMergeSeparator(node.id, textMergeSeparator.value);
                 return;
             }
             const translationInput = evt.target.closest('[data-translation-input]');
@@ -23740,6 +23857,11 @@ ${actions}
                 updateTextNodeValue(node.id, textValue.value);
                 return;
             }
+            const textMergeSeparator = evt.target.closest('[data-text-merge-separator]');
+            if (textMergeSeparator) {
+                updateTextMergeSeparator(node.id, textMergeSeparator.value);
+                return;
+            }
             const translationInput = evt.target.closest('[data-translation-input]');
             if (translationInput) {
                 updateTranslationInput(node.id, translationInput.value);
@@ -23822,6 +23944,14 @@ ${actions}
                 openAudioMediaContextMenu(node, evt.clientX, evt.clientY);
                 return;
             }
+            const inputPortHandle = evt.target.closest(INPUT_PORT_HANDLE_SELECTOR);
+            if (inputPortHandle) {
+                const target = getConnectionTargetFromHandle(inputPortHandle);
+                if (target) {
+                    openInputPortContextMenu(target, evt.clientX, evt.clientY);
+                    return;
+                }
+            }
             const inHandle = evt.target.closest('[data-handle-in]');
             if (inHandle) {
                 openInputHandleContextMenu(node, inHandle.getAttribute('data-handle-in'), evt.clientX, evt.clientY);
@@ -23839,7 +23969,7 @@ ${actions}
             }
             const textNodeInHandle = evt.target.closest('[data-text-node-in]');
             if (textNodeInHandle) {
-                openTextNodeInputContextMenu(node, evt.clientX, evt.clientY);
+                openTextNodeInputContextMenu(node, evt.clientX, evt.clientY, textNodeInHandle.getAttribute('data-text-node-in') || 'input');
                 return;
             }
             const translationTextInHandle = evt.target.closest('[data-translation-text-in]');
@@ -24958,6 +25088,10 @@ ${actions}
             const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-text-node-in]`);
             if (measured) return measured;
         }
+        if (node.type === 'text_merge' && edgeType === 'text') {
+            const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-text-node-in="${cssEscape(slot || '')}"]`);
+            if (measured) return measured;
+        }
         if (node.type === 'translation' && edgeType === 'text') {
             const measured = getHandleWorldPoint(`[data-node-id="${cssEscape(node.id)}"] [data-translation-text-in]`);
             if (measured) return measured;
@@ -25110,6 +25244,7 @@ ${actions}
         else if (node.type === 'audio') html = renderAudioInspector(node);
         else if (node.type === 'note') html = renderNoteInspector(node);
         else if (node.type === 'text') html = renderTextInspector(node);
+        else if (node.type === 'text_merge') html = renderTextMergeInspector(node);
         else if (node.type === 'translation') html = renderTranslationInspector(node);
         else if (node.type === 'tag_cart') html = renderTagCartInspector(node);
         else if (node.type === 'wd14') html = renderWd14Inspector(node);
@@ -25387,6 +25522,29 @@ ${actions}
   <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(value.length))}</b></div>
 </div>
 <div class="sai-inspector-actions">
+  <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
+  <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
+</div>`;
+    }
+
+    function renderTextMergeInspector(node) {
+        const slots = textMergeInputSlots(node);
+        const output = getTextMergeOutput(node, new Set([node.id]));
+        const connected = slots.filter(slot => getTextMergeInputSource(node, slot)).length;
+        return `
+<div class="sai-inspector-section">
+  <h3>${escapeHtml(t('Multi-text Merge Node', '多文本合并节点'))}</h3>
+  <label>${escapeHtml(t('Title', '标题'))}<input data-inspector-node-field="title" value="${escapeHtml(node.title || '')}"></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Inputs', '输入'))}</span><b>${escapeHtml(`${connected} / ${slots.length}`)}</b></div>
+  <label>${escapeHtml(t('Separator (optional)', '分隔符（可选）'))}<input data-text-merge-separator value="${escapeHtml(node.params?.separator || '')}" placeholder="${escapeHtml(t('Empty, comma, space, or \\n', '留空、逗号、空格或 \\n'))}"></label>
+</div>
+<div class="sai-inspector-section">
+  <h3>${escapeHtml(t('Merged output', '合并输出'))}</h3>
+  <label>${escapeHtml(t('Text', '文本'))}<textarea data-text-merge-output rows="10" readonly>${escapeHtml(output)}</textarea></label>
+  <div class="sai-inspector-kv"><span>${escapeHtml(t('Characters', '字符数'))}</span><b>${escapeHtml(String(output.length))}</b></div>
+</div>
+<div class="sai-inspector-actions">
+  <button type="button" data-inspector-action="text-merge-add-input"><i class="fa-solid fa-plus"></i><span>${escapeHtml(t('Add input', '添加输入'))}</span></button>
   <button type="button" data-inspector-action="duplicate"><i class="fa-solid fa-copy"></i><span>${escapeHtml(t('Duplicate', '复制'))}</span></button>
   <button type="button" data-inspector-action="delete" class="danger"><i class="fa-solid fa-trash"></i><span>${escapeHtml(t('Delete', '删除'))}</span></button>
 </div>`;
@@ -25943,6 +26101,10 @@ ${renderGenerationMetadataInspectorSection(node)}
             field.addEventListener('input', () => updateTextNodeValue(selectedNodeId, field.value));
             field.addEventListener('change', () => updateTextNodeValue(selectedNodeId, field.value));
         });
+        inspector.querySelectorAll('[data-text-merge-separator]').forEach((field) => {
+            field.addEventListener('input', () => updateTextMergeSeparator(selectedNodeId, field.value));
+            field.addEventListener('change', () => updateTextMergeSeparator(selectedNodeId, field.value));
+        });
         inspector.querySelectorAll('[data-translation-input]').forEach((field) => {
             field.addEventListener('input', () => updateTranslationInput(selectedNodeId, field.value));
             field.addEventListener('change', () => updateTranslationInput(selectedNodeId, field.value));
@@ -26123,7 +26285,7 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function isInteractiveTarget(target) {
         if (textareaEditorFieldFromTitleClick(target)) return true;
-        return !!(target && target.closest && target.closest('button,input,textarea,select,option,audio,video,[contenteditable="true"],.sai-vlm-chat-log,.sai-vlm-compose,.sai-vlm-compose-images,.sai-media-browser-grid,.sai-media-browser-detail,.sai-media-browser-controls,.sai-media-browser-tabs,.sai-media-browser-foot,.sai-preset-special-controller,[data-hover-preview-kind],[data-model-preview-param],[data-model-preview-lora-index],[data-model-browser-param],[data-model-browser-lora-index],[data-compare-position],[data-compare-mode],[data-compare-mode-select],[data-timeline-param],[data-timeline-clip-param],[data-media-seek],[data-media-trim-start],[data-media-trim-end],[data-media-player],[data-node-param],[data-text-value],[data-inspector-text-value],[data-translation-input],[data-translation-param],[data-tagcart-param],[data-wd14-param],[data-vlm-param],[data-mask-param],[data-sam3-video-param],[data-config-param],[data-config-model-filter],[data-config-style],[data-style-config-search],[data-style-config-action],[data-config-lora-model],[data-config-lora-weight],[data-config-lora-enabled],[data-config-interface],[data-slot-row],[data-sam3-video-row],[data-classic-mode],[data-classic-ip-type],[data-classic-ip-stop],[data-classic-ip-weight],[data-classic-param]'));
+        return !!(target && target.closest && target.closest('button,input,textarea,select,option,audio,video,[contenteditable="true"],.sai-vlm-chat-log,.sai-vlm-compose,.sai-vlm-compose-images,.sai-media-browser-grid,.sai-media-browser-detail,.sai-media-browser-controls,.sai-media-browser-tabs,.sai-media-browser-foot,.sai-preset-special-controller,[data-hover-preview-kind],[data-model-preview-param],[data-model-preview-lora-index],[data-model-browser-param],[data-model-browser-lora-index],[data-compare-position],[data-compare-mode],[data-compare-mode-select],[data-timeline-param],[data-timeline-clip-param],[data-media-seek],[data-media-trim-start],[data-media-trim-end],[data-media-player],[data-node-param],[data-text-value],[data-inspector-text-value],[data-text-merge-separator],[data-translation-input],[data-translation-param],[data-tagcart-param],[data-wd14-param],[data-vlm-param],[data-mask-param],[data-sam3-video-param],[data-config-param],[data-config-model-filter],[data-config-style],[data-style-config-search],[data-style-config-action],[data-config-lora-model],[data-config-lora-weight],[data-config-lora-enabled],[data-config-interface],[data-slot-row],[data-sam3-video-row],[data-classic-mode],[data-classic-ip-type],[data-classic-ip-stop],[data-classic-ip-weight],[data-classic-param]'));
     }
 
     function onViewportDoubleClick(evt) {
@@ -26656,8 +26818,38 @@ ${renderGenerationMetadataInspectorSection(node)}
         document.addEventListener('pointerup', stopConnection, true);
     }
 
+    function startInputConnection(target, evt) {
+        if (!target?.handle || !target.toId) return;
+        hideCanvasTooltip();
+        hideHoverPreview();
+        closePreviewSelectMenu();
+        suppressWheelUntil = performance.now() + 420;
+        selectedNodeId = target.toId;
+        selectedNodeIds = new Set([target.toId]);
+        selectedEdgeId = null;
+        refreshSelectionUi();
+        const point = getHandleCenterWorldPoint(target.handle);
+        connectState = {
+            mode: 'input',
+            target: Object.assign({}, target, { handle: null }),
+            fromPoint: point,
+            currentPoint: point,
+            startClientX: Number(evt.clientX || 0),
+            startClientY: Number(evt.clientY || 0),
+            moved: false
+        };
+        document.addEventListener('pointermove', onConnectionMove, true);
+        document.addEventListener('pointerup', stopConnection, true);
+    }
+
     function handleInputHandlePointerDown(node, evt, inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, livePortraitSourceInHandle, livePortraitReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle) {
         if (!node) return;
+        const activeHandle = [inHandle, configInHandle, resultInHandle, textInHandle, textNodeInHandle, translationTextInHandle, tagCartTextInHandle, wd14ImageInHandle, vlmImageInHandle, maskSourceInHandle, sam3VideoInHandle, poseReferenceInHandle, gaussianReferenceInHandle, livePortraitSourceInHandle, livePortraitReferenceInHandle, qwenTtsAudioInHandle, directorMediaInHandle, directorMediaGroupInHandle, compareImageInHandle, batchAnyInHandle, timelineMediaInHandle].find(Boolean);
+        const inputTarget = getConnectionTargetFromHandle(activeHandle);
+        if (inputTarget) {
+            startInputConnection(inputTarget, evt);
+            return;
+        }
         if (inHandle && (node.type === 'preset' || node.type === 'classic')) {
             const slot = inHandle.getAttribute('data-handle-in');
             const fromId = node.upload_slots?.[slot];
@@ -26701,8 +26893,9 @@ ${renderGenerationMetadataInspectorSection(node)}
             }
             return;
         }
-        if (textNodeInHandle && node.type === 'text') {
-            const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === 'input');
+        if (textNodeInHandle && (node.type === 'text' || node.type === 'text_merge')) {
+            const slot = node.type === 'text_merge' ? (textNodeInHandle.getAttribute('data-text-node-in') || 'input_1') : 'input';
+            const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === slot);
             if (edge) {
                 const fromNode = getNode(edge.from);
                 deleteEdge(edge.id, { render: false });
@@ -26856,8 +27049,79 @@ ${renderGenerationMetadataInspectorSection(node)}
         }
     }
 
+    function inputTargetAcceptsMultiple(target) {
+        return ['batch_any', 'timeline', 'director_media_group'].includes(target?.kind);
+    }
+
+    function inputTargetEdges(target) {
+        if (!target?.toId) return [];
+        const to = getNode(target.toId);
+        if (!to) return [];
+        if (target.kind === 'director_media_group') {
+            return project.edges.filter(edge => edge.type === 'media' && edge.to === target.toId && directorMediaSourceKind(getNode(edge.from)) === target.slot);
+        }
+        if (target.kind === 'batch_any') return project.edges.filter(edge => edge.type === 'batch_input' && edge.to === target.toId);
+        if (target.kind === 'timeline') return project.edges.filter(edge => edge.type === 'timeline' && edge.to === target.toId);
+        const typeByKind = {
+            upload: 'upload',
+            config: 'config',
+            text: 'text',
+            wd14: 'image',
+            vlm: 'image',
+            mask_source: 'image',
+            sam3_video: 'media',
+            pose_reference: 'image',
+            gaussian_reference: 'image',
+            liveportrait_source: 'image',
+            liveportrait_reference: 'image',
+            qwen_tts_audio: 'media',
+            director_media: 'media',
+            compare: 'compare',
+            generate: 'generate'
+        };
+        const edgeType = typeByKind[target.kind];
+        if (!edgeType) return [];
+        return project.edges.filter(edge => edge.type === edgeType && edge.to === target.toId && (target.kind === 'generate' || String(edge.slot || '') === String(target.slot || '')));
+    }
+
+    function connectSourceToTarget(fromId, target, options) {
+        if (!fromId || !target || !isConnectionTargetCompatible(fromId, target)) return false;
+        const opts = options || {};
+        if (target.kind === 'upload') {
+            const fromNode = getNode(fromId);
+            if (fromNode && ['preset', 'classic'].includes(fromNode.type)) createPresetToPresetBridgeEdge(fromId, target.toId, target.slot);
+            else createUploadEdge(fromId, target.toId, target.slot, opts);
+        } else if (target.kind === 'config') createConfigEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'text') createTextEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'wd14') createWd14ImageEdge(fromId, target.toId, opts);
+        else if (target.kind === 'vlm') createVlmImageEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'mask_source') createMaskImageEdge(fromId, target.toId, opts);
+        else if (target.kind === 'sam3_video') createSam3VideoMaskEdge(fromId, target.toId, opts);
+        else if (target.kind === 'pose_reference') createPoseStudioReferenceEdge(fromId, target.toId, opts);
+        else if (target.kind === 'gaussian_reference') createGaussianStudioReferenceEdge(fromId, target.toId, opts);
+        else if (target.kind === 'liveportrait_source' || target.kind === 'liveportrait_reference') createLivePortraitExpressionImageEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'qwen_tts_audio') createQwenTtsAudioEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'director_media') createDirectorTimelineMediaEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'director_media_group') createDirectorTimelineMediaEdge(fromId, target.toId, '', Object.assign({}, opts, { kind: target.slot }));
+        else if (target.kind === 'compare') createCompareImageEdge(fromId, target.toId, target.slot, opts);
+        else if (target.kind === 'batch_any') createBatchAnyInputEdge(fromId, target.toId, opts);
+        else if (target.kind === 'timeline') createTimelineClipEdge(fromId, target.toId, Object.assign({}, opts, { track_id: target.slot === 'media' ? null : target.slot }));
+        else if (target.kind === 'generate') createGenerateEdge(fromId, target.toId, opts);
+        else return false;
+        return true;
+    }
+
     function onConnectionMove(evt) {
         if (!connectState) return;
+        if (connectState.mode === 'input') {
+            const dx = Number(evt.clientX || 0) - Number(connectState.startClientX || 0);
+            const dy = Number(evt.clientY || 0) - Number(connectState.startClientY || 0);
+            if (!connectState.moved && (dx * dx + dy * dy) < 36) return;
+            connectState.moved = true;
+            connectState.currentPoint = clientToWorld(evt.clientX, evt.clientY);
+            updateTempEdge();
+            return;
+        }
         const snapTarget = findNearestConnectionTarget(evt.clientX, evt.clientY);
         connectState.currentPoint = snapTarget
             ? getHandleCenterWorldPoint(snapTarget.handle)
@@ -26867,31 +27131,23 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function stopConnection(evt) {
         if (!connectState) return;
+        if (connectState.mode === 'input') {
+            const state = connectState;
+            const menuWorld = clientToWorld(evt.clientX, evt.clientY);
+            connectState = null;
+            clearTempEdge();
+            document.removeEventListener('pointermove', onConnectionMove, true);
+            document.removeEventListener('pointerup', stopConnection, true);
+            if (state.moved) {
+                renderAll();
+                openInputPortCreateMenu(state.target, evt.clientX, evt.clientY, menuWorld);
+            }
+            return;
+        }
         const snapTarget = findNearestConnectionTarget(evt.clientX, evt.clientY);
         let connected = false;
         if (snapTarget) {
-            if (snapTarget.kind === 'upload') {
-                const fromNode = getNode(connectState.from);
-                if (fromNode && ['preset', 'classic'].includes(fromNode.type)) createPresetToPresetBridgeEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-                else createUploadEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            }
-            if (snapTarget.kind === 'config') createConfigEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'text') createTextEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'wd14') createWd14ImageEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'vlm') createVlmImageEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'mask_source') createMaskImageEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'sam3_video') createSam3VideoMaskEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'pose_reference') createPoseStudioReferenceEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'gaussian_reference') createGaussianStudioReferenceEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'liveportrait_source' || snapTarget.kind === 'liveportrait_reference') createLivePortraitExpressionImageEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'qwen_tts_audio') createQwenTtsAudioEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'director_media') createDirectorTimelineMediaEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'director_media_group') createDirectorTimelineMediaEdge(connectState.from, snapTarget.toId, '', { kind: snapTarget.slot });
-            if (snapTarget.kind === 'compare') createCompareImageEdge(connectState.from, snapTarget.toId, snapTarget.slot);
-            if (snapTarget.kind === 'batch_any') createBatchAnyInputEdge(connectState.from, snapTarget.toId);
-            if (snapTarget.kind === 'timeline') createTimelineClipEdge(connectState.from, snapTarget.toId, { track_id: snapTarget.slot === 'media' ? null : snapTarget.slot });
-            if (snapTarget.kind === 'generate') createGenerateEdge(connectState.from, snapTarget.toId);
-            connected = true;
+            connected = connectSourceToTarget(connectState.from, snapTarget);
         }
         const menuWorld = clientToWorld(evt.clientX, evt.clientY);
         const pendingFromId = connectState.from;
@@ -26959,7 +27215,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (handle.hasAttribute('data-handle-in')) return { kind: 'upload', toId, slot: handle.getAttribute('data-handle-in'), handle };
         if (handle.hasAttribute('data-config-in')) return { kind: 'config', toId, slot: handle.getAttribute('data-config-in'), handle };
         if (handle.hasAttribute('data-text-in')) return { kind: 'text', toId, slot: handle.getAttribute('data-text-in'), handle };
-        if (handle.hasAttribute('data-text-node-in')) return { kind: 'text', toId, slot: 'input', handle };
+        if (handle.hasAttribute('data-text-node-in')) return { kind: 'text', toId, slot: handle.getAttribute('data-text-node-in') || 'input', handle };
         if (handle.hasAttribute('data-translation-text-in')) return { kind: 'text', toId, slot: 'input', handle };
         if (handle.hasAttribute('data-tagcart-text-in')) return { kind: 'text', toId, slot: 'input', handle };
         if (handle.hasAttribute('data-wd14-image-in')) return { kind: 'wd14', toId, slot: 'image', handle };
@@ -26994,7 +27250,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         }
         if (target.kind === 'text') {
             if (['preset', 'classic'].includes(to.type) && batchAnyCanConnectToTextSlot(from, target.slot)) return true;
-            return isTextOutputNode(from) && ['preset', 'classic', 'text', 'translation', 'tag_cart'].includes(to.type);
+            return isTextOutputNode(from) && ['preset', 'classic', 'text', 'text_merge', 'translation', 'tag_cart'].includes(to.type);
         }
         if (target.kind === 'wd14') return ['image', 'result'].includes(from.type) && to.type === 'wd14';
         if (target.kind === 'vlm') {
@@ -27052,7 +27308,33 @@ ${renderGenerationMetadataInspectorSection(node)}
         return getNode(pendingConnection.fromId);
     }
 
+    function setPendingInputTarget(target, world) {
+        pendingInputTarget = target?.toId ? {
+            target: Object.assign({}, target, { handle: null }),
+            world: cloneRunValue(world || {}, {}),
+            expires_at: Date.now() + 30000
+        } : null;
+    }
+
+    function getPendingInputTarget() {
+        if (!pendingInputTarget) return null;
+        if (Date.now() > Number(pendingInputTarget.expires_at || 0) || !getNode(pendingInputTarget.target?.toId)) {
+            pendingInputTarget = null;
+            return null;
+        }
+        return pendingInputTarget.target;
+    }
+
     function completePendingConnectionToNode(node) {
+        const inputTarget = getPendingInputTarget();
+        if (inputTarget && node && node.id !== inputTarget.toId) {
+            pendingInputTarget = null;
+            if (connectSourceToTarget(node.id, inputTarget, { silent: true, render: false, history: false, select: false, toast: false })) {
+                return t('and connected to the selected input automatically', '并已自动连接到所选输入端点');
+            }
+            showToast(t('The created node does not match this input type.', '创建的节点与该输入端点类型不匹配。'));
+            return '';
+        }
         const from = getPendingConnectionSource();
         if (!from || !node || from.id === node.id) return '';
         let message = '';
@@ -27209,11 +27491,15 @@ ${renderGenerationMetadataInspectorSection(node)}
                 node.style_transfer_selector_id = from.id;
             }
             message = t('and connected to {slot} automatically', '并已自动连接到 {slot}').replace('{slot}', slot === 'negative_prompt' ? 'Negative Prompt' : 'Prompt');
-        } else if (isTextOutputNode(from) && ['text', 'translation', 'tag_cart'].includes(node.type)) {
+        } else if (isTextOutputNode(from) && ['text', 'text_merge', 'translation', 'tag_cart'].includes(node.type)) {
             if (!wouldCreateTextCycle(from.id, node.id)) {
-                project.edges = project.edges.filter(edge => !(edge.type === 'text' && edge.to === node.id && edge.slot === 'input'));
-                project.edges.push({ id: uid('edge'), type: 'text', from: from.id, to: node.id, slot: 'input' });
-                node.text_input = from.id;
+                const slot = node.type === 'text_merge'
+                    ? textMergeInputSlots(node).find(item => !getTextMergeInputSource(node, item)) || textMergeInputSlots(node)[0]
+                    : 'input';
+                project.edges = project.edges.filter(edge => !(edge.type === 'text' && edge.to === node.id && edge.slot === slot));
+                project.edges.push({ id: uid('edge'), type: 'text', from: from.id, to: node.id, slot });
+                if (node.type === 'text_merge') node.text_inputs = Object.assign({}, node.text_inputs || {}, { [slot]: from.id });
+                else node.text_input = from.id;
                 message = t('connected to Text input', '已连接到文本输入');
             }
         }
@@ -27410,6 +27696,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                 children: [
                     { label: t('Add Style Selector node', '添加风格选择器节点'), icon: 'fa-palette', search: 'style selector transfer styletransfer prompt 添加 风格 选择器 转绘 风格转换', action: () => addStyleSelectorNode(targetWorld) },
                     { label: t('Add text node', '添加文本节点'), icon: 'fa-font', search: 'text prompt positive negative 添加 文本 提示词 正向 负向', action: () => addTextNode(targetWorld) },
+                    { label: t('Add multi-text merge node', '添加多文本合并节点'), icon: 'fa-code-merge', search: 'text merge join concatenate separator prompt 添加 多文本 合并 拼接 分隔符 提示词', action: () => addTextMergeNode(targetWorld) },
                     { label: t('Add Wildcards Helper node', '添加通配符助手节点'), icon: 'fa-dice', search: 'wildcards wildcard random helper prompt 添加 通配符 随机 助手 提示词', action: () => addWildcardsHelperNode(targetWorld) },
                     { label: t('Add translation node', '添加翻译节点'), icon: 'fa-language', search: 'translation translate translator language 添加 翻译 语言', action: () => addTranslationNode(targetWorld) },
                     { label: t('Add Tag Cart node', '添加标签选择器节点'), icon: 'sai-tag-cart-glyph', search: 'tag cart tags prompt 添加 标签 购物车 提示词 标签选择器', action: () => addTagCartNode(targetWorld) }
@@ -27481,6 +27768,7 @@ ${renderGenerationMetadataInspectorSection(node)}
             { label: t('Add tip note', '添加提示贴'), icon: 'fa-note-sticky', action: () => addNoteNode(targetWorld) },
             { label: t('Add area group', '添加区域分组'), icon: 'fa-object-group', action: () => addAreaGroup(targetWorld, { ignoreSelection: true }) },
             { label: t('Add text node', '添加文本节点'), icon: 'fa-font', action: () => addTextNode(targetWorld) },
+            { label: t('Add multi-text merge node', '添加多文本合并节点'), icon: 'fa-code-merge', action: () => addTextMergeNode(targetWorld) },
             { label: t('Add Wildcards Helper node', '添加通配符小助手节点'), icon: 'fa-dice', action: () => addWildcardsHelperNode(targetWorld) },
             { label: t('Add translation node', '添加翻译节点'), icon: 'fa-language', action: () => addTranslationNode(targetWorld) },
             { label: t('Add Tag Cart node', '添加标签选择器节点'), icon: 'sai-tag-cart-glyph', action: () => addTagCartNode(targetWorld) },
@@ -28287,6 +28575,206 @@ ${renderGenerationMetadataInspectorSection(node)}
         ]);
     }
 
+    function inputTargetDisplayLabel(target) {
+        const node = getNode(target?.toId);
+        if (!node || !target) return t('Input', '输入');
+        if (target.kind === 'upload') return getSlotLabel(node, target.slot);
+        if (target.kind === 'config') return `${target.slot} Config`;
+        if (target.kind === 'text') {
+            if (target.slot === 'negative_prompt') return t('Negative Prompt', '负向提示词');
+            if (target.slot === 'prompt') return t('Prompt', '提示词');
+            return t('Text input', '文本输入');
+        }
+        if (target.kind === 'generate') return t('Generation output', '生成输出');
+        if (target.kind === 'qwen_tts_audio') return t('Reference audio', '参考音频');
+        if (target.kind === 'director_media_group') return t('{kind} pool', '{kind} 素材池').replace('{kind}', target.slot || t('Media', '媒体'));
+        if (target.kind === 'director_media') return target.slot || t('Director media', '导演媒体');
+        if (target.kind === 'compare') return t('Compare image {slot}', '对比图像 {slot}').replace('{slot}', String(target.slot || 'a').toUpperCase());
+        if (target.kind === 'timeline') return t('Timeline media', '时间线媒体');
+        if (target.kind === 'batch_any') return t('Batch item', '批量素材');
+        if (target.kind === 'sam3_video') return t('Source video', '源视频');
+        if (['wd14', 'vlm', 'mask_source', 'pose_reference', 'gaussian_reference', 'liveportrait_source', 'liveportrait_reference'].includes(target.kind)) return t('Image input', '图像输入');
+        return t('Input', '输入');
+    }
+
+    function mediaCreationOption(kind, imported) {
+        const labels = {
+            image: imported ? [t('Import Image node...', '导入图像节点...'), 'fa-image'] : [t('Image node', '图像节点'), 'fa-image'],
+            video: imported ? [t('Import Video node...', '导入视频节点...'), 'fa-film'] : [t('Video node', '视频节点'), 'fa-film'],
+            audio: imported ? [t('Import Audio node...', '导入音频节点...'), 'fa-wave-square'] : [t('Audio node', '音频节点'), 'fa-wave-square']
+        };
+        const entry = labels[kind] || labels.image;
+        return { key: imported ? `import_${kind}` : kind, label: entry[0], icon: entry[1] };
+    }
+
+    function inputTargetCreationOptions(target) {
+        const node = getNode(target?.toId);
+        if (!node || !target) return [];
+        if (target.kind === 'text') return [
+            { key: 'text', label: t('Text node', '文本节点'), icon: 'fa-font' },
+            { key: 'text_merge', label: t('Multi-text Merge node', '多文本合并节点'), icon: 'fa-code-merge' }
+        ];
+        if (target.kind === 'config') return [{ key: 'config', label: configTitleForKind(target.slot), icon: configIconForKind(target.slot) }];
+        if (target.kind === 'generate') return [
+            { key: 'classic', label: t('Classic generation node', '经典生成节点'), icon: 'fa-wand-magic-sparkles' },
+            { key: 'preset', label: t('Choose Preset / Scene...', '选择 Preset / 场景...'), icon: 'fa-diagram-project' },
+            { key: 'timeline', label: t('Media Timeline node', '媒体时间线节点'), icon: 'fa-clapperboard' },
+            { key: 'qwen_tts', label: t('Qwen TTS node', 'Qwen TTS 节点'), icon: 'fa-microphone-lines' }
+        ];
+        if (target.kind === 'upload') {
+            if (target.slot === 'inpaint_mask') return [
+                { key: 'mask', label: t('Advanced Masking node', '高级遮罩节点'), icon: 'fa-wand-magic-sparkles' },
+                mediaCreationOption('image', false)
+            ];
+            if (target.slot === 'sam3_mask_video') return [
+                { key: 'sam3', label: t('SAM3 Video Mask node', 'SAM3 视频遮罩节点'), icon: 'fa-wand-magic-sparkles' },
+                mediaCreationOption('video', false)
+            ];
+            return [mediaCreationOption(getUploadSlotMediaKind(target.slot) || 'image', false)];
+        }
+        if (['wd14', 'mask_source', 'pose_reference', 'gaussian_reference', 'liveportrait_source', 'liveportrait_reference', 'compare'].includes(target.kind)) return [mediaCreationOption('image', false)];
+        if (target.kind === 'vlm') {
+            return (node.params?.mode || 'single') === 'chat'
+                ? [mediaCreationOption('image', false)]
+                : [mediaCreationOption('image', false), mediaCreationOption('video', false)];
+        }
+        if (target.kind === 'sam3_video') return [mediaCreationOption('video', false)];
+        if (target.kind === 'qwen_tts_audio') return [mediaCreationOption('audio', false)];
+        if (target.kind === 'director_media' || target.kind === 'director_media_group') {
+            const kind = target.kind === 'director_media_group'
+                ? target.slot
+                : (String(target.slot || '').split('_')[0] || 'image');
+            return [mediaCreationOption(['image', 'video', 'audio'].includes(kind) ? kind : 'image', false)];
+        }
+        if (target.kind === 'timeline') return [mediaCreationOption('image', false), mediaCreationOption('video', false), mediaCreationOption('audio', false)];
+        if (target.kind === 'batch_any') {
+            const kind = batchAnyMediaKind(node);
+            if (kind === 'text' || !kind) {
+                const items = [
+                    { key: 'text', label: t('Text node', '文本节点'), icon: 'fa-font' },
+                    { key: 'text_merge', label: t('Multi-text Merge node', '多文本合并节点'), icon: 'fa-code-merge' }
+                ];
+                if (!kind) items.push(mediaCreationOption('image', true), mediaCreationOption('video', true), mediaCreationOption('audio', true));
+                return items;
+            }
+            return [mediaCreationOption(kind, true)];
+        }
+        return [];
+    }
+
+    function inputUpstreamWorld(target, nodeType) {
+        const targetNode = getNode(target?.toId);
+        const size = defaultNodeSize(nodeType || 'text');
+        if (!targetNode) return viewportCenterWorld();
+        return getInputImageNodePosition(targetNode, target?.handle || null, size);
+    }
+
+    function finishCreatedInputSource(sourceNode, target) {
+        if (!sourceNode || !target) return null;
+        if (!connectSourceToTarget(sourceNode.id, target, { silent: true, render: false, history: false, select: false, toast: false })) {
+            showToast(t('The created node does not match this input type.', '创建的节点与该输入端点类型不匹配。'));
+            return sourceNode;
+        }
+        selectedNodeId = sourceNode.id;
+        selectedNodeIds = new Set([sourceNode.id]);
+        selectedEdgeId = null;
+        mutate({ inspector: true });
+        showToast(t('{type} created and connected.', '{type} 已创建并连接。').replace('{type}', sourceNode.title || sourceNode.type));
+        return sourceNode;
+    }
+
+    async function importMediaInputSource(target, mediaKind, world) {
+        const file = mediaKind === 'image'
+            ? await pickLocalImageFile()
+            : (mediaKind === 'video' ? await pickLocalVideoFile() : await pickLocalAudioFile());
+        if (!file) return null;
+        const node = await addMediaNodeFromFile(file, world || inputUpstreamWorld(target, mediaKind));
+        return finishCreatedInputSource(node, target);
+    }
+
+    function createInputSourceByOption(target, optionKey, world) {
+        const targetNode = getNode(target?.toId);
+        if (!targetNode || isNodeLocked(targetNode)) return null;
+        const key = String(optionKey || '');
+        if (key === 'config') {
+            ensureConfigNode(targetNode, target.slot);
+            return null;
+        }
+        if (key === 'preset') {
+            setPendingInputTarget(target, world);
+            openPresetPalette(world || inputUpstreamWorld(target, 'preset'));
+            return null;
+        }
+        if (key.startsWith('import_')) return importMediaInputSource(target, key.slice('import_'.length), world);
+        const typeForPosition = key === 'classic' ? 'classic' : (key === 'qwen_tts' ? 'qwen_tts_voice_design' : key);
+        const nodeWorld = inputUpstreamWorld(target, typeForPosition);
+        if (key === 'image') {
+            pushHistory('Add input image node');
+            return finishCreatedInputSource(createEmptyImageNodeForInput(targetNode, inputTargetDisplayLabel(target), target.handle), target);
+        }
+        if (key === 'video' || key === 'audio') {
+            pushHistory(`Add input ${key} node`);
+            return finishCreatedInputSource(createEmptyMediaNodeForInput(targetNode, key, inputTargetDisplayLabel(target), target.handle), target);
+        }
+        setPendingInputTarget(target, nodeWorld);
+        if (key === 'text') return addTextNode(nodeWorld);
+        if (key === 'text_merge') return addTextMergeNode(nodeWorld);
+        if (key === 'mask') return addMaskNode(nodeWorld);
+        if (key === 'sam3') return addSam3VideoMaskNode(nodeWorld);
+        if (key === 'classic') return addClassicNode({ name: 'default', display_name: t('Classic', '经典'), backend_engine: 'Fooocus', engine_type: 'image' }, nodeWorld);
+        if (key === 'timeline') return addTimelineNode(nodeWorld);
+        if (key === 'qwen_tts') return addQwenTtsNode('voice_design', nodeWorld);
+        pendingInputTarget = null;
+        return null;
+    }
+
+    function openInputPortCreateMenu(target, x, y, world) {
+        const options = inputTargetCreationOptions(target);
+        if (!options.length) {
+            showToast(t('This input has no registered default source yet.', '这个输入端点还没有登记默认前置节点。'));
+            return;
+        }
+        openContextMenu(x, y, options.map(option => ({
+            label: option.label,
+            icon: option.icon,
+            action: () => createInputSourceByOption(target, option.key, world)
+        })));
+    }
+
+    function createDefaultInputSource(target) {
+        const option = inputTargetCreationOptions(target)[0];
+        if (!option) {
+            showToast(t('This input has no registered default source yet.', '这个输入端点还没有登记默认前置节点。'));
+            return null;
+        }
+        return createInputSourceByOption(target, option.key, inputUpstreamWorld(target, option.key));
+    }
+
+    function openInputPortContextMenu(target, x, y) {
+        const edges = inputTargetEdges(target);
+        const createItems = inputTargetCreationOptions(target).map(option => ({
+            label: t('Create {type}', '创建 {type}').replace('{type}', option.label),
+            icon: option.icon,
+            action: () => createInputSourceByOption(target, option.key, inputUpstreamWorld(target, option.key))
+        }));
+        const items = [
+            { label: t('Expected input: {type}', '需要的输入：{type}').replace('{type}', inputTargetDisplayLabel(target)), icon: 'fa-circle-info', disabled: true },
+            ...createItems
+        ];
+        if (edges.length) {
+            items.push({ separator: true });
+            edges.forEach((edge, index) => {
+                const source = getNode(edge.from);
+                items.push({
+                    label: t('Disconnect {name}', '断开 {name}').replace('{name}', source?.title || source?.id || `${index + 1}`),
+                    icon: 'fa-link-slash',
+                    action: () => deleteEdge(edge.id)
+                });
+            });
+        }
+        openContextMenu(x, y, items);
+    }
+
     function openInputHandleContextMenu(node, slot, x, y) {
         const fromId = node.upload_slots?.[slot];
         openContextMenu(x, y, [
@@ -28308,10 +28796,11 @@ ${renderGenerationMetadataInspectorSection(node)}
         ]);
     }
 
-    function openTextNodeInputContextMenu(node, x, y) {
-        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === 'input');
+    function openTextNodeInputContextMenu(node, x, y, slot) {
+        const targetSlot = node?.type === 'text_merge' ? (slot || 'input_1') : 'input';
+        const edge = project.edges.find(item => item.type === 'text' && item.to === node.id && item.slot === targetSlot);
         openContextMenu(x, y, [
-            { label: edge ? t('Disconnect Text input', '断开文本输入') : t('Manual text', '手动文本'), icon: edge ? 'fa-link-slash' : 'fa-keyboard', disabled: !edge, action: () => deleteEdge(edge.id) }
+            { label: edge ? t('Disconnect Text input', '断开文本输入') : (node?.type === 'text_merge' ? notConnectedText() : t('Manual text', '手动文本')), icon: edge ? 'fa-link-slash' : (node?.type === 'text_merge' ? 'fa-circle' : 'fa-keyboard'), disabled: !edge, action: () => deleteEdge(edge.id) }
         ]);
     }
 
@@ -32514,6 +33003,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         selectedEdgeId = null;
         mutate();
         materializeNodeAssetForStorage(node.id).catch((err) => console.warn('[SimpAI Canvas] image materialize skipped:', err));
+        return node;
     }
 
     function getInputImageNodePosition(targetNode, handle, size) {
@@ -32549,6 +33039,30 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return node;
     }
 
+    function createEmptyMediaNodeForInput(targetNode, mediaKind, slotLabel, handle) {
+        if (!['video', 'audio'].includes(mediaKind)) return null;
+        const size = defaultNodeSize(mediaKind);
+        const base = getInputImageNodePosition(targetNode, handle, size);
+        const node = {
+            id: uid(mediaKind === 'video' ? 'vid' : 'aud'),
+            type: mediaKind,
+            x: base.x,
+            y: base.y,
+            w: size.w,
+            h: size.h,
+            title: slotLabel || t(mediaKind === 'video' ? 'Input Video' : 'Input Audio', mediaKind === 'video' ? '输入视频' : '输入音频'),
+            asset: null,
+            source: {
+                kind: 'manual_input_placeholder',
+                target_node_id: targetNode?.id || '',
+                target_slot: slotLabel || ''
+            }
+        };
+        placeNodeAvoidingOverlap(node, base, { excludeIds: [targetNode?.id].filter(Boolean) });
+        project.nodes.push(node);
+        return node;
+    }
+
     function createNodeForUploadInput(targetNode, slot, handle) {
         if (slot === 'sam3_mask_video') return createSam3VideoMaskNodeForPresetInput(targetNode, handle);
         if (getUploadSlotMediaKind(slot) === 'video') return createVideoNodeForUploadInput(targetNode, slot, handle);
@@ -32566,6 +33080,22 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 const file = input.files && input.files[0] ? input.files[0] : null;
                 input.remove();
                 resolve(file && isVideoFile(file) ? file : null);
+            }, { once: true });
+            input.click();
+        });
+    }
+
+    function pickLocalImageFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        return new Promise((resolve) => {
+            input.addEventListener('change', () => {
+                const file = input.files && input.files[0] ? input.files[0] : null;
+                input.remove();
+                resolve(file && isImageFile(file) ? file : null);
             }, { once: true });
             input.click();
         });
@@ -34835,6 +35365,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
 
     function closePresetPalette() {
         if (palette) palette.hidden = true;
+        pendingInputTarget = null;
     }
 
     function renderPresetPalette() {
@@ -35623,6 +36154,101 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return node;
     }
 
+    function addTextMergeNode(world, options) {
+        const opts = options || {};
+        if (opts.history !== false) pushHistory('Add multi-text merge node');
+        const size = defaultNodeSize('text_merge');
+        const node = {
+            id: uid('text_merge'),
+            type: 'text_merge',
+            x: world.x,
+            y: world.y,
+            w: Number(opts.w || size.w || 340),
+            h: Number(opts.h || size.h || 360),
+            title: opts.title || t('Multi-text Merge', '多文本合并'),
+            input_slots: Array.isArray(opts.input_slots) && opts.input_slots.length ? opts.input_slots.slice() : ['input_1', 'input_2'],
+            text_inputs: Object.assign({}, opts.text_inputs || {}),
+            params: Object.assign({ separator: '' }, opts.params || {}),
+            source: { kind: 'text_merge' }
+        };
+        placeNodeAvoidingOverlap(node, world);
+        project.nodes.push(node);
+        const autoMessage = completePendingConnectionToNode(node);
+        selectedNodeId = node.id;
+        selectedNodeIds = new Set([node.id]);
+        selectedEdgeId = null;
+        mutate();
+        showToast(autoMessage || t('Multi-text Merge node added.', '已添加多文本合并节点。'));
+        return node;
+    }
+
+    function addTextMergeInput(node) {
+        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
+        const slots = textMergeInputSlots(node);
+        if (slots.length >= 16) {
+            showToast(t('A merge node supports up to 16 inputs.', '一个合并节点最多支持 16 个输入。'));
+            return;
+        }
+        pushHistory('Add text merge input');
+        const used = new Set(slots);
+        let index = 1;
+        while (used.has(`input_${index}`)) index += 1;
+        node.input_slots = [...slots, `input_${index}`];
+        node.h = Math.max(Number(node.h || 0), 280 + node.input_slots.length * 42);
+        mutate();
+    }
+
+    function removeTextMergeInput(node, slot) {
+        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
+        const slots = textMergeInputSlots(node);
+        if (slots.length <= 2 || !slots.includes(slot)) return;
+        pushHistory('Remove text merge input');
+        project.edges = project.edges.filter(edge => !(edge.type === 'text' && edge.to === node.id && edge.slot === slot));
+        node.input_slots = slots.filter(item => item !== slot);
+        node.text_inputs = Object.assign({}, node.text_inputs || {});
+        delete node.text_inputs[slot];
+        mutate();
+    }
+
+    function syncTextMergeOutputDom(node) {
+        if (!node || node.type !== 'text_merge') return;
+        const output = getTextMergeOutput(node, new Set([node.id]));
+        const nodeEl = nodesLayer?.querySelector(`[data-node-id="${cssEscape(node.id)}"]`);
+        nodeEl?.querySelectorAll('[data-text-merge-output]').forEach(field => {
+            if (field.value !== output) field.value = output;
+        });
+        if (selectedNodeId === node.id && inspector) {
+            inspector.querySelectorAll('[data-text-merge-output]').forEach(field => {
+                if (field.value !== output) field.value = output;
+            });
+        }
+    }
+
+    function refreshTextMergeDependents(sourceNodeId, visited) {
+        const seen = visited || new Set();
+        if (!sourceNodeId || seen.has(sourceNodeId)) return;
+        seen.add(sourceNodeId);
+        project.nodes
+            .filter(node => node.type === 'text_merge' && (
+                Object.values(node.text_inputs || {}).includes(sourceNodeId)
+                || project.edges.some(edge => edge.type === 'text' && edge.from === sourceNodeId && edge.to === node.id)
+            ))
+            .forEach(node => {
+                syncTextMergeOutputDom(node);
+                refreshTextMergeDependents(node.id, seen);
+            });
+    }
+
+    function updateTextMergeSeparator(nodeId, value) {
+        const node = getNode(nodeId);
+        if (!node || node.type !== 'text_merge' || isNodeLocked(node)) return;
+        pushHistoryBatch(`text-merge:${nodeId}:separator`, 'Edit text merge separator');
+        node.params = Object.assign({}, node.params || {}, { separator: String(value ?? '') });
+        scheduleSave();
+        syncTextMergeOutputDom(node);
+        refreshTextMergeDependents(node.id);
+    }
+
     function addWildcardsHelperNode(world, options) {
         const opts = options || {};
         if (opts.history !== false) pushHistory('Add wildcards helper node');
@@ -35759,6 +36385,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         pushHistoryBatch(`text:${nodeId}:value`, node.type === 'wd14' ? 'Edit WD14 output' : (node.type === 'vlm' ? 'Edit VLM output' : (node.type === 'translation' ? 'Edit translation output' : (node.type === 'tag_cart' ? 'Edit Tag Cart output' : 'Edit text node'))));
         node.text = Object.assign({}, node.text || {}, { value: String(value || ''), updated_at: nowIso() });
         scheduleSave();
+        refreshTextMergeDependents(node.id);
     }
 
     function refreshNoteDom(nodeId) {
@@ -36856,6 +37483,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                     });
                     scheduleSave();
                     syncTextOutputDom(latest.id, String(nextValue || ''));
+                    refreshTextMergeDependents(latest.id);
                     if (nodesLayer) {
                         const latestEl = nodesLayer.querySelector(`[data-node-id="${cssEscape(latest.id)}"]`);
                         if (latestEl) latestEl.__simpaiRenderKey = nodeRenderKey(latest);
@@ -37017,7 +37645,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     function isTextOutputNode(node) {
         if (!node) return false;
         if (node.type === 'batch_any') return batchAnyMediaKind(node) === 'text';
-        return node.type === 'text' || node.type === 'wildcards_helper' || node.type === 'translation' || node.type === 'tag_cart' || node.type === 'wd14' || node.type === 'vlm' || node.type === 'style_selector' || isDirectorTimelineNode(node);
+        return node.type === 'text' || node.type === 'text_merge' || node.type === 'wildcards_helper' || node.type === 'translation' || node.type === 'tag_cart' || node.type === 'wd14' || node.type === 'vlm' || node.type === 'style_selector' || isDirectorTimelineNode(node);
     }
 
     function getNodeTextOutput(node, visited) {
@@ -37035,6 +37663,9 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         if (node.type === 'text') {
             const source = getTextNodeInputSource(node);
             if (source) return getNodeTextOutput(source, seen);
+        }
+        if (node.type === 'text_merge') {
+            return getTextMergeOutput(node, seen);
         }
         if (node.type === 'translation') {
             return String(node.text?.value || '');
@@ -37056,12 +37687,22 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
 
     function wouldCreateTextCycle(fromId, toId) {
         if (!fromId || !toId || fromId === toId) return true;
-        const seen = new Set([toId]);
-        let current = getNode(fromId);
-        while (current && ['text', 'translation', 'tag_cart', 'wildcards_helper'].includes(current.type)) {
-            if (seen.has(current.id)) return true;
+        const seen = new Set();
+        const stack = [getNode(fromId)];
+        while (stack.length) {
+            const current = stack.pop();
+            if (!current || seen.has(current.id)) continue;
+            if (current.id === toId) return true;
             seen.add(current.id);
-            current = getTextNodeInputSource(current);
+            if (current.type === 'text_merge') {
+                textMergeInputSlots(current).forEach(slot => {
+                    const source = getTextMergeInputSource(current, slot);
+                    if (source) stack.push(source);
+                });
+            } else if (['text', 'translation', 'tag_cart'].includes(current.type)) {
+                const source = getTextNodeInputSource(current);
+                if (source) stack.push(source);
+            }
         }
         return false;
     }
@@ -37669,14 +38310,16 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
     function createTextEdge(fromId, toId, slot, options) {
         const from = getNode(fromId);
         const to = getNode(toId);
-        const targetSlot = ['text', 'translation', 'tag_cart'].includes(to?.type) ? 'input' : (['prompt', 'negative_prompt'].includes(slot) ? slot : 'prompt');
+        const targetSlot = to?.type === 'text_merge'
+            ? (textMergeInputSlots(to).includes(slot) ? slot : textMergeInputSlots(to)[0])
+            : (['text', 'translation', 'tag_cart'].includes(to?.type) ? 'input' : (['prompt', 'negative_prompt'].includes(slot) ? slot : 'prompt'));
         const isPresetTextTarget = ['preset', 'classic'].includes(to?.type);
         const canUseBatchAnyText = isPresetTextTarget && batchAnyCanConnectToTextSlot(from, targetSlot);
-        if (!from || !to || (!isTextOutputNode(from) && !canUseBatchAnyText) || !['preset', 'classic', 'text', 'translation', 'tag_cart'].includes(to.type)) {
+        if (!from || !to || (!isTextOutputNode(from) && !canUseBatchAnyText) || !['preset', 'classic', 'text', 'text_merge', 'translation', 'tag_cart'].includes(to.type)) {
             showToast('Text outputs can connect to Text/Classic/Preset nodes');
             return;
         }
-        if (['text', 'translation', 'tag_cart'].includes(to.type) && wouldCreateTextCycle(fromId, toId)) {
+        if (['text', 'text_merge', 'translation', 'tag_cart'].includes(to.type) && wouldCreateTextCycle(fromId, toId)) {
             showToast('Text input cannot create a cycle');
             return;
         }
@@ -37703,6 +38346,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 from.style_selector = Object.assign({}, from.style_selector || {}, { target_preset_id: toId });
                 to.style_transfer_selector_id = from.id;
             }
+        } else if (to.type === 'text_merge') {
+            to.text_inputs = Object.assign({}, to.text_inputs || {}, { [targetSlot]: fromId });
         } else if (['text', 'translation', 'tag_cart'].includes(to.type)) {
             to.text_input = fromId;
         }
@@ -37710,7 +38355,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         selectedNodeId = toId;
         if (options && options.silent) return;
         mutate();
-        showToast(['text', 'translation', 'tag_cart'].includes(to.type) ? 'Text input connected' : `${targetSlot === 'negative_prompt' ? 'Negative Prompt' : 'Prompt'} connected`);
+        showToast(['text', 'text_merge', 'translation', 'tag_cart'].includes(to.type) ? t('Text input connected', '文本输入已连接') : `${targetSlot === 'negative_prompt' ? 'Negative Prompt' : 'Prompt'} connected`);
     }
 
     function createWd14ImageEdge(fromId, toId, options) {
@@ -38078,7 +38723,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         }
     }
 
-    function createGenerateEdge(fromId, toId) {
+    function createGenerateEdge(fromId, toId, options) {
         const from = getNode(fromId);
         const to = getNode(toId);
         if (!from || !to || (!['preset', 'classic', 'timeline'].includes(from.type) && !isQwenTtsNode(from)) || to.type !== 'result') {
@@ -38089,7 +38734,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             showToast('Locked nodes cannot change connections');
             return;
         }
-        pushHistory('Connect result edge');
+        if (!options || options.history !== false) pushHistory('Connect result edge');
         project.edges = project.edges.filter(edge => !(edge.type === 'generate' && edge.to === toId));
         project.edges.push({
             id: uid('edge'),
@@ -38112,6 +38757,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         });
         selectedEdgeId = null;
         selectedNodeId = toId;
+        if (options && options.silent) {
+            scheduleSave();
+            return;
+        }
         mutate();
         showToast(t('Connected to output receiver node.', '已连接到输出承接节点'));
     }
@@ -42973,6 +43622,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             toggleNoteTail(node);
         } else if (action === 'reset-note-tail' && node.type === 'note') {
             resetNoteTail(node);
+        } else if (action === 'text-merge-add-input' && node.type === 'text_merge') {
+            addTextMergeInput(node);
+        } else if (String(action || '').startsWith('text-merge-remove-input:') && node.type === 'text_merge') {
+            removeTextMergeInput(node, String(action || '').slice('text-merge-remove-input:'.length));
         } else if (action === 'delete') {
             selectedNodeId = node.id;
             selectedNodeIds = new Set([node.id]);
@@ -44980,6 +45633,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             if (node.type === 'text' && idSet.has(node.text_input)) {
                 node.text_input = null;
             }
+            if (node.type === 'text_merge' && node.text_inputs) {
+                Object.keys(node.text_inputs).forEach((slot) => {
+                    if (idSet.has(node.text_inputs[slot])) node.text_inputs[slot] = null;
+                });
+            }
             if (node.type === 'translation' && idSet.has(node.text_input)) {
                 node.text_input = null;
                 node.status = Object.assign({}, node.status || {}, { state: 'idle', message: 'Text input removed.' });
@@ -45113,6 +45771,9 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             }
             if (target?.type === 'text' && edge.slot === 'input' && target.text_input === edge.from) {
                 target.text_input = null;
+            }
+            if (target?.type === 'text_merge' && target.text_inputs?.[edge.slot] === edge.from) {
+                target.text_inputs[edge.slot] = null;
             }
             if (target?.type === 'translation' && edge.slot === 'input' && target.text_input === edge.from) {
                 target.text_input = null;
@@ -45276,6 +45937,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         }
         if (node.type === 'config') {
             node.target_preset_id = null;
+        }
+        if (node.type === 'text_merge') {
+            node.text_inputs = {};
+            node.input_slots = Array.isArray(node.input_slots) && node.input_slots.length ? node.input_slots : ['input_1', 'input_2'];
+            node.params = Object.assign({ separator: '' }, node.params || {});
         }
         if (node.type === 'video' || node.type === 'audio') {
             items.push({ label: node.type === 'video' ? 'View video' : 'Open audio', icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
@@ -45450,6 +46116,8 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
                 from.style_selector = Object.assign({}, from.style_selector || {}, { target_preset_id: to.id });
                 to.style_transfer_selector_id = from.id;
             }
+        } else if (edge.type === 'text' && isTextOutputNode(from) && to.type === 'text_merge' && textMergeInputSlots(to).includes(edge.slot) && !wouldCreateTextCycle(from.id, to.id)) {
+            to.text_inputs = Object.assign({}, to.text_inputs || {}, { [edge.slot]: from.id });
         } else if (edge.type === 'text' && isTextOutputNode(from) && ['text', 'translation', 'tag_cart'].includes(to.type) && edge.slot === 'input' && !wouldCreateTextCycle(from.id, to.id)) {
             to.text_input = from.id;
         } else if (edge.type === 'image' && ['image', 'result'].includes(from.type) && to.type === 'wd14') {
@@ -45806,6 +46474,11 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             resetGalleryFrostReveals();
         },
         addPresetNode: (entry, world) => addPresetNode(entry || {}, world || viewportCenterWorld()),
+        addTextMergeNode: (world, options) => addTextMergeNode(world || viewportCenterWorld(), options || {}),
+        connectTextEdge: (fromId, toId, slot, options) => createTextEdge(fromId, toId, slot, options || {}),
+        getTextOutput: (nodeOrId) => getNodeTextOutput(typeof nodeOrId === 'string' ? getNode(nodeOrId) : nodeOrId),
+        getInputPortCreationOptions: (toId, kind, slot) => inputTargetCreationOptions({ toId, kind, slot }).map(item => ({ key: item.key, label: item.label, icon: item.icon })),
+        createDefaultInputSource: (toId, kind, slot) => createDefaultInputSource({ toId, kind, slot }),
         addPoseStudioNode: (world, options) => addPoseStudioNode(world || viewportCenterWorld(), options || {}),
         addGaussianStudioNode: (world, options) => addGaussianStudioNode(world || viewportCenterWorld(), options || {}),
         addLivePortraitExpressionNode: (world, options) => addLivePortraitExpressionNode(world || viewportCenterWorld(), options || {}),
