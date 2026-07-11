@@ -48,7 +48,10 @@
                 "scene_switch_option4",
                 "sam3_input_video",
                 "sam3_mask_video",
-                "scene_var_number"
+                "scene_var_number",
+                "scene_var_number5",
+                "scene_switch_option1",
+                "scene_switch_option2"
             ],
             "task_method": {
                 "Animate Outpaint": "wan_animate_outpaint_cn"
@@ -74,12 +77,6 @@
             "var_number3": {
                 "Animate Outpaint": 16.0
             },
-            "var_number5_min": 0,
-            "var_number5_max": 40.0,
-            "var_number5_title": "Block Swap [smaller uses more VRAM]",
-            "var_number5": {
-                "Animate Outpaint": 35.0
-            },
             "var_number7_min": 0,
             "var_number7_max": 50,
             "var_number7_title": "Outpaint Up (%)",
@@ -103,14 +100,6 @@
             "var_number10_max": 50,
             "var_number10": {
                 "Animate Outpaint": 20
-            },
-            "switch_option1_title": "Use Tiled VAE Decode",
-            "switch_option1": {
-                "Animate Outpaint": true
-            },
-            "switch_option2_title": "SageAttention SpeedUp",
-            "switch_option2": {
-                "Animate Outpaint": true
             },
             "aspect_ratio": [
                 "640|1:1",
@@ -144,7 +133,7 @@
         }
     },
     "default_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
-    "default_refiner": "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+    "default_refiner": "wan2.2_animate_14B_int8_convrot.safetensors",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
     "default_clip_model": "umt5-xxl-encoder-Q8_0.gguf",
@@ -186,7 +175,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors,17317143060,0,https://www.modelscope.cn/models/Kijai/WanVideo_comfy_fp8_scaled/resolve/master/Wan22Animate/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+        "diffusion_models,wan2.2_animate_14B_int8_convrot.safetensors,18413068672,0,https://modelscope.cn/models/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/master/split_files/diffusion_models/wan2.2_animate_14B_int8_convrot.safetensors",
         "clip_vision,clip_vision_h.safetensors,1264219396,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/clip_vision/clip_vision_h.safetensors",
         "text_encoders,umt5-xxl-encoder-Q8_0.gguf,6043068256,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf",
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",

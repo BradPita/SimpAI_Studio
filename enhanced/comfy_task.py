@@ -1,6 +1,15 @@
 import modules.config as config
 from shared import modelsinfo
-from enhanced.simpleai import ComfyTaskParams
+from enhanced.simpleai import ComfyTaskParams, comfyclient_pipeline
+
+
+def _register_runtime_preview_nodes():
+    node_name = "SimpAIWanAnimateLoop"
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add(node_name)
+    comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add(node_name)
+
+
+_register_runtime_preview_nodes()
 
 
 class ComfyTask:
@@ -74,6 +83,10 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
         comfy_params.update_mapping_rule("scheduler", "SceneInput:SceneInput:scheduler")
         comfy_params.update_mapping_rule("video_duration", "SceneInput:SceneInput:video_duration")
         comfy_params.update_mapping_rule("reference_video", "SimpAIOptionalReferenceVideoPath:SimpAIOptionalReferenceVideoPath:reference_video")
+        comfy_params.update_mapping_rule("clip_model", "CLIPLoader_Any:clip_model:clip_name")
+        comfy_params.update_mapping_rule("clip_model", "CLIPLoaderGGUF_Any:clip_model:clip_name")
+        comfy_params.update_mapping_rule("clip_model2", "CLIPLoader_Any:clip_model2:clip_name")
+        comfy_params.update_mapping_rule("clip_model2", "CLIPLoaderGGUF_Any:clip_model2:clip_name")
     if 'base_model_gguf' in default_params:
         comfy_params.delete_params(['base_model'])
     if 'base_model_gguf2' in default_params:

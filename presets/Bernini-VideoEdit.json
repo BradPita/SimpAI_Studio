@@ -43,7 +43,6 @@
                 "scene_additional_prompt_2",
                 "scene_audio",
                 "scene_var_number",
-                "scene_var_number2",
                 "scene_var_number4",
                 "scene_var_number3",
                 "scene_var_number5",
@@ -75,6 +74,12 @@
             "var_number_max": 10,
             "var_number": {
                 "Basic": 5
+            },
+            "var_number2_title": "Reference video override FPS",
+            "var_number2_min": 8.0,
+            "var_number2_max": 30.0,
+            "var_number2": {
+                "Basic": 16.0
             },
             "switch_option1_title": "Use Tiled VAE Decode",
             "switch_option1": {

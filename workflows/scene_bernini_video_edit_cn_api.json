@@ -282,7 +282,10 @@
   },
   "90": {
     "inputs": {
-      "source_fps": 16,
+      "source_fps": [
+        "155",
+        5
+      ],
       "target_fps": [
         "155",
         0
@@ -553,7 +556,10 @@
   "145": {
     "inputs": {
       "video": "example.mp4",
-      "force_rate": 16,
+      "force_rate": [
+        "275",
+        0
+      ],
       "custom_width": 0,
       "custom_height": 0,
       "frame_load_cap": [
@@ -1743,6 +1749,18 @@
     "class_type": "SimpleMath+",
     "_meta": {
       "title": "🔧 Simple Math"
+    }
+  },
+  "275": {
+    "inputs": {
+      "value": [
+        "150",
+        11
+      ]
+    },
+    "class_type": "JWIntegerToFloat",
+    "_meta": {
+      "title": "Integer to Float"
     }
   }
 }

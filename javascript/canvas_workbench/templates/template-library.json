@@ -796,7 +796,7 @@
           "zh": "需要 Wan-Animate、SAM3.1、CLIP vision、UMT5、Wan VAE、relight/lightx2v LoRA、RIFE 和检测模型。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "sam3.1_multiplex_fp16.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
@@ -835,7 +835,7 @@
           "zh": "需要 Wan-Animate 与 SAM3 模型组，以及源视频、遮罩视频和人脸参考图。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "sam3.1_multiplex_fp16.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
@@ -910,7 +910,7 @@
           "zh": "需要 Wan-Animate、CLIP vision、UMT5、Wan VAE、lightx2v/WanAnimate LoRA、RIFE、Flux2 Klein 和支撑编码器。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
           "wan_2.1_vae.safetensors",
@@ -984,7 +984,7 @@
           "zh": "需要 Wan-Animate、SAM3.1、CLIP vision、UMT5、Wan VAE、LoRA、RIFE 和检测模型。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "sam3.1_multiplex_fp16.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
@@ -1074,7 +1074,7 @@
           "zh": "需要 Wan-Animate、CLIP vision、UMT5、Wan VAE、relight/lightx2v LoRA、RIFE 和检测模型。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
           "wan_2.1_vae.safetensors",
@@ -1113,7 +1113,7 @@
           "zh": "需要 Wan-Swap/Wan-Animate 模型组、CLIP vision、UMT5、Wan VAE、LoRA、RIFE 和检测模型。"
         },
         "models": [
-          "Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors",
+          "wan2.2_animate_14B_int8_convrot.safetensors",
           "clip_vision_h.safetensors",
           "umt5-xxl-encoder-Q8_0.gguf",
           "wan_2.1_vae.safetensors",
