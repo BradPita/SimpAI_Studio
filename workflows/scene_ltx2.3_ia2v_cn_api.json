@@ -515,6 +515,10 @@
       "nag_cond_video": [
         "107",
         1
+      ],
+      "nag_cond_audio": [
+        "107",
+        1
       ]
     },
     "class_type": "LTX2_NAG",

@@ -190,7 +190,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "223",
+        "238",
         0
       ],
       "positive": [
@@ -815,7 +815,7 @@
       ],
       "denoise": 0.5,
       "model": [
-        "238",
+        "223",
         0
       ]
     },
@@ -994,11 +994,11 @@
   },
   "249": {
     "inputs": {
+      "amount": 8,
       "image": [
         "235",
         0
-      ],
-      "amount": 8
+      ]
     },
     "class_type": "RepeatImageBatch",
     "_meta": {
@@ -1023,14 +1023,14 @@
   },
   "251": {
     "inputs": {
-      "image": [
-        "250",
-        0
-      ],
       "batch_index": 0,
       "length": [
         "245",
         1
+      ],
+      "image": [
+        "250",
+        0
       ]
     },
     "class_type": "ImageFromBatch",
@@ -1040,14 +1040,14 @@
   },
   "252": {
     "inputs": {
-      "image": [
-        "242",
-        0
-      ],
       "batch_index": 0,
       "length": [
         "201",
         1
+      ],
+      "image": [
+        "242",
+        0
       ]
     },
     "class_type": "ImageFromBatch",
