@@ -3752,6 +3752,9 @@ with shared.gradio_root:
                             if not scene_theme_initial_choices:
                                 scene_theme_initial_choices = ["Scene Theme / 场景主题"]
                             scene_theme = gr.Radio(choices=scene_theme_initial_choices, label="Themes", value=scene_theme_initial_choices[0], visible=False, elem_id='scene_theme')
+                        with gr.Row(elem_id="scene_duration_row"):
+                            scene_video_duration = gr.Slider(label='Video Duration(s)', minimum=0.1, maximum=60, step=0.1, value=5.0, visible=True, elem_id="scene_video_duration", elem_classes=['simpai-mounted-hidden'])
+                            scene_var_number = gr.Slider(label='Duration(s)', minimum=0, maximum=60, step=1, value=0, visible=True, elem_id="scene_var_number", elem_classes=['simpai-mounted-hidden'])
 
                         # Qwen Multiangle Camera Control
                         with gr.Accordion("📸 3D Camera Control", open=False, visible=True, elem_id="camera_control_accordion", elem_classes=['simpai-mounted-hidden']) as camera_control_accordion:
@@ -4285,9 +4288,6 @@ with shared.gradio_root:
                             .then(sam3_prompt_generate_wrapper, inputs=[sam3_original_video_path, sam3_input_video, sam3_trim_payload, sam3_prompt_text, sam3_mask_video, sam3_score_threshold_detection, sam3_new_det_thresh, sam3_fill_hole_area, sam3_recondition_every_nth_frame, sam3_postprocess_strength, sam3_invert_mask], outputs=[sam3_mask_video], show_progress=True) \
                             .then(sam3_generation_finish_updates, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
                         sam3_stop_btn.click(sam3_video_mask.stop_webui_sam3_generation, outputs=[sam3_generate_btn, sam3_stop_btn], queue=False, show_progress=False)
-                        with gr.Row(elem_id="scene_duration_row"):
-                            scene_video_duration = gr.Slider(label='Video Duration(s)', minimum=0.1, maximum=60, step=0.1, value=5.0, visible=True, elem_id="scene_video_duration", elem_classes=['simpai-mounted-hidden'])
-                            scene_var_number = gr.Slider(label='Duration(s)', minimum=0, maximum=60, step=1, value=0, visible=True, elem_id="scene_var_number", elem_classes=['simpai-mounted-hidden'])
 
                         with gr.Row(elem_id="scene_image_number_row"):
                             scene_image_number = gr.Slider(label='Image Number', minimum=1, maximum=5, step=1, value=1, elem_id="scene_image_number")
