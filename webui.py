@@ -2384,10 +2384,10 @@ def _model_params_state_from_state_params(state_params, fallback_state=None):
             elif len(parts) >= 2:
                 model_name = parts[0] or "None"
                 weight = parts[1]
-                enabled = str(model_name).strip().lower() != "none"
+                enabled = True
             elif len(parts) == 1:
                 model_name = parts[0] or "None"
-                enabled = str(model_name).strip().lower() != "none"
+                enabled = True
             try:
                 weight = float(weight)
             except Exception:
@@ -7097,6 +7097,11 @@ with shared.gradio_root:
                         elem_id="models_nav_rehydrate_trigger",
                         elem_classes=["browser-trigger-proxy"],
                     )
+                    models_nav_rehydrate_payload = gr.Textbox(
+                        value="",
+                        elem_id="models_nav_rehydrate_payload",
+                        elem_classes=["browser-trigger-proxy"],
+                    )
 
                     scene_generation_model_ctrls = []
                     refresh_files_output = [base_model, refiner_model, clip_model, vae_name, upscale_model]
@@ -7137,6 +7142,41 @@ with shared.gradio_root:
                         return (
                             _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
                             + [gr_update(value=_render_models_js_panel(model_state))]
+                        )
+
+                    def _rehydrate_models_tab_after_nav_from_state(state_params, current_model_params_state, use_model_filter):
+                        preset_name = state_params.get("__preset") if isinstance(state_params, dict) else None
+                        current_base = current_model_params_state.get("base_model") if isinstance(current_model_params_state, dict) else None
+                        current_refiner = current_model_params_state.get("refiner_model") if isinstance(current_model_params_state, dict) else None
+                        util.log_ui_trace(
+                            logger,
+                            "[UI-TRACE] models_panel.rehydrate.enter | preset=%r, current_base=%r, current_refiner=%r",
+                            preset_name,
+                            current_base,
+                            current_refiner,
+                        )
+                        refresh_files_clicked(state_params, use_model_filter, False)
+                        model_state = _model_params_state_from_state_params(state_params, current_model_params_state)
+                        lora_enabled = "".join("1" if item[0] else "0" for item in _normalize_lora_triplets(model_state.get("loras"))[:5])
+                        util.log_ui_trace(
+                            logger,
+                            "[UI-TRACE] models_panel.rehydrate.result | preset=%r, base=%r, refiner=%r, clip=%r, vae=%r, lora_enabled=%s",
+                            preset_name,
+                            model_state.get("base_model"),
+                            model_state.get("refiner_model"),
+                            model_state.get("clip_model"),
+                            model_state.get("vae_name"),
+                            lora_enabled,
+                        )
+                        return (
+                            _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
+                            + [
+                                gr_update(value=_render_models_js_panel(model_state)),
+                                gr_update(value=json.dumps({
+                                    "seq": str(time.time_ns()),
+                                    "model_state": model_state,
+                                }, ensure_ascii=False)),
+                            ]
                         )
 
                     def _refresh_files_and_browser(state_params, use_model_filter, current_model_params_state, browser_visible, target_type, search_text, folder_name):
@@ -7225,10 +7265,18 @@ with shared.gradio_root:
                         show_progress=False,
                     )
                     models_nav_rehydrate_trigger.click(
-                        _rehydrate_models_tab_from_state,
+                        _rehydrate_models_tab_after_nav_from_state,
                         [state_topbar, model_params_state, model_filter_state],
-                        model_bridge_rehydrate_targets + [models_js_panel],
+                        model_bridge_rehydrate_targets + [models_js_panel, models_nav_rehydrate_payload],
                         queue=True,
+                        show_progress=False,
+                    )
+                    models_nav_rehydrate_payload.change(
+                        fn=None,
+                        inputs=models_nav_rehydrate_payload,
+                        outputs=None,
+                        js="(payload)=>{try{window.simpleaiApplyPresetModelsPanelState?.(payload);}catch(e){console.warn('[UI-TRACE] models_panel.direct_reset_failed', e);}}",
+                        queue=False,
                         show_progress=False,
                     )
                     models_js_apply_trigger.click(
@@ -10243,6 +10291,18 @@ with shared.gradio_root:
         ]
         after_identity_updates = result[load_end:load_end + len(after_identity)]
         model_state_update = _model_params_state_from_load_updates(load_updates, current_model_params_state, state_params=state_params)
+        previous_base = current_model_params_state.get("base_model") if isinstance(current_model_params_state, dict) else None
+        lora_enabled = "".join("1" if item[0] else "0" for item in _normalize_lora_triplets(model_state_update.get("loras"))[:5])
+        util.log_ui_trace(
+            logger,
+            "[UI-TRACE] models_panel.nav_state | preset=%r, models_tab_active=%s, previous_base=%r, target_base=%r, target_refiner=%r, lora_enabled=%s",
+            state_params.get("__preset") if isinstance(state_params, dict) else None,
+            bool(models_tab_active),
+            previous_base,
+            model_state_update.get("base_model"),
+            model_state_update.get("refiner_model"),
+            lora_enabled,
+        )
         return fast_updates + after_identity_updates + [model_state_update]
 
     reset_image_params_outputs = reset_preset_layout + reset_preset_func + scene_frontend_ctrls + load_data_outputs + [state_topbar, params_note_regen_button, params_note_box]

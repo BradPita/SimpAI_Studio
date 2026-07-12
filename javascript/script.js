@@ -1586,6 +1586,73 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         document.querySelectorAll('[data-simpai-models-js-root]').forEach(syncModelsPanelControls);
     }
 
+    let latestPresetModelsPanelResetSeq = '';
+    function applyPresetModelsPanelState(payload) {
+        let data = payload;
+        if (typeof data === 'string') {
+            try {
+                data = JSON.parse(data || '{}');
+            } catch (_) {
+                return false;
+            }
+        }
+        if (!data || typeof data !== 'object') return false;
+        const seq = String(data.seq || '');
+        const modelState = data.model_state && typeof data.model_state === 'object'
+            ? data.model_state
+            : data;
+        if (seq) latestPresetModelsPanelResetSeq = seq;
+
+        const setSelectValue = (select, value) => {
+            if (!select) return;
+            const normalized = String(value ?? '');
+            let option = Array.from(select.options || []).find((item) => item.value === normalized);
+            if (!option) {
+                option = document.createElement('option');
+                option.value = normalized;
+                option.textContent = normalized;
+                select.replaceChildren(option);
+            }
+            select.value = normalized;
+        };
+        const apply = () => {
+            if (seq && latestPresetModelsPanelResetSeq !== seq) return;
+            document.querySelectorAll('[data-simpai-models-js-root]').forEach((panel) => {
+                ['base_model', 'refiner_model', 'clip_model', 'vae_name', 'upscale_model'].forEach((key) => {
+                    if (!Object.prototype.hasOwnProperty.call(modelState, key)) return;
+                    setSelectValue(panel.querySelector(`[data-simpai-model-field="${key}"]`), modelState[key]);
+                });
+                if (Object.prototype.hasOwnProperty.call(modelState, 'refiner_switch')) {
+                    const value = String(modelState.refiner_switch ?? 0.5);
+                    const number = panel.querySelector('[data-simpai-model-field="refiner_switch"]');
+                    if (number) number.value = value;
+                    setModelsPanelRangeValue(panel.querySelector('[data-simpai-model-range="refiner_switch"]'), value);
+                }
+                if (Array.isArray(modelState.loras)) {
+                    modelState.loras.forEach((item, index) => {
+                        const normalized = Array.isArray(item)
+                            ? { enabled: item[0], model: item[1], weight: item[2] }
+                            : (item && typeof item === 'object' ? item : {});
+                        const enabled = panel.querySelector(`[data-simpai-lora-enabled="${index}"]`);
+                        const model = panel.querySelector(`[data-simpai-lora-model="${index}"]`);
+                        const weight = panel.querySelector(`[data-simpai-lora-weight="${index}"]`);
+                        if (enabled) enabled.checked = !!normalized.enabled;
+                        setSelectValue(model, normalized.model ?? 'None');
+                        if (weight) weight.value = String(normalized.weight ?? 1.0);
+                        setModelsPanelRangeValue(
+                            panel.querySelector(`[data-simpai-lora-weight-range="${index}"]`),
+                            String(normalized.weight ?? 1.0),
+                        );
+                        syncLoraRowInteractivity(enabled);
+                    });
+                }
+                syncModelsPanelControls(panel);
+            });
+        };
+        window.requestAnimationFrame(apply);
+        return true;
+    }
+
     function isModelsPanelNumberField(field) {
         return field instanceof HTMLInputElement
             && field.type === 'number'
@@ -1953,6 +2020,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     setInterval(syncModelsJsPanelLocalizationIfLanguageChanged, 800);
 
     window.simpleaiApplyModelsJsPanel = applyModelsPanel;
+    window.simpleaiApplyPresetModelsPanelState = applyPresetModelsPanelState;
     window.simpleaiSyncModelsJsPanelBridge = syncActiveModelsPanelBridgeControls;
     window.simpleaiRefreshModelsJsPanelCatalog = refreshModelsPanelCatalog;
     window.simpleaiInvalidateModelsPanelCatalog = markModelsPanelCatalogDirty;
