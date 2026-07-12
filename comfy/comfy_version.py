@@ -1,1 +1,1 @@
-version = '694815f'
+version = '69ea586'

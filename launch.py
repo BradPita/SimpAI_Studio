@@ -514,9 +514,9 @@ def check_base_environment():
 
     update_pkgs = [
         ('comfyui-frontend-package', '1.45.20', None),
-        ('comfyui-workflow-templates', '0.11.1', None),
-        ('comfyui-embedded-docs', '0.5.6', None),
-        ('comfy-kitchen', '0.2.16', None),
+        ('comfyui-workflow-templates', '0.11.6', None),
+        ('comfyui-embedded-docs', '0.5.7', None),
+        ('comfy-kitchen', '0.2.18', None),
         ('comfy-aimdo', '0.4.10', None),
         ('av', '17.0.0', None),
         ('PyOpenGL', None, '>=3.1.8'),

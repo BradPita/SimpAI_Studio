@@ -104,13 +104,14 @@ download_path_mapping = {}
 
 MODEL_SCAN_CATEGORIES = [
     'checkpoints', 'loras', 'controlnet', 'embeddings', 'diffusion_models',
-    'vae_approx', 'vae', 'upscale_models', 'inpaint', 'grounding-dino', 'ipadapter',
+    'configs', 'vae_approx', 'vae', 'upscale_models', 'inpaint', 'grounding-dino', 'ipadapter',
     'clip', 'clip_vision', 'llms', 'LLM', 'unet', 'diffusers', 'model_patches',
     'text_encoders', 'audio_encoders', 'background_removal', 'frame_interpolation',
     'geometry_estimation', 'optical_flow', 'safety_checker',
     'layer_model', 'pulid', 'insightface', 'prompt_expansion', 'fooocus_expansion',
     'gemma3', 'jina_clip', 'rembg', 'birefnet', 'sam3', 'sam3dbody', 'sharp', 'sams', 'qwen-tts',
-    'latent_upscale_models', 'hunyuan_foley', 'liveportrait',
+    'latent_upscale_models', 'hunyuan_foley', 'liveportrait', 'gligen',
+    'hypernetworks', 'photomaker',
 ]
 
 MODEL_ROOT_CATEGORY_FOLDERS = {
@@ -319,7 +320,10 @@ def load_model_paths():
                         for p in (config.get("path_style_models", [])
                                 if isinstance(config.get("path_style_models"), list)
                                 else [config.get("path_style_models", "")])],
-            "configs": [os.path.abspath(os.path.join(simplemodels_root, "configs"))],
+            "configs": _config_paths(config, "path_configs", os.path.join(simplemodels_root, "configs")),
+            "gligen": _config_paths(config, "path_gligen", os.path.join(simplemodels_root, "gligen")),
+            "hypernetworks": _config_paths(config, "path_hypernetworks", os.path.join(simplemodels_root, "hypernetworks")),
+            "photomaker": _config_paths(config, "path_photomaker", os.path.join(simplemodels_root, "photomaker")),
             "prompt_expansion": [os.path.abspath(os.path.join(simplemodels_root, "prompt_expansion"))],
             "model_patches": [os.path.abspath(os.path.join(script_dir, p)) if not os.path.isabs(p) else p
                         for p in (config.get("path_model_patches", [os.path.join(simplemodels_root, "model_patches")])
@@ -402,6 +406,9 @@ def load_model_paths():
             "insightface": [os.path.join(simplemodels_root, "insightface")],
             "style_models": [os.path.join(simplemodels_root, "style_models")],
             "configs": [os.path.normpath(os.path.join(simplemodels_root, "configs"))],
+            "gligen": [os.path.join(simplemodels_root, "gligen")],
+            "hypernetworks": [os.path.join(simplemodels_root, "hypernetworks")],
+            "photomaker": [os.path.join(simplemodels_root, "photomaker")],
             "prompt_expansion": [os.path.normpath(os.path.join(simplemodels_root, "prompt_expansion"))],
             "model_patches": [os.path.join(simplemodels_root, "model_patches")],
             "audio_encoders": [os.path.join(simplemodels_root, "audio_encoders")],

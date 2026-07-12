@@ -497,6 +497,7 @@ path_models_root = get_path_models_root()
 paths_checkpoints = get_dir_or_set_default('path_checkpoints', [f'{path_models_root}/checkpoints/', 'models/checkpoints/'], True)
 paths_loras = get_dir_or_set_default('path_loras', [f'{path_models_root}/loras/', 'models/loras/'], True)
 paths_embeddings = get_dir_or_set_default('path_embeddings', [f'{path_models_root}/embeddings/'], True)
+paths_configs = get_dir_or_set_default('path_configs', [f'{path_models_root}/configs/'], True)
 paths_vae_approx = get_dir_or_set_default('path_vae_approx', [f'{path_models_root}/vae_approx/'], True)
 paths_vae = get_dir_or_set_default('path_vae', [f'{path_models_root}/vae/'], True)
 paths_upscale_models = get_dir_or_set_default('path_upscale_models', [f'{path_models_root}/upscale_models/'], True)
@@ -521,6 +522,9 @@ paths_ipadapter = get_dir_or_set_default('path_ipadapter', f'{path_models_root}/
 paths_pulid = get_dir_or_set_default('path_pulid', f'{path_models_root}/pulid', True)
 paths_insightface = get_dir_or_set_default('path_insightface', f'{path_models_root}/insightface', True)
 paths_style_models = get_dir_or_set_default('path_style_models', f'{path_models_root}/style_models', True)
+paths_gligen = get_dir_or_set_default('path_gligen', f'{path_models_root}/gligen', True)
+paths_hypernetworks = get_dir_or_set_default('path_hypernetworks', f'{path_models_root}/hypernetworks', True)
+paths_photomaker = get_dir_or_set_default('path_photomaker', f'{path_models_root}/photomaker', True)
 paths_audio_encoders = get_dir_or_set_default('path_audio_encoders', f'{path_models_root}/audio_encoders', True)
 paths_background_removal = get_dir_or_set_default('path_background_removal', f'{path_models_root}/background_removal', True)
 paths_frame_interpolation = get_dir_or_set_default('path_frame_interpolation', f'{path_models_root}/frame_interpolation', True)
@@ -549,9 +553,11 @@ model_cata_map = {
     'checkpoints': paths_diffusion_models + paths_checkpoints,
     'loras': paths_loras,
     'embeddings': paths_embeddings,
+    'configs': paths_configs,
     'diffusers': paths_diffusers,
     'DIFFUSERS': paths_diffusers,
     'vae': paths_vae,
+    'vae_approx': paths_vae_approx,
     'upscale_models': paths_upscale_models,
     'latent_upscale_models': paths_latent_upscale_models,
     'inpaint': paths_inpaint,
@@ -568,6 +574,9 @@ model_cata_map = {
     'ipadapter': paths_ipadapter + paths_controlnet,
     'insightface': paths_insightface,
     'style_models': paths_style_models,
+    'gligen': paths_gligen,
+    'hypernetworks': paths_hypernetworks,
+    'photomaker': paths_photomaker,
     'audio_encoders': paths_audio_encoders,
     'background_removal': paths_background_removal,
     'frame_interpolation': paths_frame_interpolation,
@@ -1460,6 +1469,7 @@ comfyui:
      diffusers: {diffusers}
      diffusion_models: {diffusion_models}
      embeddings: {embeddings}
+     configs: {configs}
      loras: {loras}
      upscale_models: {upscale_models}
      latent_upscale_models: {latent_upscale_models}
@@ -1468,12 +1478,16 @@ comfyui:
      birefnet: {birefnet}
      layer_model: {layer_model}
      vae: {vae}
+     vae_approx: {vae_approx}
      ipadapter: {ipadapter}
      inpaint: {inpaint}
      sams: {sams}
      pulid: {pulid}
      insightface: {insightface}
      style_models: {style_models}
+     gligen: {gligen}
+     hypernetworks: {hypernetworks}
+     photomaker: {photomaker}
      audio_encoders: {audio_encoders}
      background_removal: {background_removal}
      frame_interpolation: {frame_interpolation}
@@ -1525,6 +1539,7 @@ config_comfy_text = config_comfy_formatted_text.format(
         controlnets=paths2str(_extra_model_paths('controlnet', paths_controlnet),'controlnet'), 
         diffusers=paths2str(_extra_model_paths('diffusers', paths_diffusers),'diffusers'), 
         embeddings=paths2str(_extra_model_paths('embeddings', paths_embeddings), 'embeddings'),
+        configs=paths2str(_extra_model_paths('configs', paths_configs), 'configs'),
         loras=paths2str(_extra_model_paths('loras', paths_loras), 'loras'), 
         upscale_models=paths2str(_extra_model_paths('upscale_models', paths_upscale_models), 'upscale_models'),
         latent_upscale_models=paths2str(_extra_model_paths('latent_upscale_models', paths_latent_upscale_models), 'latent_upscale_models'),
@@ -1533,12 +1548,16 @@ config_comfy_text = config_comfy_formatted_text.format(
         birefnet=paths2str(_extra_model_paths('birefnet', paths_birefnet), 'birefnet'),
         layer_model=paths2str(_extra_model_paths('layer_model', paths_layer_model), 'layer_model'),
         vae=paths2str(_extra_model_paths('vae', paths_vae), 'vae'),
+        vae_approx=paths2str(_extra_model_paths('vae_approx', paths_vae_approx), 'vae_approx'),
         ipadapter=paths2str(_extra_model_paths('ipadapter', paths_ipadapter + paths_controlnet), 'ipadapter'),
         inpaint=paths2str(_extra_model_paths('inpaint', paths_inpaint),'inpaint'), 
         sams=paths2str(_extra_model_paths('sams', paths_sams), 'sams'),
         pulid=paths2str(_extra_model_paths('pulid', paths_pulid), 'pulid'),
         insightface=paths2str(_extra_model_paths('insightface', paths_insightface), 'insightface'),
         style_models=paths2str(_extra_model_paths('style_models', paths_style_models), 'style_models'),
+        gligen=paths2str(_extra_model_paths('gligen', paths_gligen), 'gligen'),
+        hypernetworks=paths2str(_extra_model_paths('hypernetworks', paths_hypernetworks), 'hypernetworks'),
+        photomaker=paths2str(_extra_model_paths('photomaker', paths_photomaker), 'photomaker'),
         audio_encoders=paths2str(_extra_model_paths('audio_encoders', paths_audio_encoders), 'audio_encoders'),
         background_removal=paths2str(_extra_model_paths('background_removal', paths_background_removal), 'background_removal'),
         frame_interpolation=paths2str(_extra_model_paths('frame_interpolation', paths_frame_interpolation), 'frame_interpolation'),
