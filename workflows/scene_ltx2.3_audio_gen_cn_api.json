@@ -161,7 +161,7 @@
   "148": {
     "inputs": {
       "pixels": [
-        "181",
+        "235",
         0
       ],
       "vae": [
@@ -930,6 +930,95 @@
     "class_type": "easy ifElse",
     "_meta": {
       "title": "Select VLM Prompt"
+    }
+  },
+  "231": {
+    "inputs": {
+      "expression": "ceil((a-1)/8)*8+1",
+      "values.a": [
+        "201",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "LTX 8n+1 Frame Count"
+    }
+  },
+  "232": {
+    "inputs": {
+      "expression": "a-1",
+      "values.a": [
+        "201",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Last Real Frame Index"
+    }
+  },
+  "233": {
+    "inputs": {
+      "image": [
+        "181",
+        0
+      ],
+      "batch_index": [
+        "232",
+        1
+      ],
+      "length": 1
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Get Last Real Frame"
+    }
+  },
+  "234": {
+    "inputs": {
+      "image": [
+        "233",
+        0
+      ],
+      "amount": 8
+    },
+    "class_type": "RepeatImageBatch",
+    "_meta": {
+      "title": "Repeat Last Real Frame"
+    }
+  },
+  "235": {
+    "inputs": {
+      "image": [
+        "236",
+        0
+      ],
+      "batch_index": 0,
+      "length": [
+        "231",
+        1
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Crop to LTX 8n+1 Frame Count"
+    }
+  },
+  "236": {
+    "inputs": {
+      "image1": [
+        "181",
+        0
+      ],
+      "image2": [
+        "234",
+        0
+      ]
+    },
+    "class_type": "ImageBatch",
+    "_meta": {
+      "title": "Append Last Frame Copies"
     }
   }
 }

@@ -132,7 +132,7 @@
   "148": {
     "inputs": {
       "pixels": [
-        "181",
+        "251",
         0
       ],
       "vae": [
@@ -595,7 +595,7 @@
       ],
       "crf": 19,
       "images": [
-        "242",
+        "252",
         0
       ],
       "audio": [
@@ -733,8 +733,8 @@
     "inputs": {
       "expression": "a-1",
       "values.a": [
-        "245",
-        1
+        "244",
+        0
       ]
     },
     "class_type": "ComfyMathExpression",
@@ -744,10 +744,10 @@
   },
   "233": {
     "inputs": {
-      "expression": "round(a/2)",
+      "expression": "round((a-1)/2)",
       "values.a": [
-        "245",
-        1
+        "244",
+        0
       ]
     },
     "class_type": "ComfyMathExpression",
@@ -936,7 +936,7 @@
   },
   "245": {
     "inputs": {
-      "expression": "int(a/8)*8+1",
+      "expression": "ceil((a-1)/8)*8+1",
       "values.a": [
         "244",
         0
@@ -990,6 +990,69 @@
     "class_type": "SimpleMath+",
     "_meta": {
       "title": "Duration Limit Frame Cap"
+    }
+  },
+  "249": {
+    "inputs": {
+      "image": [
+        "235",
+        0
+      ],
+      "amount": 8
+    },
+    "class_type": "RepeatImageBatch",
+    "_meta": {
+      "title": "Repeat Last Real Frame"
+    }
+  },
+  "250": {
+    "inputs": {
+      "image1": [
+        "181",
+        0
+      ],
+      "image2": [
+        "249",
+        0
+      ]
+    },
+    "class_type": "ImageBatch",
+    "_meta": {
+      "title": "Append Last Frame Copies"
+    }
+  },
+  "251": {
+    "inputs": {
+      "image": [
+        "250",
+        0
+      ],
+      "batch_index": 0,
+      "length": [
+        "245",
+        1
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Crop to LTX 8n+1 Frame Count"
+    }
+  },
+  "252": {
+    "inputs": {
+      "image": [
+        "242",
+        0
+      ],
+      "batch_index": 0,
+      "length": [
+        "201",
+        1
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Restore Original Video Frame Count"
     }
   }
 }
