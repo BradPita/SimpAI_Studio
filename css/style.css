@@ -2649,6 +2649,15 @@ iframe::-webkit-scrollbar {
     box-shadow: none !important;
 }
 
+#bar_store.simpleai-guest-identity,
+#bar_store.simpleai-guest-identity button,
+#bar_store button.simpleai-guest-identity,
+#bar_store.simpleai-guest-identity.bar_store {
+    border-color: #b77a12 !important;
+    background: color-mix(in srgb, #d99a2b 18%, var(--block-background-fill)) !important;
+    color: #e2a83d !important;
+}
+
 .bar_button {
     width: auto !important;
     min-width: 106px !important;
@@ -10591,31 +10600,46 @@ button.selected-style-chip:hover {
   display: grid !important;
   gap: 4px !important;
   width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
   padding: 8px !important;
   max-height: 900px !important; /* 限制最大高度，防止纵向拉伸过长 */
   min-height: 100px;
   /* 基础方案：使用 Media Queries 强制控制列数 */
   /* 默认（小屏/窄屏）：3 列 */
-  grid-template-columns: repeat(3, 1fr) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 /* 中等屏幕：4 列 */
 @media (min-width: 1280px) {
   .style_grid {
-    grid-template-columns: repeat(4, 1fr) !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
 }
 
 /* 大屏幕：5 列 */
 @media (min-width: 1600px) {
   .style_grid {
-    grid-template-columns: repeat(5, 1fr) !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
   }
 }
+#style_grid {
+  display: block !important;
+  grid-template-columns: none !important;
+}
+
+#style_grid > .html-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
 .style_item {
   display: block !important;
   width: 100% !important;
-  min-width: 80px !important; /* 防止搜索时过度缩小 */
+  min-width: 0 !important;
   aspect-ratio: 1 / 1 !important;
   position: relative !important;
   overflow: visible !important;

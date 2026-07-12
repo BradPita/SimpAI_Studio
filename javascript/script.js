@@ -6870,11 +6870,16 @@ function initIdentityPopup() {
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const identityBtn = document.getElementById('identity_center');
+            const gradioRoot = typeof gradioApp === 'function' ? gradioApp() : null;
+            const identityRoot = document.getElementById('identity_center')
+                || gradioRoot?.getElementById?.('identity_center');
+            const identityBtn = identityRoot && (
+                identityRoot.matches?.('button')
+                    ? identityRoot
+                    : identityRoot.querySelector?.('button')
+            );
             if (identityBtn) {
                 identityBtn.click();
-            } else {
-                setImportantStyle(content, 'display', 'none');
             }
         }, true);
     }

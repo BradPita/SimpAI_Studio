@@ -521,6 +521,8 @@
   "Scale down 10%": "缩小 10%",
   "Scale up 10%": "放大 10%",
   "Please sign in.": "请先登录身份",
+  "Guest identity": "游客身份",
+  "This browser is using a guest identity. Sign in to manage and save preset navigation.": "当前浏览器为游客身份。登录后可管理并保存预置导航。",
   "System Version": "系统版本",
   "Please select an Audio target to overwrite.": "请选择要覆盖的目标音频控件。",
   "Unknown target Audio component.": "未知目标音频组件。",

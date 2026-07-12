@@ -4310,6 +4310,7 @@ function refresh_topbar_status_js(system_params) {
 	refresh_finished_images_catalog_label(image_num_pages, gen_type, {refresh: false});
     }
     refresh_identity_center_label(system_params["user_role"]);
+    refreshTopbarStoreIdentityLabel(system_params);
     const user_qr = system_params["user_qr"];
     if (user_qr) {
         (async () => {
@@ -10801,6 +10802,35 @@ function updatePresetStore(nav_name_list, role, expand_flag, theme) {
     syncPresetStoreCandidatePinnedState();
     applyPresetStoreFilters();
     localizePresetStoreUi();
+}
+
+function refreshTopbarStoreIdentityLabel(systemParams = {}) {
+    const storeRoot = document.getElementById("bar_store");
+    const storeButton = storeRoot && (storeRoot.matches("button") ? storeRoot : storeRoot.querySelector("button"));
+    if (!storeButton) return;
+
+    const isGuest = String(systemParams.user_role || "").toLowerCase() === "guest"
+        && String(systemParams.access_mode || "").toLowerCase() === "multi-user";
+    storeRoot.classList.toggle("simpleai-guest-identity", isGuest);
+    storeButton.classList.toggle("simpleai-guest-identity", isGuest);
+    const englishText = isGuest ? "Guest identity" : "PresetStore";
+    const englishTitle = "This browser is using a guest identity. Sign in to manage and save preset navigation.";
+    const text = (typeof topbarTranslateText === "function" && topbarTranslateText(englishText)) || englishText;
+    const textTargets = Array.from(storeButton.querySelectorAll("span, div"))
+        .filter((item) => !item.children || item.children.length === 0);
+    const target = textTargets.find((item) => String(item.textContent || "").trim()) || storeButton;
+    target.textContent = text;
+    target.setAttribute("data-original-text", englishText);
+    storeButton.setAttribute("data-original-text", englishText);
+    storeButton.title = isGuest
+        ? ((typeof topbarTranslateText === "function" && topbarTranslateText(englishTitle)) || englishTitle)
+        : "";
+
+    if (isGuest) {
+        const presetStore = getPresetStoreElement();
+        if (presetStore) setPresetStoreOpen(presetStore, false);
+        presetStoreUiState.expand_flag = false;
+    }
 }
 
 function getRandomTip() {

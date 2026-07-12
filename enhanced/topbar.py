@@ -576,11 +576,21 @@ def _is_nav_preset_value_present(value):
     text = str(value).strip()
     return bool(text) and text not in ["Unknown", "None", "Default"]
 
-def _persist_nav_preset_value(user_session, ua_hash, presets_list, is_guest):
-    if is_guest and not is_local_mode() and hasattr(shared.token, 'set_local_vars_for_guest'):
-        shared.token.set_local_vars_for_guest("user_presets", presets_list, user_session, ua_hash)
-    else:
-        shared.token.set_local_vars("user_presets", presets_list, user_session, ua_hash)
+def _persist_nav_preset_value(user_session, ua_hash, presets_list):
+    shared.token.set_local_vars("user_presets", presets_list, user_session, ua_hash)
+
+
+def _state_can_manage_preset_store(state):
+    if is_local_mode():
+        return True
+    try:
+        user = state.get("user") if isinstance(state, dict) else None
+        user_did = user.get_did() if user is not None and hasattr(user, "get_did") else None
+        if not user_did or shared.token.is_guest(user_did):
+            return False
+        return state_has_full_local_access(state)
+    except Exception:
+        return False
 
 def _coerce_nav_preset_list(presets, user_did=None, fallback_preset=None, limit=None, apply_missing_model_filter=True):
     limit = _nav_button_limit(limit)
@@ -668,13 +678,13 @@ def get_preset_name_list(user_session, ua_hash):
         if nav_presets:
             presets_list = ','.join(nav_presets)
             if presets_list != str(stored_presets).strip():
-                _persist_nav_preset_value(user_session, ua_hash, presets_list, is_guest)
+                _persist_nav_preset_value(user_session, ua_hash, presets_list)
             return presets_list
         logger.warning(f"[Preset Management] Ignored empty/invalid stored navbar preset list for user_did={user_did}")
 
     nav_presets = _build_default_nav_preset_list(user_did if not is_guest else None, config.preset)
     presets_list = ','.join(nav_presets)
-    _persist_nav_preset_value(user_session, ua_hash, presets_list, is_guest)
+    _persist_nav_preset_value(user_session, ua_hash, presets_list)
     return presets_list
 
 def get_initial_nav_preset(state_params):
@@ -1142,7 +1152,7 @@ def _get_effective_nav_preset_list(state_params):
 
     nav_name_list = ','.join(_canonicalize_nav_preset_names(preset_name_list))
     if nav_name_list != ','.join(_canonicalize_nav_preset_names(str(raw_nav_name_list or "").split(','))):
-        _persist_nav_preset_value(state_params.get("__session", ""), state_params.get("ua_hash", ""), nav_name_list, is_guest)
+        _persist_nav_preset_value(state_params.get("__session", ""), state_params.get("ua_hash", ""), nav_name_list)
 
     return _canonicalize_nav_preset_names(preset_name_list)
 
@@ -3094,8 +3104,8 @@ def check_admin_exists():
 def toggle_preset_store(state):
     user_in_state = 'user' in state
     store_update = skip_update()
-    has_full_local_access = state_has_full_local_access(state) if user_in_state else is_local_mode()
-    if user_in_state and has_full_local_access:
+    can_manage_preset_store = _state_can_manage_preset_store(state) if user_in_state else is_local_mode()
+    if user_in_state and can_manage_preset_store:
         if 'preset_store' in state:
             flag = state['preset_store']
         else:
@@ -3117,6 +3127,8 @@ def toggle_preset_store(state):
             state['identity_dialog'] = False
             return [gr.update(visible=not flag), store_update] + update_topbar_js_params(state) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
         else:
+            state['preset_store'] = False
+            state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
             return [skip_update(), store_update] + update_topbar_js_params(state) + toggle_identity_dialog(state)
 
 def update_navbar_from_mystore(selected_preset, state):
@@ -3212,7 +3224,15 @@ def update_navbar_from_mystore(selected_preset, state):
 
 def apply_navbar_from_store_editor(payload, state):
     user_did = _state_user_did(state)
-    is_guest = shared.token.is_guest(user_did) if user_did else True
+
+    if not _state_can_manage_preset_store(state):
+        state["preset_store"] = False
+        state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
+        try:
+            gr.Info("Please sign in.")
+        except Exception:
+            pass
+        return refresh_nav_bars(state) + update_topbar_js_params(state)
 
     try:
         parsed = json.loads(payload or "{}")
@@ -3263,7 +3283,7 @@ def apply_navbar_from_store_editor(payload, state):
     nav_name_list = ','.join(_canonicalize_nav_preset_names(nav_array))
     if 'user' in state:
         logger.info(f"[Preset Management] apply store draft: {nav_name_list}")
-        _persist_nav_preset_value(state["__session"], state["ua_hash"], nav_name_list, is_guest)
+        _persist_nav_preset_value(state["__session"], state["ua_hash"], nav_name_list)
     state["preset_store"] = not close_after_apply
     state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
     return refresh_nav_bars(state) + update_topbar_js_params(state)
@@ -3339,7 +3359,7 @@ def delete_user_preset_from_store(payload, state):
             pass
         return [dataset_update(samples=get_preset_samples(user_did))] + refresh_nav_bars(state) + update_topbar_js_params(state)
 
-    if not state_has_full_local_access(state):
+    if not _state_can_manage_preset_store(state):
         try:
             gr.Info("Please sign in.")
         except Exception:
@@ -3778,6 +3798,9 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         user_role = current_access_status
     else:
         user_role = "member"
+    if user_role == "guest" and not is_local_mode() and state.get("preset_store"):
+        state["preset_store"] = False
+        state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
 
     system_params= dict(
         __preset=state.get("__preset"),
