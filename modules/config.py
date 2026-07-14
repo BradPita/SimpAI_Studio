@@ -2171,90 +2171,89 @@ def downloading_sdxl_hyper_sd_lora():
     return modules.flags.PerformanceLoRA.HYPER_SD.value
 
 
-def downloading_controlnet_canny():
-    load_file_from_url(
-        url='https://huggingface.co/lllyasviel/misc/resolve/main/control-lora-canny-rank128.safetensors',
-        model_dir=paths_controlnet[0],
-        file_name='control-lora-canny-rank128.safetensors'
+def _load_controlnet_file(url, relative_path):
+    existing_path = find_model_in_dirs(paths_controlnet, relative_path)
+    if existing_path:
+        return existing_path
+
+    target_path = os.path.join(
+        first_model_dir(paths_controlnet, fallback=os.path.join(path_models_root, 'controlnet')),
+        str(relative_path).replace('\\', os.sep).replace('/', os.sep),
     )
-    return os.path.join(paths_controlnet[0], 'control-lora-canny-rank128.safetensors')
+    load_file_from_url(
+        url=url,
+        model_dir=os.path.dirname(target_path),
+        file_name=os.path.basename(target_path),
+    )
+    return target_path
+
+
+def downloading_controlnet_canny():
+    return _load_controlnet_file(
+        url='https://huggingface.co/lllyasviel/misc/resolve/main/control-lora-canny-rank128.safetensors',
+        relative_path='control-lora-canny-rank128.safetensors',
+    )
 
 
 def downloading_controlnet_cpds():
-    load_file_from_url(
+    return _load_controlnet_file(
         url='https://huggingface.co/lllyasviel/misc/resolve/main/fooocus_xl_cpds_128.safetensors',
-        model_dir=paths_controlnet[0],
-        file_name='fooocus_xl_cpds_128.safetensors'
+        relative_path='fooocus_xl_cpds_128.safetensors',
     )
-    return os.path.join(paths_controlnet[0], 'fooocus_xl_cpds_128.safetensors')
 
 def downloading_controlnet_zoe():
     model_path = 'lllyasviel/Annotators'
-    model_root = os.path.join(paths_controlnet[0], model_path)
     file_name = 'ZoeD_M12_N.pt'
-    load_file_from_url(
+    return _load_controlnet_file(
         url='https://huggingface.co/lllyasviel/Annotators/resolve/main/ZoeD_M12_N.pt',
-        model_dir=model_root,
-        file_name=file_name
+        relative_path=os.path.join(model_path, file_name),
     )
-    return os.path.join(model_root, file_name)
 
 def downloading_controlnet_dwpose():
     model_path = "yzd-v/DWPose"
-    model_root = os.path.join(paths_controlnet[0], model_path)
     model_det = 'yolox_l.onnx'
     model_pose = 'dw-ll_ucoco_384.onnx'
-    load_file_from_url(
+    pose_path = _load_controlnet_file(
         url=f'https://huggingface.co/{model_path}/resolve/main/{model_pose}',
-        model_dir=model_root,
-        file_name=model_pose
+        relative_path=os.path.join(model_path, model_pose),
     )
-    load_file_from_url(
+    det_path = _load_controlnet_file(
         url=f'https://huggingface.co/{model_path}/resolve/main/{model_det}',
-        model_dir=model_root,
-        file_name=model_det
+        relative_path=os.path.join(model_path, model_det),
     )
-    return os.path.join(model_root, model_det), os.path.join(model_root, model_pose)
+    return det_path, pose_path
 
 def downloading_controlnet_openpose():
     model_path = 'lllyasviel/Annotators'
-    model_root = os.path.join(paths_controlnet[0], model_path)
     body_filename = 'body_pose_model.pth'
     hand_filename = 'hand_pose_model.pth'
     face_filename = 'facenet.pth'
-    load_file_from_url(
+    body_path = _load_controlnet_file(
         url=f'https://huggingface.co/{model_path}/resolve/main/{body_filename}',
-        model_dir=model_root,
-        file_name=body_filename
+        relative_path=os.path.join(model_path, body_filename),
     )
-    load_file_from_url(
+    hand_path = _load_controlnet_file(
         url=f'https://huggingface.co/{model_path}/resolve/main/{hand_filename}',
-        model_dir=model_root,
-        file_name=hand_filename
+        relative_path=os.path.join(model_path, hand_filename),
     )
-    load_file_from_url(
+    face_path = _load_controlnet_file(
         url=f'https://huggingface.co/{model_path}/resolve/main/{face_filename}',
-        model_dir=model_root,
-        file_name=face_filename
+        relative_path=os.path.join(model_path, face_filename),
     )
-    return os.path.join(model_root, body_filename), os.path.join(model_root, hand_filename), os.path.join(model_root, face_filename)
+    return body_path, hand_path, face_path
 
 
 def downloading_controlnet_pose():
-    load_file_from_url(
+    return _load_controlnet_file(
         url='https://huggingface.co/xinsir/controlnet-openpose-sdxl-1.0/resolve/main/diffusion_pytorch_model.safetensors',
-        model_dir=paths_controlnet[0],
-        file_name='xinsir_cn_openpose_sdxl_1.0.safetensors'
+        relative_path='xinsir_cn_openpose_sdxl_1.0.safetensors',
     )
-    return os.path.join(paths_controlnet[0], 'xinsir_cn_openpose_sdxl_1.0.safetensors')
 
 def downloading_controlnet_union():
-    load_file_from_url(
+    return _load_controlnet_file(
         url='https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/xinsir_cn_union_sdxl_1.0_promax.safetensors',
-        model_dir=paths_controlnet[0],
-        file_name='xinsir_cn_union_sdxl_1.0_promax.safetensors'
+        relative_path='xinsir_cn_union_sdxl_1.0_promax.safetensors',
     )
-    return os.path.join(paths_controlnet[0], 'xinsir_cn_union_sdxl_1.0_promax.safetensors')
 
 def downloading_ip_adapters(v):
     assert v in ['ip', 'face']

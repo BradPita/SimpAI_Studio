@@ -14,6 +14,7 @@
     "diffusion_models/flux1-dev-fp8.safetensors": {"arch_family": "flux"},
     "diffusion_models/flux1-fill-dev-OneReward_fp8.safetensors": {"arch_family": "flux"},
     "diffusion_models/Flux2-Klein-9B-True-v2-fp8mixed.safetensors": {"arch_family": "flux"},
+    "diffusion_models/Flux2-Klein-9B-True-V3-int8mixedrow.safetensors": {"arch_family": "flux"},
     "diffusion_models/ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors": {"arch_family": "ltx2"},
     "diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors": {"arch_family": "ltx2"},
     "diffusion_models/nunchaku_qwen_image_2511_balance_fp4.safetensors": {"arch_family": "qwen"},

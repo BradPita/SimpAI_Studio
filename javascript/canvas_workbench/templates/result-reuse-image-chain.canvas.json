@@ -450,7 +450,7 @@
       "target_preset_id": "chain_flux_preset",
       "config": {
         "defaults": {
-          "base_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "base_model": "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "refiner_model": "None",
           "clip_model": "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "vae": "flux2-vae.safetensors",
@@ -463,7 +463,7 @@
           ]
         },
         "values": {
-          "base_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "base_model": "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "refiner_model": "None",
           "clip_model": "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "vae": "flux2-vae.safetensors",
@@ -693,7 +693,7 @@
       "models_config": {
         "mode": "external_override",
         "defaults": {
-          "base_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "base_model": "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "refiner_model": "None",
           "clip_model": "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "vae": "flux2-vae.safetensors",
@@ -706,7 +706,7 @@
           ]
         },
         "overrides": {
-          "base_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "base_model": "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "refiner_model": "None",
           "clip_model": "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "vae": "flux2-vae.safetensors",
@@ -793,7 +793,7 @@
       },
       "model_requirements": {
         "model_list": [
-          "diffusion_models,Flux2-Klein-9B-True-v2-fp8mixed.safetensors,9433058560,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V2/resolve/master/Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "diffusion_models,Flux2-Klein-9B-True-V3-int8mixedrow.safetensors,9439884768,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V3/resolve/master/Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "text_encoders,qwen3_8b_abliterated_v2-fp8mixed.safetensors,8191194604,0,https://www.modelscope.cn/models/silveroxides/FLUX.2-dev-fp8_scaled/resolve/master/qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "loras,Flux2 Klein动漫转写实真人 AnythingtoRealCharacters.safetensors,165704392,0,https://www.modelscope.cn/models/zhouwenbin1994/Klein9BAnythingtoRealC/resolve/20260128232821/Flux2%20Klein%E5%8A%A8%E6%BC%AB%E8%BD%AC%E5%86%99%E5%AE%9E%E7%9C%9F%E4%BA%BA%20AnythingtoRealCharacters.safetensors",
           "vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors",

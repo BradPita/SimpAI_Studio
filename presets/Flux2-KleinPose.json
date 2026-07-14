@@ -37,7 +37,8 @@
             "overwrite_step_max": 8
         }
     },
-    "default_model": "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+    "default_model": "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
+    "previous_default_models": ["Flux2-Klein-9B-True-v2-fp8mixed.safetensors"],
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
     "default_vae": "flux2-vae.safetensors",
@@ -80,7 +81,7 @@
     "lora_downloads": {},
     "vae_downloads": {},
     "model_list": [
-        "diffusion_models,Flux2-Klein-9B-True-v2-fp8mixed.safetensors,9433058560,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V2/resolve/master/Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+        "diffusion_models,Flux2-Klein-9B-True-V3-int8mixedrow.safetensors,9439884768,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V3/resolve/master/Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
         "text_encoders,qwen3_8b_abliterated_v2-fp8mixed.safetensors,8191194604,0,https://www.modelscope.cn/models/silveroxides/FLUX.2-dev-fp8_scaled/resolve/master/qwen3_8b_abliterated_v2-fp8mixed.safetensors",
         "vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors",
         "loras,VNCCS_PoseStudioKlein9b_V1.safetensors,165704408,0,https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/VNCCS_PoseStudioKlein9b_V1.safetensors",

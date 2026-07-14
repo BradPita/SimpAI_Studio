@@ -774,6 +774,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     sampler_list = enginedata_dict.get('available_sampler_name', default_params.get('available_sampler_name', default_class_params['Fooocus']['available_sampler_name']))
     scheduler_list = enginedata_dict.get('available_scheduler_name', default_params.get('available_scheduler_name', default_class_params['Fooocus']['available_scheduler_name']))
     uov_method_list = enginedata_dict.get('available_uov_method', default_params.get('available_uov_method', default_class_params['Fooocus']['available_uov_method']))
+    uov_method_list = [method for method in uov_method_list if method != 'Vary (Hires.fix)']
 
     def _preset_str_value(*keys):
         for key in keys:

@@ -98,7 +98,7 @@
         ],
         [
             "Bernini-R_LightX2V_low_noise.safetensors",
-            1.0
+            0.8
         ]
     ],
     "default_cfg_scale": 1,

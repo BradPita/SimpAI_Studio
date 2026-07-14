@@ -150,6 +150,11 @@
     "vae_downloads": {},
     "model_list": [
         "insightface,inswapper_128.onnx,554253681,0,https://www.modelscope.cn/models/chwshuang/inswapper_128.onnx/resolve/master/inswapper_128.onnx,https://huggingface.co/Kibawilson/inswapper_128.onnx/resolve/main/inswapper_128.onnx",
+        "insightface,models/buffalo_l/1k3d68.onnx,143607619,0,",
+        "insightface,models/buffalo_l/2d106det.onnx,5030888,0,",
+        "insightface,models/buffalo_l/det_10g.onnx,16923827,0,",
+        "insightface,models/buffalo_l/genderage.onnx,1322532,0,",
+        "insightface,models/buffalo_l/w600k_r50.onnx,174383860,0,",
         "controlnet,facerestore_models/GFPGANv1.4.pth,348632874,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/facerestore_models/GFPGANv1.4.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/facerestore_models/GFPGANv1.4.pth",
         "controlnet,detection_Resnet50_Final.pth,109497761,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/detection_Resnet50_Final.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/detection_Resnet50_Final.pth"
     ]

@@ -276,7 +276,7 @@
         0
       ],
       "start_image": [
-        "122",
+        "147",
         0
       ]
     },
@@ -324,7 +324,7 @@
         0
       ],
       "audio": [
-        "110",
+        "146",
         0
       ]
     },
@@ -384,8 +384,8 @@
       "python_expression": "1 if a <= b else ((a - b + (b - c) - 1) // (b - c) + 1)",
       "print_to_console": "False",
       "a": [
-        "117",
-        0
+        "146",
+        1
       ],
       "b": [
         "72",
@@ -484,7 +484,7 @@
   },
   "106": {
     "inputs": {
-      "batch_index": 0,
+      "batch_index": 5,
       "length": [
         "117",
         0
@@ -765,10 +765,10 @@
   },
   "135": {
     "inputs": {
-      "comparison": "a < b",
+      "comparison": "a <= b",
       "a": [
-        "117",
-        0
+        "146",
+        1
       ],
       "b": [
         "131",
@@ -913,6 +913,39 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "lora_5"
+    }
+  },
+  "146": {
+    "inputs": {
+      "frame_rate": 25,
+      "head_silence_frames": 5,
+      "start_frame": 0,
+      "end_frame": [
+        "117",
+        0
+      ],
+      "tail_silence_frames": 0,
+      "audio": [
+        "110",
+        0
+      ]
+    },
+    "class_type": "PainterAudioCut",
+    "_meta": {
+      "title": "Add 5-Frame Audio Warmup"
+    }
+  },
+  "147": {
+    "inputs": {
+      "amount": 1,
+      "image": [
+        "122",
+        0
+      ]
+    },
+    "class_type": "RepeatImageBatch",
+    "_meta": {
+      "title": "Repeat Start Frame 5 Times"
     }
   }
 }

@@ -14505,10 +14505,7 @@ ${renderMinimapNodeRects(nextCache.records)}
   <small>${escapeHtml(slotPortHintText('uov_image'))}</small>
 </div>
 <label class="sai-node-field"><span>${escapeHtml(t('Method', '方法'))}</span><select data-node-param="uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === uovMethod ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>
-${uovMethod.includes('Vary') || (uovMethod.includes('Upscale') && !uovMethod.includes('Fast')) ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Denoise', '降噪'))}</span><div class="sai-range-pair"><input data-node-param="uov_denoise_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.uov_denoise_strength ?? ((uovMethod.includes('Strong') || uovMethod.includes('Hires.fix')) ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2))}"><input data-node-param="uov_denoise_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.uov_denoise_strength ?? ((uovMethod.includes('Strong') || uovMethod.includes('Hires.fix')) ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2))}"></div></label>` : ''}
-${uovMethod.includes('Hires.fix') && String(node?.runtime?.backend_engine || '').toLowerCase() === 'flux' ? `<label class="sai-node-field sai-node-range"><span>Stop At</span><div class="sai-range-pair"><input data-node-param="hires_fix_stop" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_stop ?? 0.8)}"><input data-node-param="hires_fix_stop" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_stop ?? 0.8)}"></div></label>
-<label class="sai-node-field sai-node-range"><span>HF Weight</span><div class="sai-range-pair"><input data-node-param="hires_fix_weight" type="range" min="0" max="2" step="0.05" value="${escapeHtml(params.hires_fix_weight ?? 0.5)}"><input data-node-param="hires_fix_weight" type="number" min="0" max="2" step="0.05" value="${escapeHtml(params.hires_fix_weight ?? 0.5)}"></div></label>
-<label class="sai-node-field sai-node-range"><span>Blurred</span><div class="sai-range-pair"><input data-node-param="hires_fix_blurred" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_blurred ?? 0.0)}"><input data-node-param="hires_fix_blurred" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_blurred ?? 0.0)}"></div></label>` : ''}
+${uovMethod.includes('Vary') || (uovMethod.includes('Upscale') && !uovMethod.includes('Fast')) ? `<label class="sai-node-field sai-node-range"><span>${escapeHtml(t('Denoise', '降噪'))}</span><div class="sai-range-pair"><input data-node-param="uov_denoise_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.uov_denoise_strength ?? (uovMethod.includes('Strong') ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2))}"><input data-node-param="uov_denoise_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.uov_denoise_strength ?? (uovMethod.includes('Strong') ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2))}"></div></label>` : ''}
 </div>` : '';
         const inpaintSlotHtml = (mode === 'inpaint') ? (() => {
             const R_ENGINES = getClassicInpaintEngines(node);
@@ -14645,14 +14642,8 @@ ${Array.from({ length: ipCount }, (_, i) => { const ipStopInsp = params[`ip_stop
 <label><span>${escapeHtml(t('Method', '方法'))}</span><select data-node-param="uov_method">${R_UOV.map(m => `<option value="${escapeHtml(m)}" ${m === (params.uov_method || 'Upscale (1.5x)') ? 'selected' : ''}>${escapeHtml(tOption(m))}</option>`).join('')}</select></label>`;
             const uovMethodInsp = params.uov_method || 'Upscale (1.5x)';
             if (uovMethodInsp.includes('Vary') || (uovMethodInsp.includes('Upscale') && !uovMethodInsp.includes('Fast'))) {
-                const denoiseVal = params.uov_denoise_strength ?? ((uovMethodInsp.includes('Strong') || uovMethodInsp.includes('Hires.fix')) ? 0.85 : uovMethodInsp.includes('Vary') ? 0.5 : 0.2);
+                const denoiseVal = params.uov_denoise_strength ?? (uovMethodInsp.includes('Strong') ? 0.85 : uovMethodInsp.includes('Vary') ? 0.5 : 0.2);
                 modeSpecific += `\n<label class="sai-node-range"><span>${escapeHtml(t('Denoise', '重绘幅度'))}</span><div class="sai-range-pair"><input data-inspector-param="uov_denoise_strength" type="range" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"><input data-inspector-param="uov_denoise_strength" type="number" min="0" max="1" step="0.05" value="${escapeHtml(denoiseVal)}"></div></label>`;
-            }
-            if (uovMethodInsp.includes('Hires.fix') && String(node?.runtime?.backend_engine || '').toLowerCase() === 'flux') {
-                modeSpecific += `
-<label class="sai-node-range"><span>${escapeHtml(t('Stop At', '停止位置'))}</span><div class="sai-range-pair"><input data-inspector-param="hires_fix_stop" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_stop ?? 0.8)}"><input data-inspector-param="hires_fix_stop" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_stop ?? 0.8)}"></div></label>
-<label class="sai-node-range"><span>${escapeHtml(t('HF Weight', '高清修复权重'))}</span><div class="sai-range-pair"><input data-inspector-param="hires_fix_weight" type="range" min="0" max="2" step="0.05" value="${escapeHtml(params.hires_fix_weight ?? 0.5)}"><input data-inspector-param="hires_fix_weight" type="number" min="0" max="2" step="0.05" value="${escapeHtml(params.hires_fix_weight ?? 0.5)}"></div></label>
-<label class="sai-node-range"><span>${escapeHtml(t('Blurred', '模糊'))}</span><div class="sai-range-pair"><input data-inspector-param="hires_fix_blurred" type="range" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_blurred ?? 0.0)}"><input data-inspector-param="hires_fix_blurred" type="number" min="0" max="1" step="0.05" value="${escapeHtml(params.hires_fix_blurred ?? 0.0)}"></div></label>`;
             }
         } else if (mode === 'inpaint') {
             const R_ENGINES = getClassicInpaintEngines(node);
@@ -14915,21 +14906,12 @@ ${[0, 1, 2].map((index) => {
         node.params.uov_method = newMethod;
         if (newMethod.includes('Vary') || (newMethod.includes('Upscale') && !newMethod.includes('Fast'))) {
             if (newMethod.includes('Vary')) {
-                node.params.uov_denoise_strength = (newMethod.includes('Strong') || newMethod.includes('Hires.fix')) ? 0.85 : 0.5;
+                node.params.uov_denoise_strength = newMethod.includes('Strong') ? 0.85 : 0.5;
             } else {
                 node.params.uov_denoise_strength = 0.2;
             }
         } else {
             delete node.params.uov_denoise_strength;
-        }
-        if (newMethod.includes('Hires.fix')) {
-            if (node.params.hires_fix_stop === undefined) node.params.hires_fix_stop = 0.8;
-            if (node.params.hires_fix_weight === undefined) node.params.hires_fix_weight = 0.5;
-            if (node.params.hires_fix_blurred === undefined) node.params.hires_fix_blurred = 0.0;
-        } else {
-            delete node.params.hires_fix_stop;
-            delete node.params.hires_fix_weight;
-            delete node.params.hires_fix_blurred;
         }
         mutate();
     }
@@ -15058,10 +15040,7 @@ ${[0, 1, 2].map((index) => {
         }
         // Flatten UOV params
         if (classicRunParams.uov_method === undefined) classicRunParams.uov_method = uovMethod;
-        if (classicRunParams.uov_denoise_strength === undefined) classicRunParams.uov_denoise_strength = params.uov_denoise_strength ?? ((uovMethod.includes('Strong') || uovMethod.includes('Hires.fix')) ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2);
-        if (classicRunParams.hires_fix_stop === undefined) classicRunParams.hires_fix_stop = params.hires_fix_stop ?? 0.8;
-        if (classicRunParams.hires_fix_weight === undefined) classicRunParams.hires_fix_weight = params.hires_fix_weight ?? 0.5;
-        if (classicRunParams.hires_fix_blurred === undefined) classicRunParams.hires_fix_blurred = params.hires_fix_blurred ?? 0.0;
+        if (classicRunParams.uov_denoise_strength === undefined) classicRunParams.uov_denoise_strength = params.uov_denoise_strength ?? (uovMethod.includes('Strong') ? 0.85 : uovMethod.includes('Vary') ? 0.5 : 0.2);
         // Flatten Inpaint params
         if (classicRunParams.inpaint_mode === undefined) classicRunParams.inpaint_mode = inpaintMode;
         if (classicRunParams.inpaint_denoising_strength === undefined) classicRunParams.inpaint_denoising_strength = inpaintDenoisingStrength;
@@ -29974,7 +29953,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     label: t('Requires models', '需要模型'),
                     note: t('Requires Flux2-A2R model files and a source image before Run.', '运行前需要 Flux2-A2R 模型文件和一张源图。'),
                     models: [
-                        'Flux2-Klein-9B-True-v2-fp8mixed.safetensors',
+                        'Flux2-Klein-9B-True-V3-int8mixedrow.safetensors',
                         'qwen3_8b_abliterated_v2-fp8mixed.safetensors',
                         'Flux2 Klein动漫转写实真人 AnythingtoRealCharacters.safetensors',
                         'flux2-vae.safetensors',

@@ -59,7 +59,7 @@ SimpAI UI guide skill:
 - Input Image / reference controls:
   - Image Prompt is usually a style/reference semantic-vector input. Some model families hide it because they do not have the matching module.
   - For ControlNet choices, Canny / PyraCanny preserves line contours, Depth preserves spatial relationships, OpenPose preserves human pose, and FaceSwap converts a face into a conditioning vector. Mention that many newer model families no longer support the old FaceSwap module.
-  - Vary (Subtle), Vary (Strong), and Vary (Hires.fix) use the original image as the base, encode it into latent space, then lightly or strongly redraw it depending on prompt and denoise/redraw strength.
+  - Vary (Subtle) and Vary (Strong) use the original image as the base, encode it into latent space, then lightly or strongly redraw it depending on prompt and denoise/redraw strength.
   - Upscale (Fast 2x) is a quick model upscale with lower quality and low resource cost. Upscale (1.5x) and Upscale (2x) encode into latent space for inference upscaling and expose redraw-strength control.
 - Editing model boundaries:
   - Flux2-Klein is a fast, resource-light, 4-step distilled model with slightly lower precision. If it does not follow the instruction once, suggest trying again or using a more stable editor.

@@ -71,7 +71,7 @@
             "var_number2_min": 25,
             "var_number2_max": 60,
             "var_number2": {
-                "InfiniteTalk-AI2V": 60
+                "InfiniteTalk-AI2V": 30
             },
             "var_number7_title": "Frames per segment [smaller saves VRAM]",
             "var_number7_min": 45,

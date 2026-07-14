@@ -4074,6 +4074,26 @@ def update_after_identity(state):
 
     return results
 
+_AIO_STYLE_TRANSFER_TASK_METHODS = {
+    'anima_aio',
+    'qwen_aio_cn',
+    'z_image_turbo_aio_cn',
+}
+
+
+def get_allowed_ip_types(engine, task_method=None):
+    ip_list = list(modules.flags.ip_list if engine in ['Fooocus', 'SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image'] else modules.flags.ip_list[:-1])
+    if engine in ['Wan', 'Qwen', 'Z-image'] or task_method == 'flux2_aio_cn':
+        ip_list = ip_list[1:3] + ip_list[-1:]
+    if task_method in ['il_v_pre_aio', 'chenkin_noob_aio']:
+        ip_list = ip_list[:3] + ip_list[-1:]
+    if task_method == 'anima_aio':
+        ip_list = [modules.flags.cn_ip, modules.flags.cn_canny, modules.flags.cn_cpds]
+    elif task_method in _AIO_STYLE_TRANSFER_TASK_METHODS and modules.flags.cn_ip not in ip_list:
+        ip_list.insert(0, modules.flags.cn_ip)
+    return ip_list
+
+
 def update_after_identity_sub(state, lightweight_nav=False, skip_output_refresh=False, skip_system_params=False):
     #[gallery_index, index_radio, gallery_index_stat, preset_store, preset_store_list, history_link, identity_introduce, configure_panel, local_system_tab, user_access_tab, admin_panel, admin_link, system_params] + ip_types
     max_per_page = state["__max_per_page"]
@@ -4141,9 +4161,7 @@ def update_after_identity_sub(state, lightweight_nav=False, skip_output_refresh=
         results += [skip_update()]
     else:
         results += update_topbar_js_params(state)
-    ip_list = modules.flags.ip_list if state["engine"] in ['Fooocus','SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image']  else modules.flags.ip_list[:-1]
-    ip_list = (ip_list[1:3] + ip_list[-1:]) if state["engine"] in ['Wan', 'Qwen', 'Z-image'] or state["task_method"] == 'flux2_aio_cn' else ip_list
-    ip_list = (ip_list[:3] + ip_list[-1:]) if state["task_method"] in ['il_v_pre_aio', 'chenkin_noob_aio'] else ip_list
+    ip_list = get_allowed_ip_types(state["engine"], state.get("task_method"))
     default_controlnet_image_count = config.default_controlnet_image_count if state["engine"]=='Fooocus' else 4
     for image_count in range(default_controlnet_image_count):
         image_count += 1
@@ -4154,11 +4172,8 @@ def update_after_identity_sub(state, lightweight_nav=False, skip_output_refresh=
 
     return results
 
-def update_size_and_hires_fix(image, uov_method, params_backend, hires_fix_stop, hires_fix_weight, hires_fix_blurred):
+def update_size_and_uov_strength(image, uov_method):
     size_image = update_upscale_size_of_image(image, uov_method)
-    params_backend.update({'i2i_uov_hires_fix_s': hires_fix_stop})
-    params_backend.update({'i2i_uov_hires_fix_w': hires_fix_weight})
-    params_backend.update({'i2i_uov_hires_fix_blurred': hires_fix_blurred})
     # Gradio 6 validates hidden Slider inputs before callbacks, so inactive
     # UOV strength values must stay inside the 0..1 slider range.
     vary_strength = 0.0
@@ -4174,10 +4189,7 @@ def update_size_and_hires_fix(image, uov_method, params_backend, hires_fix_stop,
             vary_strength = 0.5
         if 'Strong' in uov_method:
             vary_strength = 0.85
-    if 'Hires.fix' in uov_method:
-        vary_strength = 0.85
-        vary_visible = True
-    return gr.update(value=size_image), gr.update(visible='Hires.fix' in uov_method), gr.update(visible=vary_visible, value=vary_strength), gr.update(interactive=not 'Fast' in uov_method, visible=upscale_visible, value=upscale_strength)
+    return gr.update(value=size_image), gr.update(visible=vary_visible, value=vary_strength), gr.update(interactive=not 'Fast' in uov_method, visible=upscale_visible, value=upscale_strength)
 
 def update_upscale_size_of_image(image, uov_method):
     if image is not None:

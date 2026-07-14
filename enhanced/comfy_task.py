@@ -7,6 +7,17 @@ def _register_runtime_preview_nodes():
     node_name = "SimpAIWanAnimateLoop"
     comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.add(node_name)
     comfyclient_pipeline.MULTI_PASS_PREVIEW_NODE_CLASS_TYPES.add(node_name)
+    comfyclient_pipeline.PREVIEW_NODE_CLASS_TYPES.update({
+        "SimpAIAIOEnhanceUOVConfig",
+        "SimpAIAIORegionConfig",
+        "SimpAIAIOInpaintFlux",
+        "SimpAIAIOInpaintFlux2",
+        "SimpAIAIOInpaintSDXL",
+        "SimpAIAIOInpaintQwen",
+        "SimpAIAIOInpaintWan",
+        "SimpAIAIOInpaintZImage",
+        "SimpAIAIOInpaintAnima",
+    })
 
 
 _register_runtime_preview_nodes()

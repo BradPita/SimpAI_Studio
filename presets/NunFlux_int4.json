@@ -65,7 +65,6 @@
         "diffusion_models,svdq-int4_r32-flux.1-fill-dev.safetensors,6770275936,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/checkpoints/svdq-int4_r32-flux.1-fill-dev.safetensors",
         "diffusion_models,svdq-int4_r32-flux.1-dev.safetensors,6768309832,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/checkpoints/svdq-int4_r32-flux.1-dev.safetensors",
 	"controlnet,flux.1-dev_controlnet_union_pro_2.0.safetensors,4281779224,0,",
-        "controlnet,flux.1-dev_controlnet_upscaler.safetensors,3583232168,0,",
 	"pulid,pulid_flux_v0.9.1.safetensors,1142099520,0,",
         "clip,EVA02_CLIP_L_336_psz14_s6B.pt,856461210,0,",
         "controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,",

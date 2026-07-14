@@ -1,10 +1,11 @@
 from typing import Tuple, List
+import os
+from pathlib import Path
 
 import ldm_patched.modules.model_management as model_management
 from ldm_patched.modules.model_patcher import ModelPatcher
-from modules.config import paths_grounding_dino, paths_inpaint
-from modules.model_loader import load_file_from_url
 from modules.model_path_utils import find_model_in_dirs
+from torch.hub import download_url_to_file
 
 import numpy as np
 import supervision as sv
@@ -14,11 +15,40 @@ from groundingdino.util.inference import load_model, preprocess_caption, get_phr
 
 
 class GroundingDinoModel(Model):
-    def __init__(self):
-        self.config_file = 'extras/GroundingDINO/config/GroundingDINO_SwinT_OGC.py'
+    def __init__(self, model_dirs=None, download_dir=None):
+        self.config_file = str(Path(__file__).resolve().parents[1] / 'config' / 'GroundingDINO_SwinT_OGC.py')
+        self.model_dirs = list(model_dirs) if model_dirs is not None else None
+        self.download_dir = download_dir
         self.model = None
         self.load_device = torch.device('cpu')
         self.offload_device = torch.device('cpu')
+
+    def _resolve_checkpoint(self):
+        filename = 'groundingdino_swint_ogc.pth'
+        if self.model_dirs is None:
+            from modules.config import paths_grounding_dino, paths_inpaint
+            from modules.model_loader import load_file_from_url
+
+            checkpoint = find_model_in_dirs(paths_grounding_dino + paths_inpaint, filename)
+            if checkpoint is None:
+                checkpoint = load_file_from_url(
+                    url="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth",
+                    file_name=filename,
+                    model_dir=paths_grounding_dino[0],
+                )
+            return checkpoint
+
+        checkpoint = find_model_in_dirs(self.model_dirs, filename)
+        if checkpoint is not None:
+            return checkpoint
+        target_dir = self.download_dir or self.model_dirs[0]
+        os.makedirs(target_dir, exist_ok=True)
+        checkpoint = os.path.join(target_dir, filename)
+        download_url_to_file(
+            "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth",
+            checkpoint,
+        )
+        return checkpoint
 
     @torch.no_grad()
     @torch.inference_mode()
@@ -30,12 +60,7 @@ class GroundingDinoModel(Model):
             text_threshold: float = 0.25
     ) -> Tuple[sv.Detections, torch.Tensor, torch.Tensor, List[str]]:
         if self.model is None:
-            filename = find_model_in_dirs(paths_grounding_dino + paths_inpaint, 'groundingdino_swint_ogc.pth')
-            if filename is None:
-                filename = load_file_from_url(
-                    url="https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth",
-                    file_name='groundingdino_swint_ogc.pth',
-                    model_dir=paths_grounding_dino[0])
+            filename = self._resolve_checkpoint()
             model = load_model(model_config_path=self.config_file, model_checkpoint_path=filename)
 
             self.load_device = model_management.text_encoder_device()

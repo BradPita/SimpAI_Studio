@@ -65,7 +65,7 @@ SimpAI UI guide skill:
   preserves spatial relationships, OpenPose preserves human pose, and FaceSwap
   converts a face into a conditioning vector. Mention that many newer model
   families no longer support the old FaceSwap module.
-- Vary (Subtle), Vary (Strong), and Vary (Hires.fix) use the original image as
+- Vary (Subtle) and Vary (Strong) use the original image as
   the base, encode it into latent space, then lightly or strongly redraw it
   depending on prompt and denoise/redraw strength.
 - Upscale (Fast 2x) is a quick model upscale with lower quality and low resource

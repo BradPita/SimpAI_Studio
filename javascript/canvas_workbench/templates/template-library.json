@@ -214,7 +214,7 @@
           "zh": "运行前需要 Flux2-A2R 模型文件和一张源图。"
         },
         "models": [
-          "Flux2-Klein-9B-True-v2-fp8mixed.safetensors",
+          "Flux2-Klein-9B-True-V3-int8mixedrow.safetensors",
           "qwen3_8b_abliterated_v2-fp8mixed.safetensors",
           "Flux2 Klein动漫转写实真人 AnythingtoRealCharacters.safetensors",
           "flux2-vae.safetensors",

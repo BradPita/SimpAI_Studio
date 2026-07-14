@@ -1,16 +1,4 @@
 {
-  "1": {
-    "inputs": {
-      "conditioning": [
-        "767",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "ConditioningZeroOut"
-    }
-  },
   "3": {
     "inputs": {
       "image": "welcome.png"
@@ -38,153 +26,6 @@
       "title": "i2i_ip_image4"
     }
   },
-  "13": {
-    "inputs": {
-      "samples": [
-        "324",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "14": {
-    "inputs": {
-      "value": 0.7000000000000001
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn3_w"
-    }
-  },
-  "15": {
-    "inputs": {
-      "value": 0.7000000000000001
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn4_w"
-    }
-  },
-  "16": {
-    "inputs": {
-      "value": 0.6
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn2_s"
-    }
-  },
-  "17": {
-    "inputs": {
-      "value": 0.6
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn3_s"
-    }
-  },
-  "18": {
-    "inputs": {
-      "value": 0.6
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn4_s"
-    }
-  },
-  "19": {
-    "inputs": {
-      "value": false
-    },
-    "class_type": "easy boolean",
-    "_meta": {
-      "title": "i2i_uov_is_mix_ip"
-    }
-  },
-  "20": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_uov_fn"
-    }
-  },
-  "72": {
-    "inputs": {
-      "value": 0.15
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "Float"
-    }
-  },
-  "94": {
-    "inputs": {
-      "value": 6
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_uov_tiled_steps"
-    }
-  },
-  "95": {
-    "inputs": {
-      "value": 1024
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_uov_tiled_width"
-    }
-  },
-  "96": {
-    "inputs": {
-      "value": 1024
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_uov_tiled_height"
-    }
-  },
-  "97": {
-    "inputs": {
-      "value": 1.5
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_uov_multiple"
-    }
-  },
-  "106": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "scale_by": 2,
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "ImageScaleBy",
-    "_meta": {
-      "title": "Upscale Image By"
-    }
-  },
-  "108": {
-    "inputs": {
-      "value": 2
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_inpaint_fn"
-    }
-  },
   "118": {
     "inputs": {
       "unet_name": "placeholder.gguf"
@@ -192,37 +33,6 @@
     "class_type": "UnetLoaderGGUF",
     "_meta": {
       "title": "base_model_gguf"
-    }
-  },
-  "121": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "124": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "218",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "126": {
-    "inputs": {
-      "value": 0.6
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn1_s"
     }
   },
   "127": {
@@ -234,428 +44,6 @@
       ],
       "b": [
         "550",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "130": {
-    "inputs": {
-      "conditioning": [
-        "628",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "ConditioningZeroOut"
-    }
-  },
-  "140": {
-    "inputs": {
-      "comparison": "a <= b",
-      "a": [
-        "728",
-        2
-      ],
-      "b": [
-        "728",
-        3
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "141": {
-    "inputs": {
-      "value": 720
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "142": {
-    "inputs": {
-      "boolean": [
-        "140",
-        0
-      ],
-      "on_true": [
-        "728",
-        2
-      ],
-      "on_false": [
-        "728",
-        3
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "143": {
-    "inputs": {
-      "value": 2
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "144": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "640",
-        0
-      ],
-      "b": [
-        "143",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "145": {
-    "inputs": {
-      "value": 3
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "146": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "640",
-        0
-      ],
-      "b": [
-        "145",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "148": {
-    "inputs": {
-      "boolean": [
-        "146",
-        0
-      ],
-      "on_true": [
-        "268",
-        0
-      ],
-      "on_false": [
-        "151",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "149": {
-    "inputs": {
-      "boolean": [
-        "754",
-        0
-      ],
-      "on_true": [
-        "728",
-        2
-      ],
-      "on_false": [
-        "150",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "150": {
-    "inputs": {
-      "boolean": [
-        "144",
-        0
-      ],
-      "on_true": [
-        "317",
-        1
-      ],
-      "on_false": [
-        "608",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "151": {
-    "inputs": {
-      "boolean": [
-        "144",
-        0
-      ],
-      "on_true": [
-        "319",
-        0
-      ],
-      "on_false": [
-        "142",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "155": {
-    "inputs": {
-      "boolean": [
-        "144",
-        0
-      ],
-      "on_true": [
-        "317",
-        2
-      ],
-      "on_false": [
-        "608",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "156": {
-    "inputs": {
-      "boolean": [
-        "157",
-        0
-      ],
-      "on_true": [
-        "728",
-        3
-      ],
-      "on_false": [
-        "155",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "157": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "640",
-        0
-      ],
-      "b": [
-        "158",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "158": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "174": {
-    "inputs": {
-      "value": false
-    },
-    "class_type": "easy boolean",
-    "_meta": {
-      "title": "i2i_skip_preprocessors"
-    }
-  },
-  "175": {
-    "inputs": {
-      "value": 0.7000000000000001
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn2_w"
-    }
-  },
-  "176": {
-    "inputs": {
-      "pixels": [
-        "309",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "177": {
-    "inputs": {
-      "samples": [
-        "323",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "189": {
-    "inputs": {
-      "comparison": "a < b",
-      "a": [
-        "148",
-        0
-      ],
-      "b": [
-        "141",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "195": {
-    "inputs": {
-      "samples": [
-        "806",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "197": {
-    "inputs": {
-      "upscale_model": [
-        "219",
-        0
-      ],
-      "image": [
-        "195",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Upscale Image (using Model)"
-    }
-  },
-  "202": {
-    "inputs": {
-      "comparison": "a > b",
-      "a": [
-        "728",
-        2
-      ],
-      "b": [
-        "728",
-        3
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "205": {
-    "inputs": {
-      "boolean": [
-        "272",
-        0
-      ],
-      "on_true": [
-        "1",
-        0
-      ],
-      "on_false": [
-        "628",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "208": {
-    "inputs": {
-      "strength": 1,
-      "model": [
-        "837",
-        0
-      ]
-    },
-    "class_type": "DifferentialDiffusion",
-    "_meta": {
-      "title": "Differential Diffusion"
-    }
-  },
-  "213": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "108",
-        0
-      ],
-      "b": [
-        "121",
         0
       ]
     },
@@ -682,756 +70,6 @@
       "title": "i2i_inpaint_mask"
     }
   },
-  "219": {
-    "inputs": {
-      "model_name": "4xNomosUniDAT_bokeh_jpg.safetensors"
-    },
-    "class_type": "UpscaleModelLoader",
-    "_meta": {
-      "title": "Load Upscale Model"
-    }
-  },
-  "220": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "728",
-        5
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "224": {
-    "inputs": {
-      "value": false
-    },
-    "class_type": "easy boolean",
-    "_meta": {
-      "title": "i2i_inpaint_is_mix_ip"
-    }
-  },
-  "225": {
-    "inputs": {
-      "comparison": "a <= b",
-      "a": [
-        "241",
-        0
-      ],
-      "b": [
-        "226",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "226": {
-    "inputs": {
-      "value": 512
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "227": {
-    "inputs": {
-      "pixels": [
-        "106",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "228": {
-    "inputs": {
-      "upscale_model": [
-        "701",
-        0
-      ],
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Upscale Image (using Model)"
-    }
-  },
-  "239": {
-    "inputs": {
-      "boolean": [
-        "189",
-        0
-      ],
-      "on_true": [
-        "141",
-        0
-      ],
-      "on_false": [
-        "148",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "241": {
-    "inputs": {
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "242": {
-    "inputs": {
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "243": {
-    "inputs": {
-      "boolean": [
-        "213",
-        0
-      ],
-      "on_true": [
-        "197",
-        0
-      ],
-      "on_false": [
-        "263",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "257": {
-    "inputs": {
-      "width": [
-        "728",
-        2
-      ],
-      "height": [
-        "728",
-        3
-      ],
-      "batch_size": 1
-    },
-    "class_type": "EmptyLatentImage",
-    "_meta": {
-      "title": "Empty Latent Image"
-    }
-  },
-  "258": {
-    "inputs": {
-      "value": "a*2",
-      "a": [
-        "242",
-        1
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "259": {
-    "inputs": {
-      "value": "a*2",
-      "a": [
-        "242",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "263": {
-    "inputs": {
-      "samples": [
-        "270",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "268": {
-    "inputs": {
-      "boolean": [
-        "607",
-        0
-      ],
-      "on_true": [
-        "608",
-        0
-      ],
-      "on_false": [
-        "608",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "270": {
-    "inputs": {
-      "boolean": [
-        "728",
-        11
-      ],
-      "on_true": [
-        "832",
-        0
-      ],
-      "on_false": [
-        "830",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "271": {
-    "inputs": {
-      "boolean": [
-        "202",
-        0
-      ],
-      "on_true": [
-        "728",
-        2
-      ],
-      "on_false": [
-        "728",
-        3
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "272": {
-    "inputs": {
-      "comparison": "a > b",
-      "a": [
-        "271",
-        0
-      ],
-      "b": [
-        "273",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "273": {
-    "inputs": {
-      "value": 6000
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "275": {
-    "inputs": {
-      "find1": "u2net_human_seg",
-      "replace1": "3",
-      "find2": "u2net_cloth_seg",
-      "replace2": "4",
-      "find3": "silueta",
-      "replace3": "5",
-      "prompt": [
-        "358",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "276": {
-    "inputs": {
-      "model": "u2net_human_seg: human segmentation",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "277": {
-    "inputs": {
-      "model": "isnet-general-use: general purpose",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "278": {
-    "inputs": {
-      "model": "isnet-anime: anime illustrations",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "279": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "677",
-        0
-      ],
-      "b": [
-        "676",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "280": {
-    "inputs": {
-      "find1": "isnet-general-use",
-      "replace1": "6",
-      "find2": "isnet-anime",
-      "replace2": "7",
-      "find3": "",
-      "replace3": "",
-      "prompt": [
-        "275",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "281": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "284",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "282": {
-    "inputs": {
-      "model": "u2netp: lightweight general purpose",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "283": {
-    "inputs": {
-      "mask": [
-        "368",
-        0
-      ]
-    },
-    "class_type": "InvertMask",
-    "_meta": {
-      "title": "InvertMask"
-    }
-  },
-  "284": {
-    "inputs": {
-      "find1": "vit_b",
-      "replace1": "0",
-      "find2": "vit_l",
-      "replace2": "1",
-      "find3": "vit_h",
-      "replace3": "2",
-      "prompt": [
-        "717",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "285": {
-    "inputs": {
-      "model": "silueta: very small u2net",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "286": {
-    "inputs": {
-      "model": "u2net_cloth_seg: cloths Parsing",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "297": {
-    "inputs": {
-      "boolean": [
-        "351",
-        0
-      ],
-      "on_true": [
-        "669",
-        1
-      ],
-      "on_false": [
-        "669",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "298": {
-    "inputs": {
-      "boolean": [
-        "351",
-        0
-      ],
-      "on_true": [
-        "669",
-        0
-      ],
-      "on_false": [
-        "669",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "300": {
-    "inputs": {
-      "expand": 5,
-      "incremental_expandrate": 0,
-      "tapered_corners": false,
-      "flip_input": false,
-      "blur_radius": 1,
-      "lerp_alpha": 1,
-      "decay_factor": 1,
-      "fill_holes": false,
-      "mask": [
-        "124",
-        0
-      ]
-    },
-    "class_type": "GrowMaskWithBlur",
-    "_meta": {
-      "title": "Grow Mask With Blur"
-    }
-  },
-  "309": {
-    "inputs": {
-      "width": [
-        "317",
-        1
-      ],
-      "height": [
-        "317",
-        2
-      ],
-      "interpolation": "lanczos",
-      "method": "fill / crop",
-      "condition": "always",
-      "multiple_of": 0,
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "312": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1.5000000000000002,
-      "resolution_steps": 1,
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "ImageScaleToTotalPixels",
-    "_meta": {
-      "title": "ImageScaleToTotalPixels"
-    }
-  },
-  "316": {
-    "inputs": {
-      "image": [
-        "312",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "317": {
-    "inputs": {
-      "width": [
-        "316",
-        0
-      ],
-      "height": [
-        "316",
-        1
-      ],
-      "interpolation": "lanczos",
-      "method": "stretch",
-      "condition": "always",
-      "multiple_of": 8,
-      "image": [
-        "312",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "318": {
-    "inputs": {
-      "comparison": "a >= b",
-      "a": [
-        "317",
-        1
-      ],
-      "b": [
-        "317",
-        2
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "319": {
-    "inputs": {
-      "boolean": [
-        "318",
-        0
-      ],
-      "on_true": [
-        "317",
-        1
-      ],
-      "on_false": [
-        "317",
-        2
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "323": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "728",
-        9
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "628",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "176",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "324": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "72",
-        0
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "628",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "227",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "332": {
-    "inputs": {
-      "image": [
-        "349",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "333": {
-    "inputs": {
-      "rembg_session": [
-        "357",
-        0
-      ],
-      "image": [
-        "722",
-        2
-      ]
-    },
-    "class_type": "ImageRemoveBackground+",
-    "_meta": {
-      "title": "🔧 Image Remove Background"
-    }
-  },
   "336": {
     "inputs": {
       "vae_name": "pixel_space"
@@ -1439,1048 +77,6 @@
     "class_type": "VAELoader",
     "_meta": {
       "title": "vae_model"
-    }
-  },
-  "337": {
-    "inputs": {
-      "value": "a/2+5",
-      "a": [
-        "341",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "338": {
-    "inputs": {
-      "mask": [
-        "675",
-        0
-      ]
-    },
-    "class_type": "MaskToImage",
-    "_meta": {
-      "title": "Convert Mask to Image"
-    }
-  },
-  "339": {
-    "inputs": {
-      "comparison": "a >= b",
-      "a": [
-        "365",
-        0
-      ],
-      "b": [
-        "672",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "340": {
-    "inputs": {
-      "boolean": [
-        "339",
-        0
-      ],
-      "on_true": [
-        "365",
-        0
-      ],
-      "on_false": [
-        "672",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "341": {
-    "inputs": {
-      "value": "a*b+2",
-      "a": [
-        "711",
-        13
-      ],
-      "b": [
-        "347",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "342": {
-    "inputs": {
-      "width": [
-        "332",
-        0
-      ],
-      "height": [
-        "332",
-        1
-      ],
-      "interpolation": "lanczos",
-      "method": "stretch",
-      "condition": "always",
-      "multiple_of": 0,
-      "image": [
-        "394",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "343": {
-    "inputs": {
-      "image": [
-        "764",
-        3
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "344": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1.6400000000000003,
-      "resolution_steps": 1,
-      "image": [
-        "760",
-        0
-      ]
-    },
-    "class_type": "ImageScaleToTotalPixels",
-    "_meta": {
-      "title": "ImageScaleToTotalPixels"
-    }
-  },
-  "345": {
-    "inputs": {
-      "expand": [
-        "337",
-        0
-      ],
-      "incremental_expandrate": 0,
-      "tapered_corners": false,
-      "flip_input": false,
-      "blur_radius": [
-        "341",
-        1
-      ],
-      "lerp_alpha": 1,
-      "decay_factor": 1,
-      "fill_holes": false,
-      "mask": [
-        "419",
-        1
-      ]
-    },
-    "class_type": "GrowMaskWithBlur",
-    "_meta": {
-      "title": "Grow Mask With Blur"
-    }
-  },
-  "346": {
-    "inputs": {
-      "fit": "letterbox",
-      "method": "lanczos",
-      "scale_as": [
-        "349",
-        1
-      ],
-      "mask": [
-        "345",
-        0
-      ]
-    },
-    "class_type": "LayerUtility: ImageMaskScaleAs",
-    "_meta": {
-      "title": "LayerUtility: Image Mask Scale As"
-    }
-  },
-  "347": {
-    "inputs": {
-      "value": 30
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "multi"
-    }
-  },
-  "348": {
-    "inputs": {
-      "images": [
-        "383",
-        0
-      ]
-    },
-    "class_type": "PreviewImage",
-    "_meta": {
-      "title": "Preview Image"
-    }
-  },
-  "349": {
-    "inputs": {
-      "width": [
-        "340",
-        0
-      ],
-      "height": [
-        "340",
-        0
-      ],
-      "image": [
-        "722",
-        2
-      ],
-      "mask": [
-        "360",
-        0
-      ]
-    },
-    "class_type": "CutForInpaint",
-    "_meta": {
-      "title": "Cut For Inpaint"
-    }
-  },
-  "350": {
-    "inputs": {
-      "value": "a+(b-a)*(c-0.618)/(1-0.618)",
-      "a": [
-        "297",
-        0
-      ],
-      "b": [
-        "298",
-        0
-      ],
-      "c": [
-        "711",
-        13
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "351": {
-    "inputs": {
-      "comparison": "a >= b",
-      "a": [
-        "669",
-        0
-      ],
-      "b": [
-        "669",
-        1
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "357": {
-    "inputs": {
-      "index": [
-        "677",
-        0
-      ],
-      "value0": [
-        "373",
-        0
-      ],
-      "value1": [
-        "373",
-        0
-      ],
-      "value2": [
-        "282",
-        0
-      ],
-      "value3": [
-        "276",
-        0
-      ],
-      "value4": [
-        "286",
-        0
-      ],
-      "value5": [
-        "285",
-        0
-      ],
-      "value6": [
-        "277",
-        0
-      ],
-      "value7": [
-        "278",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "358": {
-    "inputs": {
-      "find1": "sam",
-      "replace1": "0",
-      "find2": "u2netp",
-      "replace2": "2",
-      "find3": "u2net",
-      "replace3": "1",
-      "prompt": [
-        "718",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "360": {
-    "inputs": {
-      "boolean": [
-        "715",
-        0
-      ],
-      "on_true": [
-        "283",
-        0
-      ],
-      "on_false": [
-        "368",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "362": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        11
-      ],
-      "value1": [
-        "412",
-        11
-      ],
-      "value2": [
-        "710",
-        11
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "363": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        12
-      ],
-      "value1": [
-        "412",
-        12
-      ],
-      "value2": [
-        "710",
-        12
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "364": {
-    "inputs": {
-      "value": 0.618
-    },
-    "class_type": "FloatConstant",
-    "_meta": {
-      "title": "Float Constant"
-    }
-  },
-  "365": {
-    "inputs": {
-      "boolean": [
-        "670",
-        0
-      ],
-      "on_true": [
-        "343",
-        0
-      ],
-      "on_false": [
-        "343",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "366": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        13
-      ],
-      "value1": [
-        "412",
-        13
-      ],
-      "value2": [
-        "710",
-        13
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "367": {
-    "inputs": {
-      "comparison": "a <= b",
-      "a": [
-        "366",
-        0
-      ],
-      "b": [
-        "364",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "368": {
-    "inputs": {
-      "expand": [
-        "371",
-        0
-      ],
-      "tapered_corners": true,
-      "mask": [
-        "673",
-        0
-      ]
-    },
-    "class_type": "GrowMask",
-    "_meta": {
-      "title": "Grow Mask"
-    }
-  },
-  "370": {
-    "inputs": {
-      "kernel": 1,
-      "sigma": 10,
-      "inpaint": [
-        "342",
-        0
-      ],
-      "original": [
-        "722",
-        2
-      ],
-      "mask": [
-        "346",
-        1
-      ],
-      "origin": [
-        "349",
-        2
-      ]
-    },
-    "class_type": "BlendInpaint",
-    "_meta": {
-      "title": "Blend Inpaint"
-    }
-  },
-  "371": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        14
-      ],
-      "value1": [
-        "412",
-        14
-      ],
-      "value2": [
-        "710",
-        14
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "372": {
-    "inputs": {
-      "samples": [
-        "816",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "373": {
-    "inputs": {
-      "model": "u2net: general purpose",
-      "providers": "CUDA"
-    },
-    "class_type": "RemBGSession+",
-    "_meta": {
-      "title": "🔧 RemBG Session"
-    }
-  },
-  "374": {
-    "inputs": {
-      "boolean": [
-        "714",
-        0
-      ],
-      "on_true": [
-        "786",
-        0
-      ],
-      "on_false": [
-        "667",
-        2
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "379": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "416",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "380": {
-    "inputs": {
-      "mask": [
-        "379",
-        0
-      ]
-    },
-    "class_type": "easy isMaskEmpty",
-    "_meta": {
-      "title": "Is Mask Empty"
-    }
-  },
-  "381": {
-    "inputs": {
-      "format": "JPEG",
-      "images": [
-        "666",
-        0
-      ]
-    },
-    "class_type": "SaveImageWebsocketLazy",
-    "_meta": {
-      "title": "result_image3"
-    }
-  },
-  "383": {
-    "inputs": {
-      "boolean": [
-        "728",
-        13
-      ],
-      "on_true": [
-        "398",
-        0
-      ],
-      "on_false": [
-        "678",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "384": {
-    "inputs": {
-      "pixels": [
-        "658",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "386": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "scale_by": 0.5000000000000001,
-      "image": [
-        "700",
-        0
-      ]
-    },
-    "class_type": "ImageScaleBy",
-    "_meta": {
-      "title": "Upscale Image By"
-    }
-  },
-  "387": {
-    "inputs": {
-      "upscale_model": [
-        "701",
-        0
-      ],
-      "image": [
-        "712",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Upscale Image (using Model)"
-    }
-  },
-  "389": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "390",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "390": {
-    "inputs": {
-      "find1": "Original Prompts",
-      "replace1": "0",
-      "find2": "Last Filled Enhancement Prompts",
-      "replace2": "1",
-      "find3": "",
-      "replace3": "",
-      "prompt": [
-        "756",
-        3
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "391": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "393": {
-    "inputs": {
-      "boolean": [
-        "395",
-        0
-      ],
-      "on_true": [
-        "412",
-        1
-      ],
-      "on_false": [
-        "711",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "394": {
-    "inputs": {
-      "samples": [
-        "663",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "395": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "711",
-        0
-      ],
-      "b": [
-        "706",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "396": {
-    "inputs": {
-      "value": "none"
-    },
-    "class_type": "easy string",
-    "_meta": {
-      "title": "String"
-    }
-  },
-  "398": {
-    "inputs": {
-      "format": "JPEG",
-      "images": [
-        "678",
-        0
-      ]
-    },
-    "class_type": "SaveImageWebsocketLazy",
-    "_meta": {
-      "title": "result_image"
-    }
-  },
-  "399": {
-    "inputs": {
-      "boolean": [
-        "643",
-        0
-      ],
-      "on_true": [
-        "393",
-        0
-      ],
-      "on_false": [
-        "412",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "400": {
-    "inputs": {
-      "boolean": [
-        "728",
-        13
-      ],
-      "on_true": [
-        "652",
-        0
-      ],
-      "on_false": [
-        "406",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "401": {
-    "inputs": {
-      "index": [
-        "661",
-        0
-      ],
-      "value0": [
-        "848",
-        0
-      ],
-      "value1": [
-        "848",
-        0
-      ],
-      "value2": [
-        "848",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "403": {
-    "inputs": {
-      "value": "disabled"
-    },
-    "class_type": "easy string",
-    "_meta": {
-      "title": "String"
-    }
-  },
-  "404": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "720",
-        0
-      ],
-      "b": [
-        "396",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "406": {
-    "inputs": {
-      "format": "JPEG",
-      "images": [
-        "652",
-        0
-      ]
-    },
-    "class_type": "SaveImageWebsocketLazy",
-    "_meta": {
-      "title": "result_image1"
-    }
-  },
-  "408": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "697",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "409": {
-    "inputs": {
-      "index": [
-        "408",
-        0
-      ],
-      "value0": [
-        "712",
-        0
-      ],
-      "value1": [
-        "411",
-        0
-      ],
-      "value2": [
-        "683",
-        0
-      ],
-      "value3": [
-        "683",
-        0
-      ],
-      "value4": [
-        "684",
-        0
-      ],
-      "value5": [
-        "684",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "411": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "scale_by": 0.5000000000000001,
-      "image": [
-        "387",
-        0
-      ]
-    },
-    "class_type": "ImageScaleBy",
-    "_meta": {
-      "title": "Upscale Image By"
-    }
-  },
-  "412": {
-    "inputs": {
-      "mask_dino_prompt_text": "none",
-      "prompt": "none",
-      "negative_prompt": "none",
-      "mask_model": "sam",
-      "mask_cloth_category": "full",
-      "mask_sam_model": "vit_b",
-      "mask_text_threshold": 0.3,
-      "mask_box_threshold": 0.25,
-      "mask_sam_max_detections": 0,
-      "mask_invert": false,
-      "inpaint_disable_initial_latent": false,
-      "inpaint_engine": "none",
-      "inpaint_strength": 0.5,
-      "inpaint_respective_field": 0,
-      "inpaint_erode_or_dilate": 0
-    },
-    "class_type": "EnhanceRegionInput",
-    "_meta": {
-      "title": "EnhanceRegionInput1"
-    }
-  },
-  "413": {
-    "inputs": {
-      "seed": [
-        "692",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "756",
-        1
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "628",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "384",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "414": {
-    "inputs": {
-      "samples": [
-        "413",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
     }
   },
   "416": {
@@ -2500,211 +96,6 @@
     "class_type": "SeedInput",
     "_meta": {
       "title": "SeedInput"
-    }
-  },
-  "419": {
-    "inputs": {
-      "fit": "letterbox",
-      "method": "lanczos",
-      "scale_as": [
-        "344",
-        0
-      ],
-      "mask": [
-        "349",
-        1
-      ]
-    },
-    "class_type": "LayerUtility: ImageMaskScaleAs",
-    "_meta": {
-      "title": "LayerUtility: Image Mask Scale As"
-    }
-  },
-  "420": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "719",
-        0
-      ],
-      "b": [
-        "396",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "422": {
-    "inputs": {
-      "boolean": [
-        "420",
-        0
-      ],
-      "on_true": [
-        "634",
-        0
-      ],
-      "on_false": [
-        "849",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "424": {
-    "inputs": {
-      "index": [
-        "281",
-        0
-      ],
-      "value0": [
-        "674",
-        1
-      ],
-      "value1": [
-        "659",
-        1
-      ],
-      "value2": [
-        "660",
-        1
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "426": {
-    "inputs": {
-      "boolean": [
-        "671",
-        0
-      ],
-      "on_true": [
-        "343",
-        0
-      ],
-      "on_false": [
-        "343",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "427": {
-    "inputs": {
-      "boolean": [
-        "404",
-        0
-      ],
-      "on_true": [
-        "666",
-        0
-      ],
-      "on_false": [
-        "381",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "428": {
-    "inputs": {
-      "boolean": [
-        "728",
-        13
-      ],
-      "on_true": [
-        "666",
-        0
-      ],
-      "on_false": [
-        "427",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "429": {
-    "inputs": {
-      "boolean": [
-        "645",
-        0
-      ],
-      "on_true": [
-        "628",
-        0
-      ],
-      "on_false": [
-        "772",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "435": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "640",
-        0
-      ],
-      "b": [
-        "440",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "440": {
-    "inputs": {
-      "value": 3
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "458": {
-    "inputs": {
-      "boolean": [
-        "435",
-        0
-      ],
-      "on_true": [
-        "767",
-        0
-      ],
-      "on_false": [
-        "767",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
     }
   },
   "494": {
@@ -2727,306 +118,6 @@
       "title": "If else"
     }
   },
-  "521": {
-    "inputs": {
-      "index": [
-        "541",
-        1
-      ],
-      "value0": [
-        "584",
-        0
-      ],
-      "value1": [
-        "175",
-        0
-      ],
-      "value2": [
-        "14",
-        0
-      ],
-      "value3": [
-        "15",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "图像权重"
-    }
-  },
-  "522": {
-    "inputs": {
-      "index": [
-        "541",
-        1
-      ],
-      "value0": [
-        "638",
-        0
-      ],
-      "value1": [
-        "639",
-        0
-      ],
-      "value2": [
-        "7",
-        0
-      ],
-      "value3": [
-        "8",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "图像"
-    }
-  },
-  "525": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_ip_fn3"
-    }
-  },
-  "526": {
-    "inputs": {
-      "flow": [
-        "583",
-        0
-      ],
-      "initial_value1": [
-        "538",
-        0
-      ]
-    },
-    "class_type": "easy forLoopEnd",
-    "_meta": {
-      "title": "For Loop End"
-    }
-  },
-  "528": {
-    "inputs": {
-      "value": 2
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "529": {
-    "inputs": {
-      "value": 5
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "534": {
-    "inputs": {
-      "index": [
-        "583",
-        1
-      ],
-      "value0": [
-        "528",
-        0
-      ],
-      "value1": [
-        "536",
-        0
-      ],
-      "value2": [
-        "529",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "CN类型"
-    }
-  },
-  "535": {
-    "inputs": {
-      "index": [
-        "541",
-        1
-      ],
-      "value0": [
-        "585",
-        0
-      ],
-      "value1": [
-        "586",
-        0
-      ],
-      "value2": [
-        "525",
-        0
-      ],
-      "value3": [
-        "556",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "图像功能"
-    }
-  },
-  "536": {
-    "inputs": {
-      "value": 3
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "537": {
-    "inputs": {
-      "index": [
-        "541",
-        1
-      ],
-      "value0": [
-        "126",
-        0
-      ],
-      "value1": [
-        "16",
-        0
-      ],
-      "value2": [
-        "17",
-        0
-      ],
-      "value3": [
-        "18",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "图像停止"
-    }
-  },
-  "538": {
-    "inputs": {
-      "flow": [
-        "541",
-        0
-      ],
-      "initial_value1": [
-        "582",
-        0
-      ]
-    },
-    "class_type": "easy forLoopEnd",
-    "_meta": {
-      "title": "For Loop End"
-    }
-  },
-  "539": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "535",
-        0
-      ],
-      "b": [
-        "534",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "541": {
-    "inputs": {
-      "total": 4,
-      "initial_value1": [
-        "583",
-        2
-      ]
-    },
-    "class_type": "easy forLoopStart",
-    "_meta": {
-      "title": "For Loop Start"
-    }
-  },
-  "542": {
-    "inputs": {
-      "width": [
-        "149",
-        0
-      ],
-      "height": [
-        "156",
-        0
-      ],
-      "interpolation": "lanczos",
-      "method": "fill / crop",
-      "condition": "always",
-      "multiple_of": 0,
-      "image": [
-        "544",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "543": {
-    "inputs": {
-      "channel": "RGB",
-      "black_point": 128,
-      "white_point": 200,
-      "gray_point": 1,
-      "output_black_point": 0,
-      "output_white_point": 255,
-      "image": [
-        "522",
-        0
-      ]
-    },
-    "class_type": "LayerColor: Levels",
-    "_meta": {
-      "title": "LayerColor: Levels"
-    }
-  },
-  "544": {
-    "inputs": {
-      "index": [
-        "583",
-        1
-      ],
-      "value0": [
-        "543",
-        0
-      ],
-      "value1": [
-        "522",
-        0
-      ],
-      "value2": [
-        "522",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "图像处理"
-    }
-  },
   "550": {
     "inputs": {
       "value": 1
@@ -3034,15 +125,6 @@
     "class_type": "easy int",
     "_meta": {
       "title": "Int"
-    }
-  },
-  "556": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_ip_fn4"
     }
   },
   "568": {
@@ -3101,66 +183,6 @@
       "title": "lora_5"
     }
   },
-  "582": {
-    "inputs": {
-      "boolean": [
-        "539",
-        0
-      ],
-      "on_true": [
-        "838",
-        0
-      ],
-      "on_false": [
-        "541",
-        2
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "583": {
-    "inputs": {
-      "total": 3,
-      "initial_value1": [
-        "848",
-        0
-      ]
-    },
-    "class_type": "easy forLoopStart",
-    "_meta": {
-      "title": "For Loop Start"
-    }
-  },
-  "584": {
-    "inputs": {
-      "value": 0.7000000000000002
-    },
-    "class_type": "easy float",
-    "_meta": {
-      "title": "i2i_ip_fn1_w"
-    }
-  },
-  "585": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_ip_fn1"
-    }
-  },
-  "586": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_ip_fn2"
-    }
-  },
   "587": {
     "inputs": {
       "sage_attention": "auto",
@@ -3173,273 +195,6 @@
     "class_type": "PathchSageAttentionKJ",
     "_meta": {
       "title": "Patch Sage Attention KJ"
-    }
-  },
-  "594": {
-    "inputs": {
-      "boolean": [
-        "225",
-        0
-      ],
-      "on_true": [
-        "13",
-        0
-      ],
-      "on_false": [
-        "655",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "600": {
-    "inputs": {
-      "width": [
-        "728",
-        2
-      ],
-      "height": [
-        "728",
-        3
-      ],
-      "interpolation": "lanczos",
-      "method": "fill / crop",
-      "condition": "always",
-      "multiple_of": 0,
-      "image": [
-        "177",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "601": {
-    "inputs": {
-      "upscale_by": [
-        "97",
-        0
-      ],
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "94",
-        0
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "728",
-        9
-      ],
-      "mode_type": "Chess",
-      "tile_width": [
-        "95",
-        0
-      ],
-      "tile_height": [
-        "96",
-        0
-      ],
-      "mask_blur": 32,
-      "tile_padding": 128,
-      "seam_fix_mode": "None",
-      "seam_fix_denoise": 1,
-      "seam_fix_width": 64,
-      "seam_fix_mask_blur": 8,
-      "seam_fix_padding": 16,
-      "force_uniform_tiles": true,
-      "tiled_decode": false,
-      "image": [
-        "3",
-        0
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "205",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "upscale_model": [
-        "701",
-        0
-      ]
-    },
-    "class_type": "UltimateSDUpscale",
-    "_meta": {
-      "title": "Ultimate SD Upscale"
-    }
-  },
-  "607": {
-    "inputs": {
-      "comparison": "a <= b",
-      "a": [
-        "608",
-        0
-      ],
-      "b": [
-        "608",
-        1
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "608": {
-    "inputs": {
-      "image": [
-        "217",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "616": {
-    "inputs": {
-      "value": [
-        "20",
-        0
-      ]
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "620": {
-    "inputs": {
-      "width": [
-        "728",
-        2
-      ],
-      "height": [
-        "728",
-        3
-      ],
-      "interpolation": "lanczos",
-      "method": "keep proportion",
-      "condition": "always",
-      "multiple_of": 0,
-      "image": [
-        "243",
-        0
-      ]
-    },
-    "class_type": "ImageResize+",
-    "_meta": {
-      "title": "🔧 Image Resize"
-    }
-  },
-  "626": {
-    "inputs": {
-      "boolean": [
-        "224",
-        0
-      ],
-      "on_true": [
-        "526",
-        0
-      ],
-      "on_false": [
-        "848",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "627": {
-    "inputs": {
-      "boolean": [
-        "19",
-        0
-      ],
-      "on_true": [
-        "526",
-        0
-      ],
-      "on_false": [
-        "848",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "628": {
-    "inputs": {
-      "boolean": [
-        "19",
-        0
-      ],
-      "on_true": [
-        "767",
-        0
-      ],
-      "on_false": [
-        "767",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "634": {
-    "inputs": {
-      "boolean": [
-        "224",
-        0
-      ],
-      "on_true": [
-        "767",
-        0
-      ],
-      "on_false": [
-        "767",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
     }
   },
   "638": {
@@ -3469,912 +224,6 @@
       "title": "i2i_function"
     }
   },
-  "641": {
-    "inputs": {
-      "index": [
-        "616",
-        0
-      ],
-      "value0": [
-        "3",
-        0
-      ],
-      "value1": [
-        "594",
-        0
-      ],
-      "value2": [
-        "600",
-        0
-      ],
-      "value3": [
-        "600",
-        0
-      ],
-      "value4": [
-        "601",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "643": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "412",
-        0
-      ],
-      "b": [
-        "706",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "645": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "389",
-        0
-      ],
-      "b": [
-        "391",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "652": {
-    "inputs": {
-      "index": [
-        "640",
-        0
-      ],
-      "value1": [
-        "372",
-        0
-      ],
-      "value2": [
-        "641",
-        0
-      ],
-      "value3": [
-        "620",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "655": {
-    "inputs": {
-      "width": [
-        "259",
-        0
-      ],
-      "height": [
-        "258",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "keep_proportion": true,
-      "divisible_by": 2,
-      "crop": 0,
-      "image": [
-        "228",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJ",
-    "_meta": {
-      "title": "Resize Image (deprecated)"
-    }
-  },
-  "658": {
-    "inputs": {
-      "boolean": [
-        "380",
-        0
-      ],
-      "on_true": [
-        "400",
-        0
-      ],
-      "on_false": [
-        "416",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "659": {
-    "inputs": {
-      "sam_model": "sam_vit_l (1.25GB)",
-      "grounding_dino_model": "GroundingDINO_SwinT_OGC (694MB)",
-      "threshold": [
-        "716",
-        0
-      ],
-      "detail_method": "PyMatting",
-      "detail_erode": 6,
-      "detail_dilate": 6,
-      "black_point": 0.15,
-      "white_point": 0.99,
-      "process_detail": false,
-      "prompt": [
-        "720",
-        0
-      ],
-      "device": "cpu",
-      "max_megapixels": 2,
-      "cache_model": false,
-      "image": [
-        "722",
-        2
-      ]
-    },
-    "class_type": "LayerMask: SegmentAnythingUltra V2",
-    "_meta": {
-      "title": "i2i_enhance_segment_1"
-    }
-  },
-  "660": {
-    "inputs": {
-      "sam_model": "sam_vit_h (2.56GB)",
-      "grounding_dino_model": "GroundingDINO_SwinT_OGC (694MB)",
-      "threshold": [
-        "716",
-        0
-      ],
-      "detail_method": "PyMatting",
-      "detail_erode": 6,
-      "detail_dilate": 6,
-      "black_point": 0.15,
-      "white_point": 0.99,
-      "process_detail": false,
-      "prompt": [
-        "720",
-        0
-      ],
-      "device": "cpu",
-      "max_megapixels": 2,
-      "cache_model": false,
-      "image": [
-        "722",
-        2
-      ]
-    },
-    "class_type": "LayerMask: SegmentAnythingUltra V2",
-    "_meta": {
-      "title": "i2i_enhance_segment_1"
-    }
-  },
-  "661": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "721",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "663": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "363",
-        0
-      ],
-      "model": [
-        "401",
-        0
-      ],
-      "positive": [
-        "667",
-        0
-      ],
-      "negative": [
-        "667",
-        1
-      ],
-      "latent_image": [
-        "374",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "666": {
-    "inputs": {
-      "boolean": [
-        "404",
-        0
-      ],
-      "on_true": [
-        "722",
-        2
-      ],
-      "on_false": [
-        "370",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "667": {
-    "inputs": {
-      "noise_mask": true,
-      "positive": [
-        "422",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "pixels": [
-        "344",
-        0
-      ],
-      "mask": [
-        "345",
-        0
-      ]
-    },
-    "class_type": "InpaintModelConditioning",
-    "_meta": {
-      "title": "InpaintModelConditioning"
-    }
-  },
-  "668": {
-    "inputs": {
-      "value": "a+(b-a)*(c/0.618)",
-      "a": [
-        "426",
-        0
-      ],
-      "b": [
-        "297",
-        0
-      ],
-      "c": [
-        "711",
-        13
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "669": {
-    "inputs": {
-      "image": [
-        "338",
-        0
-      ]
-    },
-    "class_type": "GetImageSize+",
-    "_meta": {
-      "title": "🔧 Get Image Size"
-    }
-  },
-  "670": {
-    "inputs": {
-      "comparison": "a >= b",
-      "a": [
-        "343",
-        0
-      ],
-      "b": [
-        "343",
-        1
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "671": {
-    "inputs": {
-      "comparison": "a >= b",
-      "a": [
-        "343",
-        0
-      ],
-      "b": [
-        "343",
-        1
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "672": {
-    "inputs": {
-      "boolean": [
-        "367",
-        0
-      ],
-      "on_true": [
-        "668",
-        0
-      ],
-      "on_false": [
-        "350",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "673": {
-    "inputs": {
-      "channel": "red",
-      "image": [
-        "338",
-        0
-      ]
-    },
-    "class_type": "ImageToMask",
-    "_meta": {
-      "title": "Convert Image to Mask"
-    }
-  },
-  "674": {
-    "inputs": {
-      "sam_model": "sam_vit_b (375MB)",
-      "grounding_dino_model": "GroundingDINO_SwinT_OGC (694MB)",
-      "threshold": [
-        "716",
-        0
-      ],
-      "detail_method": "PyMatting",
-      "detail_erode": 6,
-      "detail_dilate": 6,
-      "black_point": 0.15,
-      "white_point": 0.99,
-      "process_detail": false,
-      "prompt": [
-        "720",
-        0
-      ],
-      "device": "cpu",
-      "max_megapixels": 2,
-      "cache_model": false,
-      "image": [
-        "722",
-        2
-      ]
-    },
-    "class_type": "LayerMask: SegmentAnythingUltra V2",
-    "_meta": {
-      "title": "i2i_enhance_segment_1"
-    }
-  },
-  "675": {
-    "inputs": {
-      "boolean": [
-        "279",
-        0
-      ],
-      "on_true": [
-        "424",
-        0
-      ],
-      "on_false": [
-        "333",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "676": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "677": {
-    "inputs": {
-      "value": "a",
-      "a": [
-        "280",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "678": {
-    "inputs": {
-      "boolean": [
-        "707",
-        0
-      ],
-      "on_true": [
-        "712",
-        0
-      ],
-      "on_false": [
-        "679",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "679": {
-    "inputs": {
-      "boolean": [
-        "728",
-        13
-      ],
-      "on_true": [
-        "409",
-        0
-      ],
-      "on_false": [
-        "680",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "680": {
-    "inputs": {
-      "format": "JPEG",
-      "images": [
-        "409",
-        0
-      ]
-    },
-    "class_type": "SaveImageWebsocketLazy",
-    "_meta": {
-      "title": "result_image2"
-    }
-  },
-  "681": {
-    "inputs": {
-      "pixels": [
-        "712",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "682": {
-    "inputs": {
-      "seed": [
-        "692",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "756",
-        1
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "429",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "681",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "683": {
-    "inputs": {
-      "samples": [
-        "682",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
-  "684": {
-    "inputs": {
-      "upscale_by": [
-        "756",
-        4
-      ],
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "756",
-        7
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "756",
-        1
-      ],
-      "mode_type": "Chess",
-      "tile_width": [
-        "756",
-        5
-      ],
-      "tile_height": [
-        "756",
-        6
-      ],
-      "mask_blur": 32,
-      "tile_padding": 128,
-      "seam_fix_mode": "None",
-      "seam_fix_denoise": 1,
-      "seam_fix_width": 64,
-      "seam_fix_mask_blur": 8,
-      "seam_fix_padding": 16,
-      "force_uniform_tiles": true,
-      "tiled_decode": false,
-      "image": [
-        "712",
-        0
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "429",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "upscale_model": [
-        "701",
-        0
-      ]
-    },
-    "class_type": "UltimateSDUpscale",
-    "_meta": {
-      "title": "Ultimate SD Upscale"
-    }
-  },
-  "690": {
-    "inputs": {
-      "upscale_by": [
-        "756",
-        4
-      ],
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "756",
-        7
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "756",
-        1
-      ],
-      "mode_type": "Chess",
-      "tile_width": [
-        "756",
-        5
-      ],
-      "tile_height": [
-        "756",
-        6
-      ],
-      "mask_blur": 32,
-      "tile_padding": 128,
-      "seam_fix_mode": "None",
-      "seam_fix_denoise": 1,
-      "seam_fix_width": 64,
-      "seam_fix_mask_blur": 8,
-      "seam_fix_padding": 16,
-      "force_uniform_tiles": true,
-      "tiled_decode": false,
-      "image": [
-        "658",
-        0
-      ],
-      "model": [
-        "627",
-        0
-      ],
-      "positive": [
-        "628",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "upscale_model": [
-        "701",
-        0
-      ]
-    },
-    "class_type": "UltimateSDUpscale",
-    "_meta": {
-      "title": "Ultimate SD Upscale"
-    }
-  },
-  "692": {
-    "inputs": {
-      "value": "a*0.9",
-      "a": [
-        "417",
-        0
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "693": {
-    "inputs": {
-      "boolean": [
-        "707",
-        0
-      ],
-      "on_true": [
-        "694",
-        0
-      ],
-      "on_false": [
-        "658",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "694": {
-    "inputs": {
-      "boolean": [
-        "728",
-        13
-      ],
-      "on_true": [
-        "703",
-        0
-      ],
-      "on_false": [
-        "696",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "696": {
-    "inputs": {
-      "boolean": [
-        "702",
-        0
-      ],
-      "on_true": [
-        "703",
-        0
-      ],
-      "on_false": [
-        "699",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "697": {
-    "inputs": {
-      "find1": "vary (strong)",
-      "replace1": "3",
-      "find2": "upscale (1.5x)",
-      "replace2": "4",
-      "find3": "upscale (2x)",
-      "replace3": "5",
-      "prompt": [
-        "698",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "698": {
-    "inputs": {
-      "find1": "disabled",
-      "replace1": "0",
-      "find2": "upscale (fast 2x)",
-      "replace2": "1",
-      "find3": "vary (subtle)",
-      "replace3": "2",
-      "prompt": [
-        "756",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "699": {
-    "inputs": {
-      "format": "JPEG",
-      "images": [
-        "703",
-        0
-      ]
-    },
-    "class_type": "SaveImageWebsocketLazy",
-    "_meta": {
-      "title": "result_image2"
-    }
-  },
-  "700": {
-    "inputs": {
-      "upscale_model": [
-        "701",
-        0
-      ],
-      "image": [
-        "658",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Upscale Image (using Model)"
-    }
-  },
   "701": {
     "inputs": {
       "model_name": "4x-UltraSharp.pth"
@@ -4382,403 +231,6 @@
     "class_type": "UpscaleModelLoader",
     "_meta": {
       "title": "upscale_model"
-    }
-  },
-  "702": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "756",
-        0
-      ],
-      "b": [
-        "403",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "703": {
-    "inputs": {
-      "index": [
-        "408",
-        0
-      ],
-      "value0": [
-        "658",
-        0
-      ],
-      "value1": [
-        "386",
-        0
-      ],
-      "value2": [
-        "414",
-        0
-      ],
-      "value3": [
-        "414",
-        0
-      ],
-      "value4": [
-        "690",
-        0
-      ],
-      "value5": [
-        "690",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "705": {
-    "inputs": {
-      "index": [
-        "389",
-        0
-      ],
-      "value0": [
-        "728",
-        0
-      ],
-      "value1": [
-        "709",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "706": {
-    "inputs": {
-      "value": "none"
-    },
-    "class_type": "easy string",
-    "_meta": {
-      "title": "String"
-    }
-  },
-  "707": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "756",
-        2
-      ],
-      "b": [
-        "757",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "708": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "710",
-        0
-      ],
-      "b": [
-        "706",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "709": {
-    "inputs": {
-      "boolean": [
-        "708",
-        0
-      ],
-      "on_true": [
-        "399",
-        0
-      ],
-      "on_false": [
-        "710",
-        1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "710": {
-    "inputs": {
-      "mask_dino_prompt_text": "none",
-      "prompt": "none",
-      "negative_prompt": "none",
-      "mask_model": "sam",
-      "mask_cloth_category": "full",
-      "mask_sam_model": "vit_b",
-      "mask_text_threshold": 0.3,
-      "mask_box_threshold": 0.25,
-      "mask_sam_max_detections": 0,
-      "mask_invert": false,
-      "inpaint_disable_initial_latent": false,
-      "inpaint_engine": "none",
-      "inpaint_strength": 0.5,
-      "inpaint_respective_field": 0,
-      "inpaint_erode_or_dilate": 0
-    },
-    "class_type": "EnhanceRegionInput",
-    "_meta": {
-      "title": "EnhanceRegionInput2"
-    }
-  },
-  "711": {
-    "inputs": {
-      "mask_dino_prompt_text": "none",
-      "prompt": "none",
-      "negative_prompt": "none",
-      "mask_model": "sam",
-      "mask_cloth_category": "full",
-      "mask_sam_model": "vit_b",
-      "mask_text_threshold": 0.3,
-      "mask_box_threshold": 0.25,
-      "mask_sam_max_detections": 0,
-      "mask_invert": false,
-      "inpaint_disable_initial_latent": false,
-      "inpaint_engine": "none",
-      "inpaint_strength": 0.5,
-      "inpaint_respective_field": 0,
-      "inpaint_erode_or_dilate": 0
-    },
-    "class_type": "EnhanceRegionInput",
-    "_meta": {
-      "title": "EnhanceRegionInput"
-    }
-  },
-  "712": {
-    "inputs": {
-      "flow": [
-        "722",
-        0
-      ],
-      "initial_value1": [
-        "428",
-        0
-      ]
-    },
-    "class_type": "easy forLoopEnd",
-    "_meta": {
-      "title": "For Loop End"
-    }
-  },
-  "714": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        10
-      ],
-      "value1": [
-        "412",
-        10
-      ],
-      "value2": [
-        "710",
-        10
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "715": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        9
-      ],
-      "value1": [
-        "412",
-        9
-      ],
-      "value2": [
-        "710",
-        9
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "716": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        6
-      ],
-      "value1": [
-        "412",
-        6
-      ],
-      "value2": [
-        "710",
-        6
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "717": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        5
-      ],
-      "value1": [
-        "412",
-        5
-      ],
-      "value2": [
-        "710",
-        5
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "718": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        3
-      ],
-      "value1": [
-        "412",
-        3
-      ],
-      "value2": [
-        "710",
-        3
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "719": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        1
-      ],
-      "value1": [
-        "412",
-        1
-      ],
-      "value2": [
-        "710",
-        1
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "720": {
-    "inputs": {
-      "index": [
-        "722",
-        1
-      ],
-      "value0": [
-        "711",
-        0
-      ],
-      "value1": [
-        "412",
-        0
-      ],
-      "value2": [
-        "710",
-        0
-      ]
-    },
-    "class_type": "easy anythingIndexSwitch",
-    "_meta": {
-      "title": "Any Index Switch"
-    }
-  },
-  "721": {
-    "inputs": {
-      "find1": "none",
-      "replace1": "0",
-      "find2": "Z-image_Inpaint",
-      "replace2": "0",
-      "find3": "Z-image_Inpaint",
-      "replace3": "0",
-      "prompt": [
-        "362",
-        0
-      ]
-    },
-    "class_type": "easy promptReplace",
-    "_meta": {
-      "title": "PromptReplace"
-    }
-  },
-  "722": {
-    "inputs": {
-      "total": 3,
-      "initial_value1": [
-        "693",
-        0
-      ]
-    },
-    "class_type": "easy forLoopStart",
-    "_meta": {
-      "title": "For Loop Start"
     }
   },
   "725": {
@@ -4836,91 +288,6 @@
       "title": "base_model"
     }
   },
-  "754": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "640",
-        0
-      ],
-      "b": [
-        "755",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "755": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "756": {
-    "inputs": {
-      "uov_method": "disabled",
-      "uov_denoise": 0.5000000000000001,
-      "uov_processing_order": "Before First Enhancement",
-      "uov_prompt_type": "Original Prompts",
-      "uov_multiple": 1.5,
-      "uov_tiled_width": 1024,
-      "uov_tiled_height": 1024,
-      "uov_tiled_steps": 12
-    },
-    "class_type": "EnhanceUovInput",
-    "_meta": {
-      "title": "EnhanceUovInput"
-    }
-  },
-  "757": {
-    "inputs": {
-      "value": "Before First Enhancement"
-    },
-    "class_type": "easy string",
-    "_meta": {
-      "title": "String"
-    }
-  },
-  "760": {
-    "inputs": {
-      "upscale_model": [
-        "701",
-        0
-      ],
-      "image": [
-        "349",
-        0
-      ]
-    },
-    "class_type": "ImageUpscaleWithModel",
-    "_meta": {
-      "title": "Upscale Image (using Model)"
-    }
-  },
-  "764": {
-    "inputs": {
-      "crop_size_mult": 1,
-      "bbox_smooth_alpha": 0.5,
-      "original_images": [
-        "722",
-        2
-      ],
-      "masks": [
-        "360",
-        0
-      ]
-    },
-    "class_type": "BatchCropFromMaskAdvanced",
-    "_meta": {
-      "title": "Batch Crop From Mask Advanced"
-    }
-  },
   "766": {
     "inputs": {
       "clip_name": "placeholder.safetensors",
@@ -4930,54 +297,6 @@
     "class_type": "CLIPLoader",
     "_meta": {
       "title": "clip_model"
-    }
-  },
-  "767": {
-    "inputs": {
-      "text": [
-        "728",
-        0
-      ],
-      "clip": [
-        "852",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
-    }
-  },
-  "772": {
-    "inputs": {
-      "text": [
-        "705",
-        0
-      ],
-      "clip": [
-        "852",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
-    }
-  },
-  "786": {
-    "inputs": {
-      "pixels": [
-        "344",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
     }
   },
   "796": {
@@ -5037,570 +356,11 @@
   },
   "800": {
     "inputs": {
-      "name": [
-        "833",
-        0
-      ]
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2601-8steps.safetensors"
     },
     "class_type": "ModelPatchLoader",
     "_meta": {
       "title": "ModelPatchLoader"
-    }
-  },
-  "804": {
-    "inputs": {
-      "pixels": [
-        "217",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE Encode"
-    }
-  },
-  "806": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "220",
-        0
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": 1,
-      "LanPaint_NumSteps": 2,
-      "LanPaint_PromptMode": "Image First",
-      "LanPaint_Info": "LanPaint KSampler. For more info, visit https://github.com/scraed/LanPaint. If you find it useful, please give a star ⭐️!",
-      "Inpainting_mode": "🖼️ Image Inpainting",
-      "model": [
-        "208",
-        0
-      ],
-      "positive": [
-        "767",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "807",
-        0
-      ]
-    },
-    "class_type": "LanPaint_KSampler",
-    "_meta": {
-      "title": "LanPaint KSampler"
-    }
-  },
-  "807": {
-    "inputs": {
-      "samples": [
-        "804",
-        0
-      ],
-      "mask": [
-        "300",
-        0
-      ]
-    },
-    "class_type": "SetLatentNoiseMask",
-    "_meta": {
-      "title": "Set Latent Noise Mask"
-    }
-  },
-  "811": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "start_at_step": 0,
-      "end_at_step": [
-        "812",
-        0
-      ],
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "526",
-        0
-      ],
-      "positive": [
-        "767",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "257",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
-  "812": {
-    "inputs": {
-      "value": "a/2",
-      "a": [
-        "728",
-        5
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
-  "813": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "start_at_step": [
-        "812",
-        0
-      ],
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "848",
-        0
-      ],
-      "positive": [
-        "767",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "811",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
-  "816": {
-    "inputs": {
-      "boolean": [
-        "825",
-        0
-      ],
-      "on_true": [
-        "841",
-        0
-      ],
-      "on_false": [
-        "813",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "817": {
-    "inputs": {
-      "目标A": [
-        "818",
-        0
-      ],
-      "比较对象B": [
-        "585",
-        0
-      ],
-      "比较对象C": [
-        "586",
-        0
-      ],
-      "比较对象D": [
-        "525",
-        0
-      ],
-      "比较对象E": [
-        "556",
-        0
-      ]
-    },
-    "class_type": "ZML_RelativeComparison",
-    "_meta": {
-      "title": "ZML_相等判断"
-    }
-  },
-  "818": {
-    "inputs": {
-      "value": 0
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "825": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "826",
-        0
-      ],
-      "b": [
-        "817",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "826": {
-    "inputs": {
-      "value": 4
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
-    }
-  },
-  "828": {
-    "inputs": {
-      "name": [
-        "833",
-        0
-      ]
-    },
-    "class_type": "ModelPatchLoader",
-    "_meta": {
-      "title": "ModelPatchLoader"
-    }
-  },
-  "830": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "728",
-        9
-      ],
-      "model": [
-        "834",
-        0
-      ],
-      "positive": [
-        "634",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "807",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "832": {
-    "inputs": {
-      "seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "denoise": [
-        "728",
-        9
-      ],
-      "model": [
-        "208",
-        0
-      ],
-      "positive": [
-        "634",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "804",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
-  "833": {
-    "inputs": {
-      "model_url": "https://www.modelscope.cn/models/PAI/Z-Image-Turbo-Fun-Controlnet-Union-2.1/resolve/master/Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2601-8steps.safetensors",
-      "model_folder": "model_patches",
-      "run_download": true,
-      "overwrite_existing": false
-    },
-    "class_type": "SimpleModelDownloader",
-    "_meta": {
-      "title": "Simple Model Downloader"
-    }
-  },
-  "834": {
-    "inputs": {
-      "strength": 1,
-      "model": [
-        "626",
-        0
-      ]
-    },
-    "class_type": "DifferentialDiffusion",
-    "_meta": {
-      "title": "Differential Diffusion"
-    }
-  },
-  "837": {
-    "inputs": {
-      "strength": 1,
-      "model": [
-        "626",
-        0
-      ],
-      "model_patch": [
-        "828",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "inpaint_image": [
-        "217",
-        0
-      ],
-      "mask": [
-        "300",
-        0
-      ]
-    },
-    "class_type": "ZImageFunControlnet",
-    "_meta": {
-      "title": "ZImageFunControlnet"
-    }
-  },
-  "838": {
-    "inputs": {
-      "strength": [
-        "521",
-        0
-      ],
-      "model": [
-        "541",
-        2
-      ],
-      "model_patch": [
-        "800",
-        0
-      ],
-      "vae": [
-        "336",
-        0
-      ],
-      "image": [
-        "542",
-        0
-      ]
-    },
-    "class_type": "ZImageFunControlnet",
-    "_meta": {
-      "title": "ZImageFunControlnet"
-    }
-  },
-  "840": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": 1,
-      "sampler_name": "er_sde",
-      "scheduler": "ddim_uniform",
-      "start_at_step": 0,
-      "end_at_step": 1,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "526",
-        0
-      ],
-      "positive": [
-        "767",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "257",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
-  "841": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "417",
-        0
-      ],
-      "steps": [
-        "728",
-        5
-      ],
-      "cfg": [
-        "728",
-        4
-      ],
-      "sampler_name": [
-        "728",
-        7
-      ],
-      "scheduler": [
-        "728",
-        8
-      ],
-      "start_at_step": 1,
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "848",
-        0
-      ],
-      "positive": [
-        "767",
-        0
-      ],
-      "negative": [
-        "1",
-        0
-      ],
-      "latent_image": [
-        "840",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
     }
   },
   "843": {
@@ -5672,22 +432,6 @@
       "title": "lora_10"
     }
   },
-  "849": {
-    "inputs": {
-      "text": [
-        "719",
-        0
-      ],
-      "clip": [
-        "852",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
-    }
-  },
   "850": {
     "inputs": {
       "value": 1
@@ -5751,6 +495,733 @@
     "class_type": "easy compare",
     "_meta": {
       "title": "Compare"
+    }
+  },
+  "aio_positive": {
+    "inputs": {
+      "text": [
+        "728",
+        0
+      ],
+      "clip": [
+        "852",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "AIO Positive"
+    }
+  },
+  "aio_negative": {
+    "inputs": {
+      "conditioning": [
+        "aio_positive",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "AIO Negative"
+    }
+  },
+  "aio_ref_config_1": {
+    "inputs": {
+      "image": [
+        "638",
+        0
+      ],
+      "mode": 0,
+      "weight": 0.7000000000000002,
+      "stop_percent": 0.6,
+      "skip_preprocessor": false
+    },
+    "class_type": "SimpAIAIOReferenceConfig",
+    "_meta": {
+      "title": "SimpAI AIO Reference 1"
+    }
+  },
+  "aio_ref_config_2": {
+    "inputs": {
+      "image": [
+        "639",
+        0
+      ],
+      "mode": 0,
+      "weight": 0.7000000000000001,
+      "stop_percent": 0.6,
+      "skip_preprocessor": false
+    },
+    "class_type": "SimpAIAIOReferenceConfig",
+    "_meta": {
+      "title": "SimpAI AIO Reference 2"
+    }
+  },
+  "aio_ref_config_3": {
+    "inputs": {
+      "image": [
+        "7",
+        0
+      ],
+      "mode": 0,
+      "weight": 0.7000000000000001,
+      "stop_percent": 0.6,
+      "skip_preprocessor": false
+    },
+    "class_type": "SimpAIAIOReferenceConfig",
+    "_meta": {
+      "title": "SimpAI AIO Reference 3"
+    }
+  },
+  "aio_ref_config_4": {
+    "inputs": {
+      "image": [
+        "8",
+        0
+      ],
+      "mode": 0,
+      "weight": 0.7000000000000001,
+      "stop_percent": 0.6,
+      "skip_preprocessor": false
+    },
+    "class_type": "SimpAIAIOReferenceConfig",
+    "_meta": {
+      "title": "SimpAI AIO Reference 4"
+    }
+  },
+  "aio_style_transfer": {
+    "inputs": {
+      "model": [
+        "848",
+        0
+      ],
+      "positive": [
+        "aio_positive",
+        0
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "reference_1": [
+        "aio_ref_config_1",
+        0
+      ],
+      "reference_2": [
+        "aio_ref_config_2",
+        0
+      ],
+      "reference_3": [
+        "aio_ref_config_3",
+        0
+      ],
+      "reference_4": [
+        "aio_ref_config_4",
+        0
+      ],
+      "family": "z_image",
+      "width": [
+        "728",
+        2
+      ],
+      "height": [
+        "728",
+        3
+      ]
+    },
+    "class_type": "SimpAIAIOStyleTransfer",
+    "_meta": {
+      "title": "SimpAI AIO ImagePrompt Style Transfer"
+    }
+  },
+  "aio_reference_1": {
+    "inputs": {
+      "model": [
+        "aio_style_transfer",
+        0
+      ],
+      "positive": [
+        "aio_positive",
+        0
+      ],
+      "negative": [
+        "aio_negative",
+        0
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "reference": [
+        "aio_ref_config_1",
+        0
+      ],
+      "model_patch": [
+        "800",
+        0
+      ]
+    },
+    "class_type": "SimpAIAIOReferenceZImage",
+    "_meta": {
+      "title": "SimpAI AIO Reference ZImage 1"
+    }
+  },
+  "aio_reference_2": {
+    "inputs": {
+      "model": [
+        "aio_reference_1",
+        0
+      ],
+      "positive": [
+        "aio_reference_1",
+        1
+      ],
+      "negative": [
+        "aio_reference_1",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "reference": [
+        "aio_ref_config_2",
+        0
+      ],
+      "model_patch": [
+        "800",
+        0
+      ]
+    },
+    "class_type": "SimpAIAIOReferenceZImage",
+    "_meta": {
+      "title": "SimpAI AIO Reference ZImage 2"
+    }
+  },
+  "aio_reference_3": {
+    "inputs": {
+      "model": [
+        "aio_reference_2",
+        0
+      ],
+      "positive": [
+        "aio_reference_2",
+        1
+      ],
+      "negative": [
+        "aio_reference_2",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "reference": [
+        "aio_ref_config_3",
+        0
+      ],
+      "model_patch": [
+        "800",
+        0
+      ]
+    },
+    "class_type": "SimpAIAIOReferenceZImage",
+    "_meta": {
+      "title": "SimpAI AIO Reference ZImage 3"
+    }
+  },
+  "aio_reference_4": {
+    "inputs": {
+      "model": [
+        "aio_reference_3",
+        0
+      ],
+      "positive": [
+        "aio_reference_3",
+        1
+      ],
+      "negative": [
+        "aio_reference_3",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "reference": [
+        "aio_ref_config_4",
+        0
+      ],
+      "model_patch": [
+        "800",
+        0
+      ]
+    },
+    "class_type": "SimpAIAIOReferenceZImage",
+    "_meta": {
+      "title": "SimpAI AIO Reference ZImage 4"
+    }
+  },
+  "aio_empty_latent": {
+    "inputs": {
+      "width": [
+        "728",
+        2
+      ],
+      "height": [
+        "728",
+        3
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "AIO Empty Latent"
+    }
+  },
+  "aio_generate": {
+    "inputs": {
+      "model": [
+        "aio_reference_4",
+        0
+      ],
+      "positive": [
+        "aio_reference_4",
+        1
+      ],
+      "negative": [
+        "aio_reference_4",
+        2
+      ],
+      "latent_image": [
+        "aio_empty_latent",
+        0
+      ],
+      "seed": [
+        "417",
+        0
+      ],
+      "steps": [
+        "728",
+        5
+      ],
+      "cfg": [
+        "728",
+        4
+      ],
+      "sampler_name": [
+        "728",
+        7
+      ],
+      "scheduler": [
+        "728",
+        8
+      ],
+      "denoise": 1.0
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "AIO Generate"
+    }
+  },
+  "aio_generated_image": {
+    "inputs": {
+      "samples": [
+        "aio_generate",
+        0
+      ],
+      "vae": [
+        "336",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "AIO Generated Image"
+    }
+  },
+  "aio_uov_config": {
+    "inputs": {
+      "image": [
+        "3",
+        0
+      ],
+      "mode": 1,
+      "mix_reference": false,
+      "multiple": 1.5,
+      "tile_width": 1024,
+      "tile_height": 1024,
+      "tile_steps": 6,
+      "hires_weight": 0.5,
+      "hires_stop": 0.8,
+      "hires_blur": 0.0
+    },
+    "class_type": "SimpAIAIOUOVConfig",
+    "_meta": {
+      "title": "SimpAI AIO UOV"
+    }
+  },
+  "aio_uov": {
+    "inputs": {
+      "model": [
+        "aio_reference_4",
+        0
+      ],
+      "positive": [
+        "aio_reference_4",
+        1
+      ],
+      "negative": [
+        "aio_reference_4",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "upscale_model": [
+        "701",
+        0
+      ],
+      "uov": [
+        "aio_uov_config",
+        0
+      ],
+      "seed": [
+        "417",
+        0
+      ],
+      "steps": [
+        "728",
+        5
+      ],
+      "cfg": [
+        "728",
+        4
+      ],
+      "sampler_name": [
+        "728",
+        7
+      ],
+      "scheduler": [
+        "728",
+        8
+      ],
+      "denoise": [
+        "728",
+        9
+      ]
+    },
+    "class_type": "SimpAIAIOUOVZImage",
+    "_meta": {
+      "title": "SimpAI AIO UOV ZImage"
+    }
+  },
+  "aio_inpaint_config": {
+    "inputs": {
+      "image": [
+        "217",
+        0
+      ],
+      "mask_image": [
+        "218",
+        0
+      ],
+      "mode": 2,
+      "engine": "None",
+      "invert_mask": false,
+      "mix_reference": false,
+      "disable_initial_latent": false,
+      "denoise": [
+        "728",
+        9
+      ]
+    },
+    "class_type": "SimpAIAIOInpaintConfig",
+    "_meta": {
+      "title": "SimpAI AIO Inpaint"
+    }
+  },
+  "aio_inpaint": {
+    "inputs": {
+      "model": [
+        "848",
+        0
+      ],
+      "positive": [
+        "aio_reference_4",
+        1
+      ],
+      "negative": [
+        "aio_reference_4",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "inpaint": [
+        "aio_inpaint_config",
+        0
+      ],
+      "seed": [
+        "417",
+        0
+      ],
+      "steps": [
+        "728",
+        5
+      ],
+      "cfg": [
+        "728",
+        4
+      ],
+      "sampler_name": [
+        "728",
+        7
+      ],
+      "scheduler": [
+        "728",
+        8
+      ]
+    },
+    "class_type": "SimpAIAIOInpaintZImage",
+    "_meta": {
+      "title": "SimpAI AIO Inpaint ZImage"
+    }
+  },
+  "aio_route": {
+    "inputs": {
+      "function": [
+        "640",
+        0
+      ],
+      "generated": [
+        "aio_generated_image",
+        0
+      ],
+      "uov": [
+        "aio_uov",
+        0
+      ],
+      "inpaint": [
+        "aio_inpaint",
+        0
+      ]
+    },
+    "class_type": "SimpAIAIOImageRoute",
+    "_meta": {
+      "title": "SimpAI AIO Image Route"
+    }
+  },
+  "aio_region_1": {
+    "inputs": {
+      "detection_prompt": "none",
+      "prompt": "none",
+      "negative_prompt": "none",
+      "mask_model": "sam",
+      "cloth_category": "full",
+      "sam_model": "vit_b",
+      "text_threshold": 0.3,
+      "box_threshold": 0.25,
+      "max_detections": 0,
+      "invert_mask": false,
+      "disable_initial_latent": false,
+      "engine": "none",
+      "denoise": 0.5,
+      "respective_field": 0,
+      "erode_or_dilate": 0
+    },
+    "class_type": "SimpAIAIORegionConfig",
+    "_meta": {
+      "title": "SimpAI AIO Region 1"
+    }
+  },
+  "aio_region_2": {
+    "inputs": {
+      "detection_prompt": "none",
+      "prompt": "none",
+      "negative_prompt": "none",
+      "mask_model": "sam",
+      "cloth_category": "full",
+      "sam_model": "vit_b",
+      "text_threshold": 0.3,
+      "box_threshold": 0.25,
+      "max_detections": 0,
+      "invert_mask": false,
+      "disable_initial_latent": false,
+      "engine": "none",
+      "denoise": 0.5,
+      "respective_field": 0,
+      "erode_or_dilate": 0
+    },
+    "class_type": "SimpAIAIORegionConfig",
+    "_meta": {
+      "title": "SimpAI AIO Region 2"
+    }
+  },
+  "aio_region_3": {
+    "inputs": {
+      "detection_prompt": "none",
+      "prompt": "none",
+      "negative_prompt": "none",
+      "mask_model": "sam",
+      "cloth_category": "full",
+      "sam_model": "vit_b",
+      "text_threshold": 0.3,
+      "box_threshold": 0.25,
+      "max_detections": 0,
+      "invert_mask": false,
+      "disable_initial_latent": false,
+      "engine": "none",
+      "denoise": 0.5,
+      "respective_field": 0,
+      "erode_or_dilate": 0
+    },
+    "class_type": "SimpAIAIORegionConfig",
+    "_meta": {
+      "title": "SimpAI AIO Region 3"
+    }
+  },
+  "aio_enhance_uov": {
+    "inputs": {
+      "method": "disabled",
+      "denoise": 0.5000000000000001,
+      "processing_order": "Before First Enhancement",
+      "prompt_type": "Original Prompts",
+      "multiple": 1.5,
+      "tile_width": 1024,
+      "tile_height": 1024,
+      "tile_steps": 12
+    },
+    "class_type": "SimpAIAIOEnhanceUOVConfig",
+    "_meta": {
+      "title": "SimpAI AIO Enhance UOV"
+    }
+  },
+  "aio_detail": {
+    "inputs": {
+      "image": [
+        "416",
+        0
+      ],
+      "fallback_image": [
+        "aio_route",
+        0
+      ],
+      "model": [
+        "aio_reference_4",
+        0
+      ],
+      "clip": [
+        "852",
+        0
+      ],
+      "positive": [
+        "aio_reference_4",
+        1
+      ],
+      "negative": [
+        "aio_reference_4",
+        2
+      ],
+      "vae": [
+        "336",
+        0
+      ],
+      "upscale_model": [
+        "701",
+        0
+      ],
+      "region_1": [
+        "aio_region_1",
+        0
+      ],
+      "region_2": [
+        "aio_region_2",
+        0
+      ],
+      "region_3": [
+        "aio_region_3",
+        0
+      ],
+      "enhance_uov": [
+        "aio_enhance_uov",
+        0
+      ],
+      "seed": [
+        "417",
+        0
+      ],
+      "steps": [
+        "728",
+        5
+      ],
+      "cfg": [
+        "728",
+        4
+      ],
+      "sampler_name": [
+        "728",
+        7
+      ],
+      "scheduler": [
+        "728",
+        8
+      ]
+    },
+    "class_type": "SimpAIAIOImproveDetailZImage",
+    "_meta": {
+      "title": "SimpAI AIO Improve Detail ZImage"
+    }
+  },
+  "aio_output_batch": {
+    "inputs": {
+      "original": [
+        "aio_detail",
+        2
+      ],
+      "enhanced": [
+        "aio_detail",
+        0
+      ],
+      "enhance_active": [
+        "aio_detail",
+        1
+      ],
+      "save_final_only": [
+        "728",
+        13
+      ]
+    },
+    "class_type": "SimpAIAIOOutputBatch",
+    "_meta": {
+      "title": "SimpAI AIO Output Batch"
+    }
+  },
+  "aio_save": {
+    "inputs": {
+      "format": "JPEG",
+      "images": [
+        "aio_output_batch",
+        0
+      ]
+    },
+    "class_type": "SaveImageWebsocketLazy",
+    "_meta": {
+      "title": "result_image"
+    }
+  },
+  "aio_preview": {
+    "inputs": {
+      "images": [
+        "aio_save",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "AIO Preview"
     }
   }
 }

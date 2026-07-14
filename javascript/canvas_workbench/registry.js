@@ -70,15 +70,7 @@
         'Upscale (2x)',
         'Upscale (Fast 2x)'
     ];
-    const CLASSIC_UOV_METHODS_FLUX = [
-        'Disabled',
-        'Vary (Subtle)',
-        'Vary (Strong)',
-        'Vary (Hires.fix)',
-        'Upscale (1.5x)',
-        'Upscale (2x)',
-        'Upscale (Fast 2x)'
-    ];
+    const CLASSIC_UOV_METHODS_FLUX = CLASSIC_UOV_METHODS_DEFAULT;
     const CLASSIC_UOV_METHODS = CLASSIC_UOV_METHODS_DEFAULT;
     const CLASSIC_INPAINT_METHODS = [
         'Inpaint or Outpaint (default)',

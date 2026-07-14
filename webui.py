@@ -5739,13 +5739,10 @@ with shared.gradio_root:
                             )
 
                         def ip_advance_checked(x):
-                            filtered_ip_list = [flags.cn_canny, flags.cn_cpds, flags.cn_pose]
-                            default_ip = filtered_ip_list[0]
-
                             return [gr_update(visible=x)] * len(ip_ad_cols) + \
-                                [default_ip] * len(ip_types) + \
-                                [flags.default_parameters[default_ip][0]] * len(ip_stops) + \
-                                [flags.default_parameters[default_ip][1]] * len(ip_weights)
+                                [skip_component_update()] * len(ip_types) + \
+                                [skip_component_update()] * len(ip_stops) + \
+                                [skip_component_update()] * len(ip_weights)
 
                         ip_advanced.change(ip_advance_checked, inputs=ip_advanced,
                                            outputs=ip_ad_cols + ip_types + ip_stops + ip_weights,
@@ -5769,21 +5766,17 @@ with shared.gradio_root:
                             with gr.Column():
                                 with gr.Group():
                                     mixing_image_prompt_and_vary_upscale = gr.Checkbox(label='Mixing Image Prompt and Vary/Upscale', value=False)
-                                    uov_method = gr.Radio(label='Upscale or Variation:', choices=flags.uov_list, value=modules.config.default_uov_method)
+                                    uov_method = gr.Radio(label='Upscale or Variation:', choices=flags.uov_list, value=modules.config.default_uov_method if modules.config.default_uov_method in flags.uov_list else flags.disabled)
                                     with gr.Row():
                                         uov_image_size = gr.Textbox(label='OriginalSize | FinalSize', lines=1, max_lines=1, interactive=False, elem_classes=['uov_image_size', 'simpleai-status-textbox'])
                                         overwrite_upscale_strength = gr.Slider(label='Forced Overwrite of Denoising Strength of "Upscale"',
                                                                visible=False, minimum=0, maximum=1.0, step=0.05,
                                                                value=_uov_denoise_slider_value(modules.config.default_overwrite_upscale, 0.2))
                                         _default_uov_method_text = str(modules.config.default_uov_method or "")
-                                        _default_uov_vary_strength = 0.85 if ("Strong" in _default_uov_method_text or "Hires.fix" in _default_uov_method_text) else 0.5 if "Vary" in _default_uov_method_text else 0.0
+                                        _default_uov_vary_strength = 0.85 if "Strong" in _default_uov_method_text else 0.5 if "Vary" in _default_uov_method_text else 0.0
                                         overwrite_vary_strength = gr.Slider(label='Forced Overwrite of Denoising Strength of "Vary"',
                                                             visible=False, minimum=0, maximum=1.0, step=0.05, value=_uov_denoise_slider_value(_default_uov_vary_strength))
 
-                                    with gr.Row(visible=False) as uov_hires_fix:
-                                        hires_fix_stop = gr.Slider(label='Stop At', minimum=0.0, maximum=1.0, step=0.05, value=0.8, min_width=20)
-                                        hires_fix_weight = gr.Slider(label='Weight', minimum=0.0, maximum=2.0, step=0.05, value=0.5, min_width=20)
-                                        hires_fix_blurred = gr.Slider(label='Blurred', minimum=0.0, maximum=1.0, step=0.05, value=0.0, min_width=20)
                                 with gr.Accordion("Batch", open=False) as uov_batch_accordion:
                                     uov_batch_folder = gr.Textbox(label="Folder(Local Path)", placeholder="e.g. D:\\images\\inputs")
                                     uov_batch_files = gr.File(label="Upload images", file_count="multiple", file_types=[".png", ".jpg", ".jpeg", ".webp", ".bmp"], type="filepath")
@@ -5793,10 +5786,7 @@ with shared.gradio_root:
                                         uov_batch_start = gr.Button(value="Batch Start", size="sm", elem_classes=["simpleai-batch-start-button"])
                                         uov_batch_stop = gr.Button(value="Batch Stop", size="sm", elem_classes=["simpleai-batch-stop-button"])
                         uov_input_image.upload(topbar.update_upscale_size_of_image, inputs=[uov_input_image, uov_method], outputs=uov_image_size, show_progress=False, queue=False)
-                        uov_method.change(topbar.update_size_and_hires_fix, inputs=[uov_input_image, uov_method, params_backend, hires_fix_stop, hires_fix_weight, hires_fix_blurred], outputs=[uov_image_size, uov_hires_fix, overwrite_vary_strength, overwrite_upscale_strength], show_progress=False, queue=False)
-                        hires_fix_stop.change(lambda x,y,z: sync_backend_params('hires_fix_s',x,y,z), inputs=[hires_fix_stop, params_backend, state_topbar])
-                        hires_fix_weight.change(lambda x,y,z: sync_backend_params('hires_fix_w',x,y,z), inputs=[hires_fix_weight, params_backend, state_topbar])
-                        hires_fix_blurred.change(lambda x,y,z: sync_backend_params('hires_fix_blurred',x,y,z), inputs=[hires_fix_blurred, params_backend, state_topbar])
+                        uov_method.change(topbar.update_size_and_uov_strength, inputs=[uov_input_image, uov_method], outputs=[uov_image_size, overwrite_vary_strength, overwrite_upscale_strength], show_progress=False, queue=False)
                     
                     with gr.Tab(label='Inpaint or Outpaint', id='inpaint_tab', elem_id='inpaint_tab') as inpaint_tab:
                         with gr.Row():
@@ -5915,7 +5905,7 @@ with shared.gradio_root:
                                             with gr.Row():
                                                 with gr.Column():
                                                     enhance_uov_method = gr.Radio(label='Upscale or Variation:', choices=flags.uov_list,
-                                                                        value=modules.config.default_enhance_uov_method)
+                                                                        value=modules.config.default_enhance_uov_method if modules.config.default_enhance_uov_method in flags.uov_list else flags.disabled)
                                                     enhance_uov_strength = gr.Slider(label='Denoising Strength of enhance',
                                                                         visible=False, minimum=0, maximum=1.0, step=0.01, value=0)
                                                     enhance_uov_processing_order = gr.Radio(label='Order of Processing',
@@ -9911,11 +9901,7 @@ with shared.gradio_root:
             return [skip_component_update()] * len(ip_types)
         engine = state_params.get('engine', 'Fooocus') if isinstance(state_params, dict) else 'Fooocus'
         task_method = state_params.get('task_method', None) if isinstance(state_params, dict) else None
-        allowed = list(modules.flags.ip_list if engine in ['Fooocus', 'SDXL', 'Flux', 'Comfy', 'Wan', 'Qwen', 'Z-image'] else modules.flags.ip_list[:-1])
-        if engine in ['Wan', 'Qwen', 'Z-image'] or task_method == 'flux2_aio_cn':
-            allowed = allowed[1:3] + allowed[-1:]
-        if task_method in ['il_v_pre_aio', 'chenkin_noob_aio']:
-            allowed = allowed[:3] + allowed[-1:]
+        allowed = topbar.get_allowed_ip_types(engine, task_method)
         fallback = allowed[0] if len(allowed) > 0 else flags.cn_canny
         sanitized = []
         for index in range(len(ip_types)):

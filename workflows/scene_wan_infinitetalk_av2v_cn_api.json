@@ -80,7 +80,7 @@
   "18": {
     "inputs": {
       "samples": [
-        "103",
+        "162",
         0
       ],
       "vae": [
@@ -108,12 +108,16 @@
         0
       ],
       "fps": 25,
-      "motion_frame_count": 9,
+      "motion_frame_count": [
+        "121",
+        17
+      ],
       "audio_start": [
         "149",
         0
       ],
       "audio_scale": 1,
+      "match_previous_color_to_video": false,
       "model": [
         "11",
         0
@@ -156,24 +160,10 @@
       "title": "SimpAI Painter AV2V"
     }
   },
-  "22": {
-    "inputs": {
-      "batch_index": 9,
-      "length": 4096,
-      "image": [
-        "18",
-        0
-      ]
-    },
-    "class_type": "ImageFromBatch",
-    "_meta": {
-      "title": "ImageFromBatch"
-    }
-  },
   "26": {
     "inputs": {
       "samples": [
-        "102",
+        "161",
         0
       ],
       "vae": [
@@ -194,7 +184,7 @@
       ],
       "initial_value1": [
         "30",
-        0
+        2
       ]
     },
     "class_type": "easy forLoopEnd",
@@ -216,18 +206,24 @@
   },
   "30": {
     "inputs": {
-      "image1": [
+      "overlap": [
+        "121",
+        17
+      ],
+      "overlap_side": "source",
+      "overlap_mode": "ease_in_out",
+      "source_images": [
         "63",
         2
       ],
-      "image2": [
-        "22",
+      "new_images": [
+        "18",
         0
       ]
     },
-    "class_type": "ImageBatch",
+    "class_type": "ImageBatchExtendWithOverlap",
     "_meta": {
-      "title": "Batch Images"
+      "title": "Segment Crossfade"
     }
   },
   "34": {
@@ -254,9 +250,13 @@
         0
       ],
       "fps": 25,
-      "motion_frame_count": 9,
+      "motion_frame_count": [
+        "121",
+        17
+      ],
       "audio_start": 0,
       "audio_scale": 1,
+      "match_previous_color_to_video": true,
       "model": [
         "11",
         0
@@ -334,8 +334,8 @@
         0
       ],
       "audio": [
-        "110",
-        0
+        "160",
+        1
       ]
     },
     "class_type": "MelBandRoFormerSampler",
@@ -401,107 +401,14 @@
         "72",
         0
       ],
-      "c": 9
+      "c": [
+        "121",
+        17
+      ]
     },
     "class_type": "Evaluate Integers",
     "_meta": {
       "title": "Evaluate Integers"
-    }
-  },
-  "102": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "136",
-        0
-      ],
-      "steps": [
-        "121",
-        9
-      ],
-      "cfg": [
-        "121",
-        8
-      ],
-      "sampler_name": [
-        "121",
-        30
-      ],
-      "scheduler": [
-        "121",
-        31
-      ],
-      "start_at_step": 1,
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "36",
-        0
-      ],
-      "positive": [
-        "36",
-        1
-      ],
-      "negative": [
-        "36",
-        2
-      ],
-      "latent_image": [
-        "36",
-        3
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
-  "103": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "136",
-        0
-      ],
-      "steps": [
-        "121",
-        9
-      ],
-      "cfg": [
-        "121",
-        8
-      ],
-      "sampler_name": [
-        "121",
-        30
-      ],
-      "scheduler": [
-        "121",
-        31
-      ],
-      "start_at_step": 1,
-      "end_at_step": 10000,
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "19",
-        0
-      ],
-      "positive": [
-        "19",
-        1
-      ],
-      "negative": [
-        "19",
-        2
-      ],
-      "latent_image": [
-        "19",
-        3
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
     }
   },
   "106": {
@@ -535,19 +442,6 @@
       "title": "Load Audio (Upload)🎥🅥🅗🅢"
     }
   },
-  "117": {
-    "inputs": {
-      "value": "a*25",
-      "a": [
-        "110",
-        1
-      ]
-    },
-    "class_type": "SimpleMath+",
-    "_meta": {
-      "title": "🔧 Simple Math"
-    }
-  },
   "118": {
     "inputs": {
       "clip_name": "placeholder.safetensors",
@@ -574,12 +468,12 @@
       "steps": 3,
       "var_number": 3,
       "var_number2": 25,
-      "var_number3": 0,
+      "var_number3": 0.35,
       "var_number4": 0,
       "var_number5": 0,
       "var_number6": 0,
       "var_number7": 81,
-      "var_number8": 0,
+      "var_number8": 17,
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
@@ -969,7 +863,7 @@
   },
   "149": {
     "inputs": {
-      "value": "(a+1)*(b-9)",
+      "value": "(a+1)*(b-c)",
       "a": [
         "63",
         1
@@ -977,6 +871,10 @@
       "b": [
         "72",
         0
+      ],
+      "c": [
+        "121",
+        17
       ]
     },
     "class_type": "SimpleMath+",
@@ -1021,7 +919,10 @@
   "152": {
     "inputs": {
       "batch_index": 0,
-      "length": 9,
+      "length": [
+        "121",
+        17
+      ],
       "image": [
         "150",
         0
@@ -1069,8 +970,8 @@
         1
       ],
       "audio": [
-        "110",
-        0
+        "160",
+        1
       ]
     },
     "class_type": "TrimAudioDuration",
@@ -1115,11 +1016,11 @@
     "inputs": {
       "batch_index": 0,
       "length": [
-        "117",
-        0
+        "160",
+        2
       ],
       "image": [
-        "156",
+        "160",
         0
       ]
     },
@@ -1138,6 +1039,119 @@
     "class_type": "GetImageSize+",
     "_meta": {
       "title": "🔧 Get Image Size"
+    }
+  },
+  "160": {
+    "inputs": {
+      "fps": 25,
+      "images": [
+        "156",
+        0
+      ],
+      "audio": [
+        "110",
+        0
+      ]
+    },
+    "class_type": "SimpAIPingPongVideoAudioAlign",
+    "_meta": {
+      "title": "Preserve Video and Audio Duration"
+    }
+  },
+  "161": {
+    "inputs": {
+      "seed": [
+        "136",
+        0
+      ],
+      "steps": [
+        "121",
+        9
+      ],
+      "cfg": [
+        "121",
+        8
+      ],
+      "sampler_name": [
+        "121",
+        30
+      ],
+      "scheduler": [
+        "121",
+        31
+      ],
+      "denoise": [
+        "121",
+        12
+      ],
+      "model": [
+        "36",
+        0
+      ],
+      "positive": [
+        "36",
+        1
+      ],
+      "negative": [
+        "36",
+        2
+      ],
+      "latent_image": [
+        "36",
+        3
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "162": {
+    "inputs": {
+      "seed": [
+        "136",
+        0
+      ],
+      "steps": [
+        "121",
+        9
+      ],
+      "cfg": [
+        "121",
+        8
+      ],
+      "sampler_name": [
+        "121",
+        30
+      ],
+      "scheduler": [
+        "121",
+        31
+      ],
+      "denoise": [
+        "121",
+        12
+      ],
+      "model": [
+        "19",
+        0
+      ],
+      "positive": [
+        "19",
+        1
+      ],
+      "negative": [
+        "19",
+        2
+      ],
+      "latent_image": [
+        "19",
+        3
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
     }
   }
 }

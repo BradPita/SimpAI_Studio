@@ -44,11 +44,9 @@
                 "scene_input_image2",
                 "scene_refiner_model",
                 "scene_var_number",
-                "scene_var_number3",
                 "scene_var_number4",
                 "scene_var_number5",
                 "scene_var_number6",
-                "scene_var_number8",
                 "scene_var_number9",
                 "scene_var_number10",
                 "scene_switch_option1",
@@ -76,11 +74,23 @@
             "var_number2": {
                 "InfiniteTalk-AV2V": 25
             },
+            "var_number3_title": "Video Denoise Strength(Higher brings more changes)",
+            "var_number3_min": 0.0,
+            "var_number3_max": 1.0,
+            "var_number3": {
+                "InfiniteTalk-AV2V": 0.38
+            },
             "var_number7_title": "Video segment frames for chunking [auto 4n+1]",
             "var_number7_min": 45,
             "var_number7_max": 185,
             "var_number7": {
-                "InfiniteTalk-AV2V": 81
+                "InfiniteTalk-AV2V": 121
+            },
+            "var_number8_title": "Segment Blend Frames [use 4n+1]",
+            "var_number8_min": 9,
+            "var_number8_max": 33,
+            "var_number8": {
+                "InfiniteTalk-AV2V": 9
             },
             "aspect_ratio": [
                 "640|1:1",

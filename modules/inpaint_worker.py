@@ -1,13 +1,47 @@
 import torch
 import numpy as np
+import math
 
 from PIL import Image, ImageFilter
-from modules.util import resample_image, set_image_shape_ceil, get_image_shape_ceil
-from modules.upscaler import perform_upscale
 import cv2
 
 
 inpaint_head_model = None
+
+
+LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+
+
+def resample_image(im, width, height):
+    im = Image.fromarray(im)
+    im = im.resize((int(width), int(height)), resample=LANCZOS)
+    return np.array(im)
+
+
+def get_image_shape_ceil(im):
+    height, width = im.shape[:2]
+    return math.ceil(((height * width) ** 0.5) / 64.0) * 64.0
+
+
+def set_image_shape_ceil(im, shape_ceil):
+    shape_ceil = float(shape_ceil)
+    origin_height, origin_width = im.shape[:2]
+    height, width = origin_height, origin_width
+    for _ in range(256):
+        current = math.ceil(((height * width) ** 0.5) / 64.0) * 64.0
+        if abs(current - shape_ceil) < 0.1:
+            break
+        scale = shape_ceil / current
+        height = int(round(float(height) * scale / 64.0) * 64)
+        width = int(round(float(width) * scale / 64.0) * 64)
+    if height == origin_height and width == origin_width:
+        return im
+    return resample_image(im, width=width, height=height)
+
+
+def perform_upscale(img):
+    from modules.upscaler import perform_upscale as _perform_upscale
+    return _perform_upscale(img)
 
 
 class InpaintHead(torch.nn.Module):
@@ -187,7 +221,7 @@ def fooocus_fill(image, mask):
 
 
 class InpaintWorker:
-    def __init__(self, image, mask, use_fill=True, k=0.618):
+    def __init__(self, image, mask, use_fill=True, k=0.618, use_upscale_model=True):
         mask = _mask_to_image_shape(mask, image)
         a, b, c, d = compute_initial_abcd(mask > 0)
         a, b, c, d = solve_abcd(mask, a, b, c, d, k=k)
@@ -198,7 +232,7 @@ class InpaintWorker:
         self.interested_image = image[a:b, c:d]
 
         # super resolution
-        if get_image_shape_ceil(self.interested_image) < 1024:
+        if use_upscale_model and get_image_shape_ceil(self.interested_image) < 1024:
             self.interested_image = perform_upscale(self.interested_image)
 
         # resize to make images ready for diffusion

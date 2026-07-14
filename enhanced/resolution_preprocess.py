@@ -402,7 +402,7 @@ def _pil_to_numpy_like(pil_img, original):
 
 
 def _fit_rect(src_w, src_h, target_w, target_h, mode):
-    if mode == "scale":
+    if mode in ("proportional", "scale"):
         return 0, 0, target_w, target_h
     scale = max(target_w / src_w, target_h / src_h) if mode == "crop" else min(target_w / src_w, target_h / src_h)
     draw_w = max(1, int(round(src_w * scale)))

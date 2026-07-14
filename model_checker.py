@@ -699,7 +699,7 @@ def print_instructions():
     time.sleep(0.1)
     print(f"{Fore.GREEN}★{Style.RESET_ALL}打开默认浏览器设置，关闭GPU加速、或图形加速的选项。{Fore.GREEN}★{Style.RESET_ALL}大内存(64+)与固态硬盘存放模型有助于减少模型加载时间。{Fore.GREEN}★{Style.RESET_ALL}")
     time.sleep(0.1)
-    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.07.02{Fore.GREEN}★{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}★{Style.RESET_ALL}疑难杂症进QQ群求助：1005085136{Fore.GREEN}★{Style.RESET_ALL}脚本：✿   冰華 |版本:26.07.14{Fore.GREEN}★{Style.RESET_ALL}")
     print()
     time.sleep(0.1)
 
@@ -2369,7 +2369,10 @@ packages = {'base_package': {'id': 1,
                             'files': ['diffusion_models,anima-base-v1.0.safetensors,4182218328,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/diffusion_models/anima-base-v1.0.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/diffusion_models/anima-base-v1.0.safetensors',
                                         'text_encoders,qwen_3_06b_base.safetensors,1192135096,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/text_encoders/qwen_3_06b_base.safetensors,https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/text_encoders/qwen_3_06b_base.safetensors',
                                         'vae,qwen_image_vae.safetensors,253806246,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/vae/qwen_image_vae.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/vae/qwen_image_vae.safetensors',
-                                        'upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth,https://huggingface.co/Kim2091/AnimeSharp/resolve/main/4x-AnimeSharp.pth'
+                                        'upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth,https://huggingface.co/Kim2091/AnimeSharp/resolve/main/4x-AnimeSharp.pth',
+                                        'controlnet,anima-lllite-any-test-like-v2.safetensors,16403008,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors',
+                                        'controlnet,anima-lllite-inpainting-v2.safetensors,65772872,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors',
+                                        'controlnet,animaTileRepair_v20.safetensors,94037744,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/animaTileRepair_v20.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/animaTileRepair_v20.safetensors'
 ],
                              'info_links': ['https://www.modelscope.cn/models/circlestone-labs/Anima/summary'],
                              'preset_sample': []},
@@ -2383,7 +2386,6 @@ packages = {'base_package': {'id': 1,
                                      'text_encoders,t5xxl_fp8_e4m3fn.safetensors,4893934904,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors',
                                      'clip_vision,sigclip_vision_patch14_384.safetensors,856505640,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors',
                                      'controlnet,flux.1-dev_controlnet_union_pro_2.0.safetensors,4281779224,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors',
-                                     'controlnet,flux.1-dev_controlnet_upscaler.safetensors,3583232168,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors',
                                      'controlnet,parsing_bisenet.pth,53289463,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/parsing_bisenet.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/parsing_bisenet.pth',
                                      'controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt',
                                      'insightface,models/antelopev2/1k3d68.onnx,143607619,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/insightface/models/antelopev2/1k3d68.onnx,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/insightface/models/antelopev2/1k3d68.onnx',
@@ -2408,7 +2410,6 @@ packages = {'base_package': {'id': 1,
                                          'text_encoders,t5xxl_fp8_e4m3fn.safetensors,4893934904,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors',
                                          'clip_vision,sigclip_vision_patch14_384.safetensors,856505640,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors',
                                          'controlnet,flux.1-dev_controlnet_union_pro_2.0.safetensors,4281779224,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors',
-                                         'controlnet,flux.1-dev_controlnet_upscaler.safetensors,3583232168,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors',
                                          'controlnet,parsing_bisenet.pth,53289463,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/parsing_bisenet.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/parsing_bisenet.pth',
                                          'controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt',
                                          'insightface,models/antelopev2/1k3d68.onnx,143607619,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/insightface/models/antelopev2/1k3d68.onnx,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/insightface/models/antelopev2/1k3d68.onnx',
@@ -2433,7 +2434,6 @@ packages = {'base_package': {'id': 1,
                                         'text_encoders,t5xxl_fp8_e4m3fn.safetensors,4893934904,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip/t5xxl_fp8_e4m3fn.safetensors',
                                         'clip_vision,sigclip_vision_patch14_384.safetensors,856505640,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/clip_vision/sigclip_vision_patch14_384.safetensors',
                                         'controlnet,flux.1-dev_controlnet_union_pro_2.0.safetensors,4281779224,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_union_pro_2.0.safetensors',
-                                        'controlnet,flux.1-dev_controlnet_upscaler.safetensors,3583232168,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/flux.1-dev_controlnet_upscaler.safetensors',
                                         'controlnet,parsing_bisenet.pth,53289463,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/parsing_bisenet.pth,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/parsing_bisenet.pth',
                                         'controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/controlnet/lllyasviel/Annotators/ZoeD_M12_N.pt',
                                         'insightface,models/antelopev2/1k3d68.onnx,143607619,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/insightface/models/antelopev2/1k3d68.onnx,https://huggingface.co/metercai/SimpleSDXL2/resolve/main/SimpleModels/insightface/models/antelopev2/1k3d68.onnx',
@@ -2451,7 +2451,7 @@ packages = {'base_package': {'id': 1,
  'flux2-klein-9b-fp8': {'id': 14,
                         'name': '[14]Flux2-Klein-9B-FP8图像编辑&多打光&修复&漫转真',
                         'note': 'Flux2-Klein-9B图像编辑&多角度打光，高效快速|显存需求：★★★ 速度：★★★',
-                        'files': ['diffusion_models,Flux2-Klein-9B-True-v2-fp8mixed.safetensors,9433058560,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V2/resolve/master/Flux2-Klein-9B-True-v2-fp8mixed.safetensors,https://huggingface.co/wikeeyang/Flux2-Klein-9B-True-V2/resolve/main/Flux2-Klein-9B-True-v2-fp8mixed.safetensors',
+                        'files': ['diffusion_models,Flux2-Klein-9B-True-V3-int8mixedrow.safetensors,9439884768,0,https://modelscope.cn/models/wikeeyang/Flux2-Klein-9B-True-V3/resolve/master/Flux2-Klein-9B-True-V3-int8mixedrow.safetensors',
                                   'text_encoders,qwen3_8b_abliterated_v2-fp8mixed.safetensors,8191194604,0,https://www.modelscope.cn/models/silveroxides/FLUX.2-dev-fp8_scaled/resolve/master/qwen3_8b_abliterated_v2-fp8mixed.safetensors,https://huggingface.co/silveroxides/FLUX.2-dev-fp8_scaled/resolve/main/qwen3_8b_abliterated_v2-fp8mixed.safetensors',
                                   'vae,flux2-vae.safetensors,336211292,0,https://www.modelscope.cn/models/Comfy-Org/flux2-klein-4B/resolve/master/split_files/vae/flux2-vae.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/vae/flux2-vae.safetensors',
                                   'loras,Flux2 Klein动漫转写实真人 AnythingtoRealCharacters.safetensors,165704392,0,https://www.modelscope.cn/models/zhouwenbin1994/Klein9BAnythingtoRealC/resolve/20260128232821/Flux2%20Klein%E5%8A%A8%E6%BC%AB%E8%BD%AC%E5%86%99%E5%AE%9E%E7%9C%9F%E4%BA%BA%20AnythingtoRealCharacters.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/loras/Flux2%20Klein%E5%8A%A8%E6%BC%AB%E8%BD%AC%E5%86%99%E5%AE%9E%E7%9C%9F%E4%BA%BA%20AnythingtoRealCharacters.safetensors',
@@ -2958,7 +2958,15 @@ MANUAL_DOWNLOAD_LIST = [
     for filename in files
 ]
 
-OBSOLETE_MODELS = []
+OBSOLETE_MODELS = [
+    'Flux2-Klein-9B-True-v2-fp8mixed.safetensors',
+    'krea2_turbo_fp8_scaled.safetensors',
+    'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',
+    'wan2.1_14B_SCAIL_2_fp8_scaled.safetensors',
+    'wan2.2_bernini_r_high_noise_fp8_scaled.safetensors',
+    'wan2.2_bernini_r_low_noise_fp8_scaled.safetensors',
+    'z_image_turbo_bf16.safetensors',
+]
 
 MODELSCOPE_FILE_CACHE = {}
 

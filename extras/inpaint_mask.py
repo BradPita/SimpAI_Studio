@@ -1,16 +1,30 @@
 import sys
 
-import modules.config
 import numpy as np
 import onnxruntime as ort
 import os
 import torch
 from extras.GroundingDINO.util.inference import default_groundingdino
 from extras.sam.predictor import SamPredictor
-from modules.util import HWC3
 from modules.model_path_utils import find_dir_containing_model, first_model_dir
 from segment_anything import sam_model_registry
 from segment_anything.utils.amg import remove_small_regions
+
+
+def HWC3(x):
+    assert x.dtype == np.uint8
+    if x.ndim == 2:
+        x = x[:, :, None]
+    assert x.ndim == 3
+    channels = x.shape[2]
+    assert channels in (1, 3, 4)
+    if channels == 3:
+        return x
+    if channels == 1:
+        return np.concatenate([x, x, x], axis=2)
+    color = x[:, :, :3].astype(np.float32)
+    alpha = x[:, :, 3:4].astype(np.float32) / 255.0
+    return (color * alpha + 255.0 * (1.0 - alpha)).clip(0, 255).astype(np.uint8)
 
 
 def _rembg_import_error_message(exc: BaseException) -> str:
@@ -90,7 +104,8 @@ def optimize_masks(masks: torch.Tensor) -> torch.Tensor:
 
 
 def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=None,
-                             sam_options: SAMOptions | None = SAMOptions) -> tuple[np.ndarray | None, int | None, int | None, int | None]:
+                             sam_options: SAMOptions | None = SAMOptions,
+                             backend=None) -> tuple[np.ndarray | None, int | None, int | None, int | None]:
     dino_detection_count = 0
     sam_detection_count = 0
     sam_detection_on_mask_count = 0
@@ -108,11 +123,15 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
 
     if mask_model != 'sam' or sam_options is None:
         remove, new_session = _load_rembg()
-        os.environ["U2NET_HOME"] = find_dir_containing_model(
-            modules.config.paths_inpaint + modules.config.paths_rembg,
-            f"{mask_model}.onnx",
-            fallback=first_model_dir(modules.config.paths_rembg + modules.config.paths_inpaint)
-        )
+        if backend is not None:
+            os.environ["U2NET_HOME"] = backend.resolve_rembg_home(mask_model)
+        else:
+            import modules.config as config
+            os.environ["U2NET_HOME"] = find_dir_containing_model(
+                config.paths_inpaint + config.paths_rembg,
+                f"{mask_model}.onnx",
+                fallback=first_model_dir(config.paths_rembg + config.paths_inpaint)
+            )
         result = remove(
             image,
             session=new_session(mask_model, providers=_ort_providers(), **extras),
@@ -122,7 +141,8 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
 
         return result, dino_detection_count, sam_detection_count, sam_detection_on_mask_count
 
-    detections, boxes, logits, phrases = default_groundingdino(
+    groundingdino = backend.groundingdino if backend is not None else default_groundingdino
+    detections, boxes, logits, phrases = groundingdino(
         image=image,
         caption=sam_options.dino_prompt,
         box_threshold=sam_options.dino_box_threshold,
@@ -134,7 +154,11 @@ def generate_mask_from_image(image: np.ndarray, mask_model: str = 'sam', extras=
     boxes[:, :2] = boxes[:, :2] - boxes[:, 2:] / 2
     boxes[:, 2:] = boxes[:, 2:] + boxes[:, :2]
 
-    sam_checkpoint = modules.config.download_sam_model(sam_options.model_type)
+    if backend is not None:
+        sam_checkpoint = backend.resolve_sam_model(sam_options.model_type)
+    else:
+        import modules.config as config
+        sam_checkpoint = config.download_sam_model(sam_options.model_type)
     sam = sam_model_registry[sam_options.model_type](checkpoint=sam_checkpoint)
 
     sam_predictor = SamPredictor(sam)

@@ -1279,10 +1279,6 @@
       "reference_images.reference_image_1": [
         "231",
         0
-      ],
-      "reference_images.reference_image_2": [
-        "267",
-        0
       ]
     },
     "class_type": "SimpAIBerniniLongVideoConditioning",
@@ -1634,23 +1630,6 @@
     "class_type": "SimpAIOptionalTrimAudioDuration",
     "_meta": {
       "title": "Optional Trim Source Audio To Final Video"
-    }
-  },
-  "267": {
-    "inputs": {
-      "count": 3,
-      "exclude_tail_frames": [
-        "240",
-        0
-      ],
-      "images": [
-        "176",
-        0
-      ]
-    },
-    "class_type": "SimpAISelectVideoKeyframes",
-    "_meta": {
-      "title": "First Segment Keyframe References"
     }
   },
   "268": {

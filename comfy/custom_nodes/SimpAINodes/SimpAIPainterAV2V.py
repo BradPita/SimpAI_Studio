@@ -55,6 +55,13 @@ class SimpAIPainterAV2V(io.ComfyNode):
                 io.Mask.Input("mask", optional=True),
                 io.Image.Input("start_image", optional=True),
                 io.Image.Input("previous_frames", optional=True),
+                io.Boolean.Input(
+                    "match_previous_color_to_video",
+                    default=True,
+                    optional=True,
+                    advanced=True,
+                    tooltip="Match continuation frames to the source video color before encoding.",
+                ),
                 io.ClipVisionOutput.Input("clip_vision_output", optional=True),
                 io.Int.Input("motion_frame_count", default=9, min=1, max=33, step=1),
                 io.Int.Input("audio_start", default=0, min=0, max=nodes.MAX_RESOLUTION, step=1),
@@ -69,7 +76,7 @@ class SimpAIPainterAV2V(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, model, model_patch, positive, negative, vae, width, height, length, fps, audio_encoder, video, mask=None, start_image=None, previous_frames=None, clip_vision_output=None, motion_frame_count=9, audio_start=0, audio_scale=1.0) -> io.NodeOutput:
+    def execute(cls, model, model_patch, positive, negative, vae, width, height, length, fps, audio_encoder, video, mask=None, start_image=None, previous_frames=None, match_previous_color_to_video=True, clip_vision_output=None, motion_frame_count=9, audio_start=0, audio_scale=1.0) -> io.NodeOutput:
         device = comfy.model_management.get_torch_device()
         model_dtype = model.model_dtype()
 
@@ -127,8 +134,9 @@ class SimpAIPainterAV2V(io.ComfyNode):
             if previous_frames.shape[0] < motion_frame_count:
                 raise ValueError("Not enough previous frames provided.")
             motion_frames = comfy.utils.common_upscale(previous_frames[-motion_frame_count:].movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
-            reference_frames = comfy.utils.common_upscale(video[:motion_frame_count].movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
-            motion_frames = match_color_to_reference(motion_frames, reference_frames)
+            if match_previous_color_to_video:
+                reference_frames = comfy.utils.common_upscale(video[:motion_frame_count].movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
+                motion_frames = match_color_to_reference(motion_frames, reference_frames)
             motion_frames_latent = vae.encode(motion_frames[:, :, :, :3].contiguous())
             audio_start = max(0, int(audio_start))
             is_extend = True
