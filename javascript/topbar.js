@@ -561,6 +561,24 @@ const SIMPLEAI_GALLERY_BROWSER_PARAM_KEYS = [
     "__main_gallery_browser_request_ignored",
 ];
 
+function clearPostGenerationResultParamsForGenerationStart(params) {
+    if (!params || typeof params !== "object") return params;
+    params.__post_generation_compare_input_ok = false;
+    params.__post_generation_compare_visible = false;
+    params.__post_generation_compare_ready = false;
+    params.__post_generation_compare_cleared = true;
+    [
+        "__post_generation_compare_choice",
+        "__post_generation_image_url",
+        "__post_generation_has_output",
+        "__post_generation_gallery_output",
+        "__post_generation_video_output",
+    ].forEach((key) => {
+        try { delete params[key]; } catch (e) {}
+    });
+    return params;
+}
+
 function clearFinishedGalleryBrowserParamsForResultState(params, reason) {
     if (!params || typeof params !== "object") return params;
     const state = String(params.gallery_state || "");
@@ -1276,6 +1294,7 @@ function prepareSimpleAIGenerationStartSurface(reason, state) {
             SIMPLEAI_GALLERY_BROWSER_PARAM_KEYS.forEach((key) => {
                 try { delete params[key]; } catch (e) {}
             });
+            clearPostGenerationResultParamsForGenerationStart(params);
             params.gallery_state = "preview";
             params.gallery_preview_open = false;
             params.__skip_gallery_browser_refresh_once = true;

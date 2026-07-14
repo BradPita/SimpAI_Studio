@@ -9253,7 +9253,7 @@ with shared.gradio_root:
                 state_params["gallery_preview_open"] = False
                 state_params["__skip_gallery_browser_refresh_once"] = True
                 gallery_util.clear_main_gallery_browser_state(state_params)
-                gallery_util.clear_post_generation_compare_state(state_params)
+                gallery_util.clear_post_generation_result_state(state_params)
             return (
                 gr_update(visible=True),
                 gr_update(visible="hidden", value=None),
