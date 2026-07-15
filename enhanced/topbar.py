@@ -4088,7 +4088,7 @@ def get_allowed_ip_types(engine, task_method=None):
     if task_method in ['il_v_pre_aio', 'chenkin_noob_aio']:
         ip_list = ip_list[:3] + ip_list[-1:]
     if task_method == 'anima_aio':
-        ip_list = [modules.flags.cn_ip, modules.flags.cn_canny, modules.flags.cn_cpds]
+        ip_list = [modules.flags.cn_ip, modules.flags.cn_canny, modules.flags.cn_cpds, modules.flags.cn_pose]
     elif task_method in _AIO_STYLE_TRANSFER_TASK_METHODS and modules.flags.cn_ip not in ip_list:
         ip_list.insert(0, modules.flags.cn_ip)
     return ip_list

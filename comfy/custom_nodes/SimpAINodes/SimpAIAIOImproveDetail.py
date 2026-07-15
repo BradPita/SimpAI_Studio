@@ -7,6 +7,9 @@ from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
 from comfy_execution.graph_utils import GraphBuilder
 
 
+TILED_PROMPT_GUARD_LONG_EDGE = 6000
+
+
 def _mask_for_region(graph, image, region):
     mask = graph.node("SimpAIAIORegionMask", image=image, region=region).out(0)
     if region["erode_or_dilate"]:
@@ -32,6 +35,18 @@ def _has_prompt(text):
 
 def _engine_enabled(region):
     return str(region.get("engine", "")).strip().casefold() not in ("", "none", "disabled")
+
+
+def _tiled_guard_needs_quality_prompt(image, multiple):
+    height = int(image.shape[-3])
+    width = int(image.shape[-2])
+    return max(height, width) * float(multiple) > TILED_PROMPT_GUARD_LONG_EDGE
+
+
+def _enhance_uses_region_prompt(regions, enhance_uov):
+    if enhance_uov["prompt_type"] != "Last Filled Enhancement Prompts":
+        return False
+    return any(_has_prompt(region["prompt"]) or _has_prompt(region["negative_prompt"]) for region in regions)
 
 
 def _stack_same_shape(items, name):
@@ -207,16 +222,18 @@ class _SimpAIAIOImproveDetailBase:
 
     def check_lazy_status(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None):
         required = []
-        if float(image.detach().abs().max()) == 0.0 and fallback_image is None:
+        image_is_empty = float(image.detach().abs().max()) == 0.0
+        if image_is_empty and fallback_image is None:
             required.append("fallback_image")
 
-        regions_active = any(region["detection_prompt"] for region in (region_1, region_2, region_3))
+        regions = (region_1, region_2, region_3)
+        regions_active = any(region["detection_prompt"] for region in regions)
         method = enhance_uov["method"]
         if regions_active:
             required.extend(("model", "clip", "positive", "negative", "vae"))
         specialized_regions = any(
             region["detection_prompt"] and _engine_enabled(region)
-            for region in (region_1, region_2, region_3)
+            for region in regions
         )
         if specialized_regions and self.FAMILY == "flux":
             required.append("inpaint_model")
@@ -226,6 +243,12 @@ class _SimpAIAIOImproveDetailBase:
             required.append("upscale_model")
         elif method != "disabled":
             required.extend(("model", "positive", "negative", "vae", "upscale_model"))
+            source_image = fallback_image if image_is_empty and fallback_image is not None else image
+            if (
+                method in ("upscale (1.5x)", "upscale (2x)")
+                and _tiled_guard_needs_quality_prompt(source_image, enhance_uov["multiple"])
+            ) or _enhance_uses_region_prompt(regions, enhance_uov):
+                required.append("clip")
 
         values = {
             "model": model,

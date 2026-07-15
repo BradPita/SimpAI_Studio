@@ -43,6 +43,18 @@ SCENE_AUX_OUTPUT_COUNT = 11
 SCENE_PRIMARY_OUTPUT_COUNT = 29
 SCENE_SWITCH_OUTPUT_COUNT = SCENE_AUX_OUTPUT_COUNT + SCENE_PRIMARY_OUTPUT_COUNT
 
+
+def resolve_engine_class_display(template_engine, task_method):
+    if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image']:
+        return template_engine
+    if template_engine == 'Comfy':
+        return {
+            'sd15_aio': 'SD15',
+            'il_v_pre_aio': 'Illustrious',
+            'anima_aio': 'Anima',
+        }.get(task_method, 'SDXL')
+    return 'SDXL'
+
 get_layout_visible = lambda x,y:gr_update(visible=x not in y)
 get_layout_visible_inter = lambda x,y,z:gr_update(visible=x not in y, interactive=x not in z)
 get_layout_invert_visible_inter = lambda x,y,z:gr_update(value=x not in z, visible=x not in y, interactive=x not in z)
@@ -895,7 +907,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     if simpai_ui_trace_enabled():
         logger.info("[UI-TRACE] template_engine:%s", template_engine)
 
-    engine_class_display = template_engine if template_engine in ['Flux', 'Wan', 'Qwen', 'Z-image'] else 'SD15' if template_engine=='Comfy' and task_method=='sd15_aio' else 'Illustrious' if template_engine=='Comfy' and task_method=='il_v_pre_aio' else 'SDXL'
+    engine_class_display = resolve_engine_class_display(template_engine, task_method)
     preset_base_model = presetdata_dict.get('base_model') or presetdata_dict.get('Base Model') or presetdata_dict.get('default_model')
     preset_base_model = _resolve_previous_default_base_model(presetdata_dict, preset_base_model)
     preset_refiner_model = presetdata_dict.get('refiner_model') or presetdata_dict.get('Refiner Model') or presetdata_dict.get('default_refiner')

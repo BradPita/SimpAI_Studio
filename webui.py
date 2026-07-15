@@ -9672,7 +9672,7 @@ with shared.gradio_root:
             return [skip_component_update()] * 3
 
         def update_describe_output_tags(engine_class_display):
-            if engine_class_display in ['SDXL', 'SD15', 'Illustrious']:
+            if engine_class_display in ['SDXL', 'SD15', 'Illustrious', 'Anima']:
                 return gr_update(value=True)
             return gr_update(value=False)
 

@@ -354,11 +354,12 @@ class SimpAIAIOReferenceAnima:
 
     def expand(self, model, positive, negative, vae, reference):
         mode = int(reference.get("mode", 0))
-        if mode <= 0 or mode == 1 or mode in (4, 5):
+        if mode <= 0 or mode in (1, 4):
             return (model, positive, negative)
         graph = GraphBuilder()
         image = _prepare_control_image(graph, reference["image"], mode, bool(reference.get("skip_preprocessor", False)))
-        patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="anima-lllite-any-test-like-v2.safetensors",
+        lllite_name = "anima-lllite-pose-1.safetensors" if mode == 5 else "anima-lllite-any-test-like-v2.safetensors"
+        patched = graph.node("AnimaLLLiteApply", model=model, lllite_name=lllite_name,
                              image=image, strength=float(reference.get("weight", 0.7)), start_percent=0.0,
                              end_percent=float(reference.get("stop_percent", 0.6)), preserve_wrapper=True)
         return {"result": (patched.out(0), positive, negative), "expand": graph.finalize()}

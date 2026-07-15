@@ -848,7 +848,7 @@
         0
       ],
       "mode": 2,
-      "engine": "None",
+      "engine": "anima_inpainting",
       "invert_mask": false,
       "mix_reference": false,
       "disable_initial_latent": false,

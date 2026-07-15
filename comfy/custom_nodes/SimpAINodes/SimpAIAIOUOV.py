@@ -63,6 +63,16 @@ def _quality_conditioning(graph, family, clip, guidance):
     return graph.node("CLIPTextEncode", clip=clip, text=text).out(0)
 
 
+def _tiled_target_long_edge(image, multiple):
+    height = int(image.shape[-3])
+    width = int(image.shape[-2])
+    return max(height, width) * float(multiple)
+
+
+def _tiled_guard_needs_quality_prompt(image, multiple):
+    return _tiled_target_long_edge(image, multiple) > TILED_PROMPT_GUARD_LONG_EDGE
+
+
 class _SimpAIAIOUOVBase:
     FAMILY = "base"
 
@@ -103,7 +113,9 @@ class _SimpAIAIOUOVBase:
         elif mode in (2, 3):
             required = ("model", "positive", "negative", "vae")
         else:
-            required = ("model", "clip", "positive", "negative", "vae", "upscale_model")
+            required = ["model", "positive", "negative", "vae", "upscale_model"]
+            if _tiled_guard_needs_quality_prompt(uov["image"], uov.get("multiple", 1.5)):
+                required.append("clip")
         values = {
             "model": model,
             "clip": clip,
@@ -115,6 +127,8 @@ class _SimpAIAIOUOVBase:
         return [name for name in required if values[name] is None]
 
     def _guard_tiled_positive(self, graph, image, clip, positive, multiple, cfg):
+        if not _tiled_guard_needs_quality_prompt(image, multiple):
+            return positive
         quality = _quality_conditioning(graph, self.FAMILY, clip, cfg)
         return graph.node(
             "SimpAIAIOTilePromptGuard",
@@ -219,7 +233,7 @@ class SimpAIAIOUOVAnima(_SimpAIAIOUOVBase):
             graph, uov["image"], clip, positive, float(uov.get("multiple", 1.5)), cfg
         )
         patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="animaTileRepair_v20.safetensors",
-                             image=uov["image"], strength=1.0, start_percent=0.0, end_percent=1.0, preserve_wrapper=True)
+                             image=uov["image"], strength=0.35, start_percent=0.0, end_percent=0.50, preserve_wrapper=True)
         tiled = graph.node("UltimateSDUpscale", image=uov["image"], model=patched.out(0), positive=positive,
                            negative=negative, vae=vae, upscale_model=upscale_model, upscale_by=float(uov.get("multiple", 1.5)),
                            seed=seed, steps=int(uov.get("tile_steps", steps)), cfg=cfg, sampler_name=sampler_name,

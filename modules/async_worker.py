@@ -2429,7 +2429,11 @@ def worker():
                         tiled_steps = async_task.params_backend['enhance_uov_tiled_steps']
                         tiled_width = async_task.params_backend['enhance_uov_tiled_width']
                         tiled_height = async_task.params_backend['enhance_uov_tiled_height']
-                        display_steps += tiled_steps * math.ceil(int(width*multiple)/tiled_width) * math.ceil(int(height*multiple)/tiled_height)
+                        if async_task.enhance_input_image is not None:
+                            source_height, source_width = async_task.enhance_input_image.shape[:2]
+                        else:
+                            source_width, source_height = width, height
+                        display_steps += tiled_steps * math.ceil(int(source_width*multiple)/tiled_width) * math.ceil(int(source_height*multiple)/tiled_height)
                     else:
                         display_steps += async_task.original_steps
                 if display_steps>0:

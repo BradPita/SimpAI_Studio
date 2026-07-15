@@ -58,6 +58,7 @@
     ],
     "default_aspect_ratio": "832*1216",
     "default_overwrite_step": 30,
+    "default_inpaint_engine": "anima_inpainting",
     "default_vae": "qwen_image_vae.safetensors",
     "embeddings_downloads": {},
     "lora_downloads": {},
@@ -67,6 +68,7 @@
         "vae,qwen_image_vae.safetensors,253806246,0,",
         "upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth",
         "controlnet,anima-lllite-any-test-like-v2.safetensors,16403008,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors",
+        "controlnet,anima-lllite-pose-1.safetensors,23310040,0,https://modelscope.cn/models/kohya-ss/Anima-LLLite/resolve/master/anima-lllite-pose-1.safetensors,https://huggingface.co/kohya-ss/Anima-LLLite/resolve/main/anima-lllite-pose-1.safetensors",
         "controlnet,anima-lllite-inpainting-v2.safetensors,65772872,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors",
         "controlnet,animaTileRepair_v20.safetensors,94037744,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/animaTileRepair_v20.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/animaTileRepair_v20.safetensors"
     ]

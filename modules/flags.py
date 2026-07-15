@@ -118,7 +118,8 @@ inpaint_engine_versions = {
     "nun_fp4_aio": ['Nun_fp4','None'],
     "wan_aio_cn": ['VACE'],
     "qwen_aio_cn": ['Qwen_Inpaint'],
-    "z_image_turbo_aio_cn": ['LanPaint']
+    "z_image_turbo_aio_cn": ['LanPaint'],
+    "anima_aio": ['anima_inpainting', 'None']
     }
 inpaint_engine_model_names = {
     "flux_aio_fp8": "flux1-fill-dev-OneReward_fp8.safetensors",

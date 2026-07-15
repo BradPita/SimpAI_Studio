@@ -252,6 +252,11 @@ class SimpAIAIOInpaintAnima(_SimpAIAIOInpaintBase):
 
     def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
                inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
+        if str(inpaint.get("engine", "")).strip() != "anima_inpainting":
+            return super().expand(
+                model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
+                inpaint_control_net, progress_node_id, use_differential_diffusion,
+            )
         graph = GraphBuilder()
         mask = _mask_from_config(graph, inpaint)
         patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="anima-lllite-inpainting-v2.safetensors",
