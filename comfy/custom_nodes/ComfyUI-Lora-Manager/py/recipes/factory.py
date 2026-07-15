@@ -6,23 +6,25 @@ from .parsers import (
     ComfyMetadataParser,
     MetaFormatParser,
     AutomaticMetadataParser,
-    CivitaiApiMetadataParser
+    CivitaiApiMetadataParser,
+    SuiImageParamsParser,
 )
 from .base import RecipeMetadataParser
 
 logger = logging.getLogger(__name__)
 
+
 class RecipeParserFactory:
     """Factory for creating recipe metadata parsers"""
-    
+
     @staticmethod
-    def create_parser(metadata) -> RecipeMetadataParser:
+    def create_parser(metadata) -> RecipeMetadataParser | None:
         """
         Create appropriate parser based on the metadata content
-        
+
         Args:
             metadata: The metadata from the image (dict or str)
-            
+
         Returns:
             Appropriate RecipeMetadataParser implementation
         """
@@ -34,17 +36,18 @@ class RecipeParserFactory:
             except Exception as e:
                 logger.debug(f"CivitaiApiMetadataParser check failed: {e}")
                 pass
-            
+
             # Convert dict to string for other parsers that expect string input
             try:
                 import json
+
                 metadata_str = json.dumps(metadata)
             except Exception as e:
                 logger.debug(f"Failed to convert dict to JSON string: {e}")
                 return None
         else:
             metadata_str = metadata
-        
+
         # Try ComfyMetadataParser which requires valid JSON
         try:
             if ComfyMetadataParser().is_metadata_matching(metadata_str):
@@ -52,7 +55,14 @@ class RecipeParserFactory:
         except Exception:
             # If JSON parsing fails, move on to other parsers
             pass
-        
+
+        # Try SuiImageParamsParser for SuiImage metadata format
+        try:
+            if SuiImageParamsParser().is_metadata_matching(metadata_str):
+                return SuiImageParamsParser()
+        except Exception:
+            pass
+
         # Check other parsers that expect string input
         if RecipeFormatParser().is_metadata_matching(metadata_str):
             return RecipeFormatParser()

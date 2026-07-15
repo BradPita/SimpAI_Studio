@@ -456,8 +456,8 @@
     font-weight: 500;
 }
 
-/* 输入框容器样式 */
-.flex-1 {
+/* 输入框容器样式 - 加上 pa- 前缀防止污染全局 flex-1 */
+.pa-flex-1 {
     flex: 1;
     width: 100%;
 }
@@ -505,21 +505,25 @@
 }
 
 /* ---危险按钮样式--- */
-/* 用于删除等危险操作的按钮 */
-.p-button-danger {
+/* 用于删除等危险操作的按钮 - 限定在插件作用域内 */
+.pa-settings-root .p-button-danger,
+.prompt-assistant-container .p-button-danger {
     background: var(--p-button-danger-background);
     border-color: var(--p-button-danger-border-color);
     color: var(--p-button-danger-color);
 }
 
-.p-button-danger:hover {
+.pa-settings-root .p-button-danger:hover,
+.prompt-assistant-container .p-button-danger:hover {
     background: var(--p-button-danger-hover-background);
     border-color: var(--p-button-danger-hover-border-color);
     color: var(--p-button-danger-color);
 }
 
-.p-button-danger:active,
-.p-button-danger:focus {
+.pa-settings-root .p-button-danger:active,
+.pa-settings-root .p-button-danger:focus,
+.prompt-assistant-container .p-button-danger:active,
+.prompt-assistant-container .p-button-danger:focus {
     outline: none;
     box-shadow: 0 0 0 0.2rem var(--p-button-danger-active-border-color);
 }
@@ -596,8 +600,9 @@
     pointer-events: auto;
 }
 
-/* 隐藏辅助可访问性选择器（在未加载PrimeVue时也生效） */
-.p-hidden-accessible {
+/* 隐藏辅助可访问性选择器 - 限定在插件作用域内 */
+.pa-settings-root .p-hidden-accessible,
+.prompt-assistant-container .p-hidden-accessible {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;
@@ -685,7 +690,7 @@
 
 /* 水平表单布局中的宽度适配 */
 .settings-form-group.horizontal .pa-dropdown,
-.settings-form-group.horizontal .p-inputtext {
+.pa-settings-root .settings-form-group.horizontal .p-inputtext {
     width: 100%;
     min-width: 0;
 }
@@ -1173,7 +1178,7 @@
     display: inline-flex;
     align-items: center;
     padding: 6px 10px;
-    background: var(--p-listbox-option-selected-background);
+    background: var(--interface-menu-component-surface-selected);
     color: var(--p-listbox-option-selected-color);
     border-radius: 10px;
     font-size: 13px;
@@ -1292,7 +1297,7 @@
 }
 
 /* ---添加模型对话框--- */
-.model-listbox {
+.pa-settings-root .model-listbox {
     position: fixed;
     width: 320px;
     max-height: 400px;
@@ -2125,6 +2130,11 @@
     position: relative;
 }
 
+/* 移除表头单元格的竖向分割线 */
+.prompt-list-header .prompt-list-cell {
+    border-right: none;
+}
+
 .prompt-scroll-list {
     flex: 1;
     overflow-y: auto;
@@ -2813,6 +2823,34 @@ body.column-resizing * {
 .pa-context-menu-item-label {
     font-size: 14px;
     white-space: nowrap;
+}
+
+/* ---二级子菜单样式--- */
+/* 有子菜单的菜单项 */
+.pa-context-menu-item-has-submenu {
+    position: relative;
+}
+
+.pa-context-menu-item-has-submenu:hover {
+    background-color: var(--p-form-field-filled-hover-background);
+}
+
+/* 子菜单箭头图标 */
+.pa-context-menu-submenu-icon {
+    margin-left: auto;
+    padding-left: 12px;
+    font-size: 10px;
+    color: var(--p-button-text-secondary-color);
+    opacity: 0.7;
+}
+
+.pa-context-menu-item-has-submenu:hover .pa-context-menu-submenu-icon {
+    opacity: 1;
+}
+
+/* 子菜单面板 */
+.pa-context-submenu {
+    min-width: 10rem;
 }
 
 /* ---分隔符--- */
@@ -3530,4 +3568,14 @@ th .pa-trans-text {
 
 .pa-select-button-large .pa-select-button-icon {
     font-size: 1rem;
+}
+
+/* ===================================================
+   10. 通用输入框样式
+   =================================================== */
+
+/* 禁用状态的输入框 */
+.pa-input-disabled {
+    cursor: not-allowed !important;
+    opacity: 0.5 !important;
 }

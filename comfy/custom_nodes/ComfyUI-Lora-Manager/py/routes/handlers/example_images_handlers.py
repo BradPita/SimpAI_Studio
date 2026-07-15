@@ -1,10 +1,13 @@
 """Handler set for example image routes."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
 from aiohttp import web
+
+logger = logging.getLogger(__name__)
 
 from ...services.use_cases.example_images import (
     DownloadExampleImagesConfigurationError,
@@ -92,6 +95,19 @@ class ExampleImagesDownloadHandler:
         except ExampleImagesDownloadError as exc:
             return web.json_response({'success': False, 'error': str(exc)}, status=500)
 
+    async def check_example_images_needed(self, request: web.Request) -> web.StreamResponse:
+        """Lightweight check to see if any models need example images downloaded."""
+        try:
+            payload = await request.json()
+            model_types = payload.get('model_types', ['lora', 'checkpoint', 'embedding'])
+            result = await self._download_manager.check_pending_models(model_types)
+            return web.json_response(result)
+        except Exception as exc:
+            return web.json_response(
+                {'success': False, 'error': str(exc)},
+                status=500
+            )
+
 
 class ExampleImagesManagementHandler:
     """HTTP adapters for import/delete endpoints."""
@@ -109,9 +125,15 @@ class ExampleImagesManagementHandler:
             return web.json_response({'success': False, 'error': str(exc)}, status=400)
         except ExampleImagesImportError as exc:
             return web.json_response({'success': False, 'error': str(exc)}, status=500)
+        except Exception as exc:
+            logger.exception("Unexpected error importing example images")
+            return web.json_response({'success': False, 'error': str(exc)}, status=500)
 
     async def delete_example_image(self, request: web.Request) -> web.StreamResponse:
         return await self._processor.delete_custom_image(request)
+
+    async def set_example_image_nsfw_level(self, request: web.Request) -> web.StreamResponse:
+        return await self._processor.set_example_image_nsfw_level(request)
 
     async def cleanup_example_image_folders(self, request: web.Request) -> web.StreamResponse:
         result = await self._cleanup_service.cleanup_example_image_folders()
@@ -158,8 +180,10 @@ class ExampleImagesHandlerSet:
             "resume_example_images": self.download.resume_example_images,
             "stop_example_images": self.download.stop_example_images,
             "force_download_example_images": self.download.force_download_example_images,
+            "check_example_images_needed": self.download.check_example_images_needed,
             "import_example_images": self.management.import_example_images,
             "delete_example_image": self.management.delete_example_image,
+            "set_example_image_nsfw_level": self.management.set_example_image_nsfw_level,
             "cleanup_example_image_folders": self.management.cleanup_example_image_folders,
             "open_example_images_folder": self.files.open_example_images_folder,
             "get_example_image_files": self.files.get_example_image_files,

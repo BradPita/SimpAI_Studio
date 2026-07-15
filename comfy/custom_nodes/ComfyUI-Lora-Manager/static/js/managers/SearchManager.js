@@ -27,6 +27,9 @@ export class SearchManager {
       // Create clear button for search input
       this.createClearButton();
       
+      // Keyboard shortcut cue element (static, exists in the HTML)
+      this.searchShortcutCue = document.getElementById('searchShortcutCue');
+      
       this.initEventListeners();
       this.loadSearchPreferences();
       this.setupKeyboardShortcuts();
@@ -163,8 +166,13 @@ export class SearchManager {
     }
     
     updateClearButtonVisibility() {
+      const hasText = this.searchInput.value.length > 0;
       if (this.clearButton) {
-        this.clearButton.classList.toggle('visible', this.searchInput.value.length > 0);
+        this.clearButton.classList.toggle('visible', hasText);
+      }
+      // Toggle the keyboard shortcut cue: visible only when search is empty
+      if (this.searchShortcutCue) {
+        this.searchShortcutCue.classList.toggle('hidden', hasText);
       }
     }
     
@@ -289,6 +297,7 @@ export class SearchManager {
             pageState.searchOptions.tags = options.tags || false;
             pageState.searchOptions.loraName = options.loraName || false;
             pageState.searchOptions.loraModel = options.loraModel || false;
+            pageState.searchOptions.prompt = options.prompt || false;
         } else if (this.currentPage === 'loras' || this.currentPage === 'checkpoints' || this.currentPage === 'embeddings') {
             // Update only the relevant fields in searchOptions instead of replacing the whole object
             pageState.searchOptions.filename = options.filename || false;
@@ -300,7 +309,7 @@ export class SearchManager {
       
       // Call the appropriate manager's load method based on page type
       if (this.currentPage === 'recipes' && window.recipeManager) {
-        window.recipeManager.loadRecipes(true); // true to reset pagination
+        window.recipeManager.loadRecipes(true);
       } else if (this.currentPage === 'loras' || this.currentPage === 'embeddings' || this.currentPage === 'checkpoints') {
         // For models page, reset the page and reload
         getModelApiClient().loadMoreWithVirtualScroll(true, false);

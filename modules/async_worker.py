@@ -54,6 +54,12 @@ def _normalize_prompt_text(text):
     return str(text).replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _resolve_inpaint_cfg_scale(task_class, task_method, cfg_scale):
+    if task_class == 'Flux' and not str(task_method).startswith('flux2_'):
+        return 30
+    return cfg_scale
+
+
 def _parse_resolution_pair(value):
     if value is None:
         return None
@@ -2365,8 +2371,9 @@ def worker():
                         async_task.params_backend['i2i_inpaint_is_invert_mask'] = True
                     if 'cn' in goals:
                         async_task.params_backend['i2i_inpaint_is_mix_ip'] = True
-                    if async_task.task_class == 'Flux':
-                        async_task.cfg_scale = 30
+                    async_task.cfg_scale = _resolve_inpaint_cfg_scale(
+                        async_task.task_class, async_task.task_method, async_task.cfg_scale
+                    )
                     if len(async_task.outpaint_selections)>0:
                         async_task.params_backend['i2i_inpaint_fn'] = 1  # out
                     else:

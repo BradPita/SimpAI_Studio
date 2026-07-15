@@ -39,8 +39,39 @@ class MetadataProcessor:
                     if node_id in metadata.get(SAMPLING, {}) and metadata[SAMPLING][node_id].get(IS_SAMPLER, False):
                         candidate_samplers[node_id] = metadata[SAMPLING][node_id]
                 
-                # If we found candidate samplers, apply primary sampler logic to these candidates only
-                if candidate_samplers:
+                    # If we found candidate samplers, apply primary sampler logic to these candidates only
+                    
+                    # PRE-PROCESS: Ensure all candidate samplers have their parameters populated
+                    # This is especially important for SamplerCustomAdvanced which needs tracing
+                    prompt = metadata.get("current_prompt")
+                    for node_id in candidate_samplers:
+                        # If a sampler is missing common parameters like steps or denoise, 
+                        # try to populate them using tracing before ranking
+                        sampler_info = candidate_samplers[node_id]
+                        params = sampler_info.get("parameters", {})
+                        
+                        if prompt and (params.get("steps") is None or params.get("denoise") is None):
+                            # Create a temporary params dict to use the handler
+                            temp_params = {
+                                "steps": params.get("steps"),
+                                "denoise": params.get("denoise"),
+                                "sampler": params.get("sampler_name"),
+                                "scheduler": params.get("scheduler")
+                            }
+                            
+                            # Check if it's SamplerCustomAdvanced
+                            if prompt.original_prompt and node_id in prompt.original_prompt:
+                                if prompt.original_prompt[node_id].get("class_type") == "SamplerCustomAdvanced":
+                                    MetadataProcessor.handle_custom_advanced_sampler(metadata, prompt, node_id, temp_params)
+                                    
+                                    # Update the actual parameters with found values
+                                    params["steps"] = temp_params.get("steps")
+                                    params["denoise"] = temp_params.get("denoise")
+                                    if temp_params.get("sampler"):
+                                        params["sampler_name"] = temp_params.get("sampler")
+                                    if temp_params.get("scheduler"):
+                                        params["scheduler"] = temp_params.get("scheduler")
+
                     # Collect potential primary samplers based on different criteria
                     custom_advanced_samplers = []
                     advanced_add_noise_samplers = []
@@ -49,7 +80,6 @@ class MetadataProcessor:
                     high_denoise_id = None
                     
                     # First, check for SamplerCustomAdvanced among candidates
-                    prompt = metadata.get("current_prompt")
                     if prompt and prompt.original_prompt:
                         for node_id in candidate_samplers:
                             node_info = prompt.original_prompt.get(node_id, {})
@@ -77,15 +107,16 @@ class MetadataProcessor:
                     # Combine all potential primary samplers
                     potential_samplers = custom_advanced_samplers + advanced_add_noise_samplers + high_denoise_samplers
                     
-                    # Find the most recent potential primary sampler (closest to downstream node)
-                    for i in range(downstream_index - 1, -1, -1):
+                    # Find the first potential primary sampler (prefer base sampler over refine)
+                    # Use forward search to prioritize the first one in execution order
+                    for i in range(downstream_index):
                         node_id = execution_order[i]
                         if node_id in potential_samplers:
                             return node_id, candidate_samplers[node_id]
                     
-                    # If no potential sampler found from our criteria, return the most recent sampler
+                    # If no potential sampler found from our criteria, return the first sampler
                     if candidate_samplers:
-                        for i in range(downstream_index - 1, -1, -1):
+                        for i in range(downstream_index):
                             node_id = execution_order[i]
                             if node_id in candidate_samplers:
                                 return node_id, candidate_samplers[node_id]
@@ -176,8 +207,11 @@ class MetadataProcessor:
                 found_node_id = input_value[0]  # Connected node_id
                 
                 # If we're looking for a specific node class
-                if target_class and prompt.original_prompt[found_node_id].get("class_type") == target_class:
-                    return found_node_id
+                if target_class:
+                    if found_node_id not in prompt.original_prompt:
+                        return None
+                    if prompt.original_prompt[found_node_id].get("class_type") == target_class:
+                        return found_node_id
                 
                 # If we're not looking for a specific class, update the last valid node
                 if not target_class:
@@ -185,11 +219,19 @@ class MetadataProcessor:
                 
                 # Continue tracing through intermediate nodes
                 current_node_id = found_node_id
-                # For most conditioning nodes, the input we want to follow is named "conditioning"
-                if "conditioning" in prompt.original_prompt[current_node_id].get("inputs", {}):
+                
+                # Check if current source node exists
+                if current_node_id not in prompt.original_prompt:
+                    return found_node_id if not target_class else None
+                    
+                # Determine which input to follow next on the source node
+                source_node_inputs = prompt.original_prompt[current_node_id].get("inputs", {})
+                if input_name in source_node_inputs:
+                    current_input = input_name
+                elif "conditioning" in source_node_inputs:
                     current_input = "conditioning"
                 else:
-                    # If there's no "conditioning" input, return the current node
+                    # If there's no suitable input to follow, return the current node
                     # if we're not looking for a specific target_class
                     return found_node_id if not target_class else None
             else:
@@ -202,12 +244,89 @@ class MetadataProcessor:
         return last_valid_node if not target_class else None
     
     @staticmethod
-    def find_primary_checkpoint(metadata):
-        """Find the primary checkpoint model in the workflow"""
-        if not metadata.get(MODELS):
+    def trace_model_path(metadata, prompt, start_node_id):
+        """
+        Trace the model connection path upstream to find the checkpoint
+        """
+        if not prompt or not prompt.original_prompt:
             return None
             
-        # In most workflows, there's only one checkpoint, so we can just take the first one
+        current_node_id = start_node_id
+        depth = 0
+        max_depth = 50
+        
+        while depth < max_depth:
+            # Check if current node is a registered checkpoint in our metadata
+            # This handles cached nodes correctly because metadata contains info for all nodes in the graph
+            if current_node_id in metadata.get(MODELS, {}):
+                if metadata[MODELS][current_node_id].get("type") == "checkpoint":
+                    return current_node_id
+            
+            if current_node_id not in prompt.original_prompt:
+                return None
+                
+            node = prompt.original_prompt[current_node_id]
+            inputs = node.get("inputs", {})
+            class_type = node.get("class_type", "")
+            
+            # Determine which input to follow next
+            next_input_name = "model"
+            
+            # Special handling for initial node
+            if depth == 0:
+                if class_type == "SamplerCustomAdvanced":
+                    next_input_name = "guider"
+            
+            # If the specific input doesn't exist, try generic 'model' 
+            if next_input_name not in inputs:
+                if "model" in inputs:
+                    next_input_name = "model"
+                elif "basic_pipe" in inputs:
+                    # Handle pipe nodes like FromBasicPipe by following the pipeline
+                    next_input_name = "basic_pipe"
+                else:
+                    # Dead end - no model input to follow
+                    return None
+            
+            # Get connected node
+            input_val = inputs[next_input_name]
+            if isinstance(input_val, list) and len(input_val) > 0:
+                current_node_id = input_val[0]
+            else:
+                return None
+                
+            depth += 1
+            
+        return None
+
+    @staticmethod
+    def find_primary_checkpoint(metadata, downstream_id=None, primary_sampler_id=None):
+        """
+        Find the primary checkpoint model in the workflow
+        
+        Parameters:
+        - metadata: The workflow metadata
+        - downstream_id: Optional ID of a downstream node to help identify the specific primary sampler
+        - primary_sampler_id: Optional ID of the primary sampler if already known
+        """
+        if not metadata.get(MODELS):
+            return None
+        
+        # Method 1: Topology-based tracing (More accurate for complex workflows)
+        # First, find the primary sampler if not provided
+        if not primary_sampler_id:
+            primary_sampler_id, _ = MetadataProcessor.find_primary_sampler(metadata, downstream_id)
+        
+        if primary_sampler_id:
+            prompt = metadata.get("current_prompt")
+            if prompt:
+                # Trace back from the sampler to find the checkpoint
+                checkpoint_id = MetadataProcessor.trace_model_path(metadata, prompt, primary_sampler_id)
+                if checkpoint_id and checkpoint_id in metadata.get(MODELS, {}):
+                    return metadata[MODELS][checkpoint_id].get("name")
+            
+        # Method 2: Fallback to the first available checkpoint (Original behavior)
+        # In most simple workflows, there's only one checkpoint, so we can just take the first one
         for node_id, model_info in metadata.get(MODELS, {}).items():
             if model_info.get("type") == "checkpoint":
                 return model_info.get("name")
@@ -233,50 +352,101 @@ class MetadataProcessor:
         
         # Check if we have stored conditioning objects for this sampler
         if sampler_id in metadata.get(PROMPTS, {}) and (
-            "pos_conditioning" in metadata[PROMPTS][sampler_id] or 
-            "neg_conditioning" in metadata[PROMPTS][sampler_id]):
-            
+            "pos_conditioning" in metadata[PROMPTS][sampler_id] or
+            "neg_conditioning" in metadata[PROMPTS][sampler_id]
+        ):
             pos_conditioning = metadata[PROMPTS][sampler_id].get("pos_conditioning")
             neg_conditioning = metadata[PROMPTS][sampler_id].get("neg_conditioning")
-            
-            # Helper function to recursively find prompt text for a conditioning object
-            def find_prompt_text_for_conditioning(conditioning_obj, is_positive=True):
+
+            def extend_unique(target, values):
+                for value in values:
+                    if value and value not in target:
+                        target.append(value)
+
+            # Helper function to recursively find prompt texts for a conditioning object.
+            # Transform nodes can map one output conditioning to multiple source conditionings.
+            def find_prompt_texts_for_conditioning(
+                conditioning_obj, is_positive=True, visited=None
+            ):
                 if conditioning_obj is None:
-                    return ""
-                    
+                    return []
+
+                if visited is None:
+                    visited = set()
+
+                conditioning_id = id(conditioning_obj)
+                if conditioning_id in visited:
+                    return []
+                visited.add(conditioning_id)
+
+                prompt_texts = []
+
                 # Try to match conditioning objects with those stored by extractors
                 for prompt_node_id, prompt_data in metadata[PROMPTS].items():
-                    # For nodes with single conditioning output
-                    if "conditioning" in prompt_data:
-                        if id(prompt_data["conditioning"]) == id(conditioning_obj):
-                            return prompt_data.get("text", "")
-                    
-                    # For nodes with separate pos_conditioning and neg_conditioning outputs (like TSC_EfficientLoader)
-                    if is_positive and "positive_encoded" in prompt_data:
-                        if id(prompt_data["positive_encoded"]) == id(conditioning_obj):
-                            if "positive_text" in prompt_data:
-                                return prompt_data["positive_text"]
-                            else:
-                                orig_conditioning = prompt_data.get("orig_pos_cond", None)
-                                if orig_conditioning is not None:
-                                    # Recursively find the prompt text for the original conditioning
-                                    return find_prompt_text_for_conditioning(orig_conditioning, is_positive=True)
-                    
-                    if not is_positive and "negative_encoded" in prompt_data:
-                        if id(prompt_data["negative_encoded"]) == id(conditioning_obj):
-                            if "negative_text" in prompt_data:
-                                return prompt_data["negative_text"]
-                            else:
-                                orig_conditioning = prompt_data.get("orig_neg_cond", None)
-                                if orig_conditioning is not None:
-                                    # Recursively find the prompt text for the original conditioning
-                                    return find_prompt_text_for_conditioning(orig_conditioning, is_positive=False)
-                
-                return ""
-            
+                    if not isinstance(prompt_data, dict):
+                        continue
+
+                    # For CLIP text nodes with a single conditioning output.
+                    if id(prompt_data.get("conditioning")) == conditioning_id:
+                        text = prompt_data.get("text", "")
+                        if text:
+                            extend_unique(prompt_texts, [text])
+
+                    # Generic provenance for passthrough/transform/combine nodes.
+                    for source in prompt_data.get("conditioning_sources", []):
+                        if id(source.get("output")) != conditioning_id:
+                            continue
+                        for input_conditioning in source.get("inputs", []):
+                            extend_unique(
+                                prompt_texts,
+                                find_prompt_texts_for_conditioning(
+                                    input_conditioning, is_positive, visited
+                                ),
+                            )
+
+                    # For nodes with separate pos_conditioning and neg_conditioning outputs
+                    # like TSC_EfficientLoader and existing ControlNet-style metadata.
+                    if (
+                        is_positive
+                        and id(prompt_data.get("positive_encoded")) == conditioning_id
+                    ):
+                        if prompt_data.get("positive_text"):
+                            extend_unique(prompt_texts, [prompt_data["positive_text"]])
+                        else:
+                            extend_unique(
+                                prompt_texts,
+                                find_prompt_texts_for_conditioning(
+                                    prompt_data.get("orig_pos_cond"),
+                                    is_positive=True,
+                                    visited=visited,
+                                ),
+                            )
+
+                    if (
+                        not is_positive
+                        and id(prompt_data.get("negative_encoded")) == conditioning_id
+                    ):
+                        if prompt_data.get("negative_text"):
+                            extend_unique(prompt_texts, [prompt_data["negative_text"]])
+                        else:
+                            extend_unique(
+                                prompt_texts,
+                                find_prompt_texts_for_conditioning(
+                                    prompt_data.get("orig_neg_cond"),
+                                    is_positive=False,
+                                    visited=visited,
+                                ),
+                            )
+
+                return prompt_texts
+
             # Find prompt texts using the helper function
-            result["prompt"] = find_prompt_text_for_conditioning(pos_conditioning, is_positive=True)
-            result["negative_prompt"] = find_prompt_text_for_conditioning(neg_conditioning, is_positive=False)
+            result["prompt"] = ", ".join(
+                find_prompt_texts_for_conditioning(pos_conditioning, is_positive=True)
+            )
+            result["negative_prompt"] = ", ".join(
+                find_prompt_texts_for_conditioning(neg_conditioning, is_positive=False)
+            )
             
         return result
     
@@ -311,7 +481,8 @@ class MetadataProcessor:
         primary_sampler_id, primary_sampler = MetadataProcessor.find_primary_sampler(metadata, id)
         
         # Directly get checkpoint from metadata instead of tracing
-        checkpoint = MetadataProcessor.find_primary_checkpoint(metadata)
+        # Pass primary_sampler_id to avoid redundant calculation
+        checkpoint = MetadataProcessor.find_primary_checkpoint(metadata, id, primary_sampler_id)
         if checkpoint:
             params["checkpoint"] = checkpoint
         
@@ -389,8 +560,14 @@ class MetadataProcessor:
         
         params["loras"] = " ".join(lora_parts)
         
-        # Set default clip_skip value
-        params["clip_skip"] = "1"  # Common default
+        # Extract clip_skip from any SAMPLING node that provides it
+        for sampler_info in metadata.get(SAMPLING, {}).values():
+            clip_skip = sampler_info.get("parameters", {}).get("clip_skip")
+            if clip_skip is not None:
+                params["clip_skip"] = clip_skip
+                break
+        if params["clip_skip"] is None:
+            params["clip_skip"] = "1"
         
         return params
     
@@ -445,6 +622,7 @@ class MetadataProcessor:
                 scheduler_params = metadata[SAMPLING][scheduler_node_id].get("parameters", {})
                 params["steps"] = scheduler_params.get("steps")
                 params["scheduler"] = scheduler_params.get("scheduler")
+                params["denoise"] = scheduler_params.get("denoise")
         
         # 2. Trace sampler input to find KSamplerSelect (only if sampler input exists)
         if "sampler" in sampler_inputs:
@@ -474,6 +652,15 @@ class MetadataProcessor:
                     if negative_node_id and negative_node_id in metadata.get(PROMPTS, {}):
                         params["negative_prompt"] = metadata[PROMPTS][negative_node_id].get("text", "")
                 else:
-                    positive_node_id = MetadataProcessor.trace_node_input(prompt, guider_node_id, "conditioning", max_depth=10)
+                    # Generic guider nodes often expose separate positive/negative inputs.
+                    positive_node_id = MetadataProcessor.trace_node_input(prompt, guider_node_id, "positive", max_depth=10)
+                    if not positive_node_id:
+                        positive_node_id = MetadataProcessor.trace_node_input(prompt, guider_node_id, "conditioning", max_depth=10)
                     if positive_node_id and positive_node_id in metadata.get(PROMPTS, {}):
                         params["prompt"] = metadata[PROMPTS][positive_node_id].get("text", "")
+
+                    negative_node_id = MetadataProcessor.trace_node_input(prompt, guider_node_id, "negative", max_depth=10)
+                    if not negative_node_id:
+                        negative_node_id = MetadataProcessor.trace_node_input(prompt, guider_node_id, "conditioning", max_depth=10)
+                    if negative_node_id and negative_node_id in metadata.get(PROMPTS, {}):
+                        params["negative_prompt"] = metadata[PROMPTS][negative_node_id].get("text", "")

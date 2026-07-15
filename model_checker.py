@@ -2959,6 +2959,7 @@ MANUAL_DOWNLOAD_LIST = [
 ]
 
 OBSOLETE_MODELS = [
+    'flux-2-klein-9b-fp8.safetensors',
     'Flux2-Klein-9B-True-v2-fp8mixed.safetensors',
     'krea2_turbo_fp8_scaled.safetensors',
     'ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors',

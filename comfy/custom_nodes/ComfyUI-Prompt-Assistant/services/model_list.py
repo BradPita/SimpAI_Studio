@@ -14,22 +14,35 @@ except ImportError:
 
 # --- 智谱AI预定义模型列表 ---
 ZHIPU_MODELS = [
-    "glm-4.5-flash",
-    "glm-4-flash-250414",
-    "glm-4-flash",
-    "glm-z1-flash",
-    "glm-4.6v-flash",
-    "glm-4v-flash",
+    "glm-5.1",
+    "glm-5",
+    "glm-5-turbo",
+    "glm-5v-turbo",
+    "glm-4.7",
+    "glm-4.7-flash",
+    "glm-4.7-flashx",
     "glm-4.6",
     "glm-4.6v",
-    "glm-4.5", 
-    "glm-4.5v", 
+    "glm-4.6v-flash",
+    "glm-4.5",
+    "glm-4.5-flash",
+    "glm-4.5-air",
     "glm-4.5-airx",
-    "glm-4-air-250414",
+    "glm-4.5v",
     "glm-4-plus",
-    "glm-4.5v",   
-    "glm-4.1v-thinking-flash",
+    "glm-4-flash",
+    "glm-4-flash-250414",
+    "glm-4-air",
+    "glm-4-air-250414",
+    "glm-z1-flash",
+    "glm-4v-plus",
+    "glm-4v-flash",
     "glm-4v",
+    "glm-ocr",
+    "glm-4-long",
+    "glm-4-longwriter",
+    "glm-zero-preview",
+    "glm-4.1v-thinking-flash"
 ]
 
 def get_models_from_service(base_url: str, api_key: str, service_type: str) -> Dict:
@@ -165,7 +178,10 @@ def _fetch_ollama_models(base_url: str) -> Dict:
             'User-Agent': f'comfyui-prompt-assistant/1.0 ({platform.machine()} {platform.system().lower()}) Python/{platform.python_version()}'
         }
         
-        response = httpx.get(url, headers=headers, timeout=10.0)
+        # 创建禁用代理的客户端，避免系统代理干扰localhost请求
+        # 这是502错误的常见原因：系统代理无法正确转发localhost请求
+        with httpx.Client(proxy=None, trust_env=False) as client:
+            response = client.get(url, headers=headers, timeout=10.0)
         
         if response.status_code == 404:
             return {
@@ -177,6 +193,11 @@ def _fetch_ollama_models(base_url: str) -> Dict:
             return {
                 "success": False,
                 "error": f"Ollama返回400错误。详情: {error_detail}"
+            }
+        elif response.status_code == 502:
+            return {
+                "success": False,
+                "error": f"Ollama返回错误 (HTTP 502): 网关错误，请检查Ollama服务是否正常运行"
             }
         elif response.status_code != 200:
             return {

@@ -1283,16 +1283,6 @@
             "description": "A streamlined ComfyUI extension that adds an AI-powered chat interface to the sidebar for converting complex briefs/specs into generation-ready prompts. (Description by CC)\nNOTE: The files in the repo are not organized."
         },
         {
-            "author": "ComfyuiGY",
-            "title": "Comfyui-Memory-Clear",
-            "reference": "https://github.com/ComfyuiGY/Comfyui-Memory-Clear",
-            "files": [
-                "https://github.com/ComfyuiGY/Comfyui-Memory-Clear"
-            ],
-            "install_type": "git-clone",
-            "description": "ComfyUI node for clearing memory. (Description by CC)"
-        },
-        {
             "author": "lying1324a-glitch",
             "title": "comfyuiautofirelaod",
             "reference": "https://github.com/lying1324a-glitch/comfyuiautofirelaod",
@@ -8160,16 +8150,6 @@
             "description": "This extension integrates [a/Hi3DGen](https://github.com/Stable-X/Hi3DGen) into ComfyUI, allowing user to generate high-fidelity 3D geometry generation from Images.[w/If the *sageattention* package is installed, this nodepack causes problems.]"
         },
         {
-            "author": "stiffy-committee",
-            "title": "comfyui-stiffy-nodes",
-            "reference": "https://github.com/V-woodpecker-V/comfyui-stiffy-nodes",
-            "files": [
-                "https://github.com/V-woodpecker-V/comfyui-stiffy-nodes"
-            ],
-            "install_type": "git-clone",
-            "description": "NODES: StiffyPrompter, StiffyPersistentPrompter, StiffyDecoder, StiffyDebugger, ..."
-        },
-        {
             "author": "chetusangolgi",
             "title": "Comfyui-supabase",
             "reference": "https://github.com/chetusangolgi/Comfyui-supabase",
@@ -9091,16 +9071,6 @@
             ],
             "install_type": "git-clone",
             "description": "NODES: RK Excel File State Looper, RK Accumulate Text, RK Advanced Script Finder, RK CSV File State Looper, RK Read Excel Row, RK Sequential Image Viewer, RK Concatenate Text, RK Write Text, RK Save Image, RK Seed Loop"
-        },
-        {
-            "author": "Kayarte",
-            "title": "Time Series Nodes for ComfyUI [Experimental]",
-            "reference": "https://github.com/Kayarte/Time-Series-Nodes-for-ComfyUI",
-            "files": [
-                "https://github.com/Kayarte/Time-Series-Nodes-for-ComfyUI"
-            ],
-            "install_type": "git-clone",
-            "description": "Basic nodes for time series analysis in ComfyUI. Currently in early development."
         },
         {
             "author": "comfyuiblog",
@@ -11617,17 +11587,6 @@
             ],
             "install_type": "git-clone",
             "description": "Nodes:PromptLoader, BaseModelLoader, InstantStyleLoader, InstantStyleGenerationNode"
-        },
-        {
-            "author": "jp0215",
-            "title": "comfyUI_padding-resize_node",
-            "reference": "https://github.com/jp0215/comfyUI_padding-resize_node",
-            "files": [
-                "https://raw.githubusercontent.com/jp0215/comfyUI_padding-resize_node/main/PaddingNode.py",
-                "https://raw.githubusercontent.com/jp0215/comfyUI_padding-resize_node/main/ResizeNode.py"
-            ],
-            "install_type": "copy",
-            "description": "Padding image to 8x: input image and mask, if the side length is not an integer multiple of 8, expand the side length to the smallest multiple of 8 greater than the original side length. Output padding image and mask. Resize to the origin: input the generated image and the original image, crop the generated image to the size of the original image, output the cropped image."
         },
         {
             "author": "Quasimondo",

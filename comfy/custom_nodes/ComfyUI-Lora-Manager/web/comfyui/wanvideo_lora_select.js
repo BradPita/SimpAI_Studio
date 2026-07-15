@@ -4,10 +4,12 @@ import {
   updateConnectedTriggerWords,
   chainCallback,
   mergeLoras,
-  setupInputWidgetWithAutocomplete,
+  getWidgetByName,
+  getWidgetSerializedValue,
 } from "./utils.js";
 import { addLorasWidget } from "./loras_widget.js";
 import { applyLoraValuesToText, debounce } from "./lora_syntax_utils.js";
+import { updateConnectedLoraInfoNodes } from "./lora_info.js";
 
 app.registerExtension({
   name: "LoraManager.WanVideoLoraSelect",
@@ -31,8 +33,12 @@ app.registerExtension({
         let isUpdating = false;
         let isSyncingInput = false;
 
-        const inputWidget = this.widgets[2];
-        inputWidget.options.getMaxHeight = () => 100;
+        // Get the text input widget (AUTOCOMPLETE_TEXT_LORAS type, at index 2 after low_mem_load and merge_loras)
+        const inputWidget = getWidgetByName(this, "text");
+        if (!inputWidget) {
+          console.warn("LoRA Manager: text widget not found for WanVideo Lora Select");
+          return;
+        }
         this.inputWidget = inputWidget;
 
         const scheduleInputSync = debounce((lorasValue) => {
@@ -58,7 +64,11 @@ app.registerExtension({
           }
         });
 
-        const result = addLorasWidget(this, "loras", {}, (value) => {
+        const result = addLorasWidget(this, "loras", {
+          onSelectionChange: (selection) => {
+            updateConnectedLoraInfoNodes(this, selection);
+          },
+        }, (value) => {
           // Prevent recursive calls
           if (isUpdating) return;
           isUpdating = true;
@@ -81,17 +91,17 @@ app.registerExtension({
 
         this.lorasWidget = result.widget;
 
-        // Wrap the callback with autocomplete setup
-        const originalCallback = (value) => {
+        // Set up callback for the text input widget to trigger merge logic
+        inputWidget.callback = (value) => {
           if (isUpdating) return;
           isUpdating = true;
 
           try {
-            const currentLoras = this.lorasWidget.value || [];
+            const currentLoras = this.lorasWidget?.value || [];
             const mergedLoras = mergeLoras(value, currentLoras);
-
-            this.lorasWidget.value = mergedLoras;
-
+            if (this.lorasWidget) {
+              this.lorasWidget.value = mergedLoras;
+            }
             // Update this node's direct trigger toggles with its own active loras
             const activeLoraNames = getActiveLorasFromNode(this);
             updateConnectedTriggerWords(this, activeLoraNames);
@@ -99,25 +109,25 @@ app.registerExtension({
             isUpdating = false;
           }
         };
-        inputWidget.callback = setupInputWidgetWithAutocomplete(
-          this,
-          inputWidget,
-          originalCallback
-        );
       });
     }
   },
+
   async loadedGraphNode(node) {
     if (node.comfyClass == "WanVideo Lora Select (LoraManager)") {
       // Restore saved value if exists
       let existingLoras = [];
       if (node.widgets_values && node.widgets_values.length > 0) {
-        // 0 for low_mem_load, 1 for merge_loras, 2 for text widget, 3 for loras widget
-        const savedValue = node.widgets_values[3];
+        const savedValue = getWidgetSerializedValue(node, "loras");
         existingLoras = savedValue || [];
       }
       // Merge the loras data
-      const mergedLoras = mergeLoras(node.widgets[2].value, existingLoras);
+      const inputWidget = node.inputWidget || getWidgetByName(node, "text");
+      if (!inputWidget) {
+        console.warn("LoRA Manager: text widget not found while restoring WanVideo Lora Select");
+        return;
+      }
+      const mergedLoras = mergeLoras(inputWidget.value, existingLoras);
       node.lorasWidget.value = mergedLoras;
     }
   },

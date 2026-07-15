@@ -30,6 +30,10 @@
             "source_text": {
                 "name": "Source Text",
                 "tooltip": "Optional input text"
+            },
+            "seed": {
+                "name": "Seed",
+                "tooltip": "Controls randomness of generation. Select non-fixed mode to force re-execution"
             }
         },
         "outputs": {
@@ -70,12 +74,20 @@
             "ollama_auto_unload": {
                 "name": "Auto Unload",
                 "tooltip": "Auto unload Ollama model"
+            },
+            "seed": {
+                "name": "Seed",
+                "tooltip": "Controls randomness of generation. Select non-fixed mode to force re-execution"
             }
         },
         "outputs": {
             "0": {
                 "name": "Prompt Output",
-                "tooltip": "Generated caption"
+                "tooltip": "Generated caption (combined for batch)"
+            },
+            "1": {
+                "name": "Prompt List",
+                "tooltip": "List of captions for each image in batch"
             }
         }
     },
@@ -102,6 +114,10 @@
             "ollama_auto_unload": {
                 "name": "Auto Unload",
                 "tooltip": "Auto unload Ollama model"
+            },
+            "seed": {
+                "name": "Seed",
+                "tooltip": "Controls randomness of generation. Select non-fixed mode to force re-execution"
             }
         },
         "outputs": {
@@ -159,9 +175,13 @@
                 "name": "Video",
                 "tooltip": "Input Video"
             },
-            "image_sequence": {
+            "video_frames": {
                 "name": "Images",
-                "tooltip": "Input Image Sequence"
+                "tooltip": "Input image sequence (IMAGE batch)"
+            },
+            "seed": {
+                "name": "Seed",
+                "tooltip": "Controls randomness of generation. Select non-fixed mode to force re-execution"
             }
         },
         "outputs": {
@@ -198,6 +218,10 @@
             "ollama_auto_unload": {
                 "name": "Auto Unload",
                 "tooltip": "Auto unload Ollama model"
+            },
+            "seed": {
+                "name": "Seed",
+                "tooltip": "Controls randomness of generation. Select non-fixed mode to force re-execution"
             }
         },
         "outputs": {

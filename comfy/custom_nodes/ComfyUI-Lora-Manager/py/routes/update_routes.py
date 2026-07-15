@@ -1,7 +1,6 @@
 import os
 import logging
 import toml
-import git
 import zipfile
 import shutil
 import tempfile
@@ -11,10 +10,32 @@ from typing import Dict, List
 
 from ..utils.settings_paths import ensure_settings_file
 from ..services.downloader import get_downloader
+from ..services.service_registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
 
 NETWORK_EXCEPTIONS = (ClientError, OSError, asyncio.TimeoutError)
+
+# User-managed directories that live inside the plugin folder (portable
+# mode) and must survive a Git-based update. ``git clean -fd`` would
+# otherwise delete them because they are untracked and, in released tags,
+# not listed in ``.gitignore``. ``-e`` excludes a path from cleaning
+# regardless of whether it is ignored.
+_PRESERVE_DIRS = ('settings.json', 'civitai', 'wildcards', 'backups', 'stats', 'logs', 'cache', 'model_cache')
+
+
+def _clean_excludes() -> List[str]:
+    """Build the ``-e`` arguments for ``git clean`` from :data:`_PRESERVE_DIRS`."""
+    excludes: List[str] = []
+    for name in _PRESERVE_DIRS:
+        excludes.append('-e')
+        excludes.append(name)
+        # For directories, also exclude nested matches explicitly
+        # (``-e dir`` alone matches the dir entry; ``-e dir/**`` guards
+        # contents under all git versions as defense-in-depth).
+        excludes.append('-e')
+        excludes.append(f'{name}/**')
+    return excludes
 
 
 class UpdateRoutes:
@@ -45,8 +66,9 @@ class UpdateRoutes:
             # Fetch remote version from GitHub
             if nightly:
                 remote_version, changelog = await UpdateRoutes._get_nightly_version()
+                releases = None
             else:
-                remote_version, changelog = await UpdateRoutes._get_remote_version()
+                remote_version, changelog, releases = await UpdateRoutes._get_remote_version()
             
             # Compare versions
             if nightly:
@@ -59,7 +81,7 @@ class UpdateRoutes:
                     remote_version.replace('v', '')
                 )
             
-            return web.json_response({
+            response_data = {
                 'success': True,
                 'current_version': local_version,
                 'latest_version': remote_version,
@@ -67,7 +89,13 @@ class UpdateRoutes:
                 'changelog': changelog,
                 'git_info': git_info,
                 'nightly': nightly
-            })
+            }
+            
+            # Include releases list for stable mode
+            if releases is not None:
+                response_data['releases'] = releases
+            
+            return web.json_response(response_data)
             
         except NETWORK_EXCEPTIONS as e:
             logger.warning("Network unavailable during update check: %s", e)
@@ -205,8 +233,19 @@ class UpdateRoutes:
 
             zip_path = tmp_zip_path
 
-            # Skip both settings.json, civitai and model cache folder
-            UpdateRoutes._clean_plugin_folder(plugin_root, skip_files=['settings.json', 'civitai', 'model_cache'])
+            # Close the downloaded-versions SQLite connection before cleaning,
+            # so that shutil.rmtree() does not fail on Windows (the process
+            # cannot delete a file with an outstanding open handle).
+            try:
+                history_svc = ServiceRegistry._services.get("downloaded_version_history_service")
+                if history_svc is not None:
+                    history_svc.close()
+                    logger.info("Closed downloaded-version history database connection")
+            except Exception:
+                logger.debug("Could not close downloaded-version history database", exc_info=True)
+
+            # Skip settings.json, civitai, model cache and runtime cache folders
+            UpdateRoutes._clean_plugin_folder(plugin_root, skip_files=['settings.json', 'civitai', 'model_cache', 'cache', 'wildcards', 'backups', 'stats'])
 
             # Extract ZIP to temp dir
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -215,16 +254,17 @@ class UpdateRoutes:
                     # Find extracted folder (GitHub ZIP contains a root folder)
                     extracted_root = next(os.scandir(tmp_dir)).path
 
-                    # Copy files, skipping settings.json and civitai folder
+                    # Copy files, skipping user data that should be preserved
+                    skip_items = {'settings.json', 'civitai', 'wildcards', 'backups', 'stats'}
                     for item in os.listdir(extracted_root):
-                        if item == 'settings.json' or item == 'civitai':
+                        if item in skip_items:
                             continue
                         src = os.path.join(extracted_root, item)
                         dst = os.path.join(plugin_root, item)
                         if os.path.isdir(src):
                             if os.path.exists(dst):
                                 shutil.rmtree(dst)
-                            shutil.copytree(src, dst, ignore=shutil.ignore_patterns('settings.json', 'civitai'))
+                            shutil.copytree(src, dst, ignore=shutil.ignore_patterns(*skip_items))
                         else:
                             shutil.copy2(src, dst)
 
@@ -232,15 +272,17 @@ class UpdateRoutes:
                     # for ComfyUI Manager to work properly
                     tracking_info_file = os.path.join(plugin_root, '.tracking')
                     tracking_files = []
+                    skip_tracked = {'civitai', 'wildcards', 'backups', 'stats'}
                     for root, dirs, files in os.walk(extracted_root):
-                        # Skip civitai folder and its contents
+                        # Skip user data directories and their contents
                         rel_root = os.path.relpath(root, extracted_root)
-                        if rel_root == 'civitai' or rel_root.startswith('civitai' + os.sep):
+                        top_dir = rel_root.split(os.sep)[0] if rel_root != '.' else ''
+                        if top_dir in skip_tracked:
                             continue
                         for file in files:
                             rel_path = os.path.relpath(os.path.join(root, file), extracted_root)
-                            # Skip settings.json and any file under civitai
-                            if rel_path == 'settings.json' or rel_path.startswith('civitai' + os.sep):
+                            # Skip settings.json and any file under user data dirs
+                            if rel_path == 'settings.json' or rel_path.split(os.sep)[0] in skip_tracked:
                                 continue
                             tracking_files.append(rel_path.replace("\\", "/"))
                     with open(tracking_info_file, "w", encoding='utf-8') as file:
@@ -336,6 +378,17 @@ class UpdateRoutes:
             tuple: (success, new_version)
         """
         try:
+            import git
+        except ImportError:
+            logger.error(
+                "GitPython is not available: the git executable was not found in PATH. "
+                "Install git or set $GIT_PYTHON_GIT_EXECUTABLE to the git binary path."
+            )
+            return False, ""
+
+        clean_excludes = _clean_excludes()
+
+        try:
             # Open the Git repository
             repo = git.Repo(plugin_root)
             
@@ -346,8 +399,9 @@ class UpdateRoutes:
             if nightly:
                 # Reset to discard any local changes
                 repo.git.reset('--hard')
-                # Clean untracked files
-                repo.git.clean('-fd')
+                # Clean untracked files, but preserve user-managed directories
+                # (wildcards, backups, stats, civitai, caches, settings.json).
+                repo.git.clean('-fd', *clean_excludes)
                 
                 # Switch to main branch and pull latest
                 main_branch = 'main'
@@ -364,8 +418,9 @@ class UpdateRoutes:
             else:
                 # Reset to discard any local changes
                 repo.git.reset('--hard')
-                # Clean untracked files
-                repo.git.clean('-fd')
+                # Clean untracked files, but preserve user-managed directories
+                # (wildcards, backups, stats, civitai, caches, settings.json).
+                repo.git.clean('-fd', *clean_excludes)
                 
                 # Get latest release tag
                 tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime, reverse=True)
@@ -431,6 +486,7 @@ class UpdateRoutes:
             if not os.path.exists(os.path.join(plugin_root, '.git')):
                 return git_info
 
+            import git
             repo = git.Repo(plugin_root)
             commit = repo.head.commit
             git_info['commit_hash'] = commit.hexsha
@@ -443,42 +499,58 @@ class UpdateRoutes:
         return git_info
     
     @staticmethod
-    async def _get_remote_version() -> tuple[str, List[str]]:
+    async def _get_remote_version() -> tuple[str, List[str], List[Dict]]:
         """
         Fetch remote version from GitHub
         Returns:
-            tuple: (version string, changelog list)
+            tuple: (version string, changelog list, releases list)
         """
         repo_owner = "willmiao"
         repo_name = "ComfyUI-Lora-Manager"
         
-        # Use GitHub API to fetch the latest release
-        github_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/releases/latest"
+        # Use GitHub API to fetch the last 5 releases
+        github_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/releases?per_page=5"
         
         try:
             downloader = await get_downloader()
             success, data = await downloader.make_request('GET', github_url, custom_headers={'Accept': 'application/vnd.github+json'})
             
             if not success:
-                logger.warning(f"Failed to fetch GitHub release: {data}")
-                return "v0.0.0", []
+                logger.warning(f"Failed to fetch GitHub releases: {data}")
+                return "v0.0.0", [], []
             
-            version = data.get('tag_name', '')
-            if not version.startswith('v'):
-                version = f"v{version}"
+            # Parse releases
+            releases = []
+            for i, release in enumerate(data):
+                version = release.get('tag_name', '')
+                if not version.startswith('v'):
+                    version = f"v{version}"
+                
+                # Extract changelog from release notes
+                body = release.get('body', '')
+                changelog = UpdateRoutes._parse_changelog(body)
+                
+                releases.append({
+                    'version': version,
+                    'changelog': changelog,
+                    'published_at': release.get('published_at', ''),
+                    'is_latest': i == 0
+                })
             
-            # Extract changelog from release notes
-            body = data.get('body', '')
-            changelog = UpdateRoutes._parse_changelog(body)
+            # Get latest version and its changelog
+            if releases:
+                latest_version = releases[0]['version']
+                latest_changelog = releases[0]['changelog']
+                return latest_version, latest_changelog, releases
             
-            return version, changelog
+            return "v0.0.0", [], []
         
         except NETWORK_EXCEPTIONS as e:
             logger.warning("Unable to reach GitHub for release info: %s", e)
-            return "v0.0.0", []
+            return "v0.0.0", [], []
         except Exception as e:
             logger.error(f"Error fetching remote version: {e}", exc_info=True)
-            return "v0.0.0", []
+            return "v0.0.0", [], []
     
     @staticmethod
     def _parse_changelog(release_notes: str) -> List[str]:

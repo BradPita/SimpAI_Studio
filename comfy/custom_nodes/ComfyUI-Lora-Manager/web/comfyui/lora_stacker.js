@@ -1,17 +1,17 @@
 import { app } from "../../scripts/app.js";
 import {
   getActiveLorasFromNode,
-  collectActiveLorasFromChain,
   updateConnectedTriggerWords,
+  updateDownstreamLoaders,
   chainCallback,
   mergeLoras,
-  setupInputWidgetWithAutocomplete,
-  getLinkFromGraph,
-  getNodeKey,
+  getWidgetByName,
+  getWidgetSerializedValue,
 } from "./utils.js";
 import { addLorasWidget } from "./loras_widget.js";
 import { applyLoraValuesToText, debounce } from "./lora_syntax_utils.js";
 import { applySelectionHighlight } from "./trigger_word_highlight.js";
+import { updateConnectedLoraInfoNodes } from "./lora_info.js";
 
 app.registerExtension({
   name: "LoraManager.LoraStacker",
@@ -30,36 +30,12 @@ app.registerExtension({
         let isUpdating = false;
         let isSyncingInput = false;
 
-        // Mechanism 3: Property descriptor to listen for mode changes
-        const self = this;
-        let _mode = this.mode;
-        Object.defineProperty(this, 'mode', {
-          get() {
-            return _mode;
-          },
-          set(value) {
-            const oldValue = _mode;
-            _mode = value;
-            
-            // Trigger mode change handler
-            if (self.onModeChange) {
-              self.onModeChange(value, oldValue);
-            }
-          }
-        });
-
-        // Define the mode change handler
-        this.onModeChange = function(newMode, oldMode) {
-          // Update connected trigger word toggle nodes and downstream loader trigger word toggle nodes
-          // when mode changes, similar to when loras change
-          const isNodeActive = newMode === 0 || newMode === 3; // Active when mode is Always (0) or On Trigger (3)
-          const activeLoraNames = isNodeActive ? getActiveLorasFromNode(self) : new Set();
-          updateConnectedTriggerWords(self, activeLoraNames);
-          updateDownstreamLoaders(self);
-        };
-
-        const inputWidget = this.widgets[0];
-        inputWidget.options.getMaxHeight = () => 100;
+        // Get the text input widget (AUTOCOMPLETE_TEXT_LORAS type, created by Vue widgets)
+        const inputWidget = getWidgetByName(this, "text");
+        if (!inputWidget) {
+          console.warn("LoRA Manager: text widget not found for Lora Stacker");
+          return;
+        }
         this.inputWidget = inputWidget;
 
         const scheduleInputSync = debounce((lorasValue) => {
@@ -89,121 +65,83 @@ app.registerExtension({
           this,
           "loras",
           {
-            onSelectionChange: (selection) =>
-              applySelectionHighlight(this, selection),
+            onSelectionChange: (selection) => {
+              applySelectionHighlight(this, selection);
+              updateConnectedLoraInfoNodes(this, selection);
+            },
           },
           (value) => {
             // Prevent recursive calls
             if (isUpdating) return;
             isUpdating = true;
 
-          try {
-            // Update this stacker's direct trigger toggles with its own active loras
-            // Only if the stacker node itself is active (mode 0 for Always, mode 3 for On Trigger)
-            const isNodeActive = this.mode === undefined || this.mode === 0 || this.mode === 3;
-            const activeLoraNames = new Set();
-            if (isNodeActive) {
-              value.forEach((lora) => {
-                if (lora.active) {
-                  activeLoraNames.add(lora.name);
-                }
-              });
+            try {
+              // Update this stacker's direct trigger toggles with its own active loras
+              // Only if the stacker node itself is active (mode 0 for Always, mode 3 for On Trigger)
+              const isNodeActive = this.mode === undefined || this.mode === 0 || this.mode === 3;
+              const activeLoraNames = new Set();
+              if (isNodeActive) {
+                value.forEach((lora) => {
+                  if (lora.active) {
+                    activeLoraNames.add(lora.name);
+                  }
+                });
+              }
+              updateConnectedTriggerWords(this, activeLoraNames);
+
+              // Find all Lora Loader nodes in the chain that might need updates
+              updateDownstreamLoaders(this);
+            } finally {
+              isUpdating = false;
             }
-            updateConnectedTriggerWords(this, activeLoraNames);
 
-            // Find all Lora Loader nodes in the chain that might need updates
-            updateDownstreamLoaders(this);
-          } finally {
-            isUpdating = false;
-          }
-
-          scheduleInputSync(value);
+            scheduleInputSync(value);
         });
 
         this.lorasWidget = result.widget;
 
-        // Wrap the callback with autocomplete setup
-        const originalCallback = (value) => {
+        // Set up callback for the text input widget to trigger merge logic
+        inputWidget.callback = (value) => {
           if (isUpdating) return;
           isUpdating = true;
 
           try {
-            const currentLoras = this.lorasWidget.value || [];
+            const currentLoras = this.lorasWidget?.value || [];
             const mergedLoras = mergeLoras(value, currentLoras);
-
-            this.lorasWidget.value = mergedLoras;
-
+            if (this.lorasWidget) {
+              this.lorasWidget.value = mergedLoras;
+            }
             // Update this stacker's direct trigger toggles with its own active loras
             // Only if the stacker node itself is active (mode 0 for Always, mode 3 for On Trigger)
             const isNodeActive = this.mode === undefined || this.mode === 0 || this.mode === 3;
             const activeLoraNames = isNodeActive ? getActiveLorasFromNode(this) : new Set();
             updateConnectedTriggerWords(this, activeLoraNames);
-
             // Find all Lora Loader nodes in the chain that might need updates
             updateDownstreamLoaders(this);
           } finally {
             isUpdating = false;
           }
         };
-           
-        inputWidget.callback = setupInputWidgetWithAutocomplete(
-          this,
-          inputWidget,
-          originalCallback
-        );
       });
     }
   },
+
   async loadedGraphNode(node) {
     if (node.comfyClass == "Lora Stacker (LoraManager)") {
       // Restore saved value if exists
       let existingLoras = [];
       if (node.widgets_values && node.widgets_values.length > 0) {
-        // 0 for input widget, 1 for loras widget
-        const savedValue = node.widgets_values[1];
+        const savedValue = getWidgetSerializedValue(node, "loras");
         existingLoras = savedValue || [];
       }
       // Merge the loras data
-      const mergedLoras = mergeLoras(node.widgets[0].value, existingLoras);
+      const inputWidget = node.inputWidget || getWidgetByName(node, "text");
+      if (!inputWidget) {
+        console.warn("LoRA Manager: text widget not found while restoring Lora Stacker");
+        return;
+      }
+      const mergedLoras = mergeLoras(inputWidget.value, existingLoras);
       node.lorasWidget.value = mergedLoras;
     }
   },
 });
-
-// Helper function to find and update downstream Lora Loader nodes
-function updateDownstreamLoaders(startNode, visited = new Set()) {
-  const nodeKey = getNodeKey(startNode);
-  if (!nodeKey || visited.has(nodeKey)) return;
-  visited.add(nodeKey);
-
-  // Check each output link
-  if (startNode.outputs) {
-    for (const output of startNode.outputs) {
-      if (output.links) {
-        for (const linkId of output.links) {
-          const link = getLinkFromGraph(startNode.graph, linkId);
-          if (link) {
-            const targetNode = startNode.graph?.getNodeById?.(link.target_id);
-
-            // If target is a Lora Loader, collect all active loras in the chain and update
-            if (
-              targetNode &&
-              targetNode.comfyClass === "Lora Loader (LoraManager)"
-            ) {
-              const allActiveLoraNames =
-                collectActiveLorasFromChain(targetNode);
-              updateConnectedTriggerWords(targetNode, allActiveLoraNames);
-            }
-            // If target is another Lora Stacker, recursively check its outputs
-            else if (
-              targetNode &&
-              targetNode.comfyClass === "Lora Stacker (LoraManager)"
-            ) {
-              updateDownstreamLoaders(targetNode, visited);
-            }
-          }
-        }
-      }
-    }
-  }
-}

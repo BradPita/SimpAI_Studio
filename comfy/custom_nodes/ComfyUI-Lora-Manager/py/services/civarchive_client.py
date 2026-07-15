@@ -186,6 +186,22 @@ class CivArchiveClient:
         if "metadata" in file_data:
             transformed["metadata"] = file_data["metadata"]
 
+        # Infer metadata.format from filename extension
+        name = transformed.get("name")
+        if name and isinstance(name, str):
+            lower_name = name.lower()
+            if lower_name.endswith(".safetensors"):
+                inferred_format = "SafeTensor"
+            elif lower_name.endswith(".ckpt"):
+                inferred_format = "PickleTensor"
+            else:
+                inferred_format = None
+            if inferred_format:
+                if "metadata" not in transformed:
+                    transformed["metadata"] = {}
+                if isinstance(transformed["metadata"], dict):
+                    transformed["metadata"].setdefault("format", inferred_format)
+
         if file_data.get("modelVersionId") is not None:
             transformed["modelVersionId"] = file_data.get("modelVersionId")
         elif file_data.get("model_version_id") is not None:
@@ -213,6 +229,20 @@ class CivArchiveClient:
         for file_data in candidates:
             if isinstance(file_data, dict):
                 transformed_files.append(self._transform_file_entry(file_data))
+
+        # Sort: .safetensors first, .ckpt second, others last
+        # so the backend fallback (no file_params) prefers safetensors
+        def _sort_key(f: Dict) -> int:
+            fname = f.get("name") or ""
+            if isinstance(fname, str):
+                lower = fname.lower()
+                if lower.endswith(".safetensors"):
+                    return 0
+                elif lower.endswith(".ckpt"):
+                    return 1
+            return 2
+
+        transformed_files.sort(key=_sort_key)
         return transformed_files
 
     def _transform_version(
@@ -274,6 +304,20 @@ class CivArchiveClient:
             version_id = file_data.get("model_version_id") or file_data.get("modelVersionId")
             if model_id is None or version_id is None:
                 continue
+            # CivitAI / CivArchive model IDs are small integers (typically ≤ 7
+            # digits).  Reject suspiciously large values that indicate the API
+            # returned a malformed payload (e.g. a hash reinterpreted as an ID)
+            # to avoid pointless HTTP 500 errors from CivArchive.
+            _MAX_VALID_CIVITAI_ID = 100_000_000
+            try:
+                if int(model_id) >= _MAX_VALID_CIVITAI_ID or int(version_id) >= _MAX_VALID_CIVITAI_ID:
+                    logger.debug(
+                        "Skipping implausible CivArchive model_id=%s / version_id=%s",
+                        model_id, version_id,
+                    )
+                    continue
+            except (TypeError, ValueError):
+                continue
             resolved = await self.get_model_version(model_id, version_id)
             if resolved:
                 return resolved
@@ -297,7 +341,7 @@ class CivArchiveClient:
             if resolved:
                 return resolved, None
 
-            logger.error("Error fetching version of CivArchive model by hash %s", model_hash[:10])
+            logger.debug("Error fetching version of CivArchive model by hash %s", model_hash[:10])
             return None, "No version data found"
 
         except RateLimitError:
@@ -387,7 +431,7 @@ class CivArchiveClient:
 
             if version_id is not None:
                 raw_id = version_data.get("id")
-                if raw_id != version_id:
+                if raw_id is not None and str(raw_id) != str(version_id):
                     logger.warning(
                         "Requested version %s doesn't match default version %s for model %s",
                         version_id,

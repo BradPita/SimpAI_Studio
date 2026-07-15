@@ -18,9 +18,13 @@ from ..services.settings_manager import get_settings_manager
 from ..services.downloader import get_downloader
 from ..utils.usage_stats import UsageStats
 from .handlers.misc_handlers import (
+    CustomWordsHandler,
+    DoctorHandler,
+    ExampleWorkflowsHandler,
     FileSystemHandler,
     HealthCheckHandler,
     LoraCodeHandler,
+    BackupHandler,
     MetadataArchiveHandler,
     MiscHandlerSet,
     ModelExampleFilesHandler,
@@ -28,17 +32,23 @@ from .handlers.misc_handlers import (
     NodeRegistry,
     NodeRegistryHandler,
     SettingsHandler,
+    SupportersHandler,
     TrainedWordsHandler,
     UsageStatsHandler,
+    WildcardsHandler,
     build_service_registry_adapter,
 )
+from .handlers.base_model_handlers import BaseModelHandlerSet
+from .handlers.hf_handlers import HfHandler
+from .handlers.agent_handlers import AgentHandler
 from .misc_route_registrar import MiscRouteRegistrar
 
 logger = logging.getLogger(__name__)
 
-standalone_mode = os.environ.get("LORA_MANAGER_STANDALONE", "0") == "1" or os.environ.get(
-    "HF_HUB_DISABLE_TELEMETRY", "0"
-) == "0"
+standalone_mode = (
+    os.environ.get("LORA_MANAGER_STANDALONE", "0") == "1"
+    or os.environ.get("HF_HUB_DISABLE_TELEMETRY", "0") == "0"
+)
 
 
 class MiscRoutes:
@@ -73,7 +83,9 @@ class MiscRoutes:
         self._node_registry = node_registry or NodeRegistry()
         self._standalone_mode = standalone_mode_flag
 
-        self._handler_mapping: Mapping[str, Callable[[web.Request], Awaitable[web.StreamResponse]]] | None = None
+        self._handler_mapping: (
+            Mapping[str, Callable[[web.Request], Awaitable[web.StreamResponse]]] | None
+        ) = None
 
     @staticmethod
     def setup_routes(app: web.Application) -> None:
@@ -85,7 +97,9 @@ class MiscRoutes:
         registrar = self._registrar_factory(app)
         registrar.register_routes(self._ensure_handler_mapping())
 
-    def _ensure_handler_mapping(self) -> Mapping[str, Callable[[web.Request], Awaitable[web.StreamResponse]]]:
+    def _ensure_handler_mapping(
+        self,
+    ) -> Mapping[str, Callable[[web.Request], Awaitable[web.StreamResponse]]]:
         if self._handler_mapping is None:
             handler_set = self._create_handler_set()
             self._handler_mapping = handler_set.to_route_mapping()
@@ -107,7 +121,8 @@ class MiscRoutes:
             settings_service=self._settings,
             metadata_provider_updater=self._metadata_provider_updater,
         )
-        filesystem = FileSystemHandler()
+        backup = BackupHandler()
+        filesystem = FileSystemHandler(settings_service=self._settings)
         node_registry_handler = NodeRegistryHandler(
             node_registry=self._node_registry,
             prompt_server=self._prompt_server,
@@ -117,6 +132,14 @@ class MiscRoutes:
             service_registry=self._service_registry_adapter,
             metadata_provider_factory=self._metadata_provider_factory,
         )
+        custom_words = CustomWordsHandler()
+        wildcards = WildcardsHandler()
+        supporters = SupportersHandler()
+        doctor = DoctorHandler(settings_service=self._settings)
+        example_workflows = ExampleWorkflowsHandler()
+        base_model = BaseModelHandlerSet()
+        hf_handler = HfHandler()
+        agent_handler = AgentHandler()
 
         return self._handler_set_factory(
             health=health,
@@ -128,7 +151,16 @@ class MiscRoutes:
             node_registry=node_registry_handler,
             model_library=model_library,
             metadata_archive=metadata_archive,
+            backup=backup,
             filesystem=filesystem,
+            custom_words=custom_words,
+            wildcards=wildcards,
+            supporters=supporters,
+            doctor=doctor,
+            example_workflows=example_workflows,
+            base_model=base_model,
+            hf_handler=hf_handler,
+            agent_handler=agent_handler,
         )
 
 

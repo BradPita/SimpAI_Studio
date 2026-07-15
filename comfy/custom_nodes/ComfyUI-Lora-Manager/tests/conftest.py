@@ -15,6 +15,27 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PY_INIT = REPO_ROOT / "py" / "__init__.py"
 
 
+class MockModule(types.ModuleType):
+    """A mock module class that is hashable (unlike SimpleNamespace).
+    
+    This allows the module to be stored in sets/dicts without causing issues
+    with tools like Hypothesis that iterate over sys.modules.
+    """
+    
+    def __init__(self, name: str, **kwargs):
+        super().__init__(name)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+    
+    def __hash__(self):
+        return hash(self.__name__)
+    
+    def __eq__(self, other):
+        if isinstance(other, MockModule):
+            return self.__name__ == other.__name__
+        return NotImplemented
+
+
 def _load_repo_package(name: str) -> types.ModuleType:
     """Ensure the repository's ``py`` package is importable under *name*."""
 
@@ -41,32 +62,36 @@ _repo_package = _load_repo_package("py")
 sys.modules.setdefault("py_local", _repo_package)
 
 # Mock ComfyUI modules before any imports from the main project
-server_mock = types.SimpleNamespace()
+server_mock = MockModule("server")
 server_mock.PromptServer = mock.MagicMock()
 sys.modules['server'] = server_mock
 
-folder_paths_mock = types.SimpleNamespace()
+folder_paths_mock = MockModule("folder_paths")
 folder_paths_mock.get_folder_paths = mock.MagicMock(return_value=[])
 folder_paths_mock.folder_names_and_paths = {}
 sys.modules['folder_paths'] = folder_paths_mock
 
 # Mock other ComfyUI modules that might be imported
-comfy_mock = types.SimpleNamespace()
-comfy_mock.utils = types.SimpleNamespace()
-comfy_mock.model_management = types.SimpleNamespace()
-comfy_mock.comfy_types = types.SimpleNamespace()
+comfy_mock = MockModule("comfy")
+comfy_mock.utils = MockModule("comfy.utils")
+comfy_mock.utils.load_torch_file = mock.MagicMock(return_value={})
+comfy_mock.sd = MockModule("comfy.sd")
+comfy_mock.sd.load_lora_for_models = mock.MagicMock(return_value=(None, None))
+comfy_mock.model_management = MockModule("comfy.model_management")
+comfy_mock.comfy_types = MockModule("comfy.comfy_types")
 comfy_mock.comfy_types.IO = mock.MagicMock()
 sys.modules['comfy'] = comfy_mock
 sys.modules['comfy.utils'] = comfy_mock.utils
+sys.modules['comfy.sd'] = comfy_mock.sd
 sys.modules['comfy.model_management'] = comfy_mock.model_management
 sys.modules['comfy.comfy_types'] = comfy_mock.comfy_types
 
-execution_mock = types.SimpleNamespace()
+execution_mock = MockModule("execution")
 execution_mock.PromptExecutor = mock.MagicMock()
 sys.modules['execution'] = execution_mock
 
 # Mock ComfyUI nodes module  
-nodes_mock = types.SimpleNamespace()
+nodes_mock = MockModule("nodes")
 nodes_mock.LoraLoader = mock.MagicMock()
 nodes_mock.SaveImage = mock.MagicMock()
 nodes_mock.NODE_CLASS_MAPPINGS = {}
@@ -105,35 +130,6 @@ def _isolate_settings_dir(tmp_path_factory, monkeypatch, request):
     settings_manager_module.reset_settings_manager()
 
 
-def pytest_pyfunc_call(pyfuncitem):
-    """Allow bare async tests to run without pytest.mark.asyncio."""
-    test_function = pyfuncitem.function
-    if inspect.iscoroutinefunction(test_function):
-        func = pyfuncitem.obj
-        signature = inspect.signature(func)
-        accepted_kwargs: Dict[str, Any] = {}
-        for name, parameter in signature.parameters.items():
-            if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
-                continue
-            if parameter.kind is inspect.Parameter.VAR_KEYWORD:
-                accepted_kwargs = dict(pyfuncitem.funcargs)
-                break
-            if name in pyfuncitem.funcargs:
-                accepted_kwargs[name] = pyfuncitem.funcargs[name]
-
-        original_policy = asyncio.get_event_loop_policy()
-        policy = pyfuncitem.funcargs.get("event_loop_policy")
-        if policy is not None and policy is not original_policy:
-            asyncio.set_event_loop_policy(policy)
-        try:
-            asyncio.run(func(**accepted_kwargs))
-        finally:
-            if policy is not None and policy is not original_policy:
-                asyncio.set_event_loop_policy(original_policy)
-        return True
-    return None
-
-
 @dataclass
 class MockHashIndex:
     """Minimal hash index stub mirroring the scanner contract."""
@@ -168,6 +164,17 @@ class MockScanner:
         self.updated_models: List[Dict[str, Any]] = []
         self.preview_updates: List[Dict[str, Any]] = []
         self.bulk_deleted: List[Sequence[str]] = []
+        self._cancelled = False
+        self.model_type = "test-model"
+
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+
+    def cancel_task(self) -> None:
+        self._cancelled = True
+
+    def reset_cancellation(self) -> None:
+        self._cancelled = False
 
     async def get_cached_data(self, force_refresh: bool = False):
         return self._cache
@@ -286,4 +293,76 @@ def mock_scanner(mock_cache: MockCache, mock_hash_index: MockHashIndex) -> MockS
 @pytest.fixture
 def mock_service(mock_scanner: MockScanner) -> MockModelService:
     return MockModelService(scanner=mock_scanner)
+
+
+@pytest.fixture
+def mock_downloader():
+    """Provide a configurable mock downloader."""
+    class MockDownloader:
+        def __init__(self):
+            self.download_calls = []
+            self.should_fail = False
+            self.return_value = (True, "success")
+
+        async def download_file(self, url, target_path, **kwargs):
+            self.download_calls.append({"url": url, "target_path": target_path, "kwargs": kwargs})
+            if self.should_fail:
+                return False, "Download failed"
+            return self.return_value
+
+    return MockDownloader()
+
+
+@pytest.fixture
+def mock_websocket_manager():
+    """Provide a recording WebSocket manager."""
+    class RecordingWebSocketManager:
+        def __init__(self):
+            self.payloads = []
+            self.broadcast_count = 0
+
+        async def broadcast(self, payload):
+            self.payloads.append(payload)
+            self.broadcast_count += 1
+
+        def get_payloads_by_type(self, msg_type: str):
+            """Get all payloads of a specific message type."""
+            return [p for p in self.payloads if p.get("type") == msg_type]
+
+    return RecordingWebSocketManager()
+
+
+@pytest.fixture(autouse=True)
+def reset_singletons():
+    """Reset all singletons before each test to ensure isolation."""
+    # Import here to avoid circular imports
+    from py.services.download_manager import DownloadManager
+    from py.services.service_registry import ServiceRegistry
+    from py.services.model_scanner import ModelScanner
+    from py.services.settings_manager import get_settings_manager
+
+    # Reset DownloadManager singleton
+    DownloadManager._instance = None
+
+    # Reset ServiceRegistry
+    ServiceRegistry._services = {}
+    ServiceRegistry._initialized = False
+
+    # Reset ModelScanner instances
+    if hasattr(ModelScanner, '_instances'):
+        ModelScanner._instances.clear()
+
+    # Reset SettingsManager
+    settings_manager = get_settings_manager()
+    if hasattr(settings_manager, '_reset'):
+        settings_manager._reset()
+
+    yield
+
+    # Cleanup after test
+    DownloadManager._instance = None
+    ServiceRegistry._services = {}
+    ServiceRegistry._initialized = False
+    if hasattr(ModelScanner, '_instances'):
+        ModelScanner._instances.clear()
 

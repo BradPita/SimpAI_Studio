@@ -13238,6 +13238,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 
 .sai-model-browser-batchbar {
   justify-content: space-between;
+  flex-wrap: wrap;
   padding-top: 9px;
   padding-bottom: 9px;
   color: #a1a1aa;
@@ -13246,6 +13247,7 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 
 .sai-model-browser-batchcopy {
   display: grid;
+  flex: 1 1 220px;
   gap: 2px;
   min-width: 0;
 }
@@ -13266,8 +13268,11 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
 .sai-model-browser-batchactions {
   display: inline-flex;
   align-items: center;
-  flex: 0 0 auto;
+  justify-content: flex-end;
+  flex: 1 1 620px;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .sai-model-browser-batchactions button {
@@ -13525,6 +13530,47 @@ input[type="range"].simpai-gradio-range-fill::-moz-range-progress {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.sai-model-browser-hash {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.sai-model-browser-hash code {
+  overflow: hidden;
+  color: #d7e2f0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sai-model-browser-hash small {
+  grid-column: 1 / -1;
+  color: #858b98;
+}
+
+.sai-model-browser-hash button {
+  display: inline-grid;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+}
+
+.sai-model-browser-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--smb-accent-text);
+  text-decoration: none;
+}
+
+.sai-model-browser-link:hover {
+  text-decoration: underline;
 }
 
 .sai-model-browser-tags {

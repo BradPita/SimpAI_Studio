@@ -4,8 +4,7 @@ import {
     setStorageItem, 
     getStoredVersionInfo, 
     setStoredVersionInfo,
-    isVersionMatch,
-    resetDismissedBanner
+    isVersionMatch
 } from '../utils/storageHelpers.js';
 import { bannerService } from './BannerService.js';
 import { translate } from '../utils/i18nHelpers.js';
@@ -510,38 +509,90 @@ export class UpdateService {
         }
         
         // Update changelog content if available
-        if (this.updateInfo && this.updateInfo.changelog) {
+        if (this.updateInfo && (this.updateInfo.changelog || this.updateInfo.releases)) {
             const changelogContent = modal.querySelector('.changelog-content');
             if (changelogContent) {
                 changelogContent.innerHTML = ''; // Clear existing content
                 
-                // Create changelog item
-                const changelogItem = document.createElement('div');
-                changelogItem.className = 'changelog-item';
-                
-                const versionHeader = document.createElement('h4');
-                versionHeader.textContent = `${translate('common.status.version', {}, 'Version')} ${this.latestVersion}`;
-                changelogItem.appendChild(versionHeader);
-                
-                // Create changelog list
-                const changelogList = document.createElement('ul');
-                
-                if (this.updateInfo.changelog && this.updateInfo.changelog.length > 0) {
-                    this.updateInfo.changelog.forEach(item => {
-                        const listItem = document.createElement('li');
-                        // Parse markdown in changelog items
-                        listItem.innerHTML = this.parseMarkdown(item);
-                        changelogList.appendChild(listItem);
+                // Check if we have multiple releases
+                const releases = this.updateInfo.releases;
+                if (releases && Array.isArray(releases) && releases.length > 0) {
+                    // Display multiple releases (up to 5)
+                    releases.forEach(release => {
+                        const changelogItem = document.createElement('div');
+                        changelogItem.className = 'changelog-item';
+                        if (release.is_latest) {
+                            changelogItem.classList.add('latest');
+                        }
+                        
+                        const versionHeader = document.createElement('h4');
+                        
+                        if (release.is_latest) {
+                            const badge = document.createElement('span');
+                            badge.className = 'latest-badge';
+                            badge.textContent = translate('update.latestBadge', {}, 'Latest');
+                            versionHeader.appendChild(badge);
+                            versionHeader.appendChild(document.createTextNode(' '));
+                        }
+                        
+                        const versionSpan = document.createElement('span');
+                        versionSpan.className = 'version';
+                        versionSpan.textContent = `${translate('common.status.version', {}, 'Version')} ${release.version}`;
+                        versionHeader.appendChild(versionSpan);
+                        
+                        if (release.published_at) {
+                            const dateSpan = document.createElement('span');
+                            dateSpan.className = 'publish-date';
+                            dateSpan.textContent = this.formatRelativeTime(new Date(release.published_at).getTime());
+                            versionHeader.appendChild(dateSpan);
+                        }
+                        
+                        changelogItem.appendChild(versionHeader);
+                        
+                        // Create changelog list
+                        const changelogList = document.createElement('ul');
+                        
+                        if (release.changelog && release.changelog.length > 0) {
+                            release.changelog.forEach(item => {
+                                const listItem = document.createElement('li');
+                                listItem.innerHTML = this.parseMarkdown(item);
+                                changelogList.appendChild(listItem);
+                            });
+                        } else {
+                            const listItem = document.createElement('li');
+                            listItem.textContent = translate('update.noChangelogAvailable', {}, 'No detailed changelog available.');
+                            changelogList.appendChild(listItem);
+                        }
+                        
+                        changelogItem.appendChild(changelogList);
+                        changelogContent.appendChild(changelogItem);
                     });
                 } else {
-                    // If no changelog items available
-                    const listItem = document.createElement('li');
-                    listItem.textContent = translate('update.noChangelogAvailable', {}, 'No detailed changelog available. Check GitHub for more information.');
-                    changelogList.appendChild(listItem);
+                    // Fallback: display single changelog (old behavior)
+                    const changelogItem = document.createElement('div');
+                    changelogItem.className = 'changelog-item';
+                    
+                    const versionHeader = document.createElement('h4');
+                    versionHeader.textContent = `${translate('common.status.version', {}, 'Version')} ${this.latestVersion}`;
+                    changelogItem.appendChild(versionHeader);
+                    
+                    const changelogList = document.createElement('ul');
+                    
+                    if (this.updateInfo.changelog && this.updateInfo.changelog.length > 0) {
+                        this.updateInfo.changelog.forEach(item => {
+                            const listItem = document.createElement('li');
+                            listItem.innerHTML = this.parseMarkdown(item);
+                            changelogList.appendChild(listItem);
+                        });
+                    } else {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = translate('update.noChangelogAvailable', {}, 'No detailed changelog available. Check GitHub for more information.');
+                        changelogList.appendChild(listItem);
+                    }
+                    
+                    changelogItem.appendChild(changelogList);
+                    changelogContent.appendChild(changelogItem);
                 }
-                
-                changelogItem.appendChild(changelogList);
-                changelogContent.appendChild(changelogItem);
             }
         }
         
@@ -680,8 +731,15 @@ export class UpdateService {
     }
     
     // Simple markdown parser for changelog items
+    // Simple markdown parser for changelog items
+    // Escape HTML entities first so angle brackets in content (e.g. `<lora:x>`)
+    // aren't swallowed by innerHTML's HTML parser as invalid tags
     parseMarkdown(text) {
         if (!text) return '';
+        
+        text = text.replace(/&/g, '&amp;');
+        text = text.replace(/</g, '&lt;');
+        text = text.replace(/>/g, '&gt;');
         
         // Handle bold text (**text**)
         text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -753,93 +811,13 @@ export class UpdateService {
                         stored: getStoredVersionInfo()
                     });
                     
-                    // Reset dismissed status for version mismatch banner
-                    resetDismissedBanner('version-mismatch');
-                    
-                    // Register and show the version mismatch banner
-                    this.registerVersionMismatchBanner();
+                    // Silently update stored version info as cache busting handles the resource updates
+                    setStoredVersionInfo(this.currentVersionInfo);
                 }
             }
         } catch (error) {
             console.error('Failed to check version info:', error);
         }
-    }
-    
-    registerVersionMismatchBanner() {
-        // Get stored and current version for display
-        const storedVersion = getStoredVersionInfo() || translate('common.status.unknown');
-        const currentVersion = this.currentVersionInfo || translate('common.status.unknown');
-        
-        bannerService.registerBanner('version-mismatch', {
-            id: 'version-mismatch',
-            title: translate('banners.versionMismatch.title', {}, 'Application Update Detected'),
-            content: translate('banners.versionMismatch.content', { 
-                storedVersion, 
-                currentVersion 
-            }, `Your browser is running an outdated version of LoRA Manager (${storedVersion}). The server has been updated to version ${currentVersion}. Please refresh to ensure proper functionality.`),
-            actions: [
-                {
-                    text: translate('banners.versionMismatch.refreshNow', {}, 'Refresh Now'),
-                    icon: 'fas fa-sync',
-                    action: 'hardRefresh',
-                    type: 'primary'
-                }
-            ],
-            dismissible: false,
-            priority: 10,
-            countdown: 15,
-            onRegister: (bannerElement) => {
-                // Add countdown element
-                const countdownEl = document.createElement('div');
-                countdownEl.className = 'banner-countdown';
-                countdownEl.innerHTML = `<span>${translate('banners.versionMismatch.refreshingIn', {}, 'Refreshing in')} <strong>15</strong> ${translate('banners.versionMismatch.seconds', {}, 'seconds')}...</span>`;
-                bannerElement.querySelector('.banner-content').appendChild(countdownEl);
-                
-                // Start countdown
-                let seconds = 15;
-                const countdownInterval = setInterval(() => {
-                    seconds--;
-                    const strongEl = countdownEl.querySelector('strong');
-                    if (strongEl) strongEl.textContent = seconds;
-                    
-                    if (seconds <= 0) {
-                        clearInterval(countdownInterval);
-                        this.performHardRefresh();
-                    }
-                }, 1000);
-                
-                // Store interval ID for cleanup
-                bannerElement.dataset.countdownInterval = countdownInterval;
-                
-                // Add action button event handler
-                const actionBtn = bannerElement.querySelector('.banner-action[data-action="hardRefresh"]');
-                if (actionBtn) {
-                    actionBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        clearInterval(countdownInterval);
-                        this.performHardRefresh();
-                    });
-                }
-            },
-            onRemove: (bannerElement) => {
-                // Clear any existing interval
-                const intervalId = bannerElement.dataset.countdownInterval;
-                if (intervalId) {
-                    clearInterval(parseInt(intervalId));
-                }
-            }
-        });
-    }
-    
-    performHardRefresh() {
-        // Update stored version info before refreshing
-        setStoredVersionInfo(this.currentVersionInfo);
-        
-        // Force a hard refresh by adding cache-busting parameter
-        const cacheBuster = new Date().getTime();
-        window.location.href = window.location.pathname + 
-            (window.location.search ? window.location.search + '&' : '?') + 
-            `cache=${cacheBuster}`;
     }
 }
 

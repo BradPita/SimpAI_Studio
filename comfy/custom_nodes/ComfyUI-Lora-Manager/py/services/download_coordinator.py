@@ -86,6 +86,7 @@ class DownloadCoordinator:
             progress_callback=progress_callback,
             download_id=download_id,
             source=payload.get("source"),
+            file_params=payload.get("file_params"),
         )
 
         result["download_id"] = download_id
@@ -104,6 +105,23 @@ class DownloadCoordinator:
                 "progress": 0,
                 "download_id": download_id,
                 "message": "Download cancelled by user",
+            },
+        )
+
+        return result
+
+    async def skip_download(self, download_id: str) -> Dict[str, Any]:
+        """Skip a download while preserving all partial files on disk."""
+        download_manager = await self._download_manager_factory()
+        result = await download_manager.skip_download(download_id)
+
+        await self._ws_manager.broadcast_download_progress(
+            download_id,
+            {
+                "status": "skipped",
+                "progress": 0,
+                "download_id": download_id,
+                "message": "Download skipped by user (partial files preserved)",
             },
         )
 

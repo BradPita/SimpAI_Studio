@@ -84,6 +84,18 @@ export class ModalManager {
             });
         }
 
+        const doctorModal = document.getElementById('doctorModal');
+        if (doctorModal) {
+            this.registerModal('doctorModal', {
+                element: doctorModal,
+                onClose: () => {
+                    this.getModal('doctorModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
         // Add moveModal registration
         const moveModal = document.getElementById('moveModal');
         if (moveModal) {
@@ -134,12 +146,31 @@ export class ModalManager {
             });
         }
 
+        // Add batchImportModal registration
+        const batchImportModal = document.getElementById('batchImportModal');
+        if (batchImportModal) {
+            this.registerModal('batchImportModal', {
+                element: batchImportModal,
+                onClose: () => {
+                    this.getModal('batchImportModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
         // Add recipeModal registration
         const recipeModal = document.getElementById('recipeModal');
         if (recipeModal) {
             this.registerModal('recipeModal', {
                 element: recipeModal,
                 onClose: () => {
+                    // Stop any playing video
+                    const video = recipeModal.querySelector('video');
+                    if (video) {
+                        video.pause();
+                        video.currentTime = 0;
+                    }
                     this.getModal('recipeModal').element.style.display = 'none';
                     document.body.classList.remove('modal-open');
                 },
@@ -233,6 +264,19 @@ export class ModalManager {
             });
         }
 
+        // Add linkHfModal registration
+        const linkHfModal = document.getElementById('linkHfModal');
+        if (linkHfModal) {
+            this.registerModal('linkHfModal', {
+                element: linkHfModal,
+                onClose: () => {
+                    this.getModal('linkHfModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
         // Add exampleAccessModal registration
         const exampleAccessModal = document.getElementById('exampleAccessModal');
         if (exampleAccessModal) {
@@ -266,6 +310,32 @@ export class ModalManager {
                 element: bulkBaseModelModal,
                 onClose: () => {
                     this.getModal('bulkBaseModelModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
+        // Register bulkDownloadMissingLorasModal
+        const bulkDownloadMissingLorasModal = document.getElementById('bulkDownloadMissingLorasModal');
+        if (bulkDownloadMissingLorasModal) {
+            this.registerModal('bulkDownloadMissingLorasModal', {
+                element: bulkDownloadMissingLorasModal,
+                onClose: () => {
+                    this.getModal('bulkDownloadMissingLorasModal').element.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                },
+                closeOnOutsideClick: true
+            });
+        }
+
+        // Register resolveFilenameConflictsModal
+        const resolveFilenameConflictsModal = document.getElementById('resolveFilenameConflictsModal');
+        if (resolveFilenameConflictsModal) {
+            this.registerModal('resolveFilenameConflictsModal', {
+                element: resolveFilenameConflictsModal,
+                onClose: () => {
+                    this.getModal('resolveFilenameConflictsModal').element.classList.remove('show');
                     document.body.classList.remove('modal-open');
                 },
                 closeOnOutsideClick: true
@@ -352,7 +422,8 @@ export class ModalManager {
           id === "modelDuplicateDeleteModal" ||
           id === "clearCacheModal" ||
           id === "bulkDeleteModal" ||
-          id === "checkUpdatesConfirmModal"
+          id === "checkUpdatesConfirmModal" ||
+          id === "resolveFilenameConflictsModal"
         ) {
           modal.element.classList.add("show");
         } else {

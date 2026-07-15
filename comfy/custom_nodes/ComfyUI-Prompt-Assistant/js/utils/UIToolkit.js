@@ -15,7 +15,7 @@ class UIToolkit {
     static #statusTips = new Map(); // Map<buttonElement, tipElement>
 
     // 支持的输入字段ID
-    static VALID_INPUT_IDS = ["text", "text_positive", "text_negative", "text_g", "text_l"];
+    static VALID_INPUT_IDS = ["text", "text_positive", "text_negative", "text_g", "text_l", "prompt", "string"];
 
     // 状态文本管理
     static STATUS_TEXTS = {
@@ -41,16 +41,18 @@ class UIToolkit {
         let isValid = false;
         let reason = '';
 
+        const widgetName = (widget.name || widget.id || '').toLowerCase();
+
         // 方法1: 标准文本输入控件（传统litegraph模式）
         if (widget.inputEl && widget.inputEl.tagName === "TEXTAREA" &&
-            this.VALID_INPUT_IDS.includes(widget.name)) {
+            (this.VALID_INPUT_IDS.includes(widget.name) || widgetName.includes('prompt'))) {
             isValid = true;
             reason = 'litegraph textarea matched';
         }
-        // 方法2: Note节点特殊输入
+        // 方法2: Note节点或带文本框的特殊输入
         else if (widget.element && widget.element.tagName === "TEXTAREA") {
             isValid = true;
-            reason = 'Note textarea matched';
+            reason = 'Note/Element textarea matched';
         }
         // 方法3: Markdown Note节点特殊输入（Tiptap编辑器）
         else if (this.isMarkdownNoteInput(widget)) {
@@ -62,11 +64,48 @@ class UIToolkit {
             isValid = true;
             reason = 'Vue node2.0 mode widget';
         }
+        // 方法5: 代理 Widget 解包 (例如子图上的 PromotedWidgetView)
+        else if (typeof widget.resolveDeepest === 'function') {
+            try {
+                const deepest = widget.resolveDeepest();
+                if (deepest && deepest.widget) {
+                    const realWidget = deepest.widget;
+                    const realWidgetName = (realWidget.name || '').toLowerCase();
+                    const typeLower = (realWidget.type || '').toLowerCase();
+                    if (typeLower === "customtext" || 
+                        (typeLower === "string" && realWidget.options?.multiline) || 
+                        this.VALID_INPUT_IDS.includes(realWidget.name) || realWidgetName.includes('prompt')) {
+                        isValid = true;
+                        reason = 'Unwrapped PromotedWidgetView matched';
+                    }
+                }
+            } catch (e) {
+                const name = (widget.name || widget.sourceWidgetName || '').toLowerCase();
+                if (this.VALID_INPUT_IDS.includes(widget.name) || name.includes('prompt')) {
+                    isValid = true;
+                    reason = 'PromotedWidgetView name matched fallback';
+                }
+            }
+        }
 
-        if (debug) {
-            const widgetName = widget.name || widget.id || 'unknown';
+        // ---可见性检测补救---
+        // 如果基本检测通过，但元素本身是隐藏的，则视为无效
+        // 注意：有些节点的 textarea 可能在初始化时 display:none，随后被 ComfyUI 脚本显示
+        if (isValid) {
+            const element = widget.inputEl || widget.element;
+            if (element && !this.isElementVisible(element)) {
+                // 如果是标准 textarea，尝试检查父级可见性，或者放宽判断（有些节点在后台渲染）
+                const isMarkdown = this.isMarkdownNoteInput(widget);
+                if (!isMarkdown) {
+                    isValid = false;
+                    reason += ' (but element is hidden)';
+                }
+            }
+        }
+
+        if (debug || (node && node.id === 74)) {
             const nodeType = node?.type || widget.node?.type || 'unknown';
-            logger.debug(`[isValidInput] 控件: ${widgetName} | 节点类型: ${nodeType} | 有效: ${isValid} | 原因: ${reason}`);
+            logger.debug(`[isValidInput] 节点[${node?.id || '?'}] | 控件: ${widget.name || '?'}| 类型: ${nodeType} | 有效: ${isValid} | 原因: ${reason}`);
         }
 
         return isValid;
@@ -93,16 +132,19 @@ class UIToolkit {
             'PreviewAny',       // Preview as Text节点（实际类型）
             'PreviewTextNode',  // Preview节点可能的其他名称
             'Show any [Crystools]',
+            'CLIPTextEncode',   // 显式包含 CLIP 相关
+            'CLIPTextEncodeSDXL',
             // 添加其他支持的节点类型
         ];
 
         // 检查节点类型
-        if (supportedNodeTypes.includes(nodeRef.type)) {
+        if (supportedNodeTypes.includes(nodeRef.type) || nodeRef.type?.includes('CLIP')) {
             return true;
         }
 
         // 检查控件名称是否为有效输入
-        if (this.VALID_INPUT_IDS.includes(widget.name)) {
+        const widgetName = (widget.name || widget.id || '').toLowerCase();
+        if (this.VALID_INPUT_IDS.includes(widget.name) || widgetName.includes('prompt')) {
             return true;
         }
 
@@ -416,7 +458,7 @@ class UIToolkit {
             const oldInfo = this.#activeButtonInfo;
             // 重置旧按钮状态
             this.setButtonState(oldInfo.widget, oldInfo.buttonId, 'active', false);
-            logger.debug(`按钮状态重置 | 按钮:${oldInfo.buttonId} | 节点:${oldInfo.widget.nodeId}`);
+            // logger.debug(`按钮状态重置 | 按钮:${oldInfo.buttonId} | 节点:${oldInfo.widget.nodeId}`);
         }
 
         // 设置新的激活按钮
@@ -425,7 +467,7 @@ class UIToolkit {
         // 如果有新的按钮信息，设置其状态为激活
         if (buttonInfo) {
             this.setButtonState(buttonInfo.widget, buttonInfo.buttonId, 'active', true);
-            logger.debug(`按钮激活 | 按钮:${buttonInfo.buttonId} | 节点:${buttonInfo.widget.nodeId}`);
+            // logger.debug(`按钮激活 | 按钮:${buttonInfo.buttonId} | 节点:${buttonInfo.widget.nodeId}`);
         }
     }
 
@@ -445,7 +487,7 @@ class UIToolkit {
         e.preventDefault();
         e.stopPropagation();
 
-        logger.debug(`弹窗按钮点击 | 按钮: ${buttonId} | 节点: ${widget.nodeId}`);
+        // logger.debug(`弹窗按钮点击 | 按钮: ${buttonId} | 节点: ${widget.nodeId}`);
 
         // 检查当前按钮状态
         const isCurrentActive = this.isActiveButton(widget, buttonId);
@@ -473,6 +515,7 @@ class UIToolkit {
             anchorButton: e.currentTarget,
             nodeId: widget.nodeId,
             inputId: widget.inputId,
+            widgetKey: widget.widgetKey,
             buttonInfo: buttonInfo,
             onClose: () => {
                 // 弹窗关闭时，如果当前按钮仍为激活状态，则重置
@@ -626,7 +669,7 @@ class UIToolkit {
 
         // 设置按钮为处理中状态
         this.setButtonState(widget, buttonId, 'processing', true);
-        logger.debug(`按钮操作 | 动作:开始 | 按钮:${buttonId}`);
+        // logger.debug(`按钮操作 | 动作:开始 | 按钮:${buttonId}`);
 
         // 执行操作（接收一个回调函数用于处理操作完成后的逻辑）
         try {
@@ -637,7 +680,7 @@ class UIToolkit {
                 // 如果操作成功且有结果，将结果写入历史记录
                 if (success && widget.inputEl && widget.inputEl.value) {
                     // 添加到历史
-                    logger.debug(`准备写入历史｜ ${buttonId}操作完成｜ node_id=${widget.nodeId}`);
+                    // logger.debug(`准备写入历史｜ ${buttonId}操作完成｜ node_id=${widget.nodeId}`);
                     LocalHistoryService.addHistory({
                         workflow_id: '',
                         node_id: widget.nodeId,
@@ -656,7 +699,7 @@ class UIToolkit {
                         null
                     );
                 } else {
-                    logger.debug(`按钮操作完成 | 结果:${success ? '成功' : '失败'} | 按钮:${buttonId}`);
+                    // logger.debug(`按钮操作完成 | 结果:${success ? '成功' : '失败'} | 按钮:${buttonId}`);
                     this.showStatusTip(
                         e.currentTarget,
                         'success',
@@ -667,7 +710,7 @@ class UIToolkit {
             };
 
             // 执行操作并传入回调
-            logger.debug(`历史缓存 ｜ 按钮操作准备执行 node_id=${widget.nodeId} input_id=${widget.inputId} type=${buttonId}`);
+            // logger.debug(`历史缓存 ｜ 按钮操作准备执行 node_id=${widget.nodeId} input_id=${widget.inputId} type=${buttonId}`);
             operation(callback);
         } catch (error) {
             // 出现异常时重置按钮状态
@@ -699,9 +742,8 @@ class UIToolkit {
     /**
      * 写入内容到输入框
      */
-    static writeToInput(content, nodeId, inputId, options = { highlight: true, focus: false }) {
-        const mappingKey = `${nodeId}_${inputId}`;
-        const mapping = window.PromptAssistantInputWidgetMap?.[mappingKey];
+    static writeToInput(content, nodeId, inputId, options = { highlight: true, focus: false, widgetKey: null }) {
+        const mapping = this._findMapping(nodeId, inputId, options.widgetKey);
 
         if (mapping && mapping.inputEl) {
             const inputEl = mapping.inputEl;
@@ -755,9 +797,8 @@ class UIToolkit {
     /**
      * 在光标位置插入内容
      */
-    static insertAtCursor(content, nodeId, inputId, options = { highlight: true, keepFocus: true }) {
-        const mappingKey = `${nodeId}_${inputId}`;
-        const mapping = window.PromptAssistantInputWidgetMap?.[mappingKey];
+    static insertAtCursor(content, nodeId, inputId, options = { highlight: true, keepFocus: true, widgetKey: null }) {
+        const mapping = this._findMapping(nodeId, inputId, options.widgetKey);
 
         if (mapping && mapping.inputEl) {
             const inputEl = mapping.inputEl;
@@ -839,22 +880,78 @@ class UIToolkit {
     }
 
     /**
+     * 根据 nodeID 和 inputID 查找映射关系的辅助方法
+     * 优先使用 widgetKey，如果未提供则尝试匹配唯一映射
+     */
+    static _findMapping(nodeId, inputId, widgetKey = null) {
+        if (widgetKey) {
+            const mapping = window.PromptAssistantInputWidgetMap?.[widgetKey];
+            if (mapping) return mapping;
+        }
+
+        // 尝试使用旧格式 key
+        const oldKey = `${nodeId}_${inputId}`;
+        const oldMapping = window.PromptAssistantInputWidgetMap?.[oldKey];
+        if (oldMapping) return oldMapping;
+
+        // 如果仍未找到，尝试在所有映射中查找匹配 nodeId 和 inputId 的项
+        // 这在 graphId 无法确定的情况下非常有用
+        const mappings = Object.values(window.PromptAssistantInputWidgetMap || {});
+        const matches = mappings.filter(m =>
+            (m.widget?.nodeId == nodeId && m.widget?.inputId == inputId) ||
+            (m.inputEl && m.inputEl._nodeId == nodeId && m.inputEl._inputId == inputId)
+        );
+
+        if (matches.length === 1) {
+            return matches[0];
+        } else if (matches.length > 1) {
+            logger.warn(`查找映射 | 结果:冲突 | 找到多个匹配项 | 节点:${nodeId} | 输入框:${inputId}`);
+            // 如果有多个匹配，尝试匹配 nodeId 且没有 graphId 的那个（旧版本）
+            const bestMatch = matches.find(m => !m.widgetKey || !m.widgetKey.includes('_'));
+            return bestMatch || matches[0];
+        }
+
+        return null;
+    }
+
+    /**
      * 为输入框添加高亮动画效果
      */
     static _highlightInput(inputEl) {
-        // 移除可能存在的旧动画类
-        inputEl.classList.remove('input-highlight');
+        if (!inputEl) return;
 
-        // 强制重绘
+        // 移除旧的高亮状态
+        this.removeHighlight(inputEl);
+
+        // 强制重绘，确保动画可以重新开始
         void inputEl.offsetWidth;
 
         // 添加动画类
         inputEl.classList.add('input-highlight');
 
         // 动画结束后移除类
-        setTimeout(() => {
-            inputEl.classList.remove('input-highlight');
-        }, 800); // 与CSS中的动画时长匹配
+        // 使用 200ms 匹配 CSS 中的动画时长 (common.css: L181)
+        inputEl._highlightTimer = setTimeout(() => {
+            this.removeHighlight(inputEl);
+        }, 200);
+    }
+
+    /**
+     * 显式移除元素的高亮状态并清理定时器
+     * 用于在布局重排（如滚动条出现）前清理渲染负担
+     * @param {HTMLElement} inputEl 目标元素
+     */
+    static removeHighlight(inputEl) {
+        if (!inputEl) return;
+
+        // 移除动画类
+        inputEl.classList.remove('input-highlight');
+
+        // 清理定时器
+        if (inputEl._highlightTimer) {
+            clearTimeout(inputEl._highlightTimer);
+            inputEl._highlightTimer = null;
+        }
     }
 
     /**

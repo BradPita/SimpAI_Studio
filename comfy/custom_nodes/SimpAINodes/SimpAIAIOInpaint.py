@@ -1,12 +1,43 @@
+import sys
+from pathlib import Path
+
+_STUDIO_ROOT = str(Path(__file__).resolve().parents[3])
+if _STUDIO_ROOT not in sys.path:
+    sys.path.insert(0, _STUDIO_ROOT)
+
 from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
 from comfy_execution.graph_utils import GraphBuilder
+from modules.inpaint_worker import mask_blend_parameters
 
 
 def _mask_from_config(graph, config):
     mask = graph.node("ImageToMask", image=config["mask_image"], channel="red").out(0)
     if config.get("invert_mask", False):
         mask = graph.node("InvertMask", mask=mask).out(0)
-    return mask
+    image = config["image"]
+    dilation_kernel_size, _, blur_radius = mask_blend_parameters(image.shape[-3], image.shape[-2])
+    return graph.node(
+        "GrowMaskWithBlur",
+        mask=mask,
+        expand=(dilation_kernel_size - 1) // 2,
+        incremental_expandrate=0,
+        tapered_corners=False,
+        flip_input=False,
+        blur_radius=blur_radius,
+        lerp_alpha=1,
+        decay_factor=1,
+        fill_holes=False,
+    ).out(0)
+
+
+def _patch_differential_diffusion(graph, model, enabled):
+    if not enabled:
+        return model
+    return graph.node("DifferentialDiffusion", model=model, strength=1.0).out(0)
+
+
+def _sampler_cfg(family, cfg):
+    return 1.0 if family == "flux" else float(cfg)
 
 
 def _engine_enabled(config):
@@ -22,6 +53,7 @@ class _SimpAIAIOInpaintBase:
         if cls.FAMILY in ("sdxl", "qwen"):
             optional["inpaint_control_net"] = ("CONTROL_NET", {"lazy": True})
         optional["progress_node_id"] = ("STRING", {"default": ""})
+        optional["use_differential_diffusion"] = ("BOOLEAN", {"default": True})
         return {
             "required": {
                 "model": ("MODEL",),
@@ -44,12 +76,14 @@ class _SimpAIAIOInpaintBase:
     CATEGORY = "SimpAI/AIO/Inpaint"
 
     def check_lazy_status(self, model, positive, negative, vae, inpaint, seed, steps, cfg,
-                          sampler_name, scheduler, inpaint_control_net=None, progress_node_id=""):
+                          sampler_name, scheduler, inpaint_control_net=None, progress_node_id="",
+                          use_differential_diffusion=True):
         if self.FAMILY in ("sdxl", "qwen") and _engine_enabled(inpaint) and inpaint_control_net is None:
             return ["inpaint_control_net"]
         return []
 
-    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler, inpaint_control_net=None, progress_node_id=""):
+    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
+               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         graph = GraphBuilder()
         image = inpaint["image"]
         mask = _mask_from_config(graph, inpaint)
@@ -90,8 +124,9 @@ class _SimpAIAIOInpaintBase:
         conditioned = graph.node("InpaintModelConditioning", positive=positive, negative=negative, vae=vae, pixels=image, mask=mask, noise_mask=True)
         latent = conditioned.out(2)
         if inpaint.get("disable_initial_latent", False):
-            encoded = graph.node("VAEEncode", pixels=image, vae=vae)
-            latent = graph.node("SetLatentNoiseMask", samples=encoded.out(0), mask=mask).out(0)
+            latent = graph.node("VAEEncodeForInpaint", pixels=image, vae=vae, mask=mask, grow_mask_by=16).out(0)
+
+        model = _patch_differential_diffusion(graph, model, use_differential_diffusion)
 
         sampled = graph.node(
             "KSampler",
@@ -101,7 +136,7 @@ class _SimpAIAIOInpaintBase:
             latent_image=latent,
             seed=seed,
             steps=steps,
-            cfg=cfg,
+            cfg=_sampler_cfg(self.FAMILY, cfg),
             sampler_name=sampler_name,
             scheduler=scheduler,
             denoise=denoise,
@@ -131,7 +166,8 @@ class SimpAIAIOInpaintQwen(_SimpAIAIOInpaintBase):
 class SimpAIAIOInpaintWan(_SimpAIAIOInpaintBase):
     FAMILY = "wan"
 
-    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler, inpaint_control_net=None, progress_node_id=""):
+    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
+               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         graph = GraphBuilder()
         image = inpaint["image"]
         mask = _mask_from_config(graph, inpaint)
@@ -152,6 +188,7 @@ class SimpAIAIOInpaintWan(_SimpAIAIOInpaintBase):
             control_video=image,
             control_masks=mask,
         )
+        model = _patch_differential_diffusion(graph, model, use_differential_diffusion)
         sampled = graph.node(
             "KSampler",
             model=model,
@@ -174,17 +211,19 @@ class SimpAIAIOInpaintWan(_SimpAIAIOInpaintBase):
 class SimpAIAIOInpaintZImage(_SimpAIAIOInpaintBase):
     FAMILY = "z_image"
 
-    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler, inpaint_control_net=None, progress_node_id=""):
+    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
+               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         if not _engine_enabled(inpaint):
             return super().expand(
                 model, positive, negative, vae, inpaint, seed, steps, cfg,
-                sampler_name, scheduler, inpaint_control_net, progress_node_id,
+                sampler_name, scheduler, inpaint_control_net, progress_node_id, use_differential_diffusion,
             )
         graph = GraphBuilder()
         image = inpaint["image"]
         mask = _mask_from_config(graph, inpaint)
         encoded = graph.node("VAEEncode", pixels=image, vae=vae)
         latent = graph.node("SetLatentNoiseMask", samples=encoded.out(0), mask=mask)
+        model = _patch_differential_diffusion(graph, model, use_differential_diffusion)
         sampled = graph.node(
             "LanPaint_KSampler",
             model=model,
@@ -211,7 +250,8 @@ class SimpAIAIOInpaintZImage(_SimpAIAIOInpaintBase):
 class SimpAIAIOInpaintAnima(_SimpAIAIOInpaintBase):
     FAMILY = "anima"
 
-    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler, inpaint_control_net=None, progress_node_id=""):
+    def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
+               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
         graph = GraphBuilder()
         mask = _mask_from_config(graph, inpaint)
         patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="anima-lllite-inpainting-v2.safetensors",

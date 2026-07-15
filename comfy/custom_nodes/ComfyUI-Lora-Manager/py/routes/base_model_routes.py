@@ -120,7 +120,7 @@ class BaseModelRoutes(ABC):
         self.service = service
         self.model_type = service.model_type
         self.model_file_service = ModelFileService(service.scanner, service.model_type)
-        self.model_move_service = ModelMoveService(service.scanner)
+        self.model_move_service = ModelMoveService(service.scanner, service.model_type)
         self.model_lifecycle_service = ModelLifecycleService(
             scanner=service.scanner,
             metadata_manager=MetadataManager,
@@ -204,6 +204,7 @@ class BaseModelRoutes(ABC):
             service=service,
             update_service=update_service,
             metadata_provider_selector=get_metadata_provider,
+            settings_service=self._settings,
             logger=logger,
         )
         return ModelHandlerSet(
@@ -250,7 +251,7 @@ class BaseModelRoutes(ABC):
 
     def _find_model_file(self, files):
         """Find the appropriate model file from the files list - can be overridden by subclasses."""
-        return next((file for file in files if file.get("type") == "Model" and file.get("primary") is True), None)
+        return next((file for file in files if file.get("type") in ("Model", "Diffusion Model") and file.get("primary") is True), None)
 
     def get_handler(self, name: str) -> Callable[[web.Request], web.StreamResponse]:
         """Expose handlers for subclasses or tests."""
@@ -270,7 +271,7 @@ class BaseModelRoutes(ABC):
     def _ensure_move_service(self) -> ModelMoveService:
         if self.model_move_service is None:
             service = self._ensure_service()
-            self.model_move_service = ModelMoveService(service.scanner)
+            self.model_move_service = ModelMoveService(service.scanner, service.model_type)
         return self.model_move_service
 
     def _ensure_lifecycle_service(self) -> ModelLifecycleService:

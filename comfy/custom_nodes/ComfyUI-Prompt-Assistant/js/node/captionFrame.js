@@ -145,6 +145,7 @@ async function showFrameExtractionModal(node) {
         actualTotalFrames = 1;
     }
 
+    /*
     console.log('[PromptAssistant-CaptionFrame] 视频元数据:', {
         originalFps: initialFps,
         originalDuration,
@@ -154,6 +155,7 @@ async function showFrameExtractionModal(node) {
         actualTotalFrames,
         actualDuration
     });
+    */
 
     // 状态容器，用于在 renderContent 和 onSave 之间共享数据
     const state = {
@@ -226,7 +228,7 @@ async function showFrameExtractionModal(node) {
                 }
 
                 // [Debug] 输出保存的值
-                console.log('[PromptAssistant-CaptionFrame] 保存帧索引:', newValue);
+                // console.log('[PromptAssistant-CaptionFrame] 保存帧索引:', newValue);
 
                 // 自动切换策略为手动
                 if (state.widgets.strategy) {

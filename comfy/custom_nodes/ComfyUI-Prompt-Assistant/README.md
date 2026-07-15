@@ -1,23 +1,102 @@
+
 <div align="center">
 
 <h1 align="center">ComfyUI Prompt Assistant✨提示词小助手V2.0</h1>
 
+
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/yawiii/ComfyUI-Prompt-Assistant">
-<a href="https://space.bilibili.com/520680644"><img alt="bilibili" src="https://img.shields.io/badge/%E4%BD%BF%E7%94%A8%E6%95%99%E7%A8%8B-blue?style=flat&logo=bilibili&logoColor=2300A5DC&labelColor=%23FFFFFF&color=%2307A3D7"></a>
-<a href="https://https://data.xflow.cc/wechat.png"><img alt="weChat" src="https://img.shields.io/badge/%E4%BA%A4%E6%B5%81%E5%8F%8D%E9%A6%88-blue?logo=wechat&logoColor=green&labelColor=%23FFFFFF&color=%2307A3D7"></a>
+<a href="https://space.bilibili.com/520680644"><img alt="bilibili" src="https://img.shields.io/badge/详细视频教程-blue?style=flat&logo=bilibili&logoColor=2300A5DC&labelColor=%23FFFFFF&color=%2307A3D7"></a>
+<a href="https://data.xflow.cc/wechat.png"><img alt="weChat" src="https://img.shields.io/badge/欢迎加入交流群-blue?logo=wechat&logoColor=green&labelColor=%23FFFFFF&color=%2307A3D7"></a>
 <a href="https://ycn58r88iss5.feishu.cn/share/base/form/shrcnJ1AzbUJCynW9qrNJ2zPugy"><img alt="bug" src="https://img.shields.io/badge/Bug-反馈-orange"></a>
+
+</div>
+
+<div align="center">
+
+[简体中文](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Русский](README.ru.md) | [繁體中文](README.zh-TW.md)
 
 </div>
 
 <h4 align="center">🎉🎉全新版本的提示词小助手上线啦！功能更强，响应速度更快！适配ComfyUI node2.0！🎉🎉</h4>
 
-> 支持调用云端大模型API、本地Ollama大模型。实现提示词、markdown节点、节点文档翻译；提示词优化、图像/视频反推；常用标签预设、历史记录等功能。是一个全能all in one的提示词插件！
+> 支持调用云端大模型API、本地Ollama大模型。实现提示词、Markdown节点、节点文档翻译；提示词优化、图像反推和视频反推；常用标签收藏、历史记录等功能。是一个全能all in one的提示词插件！
 
 
 ## **📣更新**
 
 <details open>
-<summary><strong>[2025-12-21] 🔥V2.0.0</strong></summary>
+<summary><strong>[2026-04-21] 🔥V2.0.6</strong></summary>
+
+**Changes:**
+* **V3 架构升级**：全面重构节点底层逻辑，适配 ComfyUI V3 API 标准，大幅提升响应速度与运行稳定性。
+
+**Fixes:**
+* **视频反推报错修复**：修复由于部分模型（如 Qwen3.5-Plus）被误判为不支持多图分析而导致的报错问题。现在支持根据模型名智能推断推上限并进行自动截断，不再弹出报错中断任务。
+* **Ollama 请求优化与修复**：优化 Ollama 请求逻辑，支持智能路由（`base_url` 不加 `/v1` 走原生 API，加 `/v1` 走 OpenAI 兼容 API），同时修复流式过滤逻辑导致部分模型返回空内容引发崩溃的报错问题。
+* **子图挂载优化**：修复子图（Subgraph）节点在 Node 2.0 (Vue) 和 LiteGraph 模式下无法创建小助手或挂载不稳定的问题，支持子图中多个同名输入框的精确匹配。
+
+</details>
+
+<details>
+<summary><strong>V2.0.5</strong></summary>
+
+**Changes:**
+
+* **节点随机种子**：为所有节点添加了统一的随机种子实现节点重复执行，移除通过触发词“[R]”机制实现可重复执行的机制；
+  
+  
+* **前端UI新增多语言支持**：感谢@rafek1241
+添加了 ui-i18n 功能，目前支持（中、英、日、韩、法、西、俄、德等）；
+
+**Fixes:**
+* **节点宽度被锁死**：修复 node2.0 下导致节点无法修改宽度问题。
+
+* **置灰内置服务商 baseUrl输入框**：避免误修改导致请求出现移除。
+
+* **网络异常报错**：修复因为强制直连机制，导致 xflow 等中转站请求出现网络异常报错。
+* **图像节点✨图标移至右侧**:避免node2.0 下与节点 id 信息重叠。
+
+</details>
+<details>
+<summary><strong>V2.0.4</strong></summary>
+
+
+* **bug修复**：修复标签和历史功能无法使用的问题；
+
+</details>
+<details>
+<summary><strong>V2.0.3</strong></summary>
+
+
+* **小助手UI**：修复子图节小助手创建不稳定的情况，图像节点丢失图像的情况下无法创建小助手的情况；
+  
+* **Ollama**：修复因为代理原因导致HTTP502错误
+
+</details>
+<details>
+<summary><strong>V2.0.2</strong></summary>
+
+* **标签模块**：修复格式问题，现在可以在自由新建分类和管理标签了。修复预设创建和迁移出错问题；
+  
+* **小助手UI**：优化node2.0下的挂载方法，修复子图无法创建小助手和某些情况下不稳定的问题，并提升性能；
+  
+* **交互优化**：请求过程新增流式输入效果、优化交互细节；
+  
+* **翻译模块**：新增混合语言翻译规则参数，可以设置默认翻译成中文\英文、完善了节点文档翻译；
+
+* **内置规则**：修复部分规则，出现中英混合、kontext输出没有翻译等问题；
+  
+* **API请求**：修复gemimi-3-pro无法请求的问题；修复ollama404问题；
+  
+* **节点优化**：完善视频反推节点；
+  
+* **控制台日志**：优化日志输出，修复进度日志无限输出的bug；
+ 
+* **依赖更新**：避免缺少依赖无法启动问题；
+
+</details>
+<details>
+<summary><strong>V2.0.0</strong></summary>
 
 * **调用优化**：全面重构小助手，提升API、Ollama调用和稳定度、响应速度；
   
@@ -33,7 +112,9 @@
 </details>
 
 <details>
+<summary><strong>V1.x.x</strong></summary>
 
+<details>
 <summary><strong>V1.2.x </strong></summary>
 
 <details>
@@ -193,6 +274,8 @@
 
 </details>
 
+</details>
+
 ## **✨ 功能介绍**
 #### 💡提示词优化+翻译
 
@@ -266,10 +349,10 @@
 #### **🔹视频反推节点**
 `✨Prompt Assistant → 视频反推提示词`
 
-`（⚠️beta：目前仅能实现关键字反推，反推结果仍不稳，持续优化中）`
-
 <img width="1700" height="1080" alt="视频反推节点" src="https://github.com/user-attachments/assets/0143096b-24d5-4308-82ff-e0a99144db0b" />
 <img width="1700" height="1102" alt="选取帧工具" src="https://github.com/user-attachments/assets/96c2bd08-b26c-4df1-b32c-be8e20328c97" />
+
+
 
 
 
@@ -277,9 +360,9 @@
 
 ### ⚠️旧版本迁移注意事项
 
-`如果您安装过提示词小助手2.0.0之前的版本，请注意备份原插件目录下的config目录。避免api配置、自定义规则、自定义标签数据丢失！`
+`如果您安装过提示词小助手2.0之前的版本，请注意备份原插件目录下的config目录。避免api配置、自定义规则、自定义标签数据丢失！`
 
-如果您之前是通过**Manager**安装则直接更新即可，如果您使用的是手动安装，建议删除旧的插件目录（记得备份config目录！！）将新的插件放入到`custom\_nodes`目录，再将需要恢复的配置文件放回config目录
+如果您之前是通过**Manager**安装则直接更新即可，如果您使用的是手动安装，建议删除旧的插件目录（记得备份config目录！！）将新的插件放入到`custom\custom_nodes`目录，再将需要恢复的配置文件放回config目录
 
 #### **从ComfyUI Manager中安装**
 
@@ -289,7 +372,22 @@
 
 
 
-#### **手动安装**
+#### **克隆代码仓库**
+
+
+1. 导航到您的ComfyUI自定义节点文件夹:
+   ```bash
+   cd ComfyUI/custom_nodes
+   ```
+
+2. 克隆这个代码仓库:
+   ```bash
+   git clone https://github.com/yawiii/ComfyUI-Prompt-Assistant.git
+   ```
+
+3. 重启 ComfyUI：
+
+#### **下载插件压缩包**
 
 1.  从[克隆仓库](https://github.com/yawiii/comfyui_prompt_assistant/releases)中下载最新版本
 
@@ -297,7 +395,6 @@
 
     `⚠️注意：建议将插件目录名称修改为：prompt-assistant，以符合ComfyUI规范`
 <img width="600" height="276" alt="github安装" src="https://github.com/user-attachments/assets/99783a78-6e0b-42aa-8f9e-7146ebcef5fd" />
-
 
 
 2. 重启 ComfyUI
@@ -316,7 +413,7 @@
 
 ## **⚙️ 配置说明**
 
-### 配置AIP Key，并配置模型
+### 配置API Key，并配置模型
 
 <img width="1593" height="1119" alt="进入配置页面" src="https://github.com/user-attachments/assets/ea01c0bc-fe0f-40be-991c-d7833965213a" />
 
@@ -330,23 +427,31 @@
 `⚠️免责声明：本插件仅提供API调用工具，第三方服务责任与本插件无关，插件所涉用户配置信息均存储于本地。对于因账号使用产生的任何问题，本插件不承担责任！`
 
 
-​**百度翻译（机器翻译**​**）：[百度通用文本翻译申请入口](https://fanyi-api.baidu.com/product/11)
+​**百度翻译（机器翻译**​）：[百度通用文本翻译申请入口](https://fanyi-api.baidu.com/product/11)
 
 `速度快，但是翻译质量一般。使用魔法时可能会导致无法请求每个月有免费500w额度`
 
 
 **​智谱（大语言模型模型）：​**[智谱API申请入口](https://www.bigmodel.cn/invite?icode=Wz1tQAT40T9M8vwp%2F1db7nHEaazDlIZGj9HxftzTbt4%3D)
 
-`速度快，无限额度；注意：模型有审查，如果请求内容违规，会返回空结果。并非插件bug`
+`速度快，无限额度；注意：模型有审查，如果请求内容违规，会返回空结果。并非插件bug。最近智谱开始限制请求频率了。`
 
 
 **​xFlow-API聚合：​**[xFlow API申请入口](https://api.xflow.cc/register?aff=Z063)
 
-`提供各类模型api聚合（如Gemini、nano Bannana、Grok、ChatGTP...），实现一个apikey调用，无需解决网络问题；`
+`提供各类模型API聚合（如Gemini、nano Bannana、Grok、ChatGTP...），实现一个APIkey调用所有主流大模型，无需解决网络问题；`
+
+**其他服务商可自行添加**
 
 
 
 ## **🎀特别感谢以下朋友！**
 
 感谢群友为V2.0.0版本提供规则模板：阿丹、CJL、诺曼底
+
+
+
+
+
+
 

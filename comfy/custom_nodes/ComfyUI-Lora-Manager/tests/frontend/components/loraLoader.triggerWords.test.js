@@ -35,20 +35,27 @@ vi.mock(API_MODULE, () => ({
 const collectActiveLorasFromChain = vi.fn();
 const updateConnectedTriggerWords = vi.fn();
 const mergeLoras = vi.fn();
-const setupInputWidgetWithAutocomplete = vi.fn();
 const getAllGraphNodes = vi.fn();
 const getNodeFromGraph = vi.fn();
+const getWidgetByName = vi.fn((node, name) =>
+  node?.widgets?.find((widget) => widget?.name === name) ?? null
+);
+const getWidgetSerializedValue = vi.fn((node, name) => {
+  const index = node?.widgets?.findIndex((widget) => widget?.name === name) ?? -1;
+  return index >= 0 ? node.widgets_values?.[index] : undefined;
+});
 
 vi.mock(UTILS_MODULE, () => ({
   collectActiveLorasFromChain,
   updateConnectedTriggerWords,
   mergeLoras,
-  setupInputWidgetWithAutocomplete,
   chainCallback: (proto, property, callback) => {
     proto[property] = callback;
   },
   getAllGraphNodes,
   getNodeFromGraph,
+  getWidgetByName,
+  getWidgetSerializedValue,
   LORA_PATTERN: /<lora:([^:]+):([-\d.]+)(?::([-\d.]+))?>/g,
 }));
 
@@ -73,10 +80,8 @@ describe("Lora Loader trigger word updates", () => {
     mergeLoras.mockClear();
     mergeLoras.mockImplementation(() => [{ name: "Alpha", active: true }]);
 
-    setupInputWidgetWithAutocomplete.mockClear();
-    setupInputWidgetWithAutocomplete.mockImplementation(
-      (_node, _widget, originalCallback) => originalCallback
-    );
+    getWidgetByName.mockClear();
+    getWidgetSerializedValue.mockClear();
 
     addLorasWidget.mockClear();
     addLorasWidget.mockImplementation((_node, _name, _opts, callback) => ({
@@ -94,27 +99,39 @@ describe("Lora Loader trigger word updates", () => {
     const nodeType = { comfyClass: "Lora Loader (LoraManager)", prototype: {} };
     await extension.beforeRegisterNodeDef(nodeType, {}, {});
 
+    // Create mock widget (AUTOCOMPLETE_TEXT_LORAS type created by Vue widgets)
+    const inputWidget = {
+      name: "text",
+      value: "",
+      options: {},
+      callback: null, // Will be set by onNodeCreated
+    };
+
+    const metadataWidget = {
+      name: "__autocomplete_metadata_text",
+      value: { version: 1, textWidgetName: "text" },
+      options: {},
+    };
+
     const node = {
       comfyClass: "Lora Loader (LoraManager)",
-      widgets: [
-        {
-          value: "",
-          options: {},
-          inputEl: {},
-        },
-      ],
+      widgets: [metadataWidget, inputWidget],
       addInput: vi.fn(),
       graph: {},
     };
 
     nodeType.prototype.onNodeCreated.call(node);
 
-    expect(setupInputWidgetWithAutocomplete).toHaveBeenCalled();
+    // The widget is now the AUTOCOMPLETE_TEXT_LORAS type, created automatically by Vue widgets
+    expect(node.inputWidget).toBe(inputWidget);
     expect(node.lorasWidget).toBeDefined();
+    expect(getWidgetByName).toHaveBeenCalledWith(node, "text");
 
-    const inputCallback = node.widgets[0].callback;
+    // The callback should have been set up by onNodeCreated
+    const inputCallback = inputWidget.callback;
     expect(typeof inputCallback).toBe("function");
 
+    // Simulate typing in the input widget
     inputCallback("<lora:Alpha:1.0>");
 
     expect(mergeLoras).toHaveBeenCalledWith("<lora:Alpha:1.0>", []);
@@ -128,4 +145,3 @@ describe("Lora Loader trigger word updates", () => {
     expect([...triggerWordSet]).toEqual(["Alpha"]);
   });
 });
-

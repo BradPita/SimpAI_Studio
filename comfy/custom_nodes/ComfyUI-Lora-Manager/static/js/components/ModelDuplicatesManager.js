@@ -48,15 +48,18 @@ export class ModelDuplicatesManager {
     // Method to check for duplicates count using existing endpoint
     async checkDuplicatesCount() {
         try {
+            const params = this._buildFilterQueryParams();
             const endpoint = `/api/lm/${this.modelType}/find-duplicates`;
-            const response = await fetch(endpoint);
-            
+            const url = params.toString() ? `${endpoint}?${params}` : endpoint;
+
+            const response = await fetch(url);
+
             if (!response.ok) {
                 throw new Error(`Failed to get duplicates count: ${response.statusText}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (data.success) {
                 const duplicatesCount = (data.duplicates || []).length;
                 this.updateDuplicatesBadge(duplicatesCount);
@@ -103,29 +106,35 @@ export class ModelDuplicatesManager {
     
     async findDuplicates() {
         try {
-            // Determine API endpoint based on model type
+            const params = this._buildFilterQueryParams();
             const endpoint = `/api/lm/${this.modelType}/find-duplicates`;
-            
-            const response = await fetch(endpoint);
+            const url = params.toString() ? `${endpoint}?${params}` : endpoint;
+
+            const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`Failed to find duplicates: ${response.statusText}`);
             }
-            
+
             const data = await response.json();
             if (!data.success) {
                 throw new Error(data.error || 'Unknown error finding duplicates');
             }
-            
+
             this.duplicateGroups = data.duplicates || [];
-            
+            this._pruneVerificationState();
+
             // Update the badge with the current count
             this.updateDuplicatesBadge(this.duplicateGroups.length);
-            
+
             if (this.duplicateGroups.length === 0) {
                 showToast('toast.duplicates.noDuplicatesFound', { type: this.modelType }, 'info');
+                // If already in duplicate mode, exit to clear the display
+                if (this.inDuplicateMode) {
+                    this.exitDuplicateMode();
+                }
                 return false;
             }
-            
+
             this.enterDuplicateMode();
             return true;
         } catch (error) {
@@ -133,6 +142,51 @@ export class ModelDuplicatesManager {
             showToast('toast.duplicates.findFailed', { message: error.message }, 'error');
             return false;
         }
+    }
+
+    /**
+     * Build query parameters from current filter state for duplicate finding.
+     * @returns {URLSearchParams} The query parameters to append to the API endpoint
+     */
+    _buildFilterQueryParams() {
+        const params = new URLSearchParams();
+        const pageState = getCurrentPageState();
+        const filters = pageState?.filters;
+
+        if (!filters) return params;
+
+        // Base model filters
+        if (filters.baseModel && Array.isArray(filters.baseModel)) {
+            filters.baseModel.forEach(m => params.append('base_model', m));
+        }
+
+        // Tag filters (tri-state: include/exclude)
+        if (filters.tags && typeof filters.tags === 'object') {
+            Object.entries(filters.tags).forEach(([tag, state]) => {
+                if (state === 'include') {
+                    params.append('tag_include', tag);
+                } else if (state === 'exclude') {
+                    params.append('tag_exclude', tag);
+                }
+            });
+        }
+
+        // Model type filters
+        if (filters.modelTypes && Array.isArray(filters.modelTypes)) {
+            filters.modelTypes.forEach(t => params.append('model_type', t));
+        }
+
+        // Folder filter (from active folder state)
+        if (pageState.activeFolder) {
+            params.append('folder', pageState.activeFolder);
+        }
+
+        // Favorites filter
+        if (pageState.showFavoritesOnly) {
+            params.append('favorites_only', 'true');
+        }
+
+        return params;
     }
     
     enterDuplicateMode() {
@@ -346,6 +400,44 @@ export class ModelDuplicatesManager {
                     e.stopPropagation();
                     this.handleVerifyHashes(group);
                 });
+            }
+        });
+    }
+
+    _getGroupFilePaths(group) {
+        return new Set((group?.models || []).map(model => model.file_path));
+    }
+
+    _clearMismatchStateForGroup(group) {
+        this._getGroupFilePaths(group).forEach(filePath => {
+            this.mismatchedFiles.delete(filePath);
+        });
+    }
+
+    _pruneVerificationState() {
+        const visiblePaths = new Set();
+        const visibleHashes = new Set();
+
+        this.duplicateGroups.forEach(group => {
+            visibleHashes.add(group.hash);
+            this._getGroupFilePaths(group).forEach(filePath => visiblePaths.add(filePath));
+        });
+
+        Array.from(this.mismatchedFiles.keys()).forEach(filePath => {
+            if (!visiblePaths.has(filePath)) {
+                this.mismatchedFiles.delete(filePath);
+            }
+        });
+
+        Array.from(this.selectedForDeletion).forEach(filePath => {
+            if (!visiblePaths.has(filePath)) {
+                this.selectedForDeletion.delete(filePath);
+            }
+        });
+
+        Array.from(this.verifiedGroups).forEach(hash => {
+            if (!visibleHashes.has(hash)) {
+                this.verifiedGroups.delete(hash);
             }
         });
     }
@@ -566,10 +658,11 @@ export class ModelDuplicatesManager {
     
     toggleSelectAllInGroup(hash) {
         const checkboxes = document.querySelectorAll(`.selector-checkbox[data-group-hash="${hash}"]`);
-        const allSelected = Array.from(checkboxes).every(checkbox => checkbox.checked);
+        const selectableCheckboxes = Array.from(checkboxes).filter(checkbox => !checkbox.disabled);
+        const allSelected = selectableCheckboxes.length > 0 && selectableCheckboxes.every(checkbox => checkbox.checked);
         
         // If all are selected, deselect all; otherwise select all
-        checkboxes.forEach(checkbox => {
+        selectableCheckboxes.forEach(checkbox => {
             checkbox.checked = !allSelected;
             const filePath = checkbox.dataset.filePath;
             const card = checkbox.closest('.model-card');
@@ -777,11 +870,14 @@ export class ModelDuplicatesManager {
             // Process verification results
             const verifiedAsDuplicates = data.verified_as_duplicates;
             const mismatchedFiles = data.mismatched_files || [];
+
+            this._clearMismatchStateForGroup(group);
             
             // Update mismatchedFiles map
             if (data.new_hash_map) {
                 Object.entries(data.new_hash_map).forEach(([path, hash]) => {
                     this.mismatchedFiles.set(path, hash);
+                    this.selectedForDeletion.delete(path);
                 });
             }
             
@@ -790,6 +886,7 @@ export class ModelDuplicatesManager {
             
             // Re-render the duplicate groups to show verification status
             this.renderDuplicateGroups();
+            this.updateSelectedCount();
             
             // Show appropriate toast message
             if (mismatchedFiles.length > 0) {

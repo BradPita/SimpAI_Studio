@@ -1,10 +1,11 @@
 """Services responsible for recipe metadata analysis."""
+
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -13,6 +14,8 @@ import numpy as np
 from PIL import Image
 
 from ...utils.utils import calculate_recipe_fingerprint
+from ...utils.civitai_utils import extract_civitai_image_id, rewrite_preview_url
+from ...recipes.enrichment import RecipeEnricher
 from .errors import (
     RecipeDownloadError,
     RecipeNotFoundError,
@@ -68,7 +71,9 @@ class RecipeAnalysisService:
         try:
             metadata = self._exif_utils.extract_image_metadata(temp_path)
             if not metadata:
-                return AnalysisResult({"error": "No metadata found in this image", "loras": []})
+                return AnalysisResult(
+                    {"error": "No metadata found in this image", "loras": []}
+                )
 
             return await self._parse_metadata(
                 metadata,
@@ -94,18 +99,45 @@ class RecipeAnalysisService:
         if civitai_client is None:
             raise RecipeServiceError("Civitai client unavailable")
 
-        temp_path = self._create_temp_path()
+        temp_path = None
         metadata: Optional[dict[str, Any]] = None
+        is_video = False
+        extension = ".jpg"  # Default
+
         try:
-            civitai_match = re.match(r"https://civitai\.com/images/(\d+)", url)
-            if civitai_match:
-                image_info = await civitai_client.get_image_info(civitai_match.group(1))
+            civitai_image_id = extract_civitai_image_id(url)
+            if civitai_image_id:
+                image_info = await civitai_client.get_image_info(
+                    civitai_image_id, source_url=url
+                )
                 if not image_info:
-                    raise RecipeDownloadError("Failed to fetch image information from Civitai")
+                    raise RecipeDownloadError(
+                        "Failed to fetch image information from Civitai"
+                    )
+
                 image_url = image_info.get("url")
                 if not image_url:
                     raise RecipeDownloadError("No image URL found in Civitai response")
+
+                is_video = image_info.get("type") == "video"
+
+                # Use optimized preview URLs if possible
+                rewritten_url, _ = rewrite_preview_url(
+                    image_url, media_type=image_info.get("type")
+                )
+                if rewritten_url:
+                    image_url = rewritten_url
+
+                if is_video:
+                    # Extract extension from URL
+                    url_path = image_url.split("?")[0].split("#")[0]
+                    extension = os.path.splitext(url_path)[1].lower() or ".mp4"
+                else:
+                    extension = ".jpg"
+
+                temp_path = self._create_temp_path(suffix=extension)
                 await self._download_image(image_url, temp_path)
+
                 metadata = image_info.get("meta") if "meta" in image_info else None
                 if (
                     isinstance(metadata, dict)
@@ -113,23 +145,172 @@ class RecipeAnalysisService:
                     and isinstance(metadata["meta"], dict)
                 ):
                     metadata = metadata["meta"]
+
+                # Include modelVersionIds from root level if available.
+                # CivitAI API returns modelVersionIds at root level, not in meta.
+                # When meta is null (None), create a minimal dict so downstream
+                # parsers can still discover LoRAs and checkpoints.
+                model_version_ids = image_info.get("modelVersionIds")
+                if model_version_ids:
+                    if isinstance(metadata, dict):
+                        metadata["modelVersionIds"] = model_version_ids
+                    else:
+                        metadata = {"modelVersionIds": model_version_ids}
+
+                # Inject browsingLevel (canonical integer) so the recipe's
+                # preview_nsfw_level can be set, enabling proper NSFW blur
+                # of the preview image.  Fall back to nsfwLevel (string)
+                # when browsingLevel is absent.
+                if isinstance(metadata, dict):
+                    browsing_level = image_info.get("browsingLevel")
+                    nsfw_level_str = image_info.get("nsfwLevel")
+                    if isinstance(browsing_level, int) and browsing_level > 0:
+                        metadata["browsingLevel"] = browsing_level
+                    elif (
+                        isinstance(nsfw_level_str, str)
+                        and nsfw_level_str
+                        in (
+                            "PG", "PG13", "R", "X", "XXX", "Blocked",
+                        )
+                    ):
+                        from ...utils.constants import NSFW_LEVELS
+
+                        metadata["browsingLevel"] = NSFW_LEVELS.get(
+                            nsfw_level_str, 0
+                        )
+
+                # Validate that metadata contains meaningful recipe fields
+                # If not, treat as None to trigger EXIF extraction from downloaded image
+                if isinstance(metadata, dict) and not self._has_recipe_fields(metadata):
+                    self._logger.debug(
+                        "Civitai API metadata lacks recipe fields, will extract from EXIF"
+                    )
+                    metadata = None
             else:
+                # Basic extension detection for non-Civitai URLs
+                url_path = url.split("?")[0].split("#")[0]
+                extension = os.path.splitext(url_path)[1].lower()
+                if extension in [".mp4", ".webm"]:
+                    is_video = True
+                else:
+                    extension = ".jpg"
+
+                temp_path = self._create_temp_path(suffix=extension)
                 await self._download_image(url, temp_path)
 
-            if metadata is None:
-                metadata = self._exif_utils.extract_image_metadata(temp_path)
+            # Always extract EXIF from the downloaded image for generation
+            # params (prompt, negative prompt, sampler, steps, etc.).
+            # Previously this was gated on ``metadata is None``, but that
+            # skipped EXIF entirely when API metadata (modelVersionIds,
+            # browsingLevel) is present, losing all generation parameters.
+            exif_metadata = None
+            if not is_video:
+                exif_metadata = await asyncio.to_thread(
+                    self._exif_utils.extract_image_metadata, temp_path
+                )
 
-            if not metadata:
-                return self._metadata_not_found_response(temp_path)
+            # Fallback: try the original (non-optimized) image for EXIF data
+            if not exif_metadata and civitai_image_id and image_info:
+                original_url = image_info.get("url")
+                if original_url:
+                    self._logger.debug(
+                        "Optimized image lacks embedded metadata, "
+                        "falling back to original image: %s",
+                        original_url,
+                    )
+                    orig_temp_path = self._create_temp_path(suffix=".png")
+                    try:
+                        await self._download_image(original_url, orig_temp_path)
+                        exif_metadata = await asyncio.to_thread(
+                            self._exif_utils.extract_image_metadata,
+                            orig_temp_path,
+                        )
+                    finally:
+                        self._safe_cleanup(orig_temp_path)
 
-            return await self._parse_metadata(
-                metadata,
+            # Parse EXIF data (typically a string like parameters/prompt/workflow)
+            # and API metadata (dict with modelVersionIds, browsingLevel) separately,
+            # then merge: API loras/checkpoint override, EXIF gen_params fill in gaps.
+            # This mirrors the two-pass approach in _do_import_from_url.
+            exif_parsed_result = None
+            if isinstance(exif_metadata, str):
+                exif_parser = self._recipe_parser_factory.create_parser(exif_metadata)
+                if exif_parser:
+                    exif_data = await exif_parser.parse_metadata(
+                        exif_metadata, recipe_scanner=recipe_scanner,
+                    )
+                    if exif_data and not exif_data.get("error"):
+                        exif_parsed_result = exif_data
+
+            # Merge API metadata (dict) with EXIF data (if dict) for the
+            # CivitaiApiMetadataParser.  If EXIF data is a string it was
+            # parsed above — don't try to merge a string into a dict.
+            merged = {}
+            if isinstance(exif_metadata, dict):
+                merged.update(exif_metadata)
+            if isinstance(metadata, dict):
+                merged.update(metadata)
+
+            result = await self._parse_metadata(
+                merged,
                 recipe_scanner=recipe_scanner,
                 image_path=temp_path,
                 include_image_base64=True,
+                is_video=is_video,
+                extension=extension,
             )
+
+            # Merge EXIF string-parsed gen_params into the API result.
+            # API gen_params take priority (they come later via update).
+            if exif_parsed_result and not result.payload.get("error"):
+                exif_gp = exif_parsed_result.get("gen_params") or {}
+                result_gp = result.payload.get("gen_params") or {}
+                merged_gp = {**exif_gp, **result_gp}
+                if merged_gp:
+                    result.payload["gen_params"] = merged_gp
+
+            if civitai_image_id and image_info and not result.payload.get("error"):
+                # Use the metadata dict we built (may contain modelVersionIds
+                # and browsingLevel from the API root level).  Do NOT pass
+                # image_info.get("meta") — it is null for images whose meta
+                # lives at the root level only.  Also do NOT derive
+                # model_version_id from modelVersionIds[0] — that array mixes
+                # checkpoints, LoRAs, and other types without ordering
+                # guarantees; the parser already resolved them correctly.
+                recipe_for_enrich = {
+                    "gen_params": result.payload.get("gen_params", {}),
+                    "loras": result.payload.get("loras", []),
+                    "base_model": result.payload.get("base_model", "") or "",
+                    "checkpoint": result.payload.get("checkpoint") or result.payload.get("model"),
+                    "source_path": url,
+                }
+
+                await RecipeEnricher.enrich_recipe(
+                    recipe=recipe_for_enrich,
+                    civitai_client=civitai_client,
+                    request_params=None,
+                    prefetched_civitai_meta_raw=(
+                        metadata if isinstance(metadata, dict) else None
+                    ),
+                    prefetched_model_version_id=None,
+                )
+
+                result.payload["gen_params"] = recipe_for_enrich["gen_params"]
+                if recipe_for_enrich.get("checkpoint"):
+                    result.payload["checkpoint"] = recipe_for_enrich["checkpoint"]
+                if recipe_for_enrich.get("base_model"):
+                    result.payload["base_model"] = recipe_for_enrich["base_model"]
+
+                # Extract browsingLevel from our constructed metadata for NSFW blur
+                if isinstance(metadata, dict):
+                    bl = metadata.get("browsingLevel")
+                    if isinstance(bl, int) and bl > 0:
+                        result.payload["preview_nsfw_level"] = bl
+
+            return result
         finally:
-            self._safe_cleanup(temp_path)
+            if temp_path:
+                self._safe_cleanup(temp_path)
 
     async def analyze_local_image(
         self,
@@ -146,7 +327,9 @@ class RecipeAnalysisService:
         if not os.path.isfile(normalized_path):
             raise RecipeNotFoundError("File not found")
 
-        metadata = self._exif_utils.extract_image_metadata(normalized_path)
+        metadata = await asyncio.to_thread(
+            self._exif_utils.extract_image_metadata, normalized_path
+        )
         if not metadata:
             return self._metadata_not_found_response(normalized_path)
 
@@ -180,7 +363,9 @@ class RecipeAnalysisService:
 
         image_bytes = self._convert_tensor_to_png_bytes(latest_image)
         if image_bytes is None:
-            raise RecipeValidationError("Cannot handle this data shape from metadata registry")
+            raise RecipeValidationError(
+                "Cannot handle this data shape from metadata registry"
+            )
 
         return AnalysisResult(
             {
@@ -191,6 +376,26 @@ class RecipeAnalysisService:
 
     # Internal helpers -------------------------------------------------
 
+    def _has_recipe_fields(self, metadata: dict[str, Any]) -> bool:
+        """Check if metadata contains meaningful recipe-related fields."""
+        recipe_fields = {
+            "prompt",
+            "negative_prompt",
+            "resources",
+            "hashes",
+            "params",
+            "generationData",
+            "Workflow",
+            "prompt_type",
+            "positive",
+            "negative",
+            # modelVersionIds is injected at the root level by CivitAI's image
+            # API when meta is null. It carries the version IDs of ALL models
+            # (checkpoint + LoRAs) used to generate the image.
+            "modelVersionIds",
+        }
+        return any(field in metadata for field in recipe_fields)
+
     async def _parse_metadata(
         self,
         metadata: dict[str, Any],
@@ -198,18 +403,30 @@ class RecipeAnalysisService:
         recipe_scanner,
         image_path: Optional[str],
         include_image_base64: bool,
+        is_video: bool = False,
+        extension: str = ".jpg",
     ) -> AnalysisResult:
         parser = self._recipe_parser_factory.create_parser(metadata)
         if parser is None:
-            payload = {"error": "No parser found for this image", "loras": []}
+            # Provide more specific error message based on metadata source
+            if not metadata:
+                error_msg = "This image does not contain any generation metadata (prompt, models, or parameters)"
+            else:
+                error_msg = "No parser found for this image"
+            payload = {"error": error_msg, "loras": []}
             if include_image_base64 and image_path:
                 payload["image_base64"] = self._encode_file(image_path)
+            payload["is_video"] = is_video
+            payload["extension"] = extension
             return AnalysisResult(payload)
 
         result = await parser.parse_metadata(metadata, recipe_scanner=recipe_scanner)
 
         if include_image_base64 and image_path:
             result["image_base64"] = self._encode_file(image_path)
+
+        result["is_video"] = is_video
+        result["extension"] = extension
 
         if "error" in result and not result.get("loras"):
             return AnalysisResult(result)
@@ -219,7 +436,9 @@ class RecipeAnalysisService:
 
         matching_recipes: list[str] = []
         if fingerprint:
-            matching_recipes = await recipe_scanner.find_recipes_by_fingerprint(fingerprint)
+            matching_recipes = await recipe_scanner.find_recipes_by_fingerprint(
+                fingerprint
+            )
         result["matching_recipes"] = matching_recipes
 
         return AnalysisResult(result)
@@ -231,7 +450,10 @@ class RecipeAnalysisService:
             raise RecipeDownloadError(f"Failed to download image from URL: {result}")
 
     def _metadata_not_found_response(self, path: str) -> AnalysisResult:
-        payload: dict[str, Any] = {"error": "No metadata found in this image", "loras": []}
+        payload: dict[str, Any] = {
+            "error": "No metadata found in this image",
+            "loras": [],
+        }
         if os.path.exists(path):
             payload["image_base64"] = self._encode_file(path)
         return AnalysisResult(payload)
@@ -241,8 +463,8 @@ class RecipeAnalysisService:
             temp_file.write(data)
             return temp_file.name
 
-    def _create_temp_path(self) -> str:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+    def _create_temp_path(self, suffix: str = ".jpg") -> str:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             return temp_file.name
 
     def _safe_cleanup(self, path: Optional[str]) -> None:
@@ -267,7 +489,9 @@ class RecipeAnalysisService:
 
             if hasattr(tensor_image, "shape"):
                 self._logger.debug(
-                    "Tensor shape: %s, dtype: %s", tensor_image.shape, getattr(tensor_image, "dtype", None)
+                    "Tensor shape: %s, dtype: %s",
+                    tensor_image.shape,
+                    getattr(tensor_image, "dtype", None),
                 )
 
             import torch  # type: ignore[import-not-found]

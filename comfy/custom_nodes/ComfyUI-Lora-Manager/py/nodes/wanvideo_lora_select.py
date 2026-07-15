@@ -1,11 +1,23 @@
-import folder_paths # type: ignore
-from ..utils.utils import get_lora_info
+import os
+from ..utils.utils import get_lora_info_absolute
+from ..config import config
 from .utils import FlexibleOptionalInputType, any_type, get_loras_list
 import logging
 
 logger = logging.getLogger(__name__)
 
-class WanVideoLoraSelect:
+
+def _relpath_within_loras(abs_path):
+    """Return abs_path relative to the first matching lora root, or basename as fallback."""
+    all_roots = list(config.loras_roots or []) + list(config.extra_loras_roots or [])
+    for root in all_roots:
+        try:
+            return os.path.relpath(abs_path, root)
+        except ValueError:
+            continue
+    return os.path.basename(abs_path)
+
+class WanVideoLoraSelectLM:
     NAME = "WanVideo Lora Select (LoraManager)"
     CATEGORY = "Lora Manager/stackers"
 
@@ -15,12 +27,9 @@ class WanVideoLoraSelect:
             "required": {
                 "low_mem_load": ("BOOLEAN", {"default": False, "tooltip": "Load LORA models with less VRAM usage, slower loading. This affects ALL LoRAs, not just the current ones. No effect if merge_loras is False"}),
                 "merge_loras": ("BOOLEAN", {"default": True, "tooltip": "Merge LoRAs into the model, otherwise they are loaded on the fly. Always disabled for GGUF and scaled fp8 models. This affects ALL LoRAs, not just the current one"}),
-                "text": ("STRING", {
-                    "multiline": True, 
-                    "pysssss.autocomplete": False, 
-                    "dynamicPrompts": True, 
+                "text": ("AUTOCOMPLETE_TEXT_LORAS", {
+                    "placeholder": "Search LoRAs to add...",
                     "tooltip": "Format: <lora:lora_name:strength> separated by spaces or punctuation",
-                    "placeholder": "LoRA syntax input: <lora:name:strength>"
                 }),
             },
             "optional": FlexibleOptionalInputType(any_type),
@@ -59,13 +68,13 @@ class WanVideoLoraSelect:
             clip_strength = float(lora.get('clipStrength', model_strength))
             
             # Get lora path and trigger words
-            lora_path, trigger_words = get_lora_info(lora_name)
+            lora_path, trigger_words = get_lora_info_absolute(lora_name)
             
             # Create lora item for WanVideo format
             lora_item = {
-                "path": folder_paths.get_full_path("loras", lora_path),
+                "path": lora_path,
                 "strength": model_strength,
-                "name": lora_path.split(".")[0],
+                "name": os.path.splitext(_relpath_within_loras(lora_path))[0],
                 "blocks": selected_blocks,
                 "layer_filter": layer_filter,
                 "low_mem_load": low_mem_load,

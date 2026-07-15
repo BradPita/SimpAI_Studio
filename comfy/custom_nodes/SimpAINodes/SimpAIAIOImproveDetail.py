@@ -160,7 +160,8 @@ class SimpAIAIOApplyRegion:
         selected_model = inpaint_model if _engine_enabled(region) and inpaint_model is not None else model
         inputs = dict(model=selected_model, positive=positive, negative=negative, vae=vae, inpaint=config.out(0), seed=seed,
                       steps=steps, cfg=cfg, sampler_name=sampler_name, scheduler=scheduler,
-                      progress_node_id=progress_node_id)
+                      progress_node_id=progress_node_id,
+                      use_differential_diffusion=family not in ("qwen", "anima"))
         if _engine_enabled(region) and inpaint_control_net is not None:
             inputs["inpaint_control_net"] = inpaint_control_net
         repaired = graph.node(inpaint_node, **inputs)

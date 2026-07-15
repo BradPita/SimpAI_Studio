@@ -1,15 +1,11 @@
 import asyncio
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
-from operator import itemgetter
-try:
-    from natsort import natsorted
-except ImportError:
-    # 提供一个简单的排序替代方案
-    def natsorted(items, key=None, reverse=False):
-        if key:
-            return sorted(items, key=key, reverse=reverse)
-        return sorted(items, reverse=reverse)
+from natsort import natsorted
 
 # Supported sort modes: (sort_key, order)
 # order: 'asc' for ascending, 'desc' for descending
@@ -20,7 +16,12 @@ SUPPORTED_SORT_MODES = [
     ('date', 'desc'),
     ('size', 'asc'),
     ('size', 'desc'),
+    ('usage', 'asc'),
+    ('usage', 'desc'),
+    ('versions_count', 'asc'),
+    ('versions_count', 'desc'),
 ]
+# Is this in use?
 
 DISPLAY_NAME_MODES = {"model_name", "file_name"}
 
@@ -219,40 +220,86 @@ class ModelCache:
 
     def _sort_data(self, data: List[Dict], sort_key: str, order: str) -> List[Dict]:
         """Sort data by sort_key and order"""
+        start_time = time.perf_counter()
         reverse = (order == 'desc')
         if sort_key == 'name':
-            # Natural sort by configured display name, case-insensitive
-            return natsorted(
+            # Natural sort by configured display name, case-insensitive, with file_path as tie-breaker
+            result = natsorted(
                 data,
-                key=lambda x: self._get_display_name(x).lower(),
+                key=lambda x: (
+                    self._get_display_name(x).lower(),
+                    x.get('file_path', '').lower()
+                ),
                 reverse=reverse
             )
         elif sort_key == 'date':
-            # Sort by modified timestamp
-            return sorted(
+            # Sort by modified timestamp, fallback to name and path for stability
+            result = sorted(
                 data,
-                key=itemgetter('modified'),
+                key=lambda x: (
+                    x.get('modified', 0.0),
+                    self._get_display_name(x).lower(),
+                    x.get('file_path', '').lower()
+                ),
                 reverse=reverse
             )
         elif sort_key == 'size':
-            # Sort by file size
+            # Sort by file size, fallback to name and path for stability
+            result = sorted(
+                data,
+                key=lambda x: (
+                    x.get('size', 0),
+                    self._get_display_name(x).lower(),
+                    x.get('file_path', '').lower()
+                ),
+                reverse=reverse
+            )
+        elif sort_key == 'usage':
+            # Sort by usage count, fallback to 0, then name and path for stability
             return sorted(
                 data,
-                key=itemgetter('size'),
+                key=lambda x: (
+                    x.get('usage_count', 0),
+                    self._get_display_name(x).lower(),
+                    x.get('file_path', '').lower()
+                ),
+                reverse=reverse
+            )
+        elif sort_key == 'versions_count':
+            # Pre-dedup sort: fall back to name sort.
+            # Actual re-sort by version_count happens in get_paginated_data after dedup.
+            result = natsorted(
+                data,
+                key=lambda x: (
+                    self._get_display_name(x).lower(),
+                    x.get('file_path', '').lower()
+                ),
                 reverse=reverse
             )
         else:
             # Fallback: no sort
-            return list(data)
+            result = list(data)
+        
+        duration = time.perf_counter() - start_time
+        if duration > 0.05:
+            logger.debug("ModelCache._sort_data(%s, %s) for %d items took %.3fs", sort_key, order, len(data), duration)
+        return result
 
     async def get_sorted_data(self, sort_key: str = 'name', order: str = 'asc') -> List[Dict]:
         """Get sorted data by sort_key and order, using cache if possible"""
         async with self._lock:
             if (sort_key, order) == self._last_sort:
                 return self._last_sorted_data
+            
+            start_time = time.perf_counter()
             sorted_data = self._sort_data(self.raw_data, sort_key, order)
             self._last_sort = (sort_key, order)
             self._last_sorted_data = sorted_data
+            
+            duration = time.perf_counter() - start_time
+            if duration > 0.1:
+                logger.debug("ModelCache.get_sorted_data(%s, %s) took %.3fs", sort_key, order, duration)
+            
             return sorted_data
 
     async def update_name_display_mode(self, display_mode: str) -> None:
@@ -291,3 +338,24 @@ class ModelCache:
                 return False  # Model not found
                     
             return True
+
+    async def clear_preview_by_path(self, preview_file_path: str) -> int:
+        """Clear ``preview_url`` for every cached entry referencing a file path.
+
+        When a preview file has been deleted from disk, this removes its
+        reference from all matching cache entries so the next list-API
+        response returns an empty ``preview_url`` instead of a stale URL
+        that produces 404s.
+
+        Returns the number of entries that were updated.
+        """
+        normalized = preview_file_path.replace("\\", "/")
+        cleared = 0
+        async with self._lock:
+            for item in self.raw_data:
+                cached_url = item.get("preview_url", "")
+                if cached_url.replace("\\", "/") == normalized:
+                    item["preview_url"] = ""
+                    item["preview_nsfw_level"] = 0
+                    cleared += 1
+        return cleared

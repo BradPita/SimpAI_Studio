@@ -1,12 +1,12 @@
 import os
 from ..utils.utils import get_lora_info
-from .utils import FlexibleOptionalInputType, any_type, extract_lora_name, get_loras_list
+from .utils import FlexibleOptionalInputType, any_type, apply_lora_syntax_format, extract_lora_name, get_loras_list
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-class LoraStacker:
+class LoraStackerLM:
     NAME = "Lora Stacker (LoraManager)"
     CATEGORY = "Lora Manager/stackers"
 
@@ -14,12 +14,9 @@ class LoraStacker:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "text": ("STRING", {
-                    "multiline": True, 
-                    "pysssss.autocomplete": False, 
-                    "dynamicPrompts": True, 
+                "text": ("AUTOCOMPLETE_TEXT_LORAS", {
+                    "placeholder": "Search LoRAs to add...",
                     "tooltip": "Format: <lora:lora_name:strength> separated by spaces or punctuation",
-                    "placeholder": "LoRA syntax input: <lora:name:strength>"
                 }),
             },
             "optional": FlexibleOptionalInputType(any_type),
@@ -51,7 +48,7 @@ class LoraStacker:
             if not lora.get('active', False):
                 continue
                 
-            lora_name = lora['name']
+            lora_name = apply_lora_syntax_format(lora['name'])
             model_strength = float(lora['strength'])
             # Get clip strength - use model strength as default if not specified
             clip_strength = float(lora.get('clipStrength', model_strength))

@@ -1,0 +1,17 @@
+[project]
+name = "comfyui-krea2-conditioning"
+version = "1.0.2"
+description = "Quality-preserving per-layer conditioning control for Krea 2 - ComfyUI custom node (enhanced fork of nova452/ComfyUI-ConditioningKrea2Rebalance)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Hu White" }]
+keywords = ["comfyui", "krea-2", "conditioning", "diffusion", "custom-node"]
+
+[project.urls]
+Repository = "https://github.com/huwhitememes/comfyui-krea2-conditioning"
+
+[tool.comfy]
+PublisherId = "huwhitememes"
+DisplayName = "Krea 2 Conditioning Control"
+Icon = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f39b.png"

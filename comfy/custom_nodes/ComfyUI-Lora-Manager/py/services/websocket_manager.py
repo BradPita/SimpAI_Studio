@@ -20,6 +20,8 @@ class WebSocketManager:
         self._last_init_progress: Dict[str, Dict] = {}
         # Add auto-organize progress tracking
         self._auto_organize_progress: Optional[Dict] = None
+        # Add recipe repair progress tracking
+        self._recipe_repair_progress: Optional[Dict] = None
         self._auto_organize_lock = asyncio.Lock()
         
     async def handle_connection(self, request: web.Request) -> web.WebSocketResponse:
@@ -189,6 +191,14 @@ class WebSocketManager:
         # Broadcast via WebSocket
         await self.broadcast(data)
     
+    async def broadcast_recipe_repair_progress(self, data: Dict):
+        """Broadcast recipe repair progress to connected clients"""
+        # Store progress data in memory
+        self._recipe_repair_progress = data
+        
+        # Broadcast via WebSocket
+        await self.broadcast(data)
+    
     def get_auto_organize_progress(self) -> Optional[Dict]:
         """Get current auto-organize progress"""
         return self._auto_organize_progress
@@ -196,6 +206,22 @@ class WebSocketManager:
     def cleanup_auto_organize_progress(self):
         """Clear auto-organize progress data"""
         self._auto_organize_progress = None
+    
+    def get_recipe_repair_progress(self) -> Optional[Dict]:
+        """Get current recipe repair progress"""
+        return self._recipe_repair_progress
+    
+    def cleanup_recipe_repair_progress(self):
+        """Clear recipe repair progress data if it is in a finished state"""
+        if self._recipe_repair_progress and self._recipe_repair_progress.get('status') in ['completed', 'cancelled', 'error']:
+            self._recipe_repair_progress = None
+    
+    def is_recipe_repair_running(self) -> bool:
+        """Check if recipe repair is currently running"""
+        if not self._recipe_repair_progress:
+            return False
+        status = self._recipe_repair_progress.get('status')
+        return status in ['started', 'processing']
     
     def is_auto_organize_running(self) -> bool:
         """Check if auto-organize is currently running"""
@@ -229,6 +255,42 @@ class WebSocketManager:
             self._download_progress.pop(download_id, None)
             logger.debug(f"Cleaned up old download progress for {download_id}")
             
+    async def broadcast_cache_health_warning(self, report: 'HealthReport', page_type: str = None):
+        """
+        Broadcast cache health warning to frontend.
+
+        Args:
+            report: HealthReport instance from CacheHealthMonitor
+            page_type: The page type (loras, checkpoints, embeddings)
+        """
+        from .cache_health_monitor import CacheHealthStatus
+
+        # Only broadcast if there are issues
+        if report.status == CacheHealthStatus.HEALTHY:
+            return
+
+        payload = {
+            'type': 'cache_health_warning',
+            'status': report.status.value,
+            'message': report.message,
+            'pageType': page_type,
+            'details': {
+                'total': report.total_entries,
+                'valid': report.valid_entries,
+                'invalid': report.invalid_entries,
+                'repaired': report.repaired_entries,
+                'corruption_rate': f"{report.corruption_rate:.1%}",
+                'invalid_paths': report.invalid_paths[:5],  # Limit to first 5
+            }
+        }
+
+        logger.info(
+            f"Broadcasting cache health warning: {report.status.value} "
+            f"({report.invalid_entries} invalid entries)"
+        )
+
+        await self.broadcast(payload)
+
     def get_connected_clients_count(self) -> int:
         """Get number of connected clients"""
         return len(self._websockets)

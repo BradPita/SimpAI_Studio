@@ -141,6 +141,20 @@
             .replaceAll("'", '&#39;');
     }
 
+    function safeHttpUrl(value) {
+        try {
+            const url = new URL(String(value || ''));
+            return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+        } catch (err) {
+            return '';
+        }
+    }
+
+    function formatNumber(value) {
+        const number = Number(value || 0);
+        return Number.isFinite(number) ? new Intl.NumberFormat().format(number) : '';
+    }
+
     function normalizeType(value) {
         const text = String(value || '').toLowerCase();
         if (text.startsWith('lora')) return 'lora';
@@ -327,6 +341,7 @@
     }
 
     function needsRemoteFetch(item) {
+        if (item?.remote_status === 'not_found' && item?.metadata_status !== 'missing') return false;
         return !!item && item.remote_enabled && !item.synthetic && (!item.preview_url || item.metadata_status === 'missing');
     }
 
@@ -345,6 +360,19 @@
         return architectureItem(item) ? [item] : [];
     }
 
+    function selectablePageItems() {
+        return state.items.filter(item => item && !item.synthetic);
+    }
+
+    function allSelectablePageItemsChecked() {
+        const items = selectablePageItems();
+        return items.length > 0 && items.every(item => state.checkedIds.has(item.id));
+    }
+
+    function architectureAvailableForType(type) {
+        return ['base', 'refiner', 'lora'].includes(normalizeType(type));
+    }
+
     function remoteFetchEnabledForType() {
         return !REMOTE_DISABLED_TYPES.has(normalizeType(state.type));
     }
@@ -352,6 +380,7 @@
     function itemSubtitle(item) {
         const bits = [];
         if (item.folder && item.folder !== 'Root') bits.push(item.folder);
+        if (item.arch_family && item.arch_family !== 'unknown') bits.push(archFamilyLabel(item.arch_family));
         if (item.size_label) bits.push(item.size_label);
         if (item.modified_label) bits.push(item.modified_label);
         return bits.join(' - ');
@@ -363,6 +392,8 @@
         if (key === 'sidecar') return tr('local', '本地');
         if (key === 'models_info') return tr('models_info', '索引表');
         if (key === 'cached') return tr('cached', '缓存');
+        if (key === 'civitai-header-match') return tr('header matched', '模型头匹配');
+        if (key === 'civitai') return tr('Civitai', 'Civitai');
         return source || '';
     }
 
@@ -378,6 +409,7 @@
         if (key === 'manual') return tr('Manual', '手动');
         if (key === 'builtin_model_arch_family_cache') return tr('SimpAI cache', 'SimpAI 缓存');
         if (key === 'name_rule') return tr('Name rule', '名称规则');
+        if (key === 'civitai') return tr('Civitai base model', 'Civitai 基础模型');
         return key || tr('Not set', '未设置');
     }
 
@@ -401,7 +433,7 @@
   </div>
   <div class="sai-model-browser-card-actions">
     <button type="button" data-smb-toggle="${escapeHtml(item.id)}" class="${checked ? 'is-on' : ''}" title="${escapeHtml(tr('Select for batch', '加入批量选择'))}"><i class="fa-solid ${checked ? 'fa-square-check' : 'fa-square'}"></i></button>
-    ${fetchable ? `<button type="button" data-smb-fetch="${escapeHtml(item.id)}" title="${escapeHtml(tr('Fetch preview and metadata', '获取预览与元数据'))}"><i class="fa-solid fa-cloud-arrow-down"></i></button>` : ''}
+    ${fetchable ? `<button type="button" data-smb-fetch="${escapeHtml(item.id)}" title="${escapeHtml(tr('Analyze model and fetch information', '分析模型并获取信息'))}"><i class="fa-solid fa-cloud-arrow-down"></i></button>` : ''}
     <button type="button" data-smb-choose="${escapeHtml(item.id)}" title="${escapeHtml(tr('Use this model', '使用此模型'))}"><i class="fa-solid fa-check"></i></button>
   </div>
 </article>`;
@@ -470,20 +502,26 @@
         }
         const tags = [...(item.trained_words || []), ...(item.tags || [])].slice(0, 16);
         const hashSource = hashSourceLabel(item.hash_source);
-        const hashLabel = item.sha256
-            ? `${item.sha256.slice(0, 16)}${hashSource ? ` · ${hashSource}` : ''}`
-            : tr('Unknown', '未知');
+        const hashValue = String(item.sha256 || '');
+        const hashLabel = hashValue || (item.hash_stale ? tr('Stale; recompute required', '文件已变化，需要重新计算') : tr('Unknown', '未知'));
+        const civitaiUrl = safeHttpUrl(item.civitai_url);
         return `<aside class="sai-model-browser-detail">
   <div class="sai-model-browser-detail-preview">${renderThumb(item)}</div>
   <h3>${escapeHtml(item.file_name || item.display_name || item.name)}</h3>
   <dl>
     <dt>${escapeHtml(tr('Type', '类型'))}</dt><dd>${escapeHtml(typeLabel(item.type) || item.type_label || item.type || '')}</dd>
     <dt>${escapeHtml(tr('Folder', '文件夹'))}</dt><dd>${escapeHtml(item.folder || tr('Root', '根目录'))}</dd>
-    <dt>${escapeHtml(tr('Hash', '哈希'))}</dt><dd>${escapeHtml(hashLabel)}</dd>
+    <dt>${escapeHtml(tr('SHA256', 'SHA256'))}</dt><dd class="sai-model-browser-hash"><code title="${escapeHtml(hashLabel)}">${escapeHtml(hashLabel)}</code>${hashValue ? `<button type="button" data-smb-copy-hash="${escapeHtml(hashValue)}" title="${escapeHtml(tr('Copy full SHA256', '复制完整 SHA256'))}"><i class="fa-regular fa-copy"></i></button>` : ''}${hashSource ? `<small>${escapeHtml(hashSource)}</small>` : ''}</dd>
     <dt>${escapeHtml(tr('Preview', '预览'))}</dt><dd>${escapeHtml(item.preview_source || tr('none', '无'))}</dd>
     <dt>${escapeHtml(tr('Metadata', '元数据'))}</dt><dd>${escapeHtml(item.metadata_status || tr('missing', '缺失'))}</dd>
+    ${item.metadata_origin ? `<dt>${escapeHtml(tr('Source', '信息来源'))}</dt><dd>${escapeHtml(item.metadata_origin)}</dd>` : ''}
+    ${item.remote_model_name ? `<dt>${escapeHtml(tr('Model', '模型'))}</dt><dd>${escapeHtml(item.remote_model_name)}</dd>` : ''}
+    ${item.remote_version_name ? `<dt>${escapeHtml(tr('Version', '版本'))}</dt><dd>${escapeHtml(item.remote_version_name)}</dd>` : ''}
     ${item.base_model ? `<dt>${escapeHtml(tr('Base', '基础'))}</dt><dd>${escapeHtml(item.base_model)}</dd>` : ''}
     ${item.creator ? `<dt>${escapeHtml(tr('Creator', '作者'))}</dt><dd>${escapeHtml(item.creator)}</dd>` : ''}
+    ${Number(item.download_count || 0) > 0 ? `<dt>${escapeHtml(tr('Downloads', '下载量'))}</dt><dd>${escapeHtml(formatNumber(item.download_count))}</dd>` : ''}
+    ${Number(item.rating || 0) > 0 ? `<dt>${escapeHtml(tr('Rating', '评分'))}</dt><dd>${escapeHtml(Number(item.rating).toFixed(2))}</dd>` : ''}
+    ${civitaiUrl ? `<dt>Civitai</dt><dd><a class="sai-model-browser-link" href="${escapeHtml(civitaiUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(tr('Open model page', '打开模型页面'))}<i class="fa-solid fa-arrow-up-right-from-square"></i></a></dd>` : ''}
   </dl>
   ${renderArchitecturePanel(item)}
   ${tags.length ? `<div class="sai-model-browser-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
@@ -491,7 +529,7 @@
   ${item.description ? `<p class="sai-model-browser-desc">${escapeHtml(item.description)}</p>` : ''}
   <div class="sai-model-browser-detail-actions">
     ${manageableItem(item) ? `<button type="button" data-smb-set-preview="${escapeHtml(item.id)}"><i class="fa-solid fa-image"></i><span>${escapeHtml(item.preview_url ? tr('Replace preview', '替换预览图') : tr('Set preview', '设置预览图'))}</span></button>` : ''}
-    ${item.remote_enabled && !item.synthetic ? `<button type="button" data-smb-fetch="${escapeHtml(item.id)}"><i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(tr('Fetch preview', '获取预览'))}</span></button>` : ''}
+    ${item.remote_enabled && !item.synthetic ? `<button type="button" data-smb-fetch="${escapeHtml(item.id)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(tr('Analyze and fetch', '分析并获取'))}</span></button>` : ''}
     ${manageableItem(item) ? `<button type="button" data-smb-hash="${escapeHtml(item.id)}"><i class="fa-solid fa-fingerprint"></i><span>${escapeHtml(item.sha256 ? tr('Recompute hash', '重新计算哈希') : tr('Compute hash', '计算哈希'))}</span></button>` : ''}
     ${manageableItem(item) ? `<button type="button" class="is-danger" data-smb-delete="${escapeHtml(item.id)}"><i class="fa-solid fa-trash"></i><span>${escapeHtml(tr('Delete model', '删除模型'))}</span></button>` : ''}
     <button type="button" class="is-primary" data-smb-choose="${escapeHtml(item.id)}"><i class="fa-solid fa-check"></i><span>${escapeHtml(tr('Use model', '使用模型'))}</span></button>
@@ -513,33 +551,50 @@
 
     function renderBatchBar() {
         const checkedCount = checkedItems().length;
+        const totalCheckedCount = state.checkedIds.size;
         const batchCount = fetchableBatchItems().length;
         const inspectCount = inspectableBatchItems().length;
         const canRemoteFetch = remoteFetchEnabledForType();
+        const canInspectFilter = architectureAvailableForType(state.type);
+        const selectableCount = selectablePageItems().length;
+        const pageChecked = allSelectablePageItemsChecked();
+        const batchBusy = !!state.batch && Number(state.batch.done || 0) < Math.max(1, Number(state.batch.total || 1));
         const selectedLabel = checkedCount
-            ? `${tr('Fetch checked', '获取已勾选')} (${checkedCount})`
-            : tr('Fetch selected', '获取当前选择');
+            ? `${tr('Analyze checked', '分析已勾选')} (${checkedCount})`
+            : tr('Analyze selected', '分析当前选择');
         const selectedTitle = canRemoteFetch
             ? tr('Fetch previews and metadata for the selected or checked models', '获取已选择/已勾选模型的预览与元数据')
             : tr('{type} is selectable, but remote preview fetching is disabled', '{type} 可以浏览和选择，但已关闭远端预览获取').replace('{type}', typeLabel(state.type));
         const batchHint = canRemoteFetch
-            ? tr('Fetch missing uses the current type, search, and folder filter.', '获取缺失项会使用当前类型、搜索词和文件夹筛选。')
+            ? tr('Analyze missing models using the current type, search, and folder filter.', '分析缺失项会使用当前类型、搜索词和文件夹筛选。')
             : tr('{type} can be browsed and selected; remote preview fetching is disabled.', '{type} 可以浏览和选择；远端预览获取已关闭。').replace('{type}', typeLabel(state.type));
         return `<div class="sai-model-browser-batchbar">
   <div class="sai-model-browser-batchcopy">
-    <b>${escapeHtml(tr('Batch previews', '批量预览'))}</b>
+    <b>${escapeHtml(tr('Batch model information', '批量模型信息'))}</b>
     <span>${escapeHtml(batchHint)}</span>
   </div>
   ${renderProgress()}
   <div class="sai-model-browser-batchactions">
-    <button type="button" data-smb-batch-selected ${batchCount ? '' : 'disabled'} title="${escapeHtml(selectedTitle)}">
+    <button type="button" data-smb-select-page ${selectableCount && !batchBusy ? '' : 'disabled'} title="${escapeHtml(tr('Select or deselect every model on the current page', '选择或取消当前页的全部模型'))}">
+      <i class="fa-solid ${pageChecked ? 'fa-square-minus' : 'fa-list-check'}"></i><span>${escapeHtml(pageChecked ? tr('Deselect page', '取消本页') : tr('Select page', '全选本页'))}</span>
+    </button>
+    <button type="button" data-smb-clear-selection ${totalCheckedCount && !batchBusy ? '' : 'disabled'} title="${escapeHtml(tr('Clear checked models', '取消全部勾选'))}">
+      <i class="fa-solid fa-xmark"></i><span>${escapeHtml(tr('Clear', '取消选择'))}</span>
+    </button>
+    <button type="button" data-smb-batch-selected ${batchCount && !batchBusy ? '' : 'disabled'} title="${escapeHtml(selectedTitle)}">
       <i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(selectedLabel)}</span>
     </button>
-    <button type="button" class="is-primary" data-smb-batch-missing ${canRemoteFetch ? '' : 'disabled'} title="${escapeHtml(canRemoteFetch ? tr('Fetch missing previews and metadata for the current filter', '获取当前筛选范围内缺失的预览与元数据') : tr('Remote preview fetching is disabled for this model type', '此模型类型已关闭远端预览获取'))}">
-      <i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(tr('Fetch missing in filter', '获取筛选内缺失项'))}</span>
+    <button type="button" class="is-primary" data-smb-batch-all-info ${canRemoteFetch && !batchBusy ? '' : 'disabled'} title="${escapeHtml(canRemoteFetch ? tr('Analyze every model in the current filter', '分析当前筛选范围内的全部模型') : tr('Remote preview fetching is disabled for this model type', '此模型类型已关闭远端预览获取'))}">
+      <i class="fa-solid fa-cloud-arrow-down"></i><span>${escapeHtml(tr('Analyze all info', '读取全部信息'))}</span>
     </button>
-    <button type="button" data-smb-batch-inspect ${inspectCount ? '' : 'disabled'} title="${escapeHtml(tr('Read model headers for the selected or checked models', '读取当前选择/已勾选模型的模型头'))}">
+    <button type="button" data-smb-batch-missing ${canRemoteFetch && !batchBusy ? '' : 'disabled'} title="${escapeHtml(canRemoteFetch ? tr('Fetch missing previews and metadata for the current filter', '获取当前筛选范围内缺失的预览与元数据') : tr('Remote preview fetching is disabled for this model type', '此模型类型已关闭远端预览获取'))}">
+      <i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(tr('Analyze missing in filter', '分析筛选内缺失项'))}</span>
+    </button>
+    <button type="button" data-smb-batch-inspect ${inspectCount && !batchBusy ? '' : 'disabled'} title="${escapeHtml(tr('Read model headers for the selected or checked models', '读取当前选择/已勾选模型的模型头'))}">
       <i class="fa-solid fa-magnifying-glass-chart"></i><span>${escapeHtml(checkedCount ? tr('Identify checked', '识别已勾选') : tr('Identify selected', '识别当前'))}</span>
+    </button>
+    <button type="button" data-smb-batch-all-headers ${canInspectFilter && !batchBusy ? '' : 'disabled'} title="${escapeHtml(tr('Read model headers for every classifiable model in the current filter', '读取当前筛选范围内全部可分类模型的模型头'))}">
+      <i class="fa-solid fa-layer-group"></i><span>${escapeHtml(tr('Read all headers', '读取全部模型头'))}</span>
     </button>
   </div>
 </div>`;
@@ -735,7 +790,7 @@
         });
     }
 
-    async function collectMissingItemsForFilter() {
+    async function collectItemsForFilter(predicate) {
         const out = [];
         const seen = new Set();
         let page = 1;
@@ -745,7 +800,7 @@
                 page_size: 500
             }));
             for (const item of Array.isArray(data.items) ? data.items : []) {
-                if (!needsRemoteFetch(item) || seen.has(item.id)) continue;
+                if ((typeof predicate === 'function' && !predicate(item)) || seen.has(item.id)) continue;
                 seen.add(item.id);
                 out.push(item);
             }
@@ -966,16 +1021,16 @@
         }
     }
 
-    async function inspectSelectedArchitectures() {
-        const items = inspectableBatchItems();
+    async function inspectArchitectureItems(items, options) {
+        const opts = options || {};
         if (!items.length) {
-            state.status = tr('No classifiable models selected.', '没有可分类的已选模型。');
+            state.status = opts.emptyMessage || tr('No classifiable models selected.', '没有可分类的已选模型。');
             render({ preserveScroll: true });
             return;
         }
         let success = 0;
         let failed = 0;
-        state.batch = { label: tr('Reading model headers', '正在读取模型头'), done: 0, total: items.length, message: '' };
+        state.batch = { label: opts.progressLabel || tr('Reading model headers', '正在读取模型头'), done: 0, total: items.length, message: '' };
         render({ preserveScroll: true });
         for (const item of items) {
             state.batch.message = item.file_name || item.name || '';
@@ -998,10 +1053,10 @@
             state.batch.done += 1;
             render({ preserveScroll: true });
         }
-        state.checkedIds.clear();
+        if (opts.clearSelection) state.checkedIds.clear();
         await query({ preserveScroll: true });
         state.batch = {
-            label: tr('Classification complete', '分类完成'),
+            label: opts.completeLabel || tr('Classification complete', '分类完成'),
             done: items.length,
             total: items.length,
             message: tr('{success} updated, {failed} failed', '{success} 个已更新，{failed} 个失败')
@@ -1009,6 +1064,47 @@
                 .replace('{failed}', failed)
         };
         render({ preserveScroll: true });
+    }
+
+    function inspectSelectedArchitectures() {
+        return inspectArchitectureItems(inspectableBatchItems(), { clearSelection: true });
+    }
+
+    async function inspectAllArchitecturesInFilter() {
+        state.batch = {
+            label: tr('Collecting models in filter', '正在读取筛选范围'),
+            done: 0,
+            total: 1,
+            message: tr('Using current type, search, and folder.', '使用当前类型、搜索词和文件夹。')
+        };
+        render({ preserveScroll: true });
+        try {
+            const items = await collectItemsForFilter(architectureItem);
+            if (!items.length) {
+                state.batch = {
+                    label: tr('No classifiable models', '没有可分类模型'),
+                    done: 1,
+                    total: 1,
+                    message: tr('No model headers matched the current filter.', '当前筛选范围内没有可读取的模型头。')
+                };
+                render({ preserveScroll: true });
+                return;
+            }
+            await inspectArchitectureItems(items, {
+                progressLabel: tr('Reading all model headers', '正在读取全部模型头'),
+                completeLabel: tr('All headers complete', '全部模型头读取完成'),
+                emptyMessage: tr('No classifiable models in filter.', '筛选范围内没有可分类模型。'),
+                clearSelection: false
+            });
+        } catch (err) {
+            state.batch = {
+                label: tr('Header scan failed', '模型头读取失败'),
+                done: 1,
+                total: 1,
+                message: err?.message || String(err || tr('Header scan failed', '模型头读取失败'))
+            };
+            render({ preserveScroll: true });
+        }
     }
 
     function formatDeleteMessage(result) {
@@ -1039,6 +1135,9 @@
 
     function formatFetchResultMessage(result) {
         if (!result?.ok) return result?.error || tr('Fetch failed', '获取失败');
+        if (result?.remote_found === false) {
+            return tr('No Civitai match; local hash and architecture were saved.', 'Civitai 未找到匹配项，已保存本地哈希与架构信息。');
+        }
         if (resultHasPreview(result)) return tr('Updated preview and metadata', '已更新预览与元数据');
         const detail = result?.preview_message || tr('No usable remote preview was found.', '未找到可用的远端预览。');
         return tr('Updated metadata only; preview was not generated: {detail}', '仅更新了元数据；预览未生成：{detail}').replace('{detail}', detail);
@@ -1082,6 +1181,42 @@
         }
     }
 
+    async function fetchModelInformationItems(items, options) {
+        const opts = options || {};
+        let success = 0;
+        let partial = 0;
+        let failed = 0;
+        let skipped = 0;
+        state.batch = { label: opts.progressLabel || tr('Analyzing models', '正在分析模型'), done: 0, total: items.length, message: '' };
+        render({ preserveScroll: true });
+        for (const item of items) {
+            state.batch.message = tr('Analyzing {name}', '正在分析 {name}').replace('{name}', item.file_name || item.name || '');
+            render({ preserveScroll: true });
+            try {
+                const result = await fetchOne(item);
+                if (result.skipped) skipped += 1;
+                else if (result.ok && resultHasPreview(result)) success += 1;
+                else if (result.ok) partial += 1;
+                else failed += 1;
+            } catch (err) {
+                failed += 1;
+                state.batch.message = err?.message || String(err || tr('fetch failed', '获取失败'));
+            }
+            state.batch.done += 1;
+            state.batch.message = formatFetchCounts(success, partial, failed, skipped);
+            render({ preserveScroll: true });
+        }
+        if (opts.clearSelection) state.checkedIds.clear();
+        await query({ preserveScroll: true });
+        state.batch = {
+            label: opts.completeLabel || tr('Analysis complete', '分析完成'),
+            done: items.length,
+            total: items.length,
+            message: formatFetchCounts(success, partial, failed, skipped)
+        };
+        render({ preserveScroll: true });
+    }
+
     async function fetchSelected() {
         const items = fetchableBatchItems();
         if (!items.length) {
@@ -1091,87 +1226,85 @@
             render({ preserveScroll: true });
             return;
         }
-        state.batch = { label: tr('Fetching selected', '正在获取已选模型'), done: 0, total: items.length, message: '' };
-        render({ preserveScroll: true });
-        let success = 0;
-        let partial = 0;
-        let failed = 0;
-        for (const item of items) {
-            try {
-                const result = await fetchOne(item);
-                if (result.ok && resultHasPreview(result)) success += 1;
-                else if (result.ok) partial += 1;
-                else failed += 1;
-                state.batch.message = formatFetchCounts(success, partial, failed, 0);
-            } catch (err) {
-                failed += 1;
-                state.batch.message = err?.message || String(err || tr('fetch failed', '获取失败'));
-            }
-            state.batch.done += 1;
-            render({ preserveScroll: true });
-        }
-        state.checkedIds.clear();
-        await query({ preserveScroll: true });
-        state.batch = { label: tr('Fetch complete', '获取完成'), done: items.length, total: items.length, message: formatFetchCounts(success, partial, failed, 0) };
-        render({ preserveScroll: true });
-        setTimeout(() => {
-            if (state.batch?.label === tr('Fetch complete', '获取完成')) {
-                state.batch = null;
-                render({ preserveScroll: true });
-            }
-        }, 2600);
+        await fetchModelInformationItems(items, {
+            progressLabel: tr('Analyzing selected models', '正在分析已选模型'),
+            completeLabel: tr('Selected analysis complete', '已选模型分析完成'),
+            clearSelection: true
+        });
     }
 
-    async function fetchMissing() {
+    async function collectAndFetchFilter(predicate, options) {
         if (!remoteFetchEnabledForType()) {
             state.status = tr('{type} does not support remote preview fetch.', '{type} 不支持远端预览获取。').replace('{type}', typeLabel(state.type));
             render({ preserveScroll: true });
             return;
         }
-        state.batch = { label: tr('Scanning missing previews', '正在扫描缺失预览'), done: 0, total: 1, message: tr('Using current filter...', '使用当前筛选条件...') };
+        const opts = options || {};
+        state.batch = {
+            label: opts.collectLabel || tr('Collecting models in filter', '正在读取筛选范围'),
+            done: 0,
+            total: 1,
+            message: tr('Using current type, search, and folder.', '使用当前类型、搜索词和文件夹。')
+        };
         render({ preserveScroll: true });
         try {
-            const items = await collectMissingItemsForFilter();
+            const items = await collectItemsForFilter(predicate);
             if (!items.length) {
-                state.batch = { label: tr('Nothing missing', '没有缺失项'), done: 1, total: 1, message: tr('Current filter is already complete.', '当前筛选范围已完整。') };
+                state.batch = {
+                    label: opts.emptyLabel || tr('No models to analyze', '没有需要分析的模型'),
+                    done: 1,
+                    total: 1,
+                    message: opts.emptyMessage || tr('The current filter contains no matching models.', '当前筛选范围内没有符合条件的模型。')
+                };
                 render({ preserveScroll: true });
                 return;
             }
-            let success = 0;
-            let partial = 0;
-            let failed = 0;
-            let skipped = 0;
-            state.batch = { label: tr('Fetching missing previews', '正在获取缺失预览'), done: 0, total: items.length, message: '' };
-            render({ preserveScroll: true });
-            for (const item of items) {
-                state.batch.message = tr('Fetching {name}', '正在获取 {name}').replace('{name}', item.file_name || item.name || '');
-                render({ preserveScroll: true });
-                try {
-                    const result = await fetchOne(item);
-                    if (result.skipped) skipped += 1;
-                    else if (result.ok && resultHasPreview(result)) success += 1;
-                    else if (result.ok) partial += 1;
-                    else failed += 1;
-                } catch (err) {
-                    failed += 1;
-                    state.batch.message = err?.message || String(err || tr('fetch failed', '获取失败'));
-                }
-                state.batch.done += 1;
-                state.batch.message = formatFetchCounts(success, partial, failed, skipped);
-                render({ preserveScroll: true });
-            }
-            await query({ preserveScroll: true });
-            state.batch = {
-                label: tr('Fetch complete', '获取完成'),
-                done: items.length,
-                total: items.length,
-                message: formatFetchCounts(success, partial, failed, skipped)
-            };
-            render({ preserveScroll: true });
+            await fetchModelInformationItems(items, opts);
         } catch (err) {
-            state.batch = { label: tr('Fetch failed', '获取失败'), done: 1, total: 1, message: err?.message || String(err || tr('fetch failed', '获取失败')) };
+            state.batch = { label: tr('Analysis failed', '分析失败'), done: 1, total: 1, message: err?.message || String(err || tr('Analysis failed', '分析失败')) };
             render({ preserveScroll: true });
         }
+    }
+
+    function fetchMissing() {
+        return collectAndFetchFilter(needsRemoteFetch, {
+            collectLabel: tr('Scanning missing model information', '正在检查缺失模型信息'),
+            progressLabel: tr('Analyzing missing models', '正在分析缺失模型'),
+            completeLabel: tr('Missing analysis complete', '缺失模型分析完成'),
+            emptyLabel: tr('Nothing missing', '没有缺失项'),
+            emptyMessage: tr('Current filter is already complete.', '当前筛选范围已完整。')
+        });
+    }
+
+    function fetchAllInformationInFilter() {
+        return collectAndFetchFilter(
+            item => !!item && item.remote_enabled && !item.synthetic,
+            {
+                collectLabel: tr('Collecting all models', '正在读取全部模型'),
+                progressLabel: tr('Analyzing all model information', '正在读取全部模型信息'),
+                completeLabel: tr('All model information complete', '全部模型信息读取完成'),
+                emptyLabel: tr('No models to analyze', '没有可分析模型')
+            }
+        );
+    }
+
+    async function copyHash(value) {
+        const text = String(value || '').trim();
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (err) {
+            const field = document.createElement('textarea');
+            field.value = text;
+            field.style.position = 'fixed';
+            field.style.opacity = '0';
+            document.body.appendChild(field);
+            field.select();
+            document.execCommand('copy');
+            field.remove();
+        }
+        state.status = tr('Full SHA256 copied.', '已复制完整 SHA256。');
+        render({ preserveScroll: true });
     }
 
     function onClick(event) {
@@ -1192,6 +1325,7 @@
             event.preventDefault();
             const action = page.getAttribute('data-smb-page');
             state.page = Math.max(1, state.page + (action === 'next' ? 1 : -1));
+            state.checkedIds.clear();
             query();
             return;
         }
@@ -1202,6 +1336,12 @@
             if (state.checkedIds.has(id)) state.checkedIds.delete(id);
             else state.checkedIds.add(id);
             render({ preserveScroll: true });
+            return;
+        }
+        const copyHashButton = event.target.closest('[data-smb-copy-hash]');
+        if (copyHashButton) {
+            event.preventDefault();
+            copyHash(copyHashButton.getAttribute('data-smb-copy-hash'));
             return;
         }
         const hashButton = event.target.closest('[data-smb-hash]');
@@ -1286,6 +1426,29 @@
             render({ preserveScroll: true });
             return;
         }
+        const selectPage = event.target.closest('[data-smb-select-page]');
+        if (selectPage) {
+            event.preventDefault();
+            const items = selectablePageItems();
+            const deselect = allSelectablePageItemsChecked();
+            for (const item of items) {
+                if (deselect) state.checkedIds.delete(item.id);
+                else state.checkedIds.add(item.id);
+            }
+            state.status = deselect
+                ? tr('Current page selection cleared.', '已取消当前页选择。')
+                : tr('{count} model(s) selected on this page.', '当前页已选择 {count} 个模型。').replace('{count}', items.length);
+            render({ preserveScroll: true });
+            return;
+        }
+        const clearSelection = event.target.closest('[data-smb-clear-selection]');
+        if (clearSelection) {
+            event.preventDefault();
+            state.checkedIds.clear();
+            state.status = tr('Selection cleared.', '已取消全部选择。');
+            render({ preserveScroll: true });
+            return;
+        }
         const batchSelected = event.target.closest('[data-smb-batch-selected]');
         if (batchSelected) {
             event.preventDefault();
@@ -1298,10 +1461,22 @@
             fetchMissing();
             return;
         }
+        const batchAllInfo = event.target.closest('[data-smb-batch-all-info]');
+        if (batchAllInfo) {
+            event.preventDefault();
+            fetchAllInformationInFilter();
+            return;
+        }
         const batchInspect = event.target.closest('[data-smb-batch-inspect]');
         if (batchInspect) {
             event.preventDefault();
             inspectSelectedArchitectures();
+            return;
+        }
+        const batchAllHeaders = event.target.closest('[data-smb-batch-all-headers]');
+        if (batchAllHeaders) {
+            event.preventDefault();
+            inspectAllArchitecturesInFilter();
         }
     }
 

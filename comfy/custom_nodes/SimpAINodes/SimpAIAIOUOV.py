@@ -134,6 +134,7 @@ class _SimpAIAIOUOVBase:
         graph = GraphBuilder()
         multiple = float(uov.get("multiple", 1.5))
         denoise_override = float(denoise)
+        sampler_cfg = 1.0 if self.FAMILY == "flux" else float(cfg)
         if mode == 1:
             upscaled = graph.node("ImageUpscaleWithModel", upscale_model=upscale_model, image=image)
             scaled = graph.node("ImageScaleBy", image=upscaled.out(0), upscale_method="lanczos", scale_by=multiple)
@@ -149,7 +150,7 @@ class _SimpAIAIOUOVBase:
                 latent_image=encoded.out(0),
                 seed=seed,
                 steps=steps,
-                cfg=cfg,
+                cfg=sampler_cfg,
                 sampler_name=sampler_name,
                 scheduler=scheduler,
                 denoise=effective_denoise,
@@ -171,7 +172,7 @@ class _SimpAIAIOUOVBase:
                 upscale_by=multiple,
                 seed=seed,
                 steps=int(uov.get("tile_steps", steps)),
-                cfg=cfg,
+                cfg=sampler_cfg,
                 sampler_name=sampler_name,
                 scheduler=scheduler,
                 denoise=denoise_override if denoise_override >= 0.0 else 0.5,

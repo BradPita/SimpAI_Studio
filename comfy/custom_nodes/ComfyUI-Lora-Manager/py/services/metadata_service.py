@@ -44,6 +44,8 @@ async def initialize_metadata_providers():
                 logger.debug(f"SQLite metadata provider registered with database: {db_path}")
             else:
                 logger.warning("Metadata archive database is enabled but database file not found")
+                logger.info("Automatically disabling enable_metadata_archive_db setting")
+                settings_manager.set('enable_metadata_archive_db', False)
         except Exception as e:
             logger.error(f"Failed to initialize SQLite metadata provider: {e}")
     
@@ -120,11 +122,25 @@ async def get_metadata_provider(provider_name: str = None):
 
     provider_manager = await ModelMetadataProviderManager.get_instance()
 
-    provider = (
-        provider_manager._get_provider(provider_name)
-        if provider_name
-        else provider_manager._get_provider()
-    )
+    try:
+        provider = (
+            provider_manager._get_provider(provider_name)
+            if provider_name
+            else provider_manager._get_provider()
+        )
+    except ValueError as e:
+        # Provider not initialized, attempt to initialize
+        if "No default provider set" in str(e) or "not registered" in str(e):
+            logger.warning(f"Metadata provider not initialized ({e}), initializing now...")
+            await initialize_metadata_providers()
+            provider_manager = await ModelMetadataProviderManager.get_instance()
+            provider = (
+                provider_manager._get_provider(provider_name)
+                if provider_name
+                else provider_manager._get_provider()
+            )
+        else:
+            raise
 
     return _wrap_provider_with_rate_limit(provider_name, provider)
 

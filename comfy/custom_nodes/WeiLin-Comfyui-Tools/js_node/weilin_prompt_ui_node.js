@@ -314,13 +314,10 @@ waitForApp((app) => {
         // ========================================
         const fixCurrentNodeDomWidgets = () => {
           if (!this.widgets) return;
-          // 三种 WeiLin 节点统一保留 Comfy 原生缩放链，
-          // 避免小画布/缩放时 dom-widget 与 canvas widget 叠层错位。
-          if (
+          const isWeiLinNode =
             nodeData.name === "WeiLinPromptUI" ||
             nodeData.name === "WeiLinPromptUIWithoutLora" ||
-            nodeData.name === "WeiLinPromptUIOnlyLoraStack"
-          ) return;
+            nodeData.name === "WeiLinPromptUIOnlyLoraStack";
           const processedDomWidgets = new Set();
           
           this.widgets.forEach(widget => {
@@ -335,11 +332,18 @@ waitForApp((app) => {
                   }
                   processedDomWidgets.add(parent);
 
-                  const isFirstFix = !parent.classList.contains('weilin-owned-dom-widget');
+                  const isFirstFix = !parent.classList.contains('weilin-owned-dom-widget')
+                    && !parent.classList.contains('weilin-owned-dom-widget-fixed');
                   parent.style.setProperty('pointer-events', 'none', 'important');
-                  parent.classList.add('weilin-owned-dom-widget');
-                  parent.style.setProperty('position', 'absolute', 'important');
-                  parent.classList.remove('size-full');
+                  // WeiLin 节点保留 Comfy 原生缩放链（position:fixed + size-full），
+                  // 仅修复 pointer-events 以消除透明遮罩
+                  if (isWeiLinNode) {
+                    parent.classList.add('weilin-owned-dom-widget-fixed');
+                  } else {
+                    parent.classList.add('weilin-owned-dom-widget');
+                    parent.style.setProperty('position', 'absolute', 'important');
+                    parent.classList.remove('size-full');
+                  }
                   if (isFirstFix) {
                     console.log('[WeiLin] Fixed dom-widget for node:', nodeData.name);
                   }
@@ -790,7 +794,8 @@ waitForApp((app) => {
         // 添加按钮点击事件
         if (nodeData.name === "WeiLinPromptUI" || nodeData.name === "WeiLinPromptUIWithoutLora") {
           // 节点按钮点击事件 - 打开提示词编辑器
-          this.addWidget("button", localLanguage, '', async ($e) => {
+          let promptOpenWidget = null;
+          promptOpenWidget = this.addWidget("button", localLanguage, '', async ($e) => {
             // 先加载资源（如果还未加载）
             await loadResourcesOnDemand();
             
@@ -800,7 +805,7 @@ waitForApp((app) => {
             promptBoxRandomID = generateUUID();
             // console.log("register====>",promptBoxRandomID)
             let jsonData = {
-              prompt: nodeTextAreaList[0].value,
+              prompt: promptOpenWidget._node.widgets[0].value,
               lora: [],
               temp_prompt: {},
               temp_lora: {},

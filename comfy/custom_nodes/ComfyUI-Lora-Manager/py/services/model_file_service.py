@@ -36,11 +36,13 @@ class AutoOrganizeResult:
         self.results_truncated: bool = False
         self.sample_results: List[Dict[str, Any]] = []
         self.is_flat_structure: bool = False
+        self.status: str = 'success'
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary"""
         result = {
-            'success': True,
+            'success': self.status != 'error',
+            'status': self.status,
             'message': f'Auto-organize {self.operation_type} completed: {self.success_count} moved, {self.skipped_count} skipped, {self.failure_count} failed out of {self.total} total',
             'summary': {
                 'total': self.total,
@@ -97,6 +99,8 @@ class ModelFileService:
         """
         result = AutoOrganizeResult()
         source_directories: Set[str] = set()
+        
+        self.scanner.reset_cancellation()
         
         try:
             # Get all models from cache
@@ -186,6 +190,21 @@ class ModelFileService:
                 progress_callback,
                 source_directories  # Pass the set to track source directories
             )
+
+            if self.scanner.is_cancelled():
+                result.status = 'cancelled'
+                if progress_callback:
+                    await progress_callback.on_progress({
+                        'type': 'auto_organize_progress',
+                        'status': 'cancelled',
+                        'total': result.total,
+                        'processed': result.processed,
+                        'success': result.success_count,
+                        'failures': result.failure_count,
+                        'skipped': result.skipped_count,
+                        'operation_type': result.operation_type
+                    })
+                return result
             
             # Send cleanup progress
             if progress_callback:
@@ -246,9 +265,15 @@ class ModelFileService:
         """Process models in batches to avoid overwhelming the system"""
         
         for i in range(0, result.total, AUTO_ORGANIZE_BATCH_SIZE):
+            if self.scanner.is_cancelled():
+                logger.info(f"{self.model_type.capitalize()} File Service: Auto-organize cancelled by user")
+                break
+
             batch = all_models[i:i + AUTO_ORGANIZE_BATCH_SIZE]
             
             for model in batch:
+                if self.scanner.is_cancelled():
+                    break
                 await self._process_single_model(model, model_roots, result, source_directories)
                 result.processed += 1
             
@@ -446,25 +471,46 @@ class ModelFileService:
 class ModelMoveService:
     """Service for handling individual model moves"""
     
-    def __init__(self, scanner):
+    def __init__(self, scanner, model_type: str):
         """Initialize the service
         
         Args:
             scanner: Model scanner instance
+            model_type: Type of model (e.g., 'lora', 'checkpoint')
         """
         self.scanner = scanner
+        self.model_type = model_type
     
-    async def move_model(self, file_path: str, target_path: str) -> Dict[str, Any]:
+    async def move_model(self, file_path: str, target_path: str, use_default_paths: bool = False) -> Dict[str, Any]:
         """Move a single model file
         
         Args:
             file_path: Source file path
-            target_path: Target directory path
+            target_path: Target directory path (used as root if use_default_paths is True)
+            use_default_paths: Whether to use default path template for organization
             
         Returns:
             Dictionary with move result
         """
         try:
+            if use_default_paths:
+                # Find the model in cache to get metadata
+                cache = await self.scanner.get_cached_data()
+                model_data = next((m for m in cache.raw_data if m.get('file_path') == file_path), None)
+                
+                if model_data:
+                    from ..utils.utils import calculate_relative_path_for_model
+                    relative_path = calculate_relative_path_for_model(model_data, self.model_type)
+                    if relative_path:
+                        target_path = os.path.join(target_path, relative_path).replace(os.sep, '/')
+                    elif not get_settings_manager().get_download_path_template(self.model_type):
+                        # Flat structure, target_path remains the root
+                        pass
+                    else:
+                        # Could not calculate relative path (e.g. missing metadata)
+                        # Fallback to manual target_path or skip?
+                        pass
+
             source_dir = os.path.dirname(file_path)
             if os.path.normpath(source_dir) == os.path.normpath(target_path):
                 logger.info(f"Source and target directories are the same: {source_dir}")
@@ -475,12 +521,15 @@ class ModelMoveService:
                     'new_file_path': file_path
                 }
 
-            new_file_path = await self.scanner.move_model(file_path, target_path)
-            if new_file_path:
+            move_result = await self.scanner.move_model(file_path, target_path)
+            if move_result:
+                new_file_path = move_result.get("new_path")
+                cache_entry = move_result.get("cache_entry")
                 return {
                     'success': True, 
                     'original_file_path': file_path,
-                    'new_file_path': new_file_path
+                    'new_file_path': new_file_path,
+                    'cache_entry': cache_entry
                 }
             else:
                 return {
@@ -498,26 +547,32 @@ class ModelMoveService:
                 'new_file_path': None
             }
     
-    async def move_models_bulk(self, file_paths: List[str], target_path: str) -> Dict[str, Any]:
+    async def move_models_bulk(self, file_paths: List[str], target_path: str, use_default_paths: bool = False) -> Dict[str, Any]:
         """Move multiple model files
         
         Args:
             file_paths: List of source file paths
-            target_path: Target directory path
+            target_path: Target directory path (used as root if use_default_paths is True)
+            use_default_paths: Whether to use default path template for organization
             
         Returns:
             Dictionary with bulk move results
         """
         try:
             results = []
+            self.scanner.reset_cancellation()
             
             for file_path in file_paths:
-                result = await self.move_model(file_path, target_path)
+                if self.scanner.is_cancelled():
+                    logger.info(f"{self.model_type.capitalize()} Move Service: Bulk move cancelled by user")
+                    break
+                result = await self.move_model(file_path, target_path, use_default_paths=use_default_paths)
                 results.append({
                     "original_file_path": file_path,
                     "new_file_path": result.get('new_file_path'),
                     "success": result['success'],
-                    "message": result.get('message', result.get('error', 'Unknown'))
+                    "message": result.get('message', result.get('error', 'Unknown')),
+                    "cache_entry": result.get('cache_entry')
                 })
             
             success_count = sum(1 for r in results if r["success"])

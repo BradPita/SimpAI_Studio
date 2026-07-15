@@ -65,6 +65,14 @@ def _odd_kernel_size(size, ratio, max_size):
     return max(1, k)
 
 
+def mask_blend_parameters(image_height, image_width):
+    short_side = max(1, min(int(image_height), int(image_width)))
+    dilation_kernel_size = _odd_kernel_size(short_side, 0.02, 65)
+    blur_kernel_size = _odd_kernel_size(short_side, 0.05, 129)
+    blur_radius = max(0.2, blur_kernel_size / 5)
+    return dilation_kernel_size, blur_kernel_size, blur_radius
+
+
 def _mask_to_image_shape(mask, image):
     image_height, image_width = image.shape[:2]
     mask = np.asarray(mask)
@@ -328,14 +336,9 @@ class InpaintWorker:
         
         mask = _mask_to_image_shape(self.mask, self.image)
         mask_height, mask_width = mask.shape[:2]
-        short_side = max(1, min(mask_height, mask_width))
-
-        kernel_size = _odd_kernel_size(short_side, 0.02, 65)
+        kernel_size, blur_kernel_size, sigma = mask_blend_parameters(mask_height, mask_width)
         kernel = np.ones((kernel_size, kernel_size), np.uint8)
         dilated_mask = cv2.dilate(mask, kernel, iterations=1)
-        
-        blur_kernel_size = _odd_kernel_size(short_side, 0.05, 129)
-        sigma = max(0.2, blur_kernel_size / 5)
 
         w = cv2.GaussianBlur(
             dilated_mask,

@@ -5,96 +5,72 @@ import { getModelApiClient, resetAndReload } from '../../api/modelApiFactory.js'
 import { bulkManager } from '../../managers/BulkManager.js';
 import { MODEL_CONFIG } from '../../api/apiConfig.js';
 import { translate } from '../../utils/i18nHelpers.js';
+import { getNsfwLevelSelector } from '../shared/NsfwLevelSelector.js';
+import { extractCivitaiModelUrlParts } from '../../utils/civitaiUtils.js';
 
 // Mixin with shared functionality for LoraContextMenu and CheckpointContextMenu
 export const ModelContextMenuMixin = {
+    isExcludedView() {
+        return state?.pages?.[state.currentPageType]?.viewMode === 'excluded';
+    },
+
+    updateExcludeMenuItem() {
+        const excludeItem = this.menu?.querySelector('[data-action="exclude"], [data-action="restore"]');
+        if (!excludeItem) {
+            return;
+        }
+
+        const isExcludedView = this.isExcludedView();
+        excludeItem.dataset.action = isExcludedView ? 'restore' : 'exclude';
+        excludeItem.innerHTML = isExcludedView
+            ? `<i class="fas fa-undo"></i> <span>${translate('loras.contextMenu.restoreModel', {}, 'Restore model')}</span>`
+            : `<i class="fas fa-eye-slash"></i> <span>${translate('loras.contextMenu.excludeModel', {}, 'Exclude model')}</span>`;
+    },
+
+    async restoreExcludedModel(filePath) {
+        const restored = await getModelApiClient().unexcludeModel(filePath);
+        if (!restored) {
+            return;
+        }
+
+        if (window.pageControls?.exitExcludedView) {
+            await window.pageControls.exitExcludedView();
+        } else {
+            const resetFn = this.resetAndReload || resetAndReload;
+            if (typeof resetFn === 'function') {
+                await resetFn(true);
+            }
+        }
+    },
+
     // NSFW Selector methods
     initNSFWSelector() {
-        // Remove any existing event listeners by cloning and replacing elements
-        // This is a simple way to ensure we don't have duplicate event listeners
-        const closeBtn = this.nsfwSelector.querySelector('.close-nsfw-selector');
-        const newCloseBtn = closeBtn.cloneNode(true);
-        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-        newCloseBtn.addEventListener('click', () => {
-            this.nsfwSelector.style.display = 'none';
-            this.resetNSFWSelectorState();
-        });
-
-        // Level buttons
-        const levelButtons = this.nsfwSelector.querySelectorAll('.nsfw-level-btn');
-        levelButtons.forEach(btn => {
-            // Remove any existing event listeners by cloning and replacing the button
-            const newBtn = btn.cloneNode(true);
-            btn.parentNode.replaceChild(newBtn, btn);
-            
-            newBtn.addEventListener('click', async () => {
-                const level = parseInt(newBtn.dataset.level);
-                const mode = this.nsfwSelector.dataset.mode || 'single';
-
-                if (mode === 'bulk') {
-                    let bulkFilePaths = [];
-                    if (this.nsfwSelector.dataset.bulkFilePaths) {
-                        try {
-                            bulkFilePaths = JSON.parse(this.nsfwSelector.dataset.bulkFilePaths);
-                        } catch (error) {
-                            console.warn('Failed to parse bulk file paths for content rating', error);
-                        }
-                    }
-
-                    const success = await bulkManager.setBulkContentRating(level, bulkFilePaths);
-                    if (success) {
-                        this.nsfwSelector.style.display = 'none';
-                        this.resetNSFWSelectorState();
-                    }
-                    return;
-                }
-
-                const filePath = this.nsfwSelector.dataset.cardPath;
-
-                if (!filePath) return;
-
-                try {
-                    await this.saveModelMetadata(filePath, { preview_nsfw_level: level });
-
-                    showToast('toast.contextMenu.contentRatingSet', { level: getNSFWLevelName(level) }, 'success');
-                    this.nsfwSelector.style.display = 'none';
-                    this.resetNSFWSelectorState();
-                } catch (error) {
-                    showToast('toast.contextMenu.contentRatingFailed', { message: error.message }, 'error');
-                }
-            });
-        });
-
-        // Close when clicking outside - use a named function so we can remove it later
-        const outsideClickListener = (e) => {
-            if (this.nsfwSelector.style.display === 'block' &&
-                !this.nsfwSelector.contains(e.target) &&
-                !e.target.closest('.context-menu-item[data-action="set-nsfw"], .context-menu-item[data-action="set-content-rating"]')) {
-                this.nsfwSelector.style.display = 'none';
-                this.resetNSFWSelectorState();
-            }
-        };
-        
-        // Remove previous listener if it exists
-        if (this._outsideClickListener) {
-            document.removeEventListener('click', this._outsideClickListener);
+        if (this._nsfwSelectorInitialized) {
+            return;
         }
-        
-        // Store and add new listener
-        this._outsideClickListener = outsideClickListener;
-        document.addEventListener('click', this._outsideClickListener);
+
+        const selector = getNsfwLevelSelector();
+        if (!selector) {
+            console.warn('NSFW selector element not found');
+            return;
+        }
+
+        this._nsfwSelectorInitialized = true;
+        this._nsfwSelector = selector;
     },
 
     resetNSFWSelectorState() {
-        if (!this.nsfwSelector) return;
-        delete this.nsfwSelector.dataset.bulkFilePaths;
-        delete this.nsfwSelector.dataset.mode;
-        delete this.nsfwSelector.dataset.cardPath;
+        // maintained for compatibility; no-op with shared selector
     },
 
     showNSFWLevelSelector(x, y, card) {
-        const selector = document.getElementById('nsfwLevelSelector');
-        const currentLevelEl = document.getElementById('currentNSFWLevel');
+        this.initNSFWSelector();
+        const selector = this._nsfwSelector || getNsfwLevelSelector();
+
+        if (!selector) {
+            console.warn('NSFW selector not available');
+            return;
+        }
 
         // Get current NSFW level
         let currentLevel = 0;
@@ -104,44 +80,29 @@ export const ModelContextMenuMixin = {
 
             // Update if we have no recorded level but have a dataset attribute
             if (!currentLevel && card.dataset.nsfwLevel) {
-                currentLevel = parseInt(card.dataset.nsfwLevel) || 0;
+                currentLevel = parseInt(card.dataset.nsfwLevel, 10) || 0;
             }
         } catch (err) {
             console.error('Error parsing metadata:', err);
         }
 
-        currentLevelEl.textContent = getNSFWLevelName(currentLevel);
-
-        // Position the selector
-        if (x && y) {
-            const viewportWidth = document.documentElement.clientWidth;
-            const viewportHeight = document.documentElement.clientHeight;
-            const selectorRect = selector.getBoundingClientRect();
-
-            // Center the selector if no coordinates provided
-            let finalX = (viewportWidth - selectorRect.width) / 2;
-            let finalY = (viewportHeight - selectorRect.height) / 2;
-
-            selector.style.left = `${finalX}px`;
-            selector.style.top = `${finalY}px`;
-        }
-
-        // Highlight current level button
-        selector.querySelectorAll('.nsfw-level-btn').forEach(btn => {
-            if (parseInt(btn.dataset.level) === currentLevel) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+        const filePath = card.dataset.filepath;
+        selector.show({
+            currentLevel,
+            cardPath: filePath,
+            onSelect: async (level) => {
+                if (!filePath) return false;
+                try {
+                    await this.saveModelMetadata(filePath, { preview_nsfw_level: level });
+                    showToast('toast.contextMenu.contentRatingSet', { level: getNSFWLevelName(level) }, 'success');
+                    return true;
+                } catch (error) {
+                    showToast('toast.contextMenu.contentRatingFailed', { message: error.message }, 'error');
+                    return false;
+                }
+            },
+            onClose: () => this.resetNSFWSelectorState(),
         });
-
-        // Store reference to current card
-        selector.dataset.mode = 'single';
-        selector.dataset.cardPath = card.dataset.filepath;
-        delete selector.dataset.bulkFilePaths;
-
-        // Show selector
-        selector.style.display = 'block';
     },
 
     // Civitai re-linking methods
@@ -226,26 +187,76 @@ export const ModelContextMenuMixin = {
         setTimeout(() => urlInput.focus(), 50);
     },
 
-    extractModelVersionId(url) {
-        try {
-            // Handle all three URL formats:
-            // 1. https://civitai.com/models/649516
-            // 2. https://civitai.com/models/649516?modelVersionId=726676
-            // 3. https://civitai.com/models/649516/cynthia-pokemon-diamond-and-pearl-pdxl-lora?modelVersionId=726676
-            
-            const parsedUrl = new URL(url);
-            
-            // Extract model ID from path
-            const pathMatch = parsedUrl.pathname.match(/\/models\/(\d+)/);
-            const modelId = pathMatch ? pathMatch[1] : null;
-            
-            // Extract model version ID from query parameters
-            const modelVersionId = parsedUrl.searchParams.get('modelVersionId');
-            
-            return { modelId, modelVersionId };
-        } catch (e) {
-            return { modelId: null, modelVersionId: null };
+    // HuggingFace linking methods
+    showLinkHfModal() {
+        const filePath = this.currentCard.dataset.filepath;
+        if (!filePath) return;
+
+        const confirmBtn = document.getElementById('confirmLinkHfBtn');
+        const urlInput = document.getElementById('hfModelUrl');
+        const errorDiv = document.getElementById('hfModelUrlError');
+
+        if (this._boundLinkHfHandler) {
+            confirmBtn.removeEventListener('click', this._boundLinkHfHandler);
         }
+
+        this._boundLinkHfHandler = async () => {
+            const hfUrl = urlInput.value.trim();
+            if (!hfUrl) {
+                errorDiv.textContent = 'Please enter a HuggingFace repository URL.';
+                return;
+            }
+
+            const hfPattern = /^https?:\/\/huggingface\.co\/([^/]+\/[^/]+)\/?$/;
+            if (!hfPattern.test(hfUrl)) {
+                errorDiv.textContent = 'Invalid URL format. Expected: https://huggingface.co/user/repo';
+                return;
+            }
+
+            errorDiv.textContent = '';
+            modalManager.closeModal('linkHfModal');
+
+            try {
+                state.loadingManager.showSimpleLoading('Linking to HuggingFace...');
+
+                const response = await fetch('/api/lm/set-hf-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_path: filePath, hf_url: hfUrl }),
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || `Request failed: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('toast.contextMenu.linkHfSuccess', {}, 'success');
+                    await this.resetAndReload();
+                } else {
+                    throw new Error(data.error || 'Failed to link model');
+                }
+            } catch (error) {
+                console.error('Error linking model to HuggingFace:', error);
+                showToast('toast.contextMenu.linkHfFailed', { message: error.message }, 'error');
+            } finally {
+                state.loadingManager.hide();
+            }
+        };
+
+        confirmBtn.addEventListener('click', this._boundLinkHfHandler);
+
+        urlInput.value = '';
+        errorDiv.textContent = '';
+
+        modalManager.showModal('linkHfModal');
+
+        setTimeout(() => urlInput.focus(), 50);
+    },
+
+    extractModelVersionId(url) {
+        return extractCivitaiModelUrlParts(url);
     },
 
     parseModelId(value) {
@@ -351,6 +362,9 @@ export const ModelContextMenuMixin = {
                 return true;
             case 'relink-civitai':
                 this.showRelinkCivitaiModal();
+                return true;
+            case 'link-hf':
+                this.showLinkHfModal();
                 return true;
             case 'set-nsfw':
                 this.showNSFWLevelSelector(null, null, this.currentCard);

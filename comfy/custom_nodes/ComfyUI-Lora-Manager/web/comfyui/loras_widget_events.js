@@ -4,7 +4,7 @@ import { createMenuItem, createDropIndicator } from "./loras_widget_components.j
 import { parseLoraValue, formatLoraValue, syncClipStrengthIfCollapsed, saveRecipeDirectly, copyToClipboard, showToast, moveLoraByDirection, getDropTargetIndex } from "./loras_widget_utils.js";
 
 // Function to handle strength adjustment via dragging
-export function handleStrengthDrag(name, initialStrength, initialX, event, widget, isClipStrength = false) {
+export function handleStrengthDrag(name, initialStrength, initialX, event, widget, isClipStrength = false, updateWidget = true) {
   // Calculate drag sensitivity (how much the strength changes per pixel)
   // Using 0.01 per 10 pixels of movement
   const sensitivity = 0.001;
@@ -37,18 +37,21 @@ export function handleStrengthDrag(name, initialStrength, initialX, event, widge
       syncClipStrengthIfCollapsed(lorasData[loraIndex]);
     }
     
-    // Update the widget value
-    widget.value = formatLoraValue(lorasData);
+    // Update the widget value only if updateWidget flag is true
+    // This allows us to update inputs directly during drag without triggering re-render
+    if (updateWidget) {
+      widget.value = formatLoraValue(lorasData);
+    }
     
-    // Force re-render via callback
-    if (widget.callback) {
+    // Force re-render via callback only if updateWidget is true
+    if (updateWidget && widget.callback) {
       widget.callback(widget.value);
     }
   }
 }
 
 // Function to handle proportional strength adjustment for all LoRAs via header dragging
-export function handleAllStrengthsDrag(initialStrengths, initialX, event, widget) {
+export function handleAllStrengthsDrag(initialStrengths, initialX, event, widget, updateWidget = true) {
   // Define sensitivity (less sensitive than individual adjustment)
   const sensitivity = 0.0005;
   
@@ -87,11 +90,13 @@ export function handleAllStrengthsDrag(initialStrengths, initialX, event, widget
     lorasData[index].clipStrength = Number(newClipStrength);
   });
   
-  // Update widget value
-  widget.value = formatLoraValue(lorasData);
+  // Update widget value only if updateWidget flag is true
+  if (updateWidget) {
+    widget.value = formatLoraValue(lorasData);
+  }
   
-  // Force re-render via callback
-  if (widget.callback) {
+  // Force re-render via callback only if updateWidget is true
+  if (updateWidget && widget.callback) {
     widget.callback(widget.value);
   }
 }
@@ -107,21 +112,30 @@ export function initDrag(
   dragCallbacks = {}
 ) {
   let isDragging = false;
+  let activePointerId = null;
   let initialX = 0;
   let initialStrength = 0;
+  let currentDragElement = null;
+  let hasMoved = false;
   const { onDragStart, onDragEnd } = dragCallbacks;
   
-  // Create a drag handler
-  dragEl.addEventListener('mousedown', (e) => {
+  // Create a drag handler using pointer events for Vue DOM render mode compatibility
+  dragEl.addEventListener('pointerdown', (e) => {
     // Skip if clicking on toggle or strength control areas
     if (e.target.closest('.lm-lora-toggle') ||
         e.target.closest('input') ||
         e.target.closest('.lm-lora-arrow') ||
         e.target.closest('.lm-lora-drag-handle') ||
+        e.target.closest('.lm-lora-lock-button') ||
         e.target.closest('.lm-lora-expand-button')) {
       return;
     }
-    
+
+    // Only handle left mouse button (allow middle button for canvas drag, right button for context menu)
+    if (e.button !== 0) {
+      return;
+    }
+
     // Store initial values
     const lorasData = parseLoraValue(widget.value);
     const loraData = lorasData.find(l => l.name === name);
@@ -131,29 +145,53 @@ export function initDrag(
     initialX = e.clientX;
     initialStrength = isClipStrength ? loraData.clipStrength : loraData.strength;
     isDragging = true;
+    hasMoved = false;
+    activePointerId = e.pointerId;
+    currentDragElement = e.currentTarget;
 
-    // Add class to body to enforce cursor style globally
+    // Capture pointer to receive all subsequent events regardless of stopPropagation
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+
+    // Prevent text selection
+    e.preventDefault();
+  });
+  
+  dragEl.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+
+    // Track if pointer moved significantly (more than 3 pixels)
+    if (Math.abs(e.clientX - initialX) > 3) {
+      hasMoved = true;
+    }
+
+    // Only stop propagation if we've started dragging (moved beyond threshold)
+    if (hasMoved) {
+      e.stopPropagation();
+    }
+    
+    // Only process drag if we've moved beyond threshold
+    if (!hasMoved) return;
+
+    // Add class to body to enforce cursor style globally only after drag starts
     document.body.classList.add('lm-lora-strength-dragging');
 
     if (typeof onDragStart === 'function') {
       onDragStart();
     }
 
-    // Prevent text selection during drag
-    e.preventDefault();
-  });
-  
-  // Use the document for move and up events to ensure drag continues
-  // even if mouse leaves the element
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
+    // Call the strength adjustment function without updating widget.value during drag
+    handleStrengthDrag(name, initialStrength, initialX, e, widget, isClipStrength, false);
     
-    // Call the strength adjustment function
-    handleStrengthDrag(name, initialStrength, initialX, e, widget, isClipStrength);
-    
-    // Force re-render to show updated strength value
-    if (renderFunction) {
-      renderFunction(widget.value, widget);
+    // Update strength input directly instead of re-rendering to avoid losing event listeners
+    const strengthInput = currentDragElement.querySelector('.lm-lora-strength-input');
+    if (strengthInput) {
+      const lorasData = parseLoraValue(widget.value);
+      const loraData = lorasData.find(l => l.name === name);
+      if (loraData) {
+        const strengthValue = isClipStrength ? loraData.clipStrength : loraData.strength;
+        strengthInput.value = Number(strengthValue).toFixed(2);
+      }
     }
     
     // Prevent showing the preview tooltip during drag
@@ -162,34 +200,76 @@ export function initDrag(
     }
   });
   
-  document.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      // Remove the class to restore normal cursor behavior
-      document.body.classList.remove('lm-lora-strength-dragging');
+  const endDrag = (e) => {
+    if (!isDragging) return;
 
+    // Only stop propagation if we actually dragged
+    if (hasMoved) {
+      e.stopPropagation();
+    }
+
+    // Release pointer capture if still have the element
+    if (currentDragElement && activePointerId !== null) {
+      try {
+        currentDragElement.releasePointerCapture(activePointerId);
+      } catch (err) {
+        // Ignore errors if element is no longer in DOM
+      }
+    }
+
+    const wasDragging = hasMoved;
+    isDragging = false;
+    hasMoved = false;
+    activePointerId = null;
+    currentDragElement = null;
+
+    // Remove the class to restore normal cursor behavior
+    document.body.classList.remove('lm-lora-strength-dragging');
+
+    // Only call onDragEnd and re-render if we actually dragged
+    if (wasDragging) {
       if (typeof onDragEnd === 'function') {
         onDragEnd();
       }
+
+      // Commit final value through options.setValue so external observers are notified.
+      // During drag, handleStrengthDrag mutates widgetValue in-place (updateWidget=false),
+      // bypassing widget.value setter and options.setValue entirely. This assignment
+      // flushes the in-place mutation through the setter so any setValue wrappers fire.
+      widget.value = widget.value;
+      if (typeof widget.callback === 'function') {
+        widget.callback(widget.value);
+      }
     }
-  });
+  };
+  
+  dragEl.addEventListener('pointerup', endDrag);
+  dragEl.addEventListener('pointercancel', endDrag);
 }
 
 // Function to initialize header drag for proportional strength adjustment
 export function initHeaderDrag(headerEl, widget, renderFunction) {
   let isDragging = false;
+  let activePointerId = null;
   let initialX = 0;
   let initialStrengths = [];
+  let currentHeaderElement = null;
+  let hasMoved = false;
   
   // Add cursor style to indicate draggable
-  // Create a drag handler
-  headerEl.addEventListener('mousedown', (e) => {
+  // Create a drag handler using pointer events for Vue DOM render mode compatibility
+  headerEl.addEventListener('pointerdown', (e) => {
     // Skip if clicking on toggle or other interactive elements
     if (e.target.closest('.lm-lora-toggle') ||
         e.target.closest('input')) {
       return;
     }
-    
+
+    // Only handle left mouse button (allow middle button for canvas drag, right button for context menu)
+    if (e.button !== 0) {
+      return;
+    }
+
     // Store initial X position
     initialX = e.clientX;
     
@@ -201,76 +281,153 @@ export function initHeaderDrag(headerEl, widget, renderFunction) {
     }));
     
     isDragging = true;
+    hasMoved = false;
+    activePointerId = e.pointerId;
+    currentHeaderElement = e.currentTarget;
+
+    // Capture pointer to receive all subsequent events regardless of stopPropagation
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
     
-    // Add class to body to enforce cursor style globally
-    document.body.classList.add('lm-lora-strength-dragging');
-    
-    // Prevent text selection during drag
+    // Prevent text selection
     e.preventDefault();
   });
   
-  // Handle mouse move for dragging
-  document.addEventListener('mousemove', (e) => {
+  // Handle pointer move for dragging
+  headerEl.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    
-    // Call the strength adjustment function
-    handleAllStrengthsDrag(initialStrengths, initialX, e, widget);
-    
-    // Force re-render to show updated strength values
-    if (renderFunction) {
-      renderFunction(widget.value, widget);
+
+    // Track if pointer moved significantly (more than 3 pixels)
+    if (Math.abs(e.clientX - initialX) > 3) {
+      hasMoved = true;
     }
+
+    // Only stop propagation if we've started dragging (moved beyond threshold)
+    if (hasMoved) {
+      e.stopPropagation();
+    }
+
+    // Only process drag if we've moved beyond threshold
+    if (!hasMoved) return;
+
+    // Add class to body to enforce cursor style globally only after drag starts
+    document.body.classList.add('lm-lora-strength-dragging');
+
+    // Call the strength adjustment function without updating widget.value during drag
+    handleAllStrengthsDrag(initialStrengths, initialX, e, widget, false);
+    
+    // Update strength inputs directly instead of re-rendering to avoid losing event listeners
+    const strengthInputs = currentHeaderElement.parentElement.querySelectorAll('.lm-lora-strength-input');
+    const lorasData = parseLoraValue(widget.value);
+    strengthInputs.forEach((input, index) => {
+      if (lorasData[index]) {
+        input.value = lorasData[index].strength.toFixed(2);
+      }
+    });
   });
   
-  // Handle mouse up to end dragging
-  document.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      // Remove the class to restore normal cursor behavior
-      document.body.classList.remove('lm-lora-strength-dragging');
+  const endDrag = (e) => {
+    if (!isDragging) return;
+
+    // Only stop propagation if we actually dragged
+    if (hasMoved) {
+      e.stopPropagation();
     }
-  });
+
+    // Release pointer capture if still have the element
+    if (currentHeaderElement && activePointerId !== null) {
+      try {
+        currentHeaderElement.releasePointerCapture(activePointerId);
+      } catch (err) {
+        // Ignore errors if element is no longer in DOM
+      }
+    }
+
+    const wasDragging = hasMoved;
+    isDragging = false;
+    hasMoved = false;
+    activePointerId = null;
+    currentHeaderElement = null;
+    
+    // Remove the class to restore normal cursor behavior
+    document.body.classList.remove('lm-lora-strength-dragging');
+
+    // Only re-render if we actually dragged
+    if (wasDragging) {
+      // Commit final value through options.setValue so external observers are notified.
+      widget.value = widget.value;
+      if (typeof widget.callback === 'function') {
+        widget.callback(widget.value);
+      }
+    }
+  };
+
+  // Handle pointer up to end dragging
+  headerEl.addEventListener('pointerup', endDrag);
+  
+  // Handle pointer cancel to end dragging
+  headerEl.addEventListener('pointercancel', endDrag);
 }
 
 // Function to initialize drag-and-drop for reordering
 export function initReorderDrag(dragHandle, loraName, widget, renderFunction) {
   let isDragging = false;
+  let activePointerId = null;
   let draggedElement = null;
   let dropIndicator = null;
   let container = null;
   let scale = 1;
+  let hasMoved = false;
   
-  dragHandle.addEventListener('mousedown', (e) => {
+  dragHandle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    e.stopPropagation();
     
     isDragging = true;
+    hasMoved = false;
+    activePointerId = e.pointerId;
     draggedElement = dragHandle.closest('.lm-lora-entry');
     container = draggedElement.parentElement;
     
-    // Add dragging class and visual feedback
-    draggedElement.classList.add('lm-lora-entry--dragging');
-
-    // Create single drop indicator with absolute positioning
-    dropIndicator = createDropIndicator();
-    
-    // Make container relatively positioned for absolute indicator
-    const originalPosition = container.style.position;
-    container.style.position = 'relative';
-    container.appendChild(dropIndicator);
-    
-    // Store original position for cleanup
-    container._originalPosition = originalPosition;
-    
-    // Add global cursor style
-    document.body.classList.add('lm-lora-reordering');
-
-    // Store workflow scale for accurate positioning
-    scale = app.canvas.ds.scale;
+    // Capture pointer to receive all subsequent events regardless of stopPropagation
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
   });
-  
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging || !draggedElement || !dropIndicator) return;
+
+  dragHandle.addEventListener('pointermove', (e) => {
+    if (!isDragging || !draggedElement) return;
+
+    // Track if pointer moved significantly (more than 3 pixels vertically)
+    if (Math.abs(e.movementY) > 3) {
+      hasMoved = true;
+    }
+
+    // Only stop propagation and process drag if we've moved beyond threshold
+    if (!hasMoved) return;
+
+    // Stop propagation and start drag visuals
+    e.stopPropagation();
+
+    // Add dragging class and visual feedback only after drag starts
+    if (!dropIndicator) {
+      draggedElement.classList.add('lm-lora-entry--dragging');
+
+      // Create single drop indicator with absolute positioning
+      dropIndicator = createDropIndicator();
+      
+      // Make container relatively positioned for absolute indicator
+      const originalPosition = container.style.position;
+      container.style.position = 'relative';
+      container.appendChild(dropIndicator);
+      
+      // Store original position for cleanup
+      container._originalPosition = originalPosition;
+      
+      // Add global cursor style
+      document.body.classList.add('lm-lora-reordering');
+
+      // Store workflow scale for accurate positioning
+      scale = app.canvas.ds.scale;
+    }
     
     const targetIndex = getDropTargetIndex(container, e.clientY);
     const entries = container.querySelectorAll('.lm-lora-entry, .lm-lora-clip-entry');
@@ -305,52 +462,80 @@ export function initReorderDrag(dragHandle, loraName, widget, renderFunction) {
     }
   });
   
-  document.addEventListener('mouseup', (e) => {
+  dragHandle.addEventListener('pointerup', (e) => {
+    // Only stop propagation if we actually dragged
+    if (hasMoved) {
+      e.stopPropagation();
+    }
+
     // Always reset cursor regardless of isDragging state
     document.body.classList.remove('lm-lora-reordering');
-    
-    if (!isDragging || !draggedElement) return;
-    
-    const targetIndex = getDropTargetIndex(container, e.clientY);
-    
-    // Get current LoRA data
-    const lorasData = parseLoraValue(widget.value);
-    const currentIndex = lorasData.findIndex(l => l.name === loraName);
-    
-    if (currentIndex !== -1 && currentIndex !== targetIndex) {
-      // Calculate actual target index (excluding clip entries from count)
-      const loraEntries = container.querySelectorAll('.lm-lora-entry');
-      let actualTargetIndex = targetIndex;
-      
-      // Adjust target index if it's beyond the number of actual LoRA entries
-      if (actualTargetIndex > loraEntries.length) {
-        actualTargetIndex = loraEntries.length;
+
+    if (!isDragging || !draggedElement) {
+      // Release pointer capture even if not dragging
+      const target = e.currentTarget;
+      if (activePointerId !== null) {
+        target.releasePointerCapture(activePointerId);
       }
-      
-      // Move the LoRA
-      const newLoras = [...lorasData];
-      const [moved] = newLoras.splice(currentIndex, 1);
-      newLoras.splice(actualTargetIndex > currentIndex ? actualTargetIndex - 1 : actualTargetIndex, 0, moved);
-      
-      widget.value = formatLoraValue(newLoras);
-      
-      if (widget.callback) {
-        widget.callback(widget.value);
-      }
-      
-      // Re-render
-      if (renderFunction) {
-        renderFunction(widget.value, widget);
+      isDragging = false;
+      hasMoved = false;
+      activePointerId = null;
+      return;
+    }
+
+    // Release pointer capture
+    const target = e.currentTarget;
+    if (activePointerId !== null) {
+      target.releasePointerCapture(activePointerId);
+    }
+
+    const wasDragging = hasMoved;
+    isDragging = false;
+    hasMoved = false;
+    activePointerId = null;
+
+    // Only process reordering if we actually dragged
+    if (wasDragging) {
+      const targetIndex = getDropTargetIndex(container, e.clientY);
+
+      // Get current LoRA data
+      const lorasData = parseLoraValue(widget.value);
+      const currentIndex = lorasData.findIndex(l => l.name === loraName);
+
+      if (currentIndex !== -1 && currentIndex !== targetIndex) {
+        // Calculate actual target index (excluding clip entries from count)
+        const loraEntries = container.querySelectorAll('.lm-lora-entry');
+        let actualTargetIndex = targetIndex;
+
+        // Adjust target index if it's beyond the number of actual LoRA entries
+        if (actualTargetIndex > loraEntries.length) {
+          actualTargetIndex = loraEntries.length;
+        }
+
+        // Move the LoRA
+        const newLoras = [...lorasData];
+        const [moved] = newLoras.splice(currentIndex, 1);
+        newLoras.splice(actualTargetIndex > currentIndex ? actualTargetIndex - 1 : actualTargetIndex, 0, moved);
+
+        widget.value = formatLoraValue(newLoras);
+
+        if (widget.callback) {
+          widget.callback(widget.value);
+        }
+
+        // Re-render
+        if (renderFunction) {
+          renderFunction(widget.value, widget);
+        }
       }
     }
-    
+
     // Cleanup
-    isDragging = false;
     if (draggedElement) {
       draggedElement.classList.remove('lm-lora-entry--dragging');
       draggedElement = null;
     }
-    
+
     if (dropIndicator && container) {
       container.removeChild(dropIndicator);
       // Restore original position
@@ -358,13 +543,56 @@ export function initReorderDrag(dragHandle, loraName, widget, renderFunction) {
       delete container._originalPosition;
       dropIndicator = null;
     }
-    
+
     container = null;
   });
-  
-  // Also reset cursor when mouse leaves the document
-  document.addEventListener('mouseleave', () => {
+
+  dragHandle.addEventListener('pointercancel', (e) => {
+    // Only stop propagation if we actually dragged
+    if (hasMoved) {
+      e.stopPropagation();
+    }
+
+    // Always reset cursor regardless of isDragging state
     document.body.classList.remove('lm-lora-reordering');
+
+    if (!isDragging || !draggedElement) {
+      // Release pointer capture even if not dragging
+      const target = e.currentTarget;
+      if (activePointerId !== null) {
+        target.releasePointerCapture(activePointerId);
+      }
+      isDragging = false;
+      hasMoved = false;
+      activePointerId = null;
+      return;
+    }
+
+    // Release pointer capture
+    const target = e.currentTarget;
+    if (activePointerId !== null) {
+      target.releasePointerCapture(activePointerId);
+    }
+
+    isDragging = false;
+    hasMoved = false;
+    activePointerId = null;
+
+    // Cleanup without reordering
+    if (draggedElement) {
+      draggedElement.classList.remove('lm-lora-entry--dragging');
+      draggedElement = null;
+    }
+
+    if (dropIndicator && container) {
+      container.removeChild(dropIndicator);
+      // Restore original position
+      container.style.position = container._originalPosition || '';
+      delete container._originalPosition;
+      dropIndicator = null;
+    }
+
+    container = null;
   });
 }
 

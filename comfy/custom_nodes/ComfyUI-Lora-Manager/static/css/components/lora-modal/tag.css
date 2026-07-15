@@ -17,17 +17,22 @@
   flex-wrap: nowrap;
   gap: 6px;
   align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .model-tag-compact {
   /* Updated styles to match info-item appearance */
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--surface-subtle);
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: var(--border-radius-xs);
   padding: 2px 8px;
   font-size: 0.75em;
   color: var(--text-color);
   white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Style for empty tags placeholder */
@@ -45,7 +50,7 @@
 
 /* Adjust dark theme tag styles */
 [data-theme="dark"] .model-tag-compact {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-subtle);
   border: 1px solid var(--lora-border);
 }
 
@@ -73,14 +78,14 @@
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg);
   padding: 10px 14px;
   max-width: 400px;
   z-index: 10;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
   pointer-events: none;
 }
 
@@ -101,7 +106,7 @@
 
 .tooltip-tag {
   /* Updated styles to match info-item appearance */
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--surface-hover);
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: var(--border-radius-xs);
   padding: 3px 8px;
@@ -111,15 +116,16 @@
 
 /* Adjust dark theme tooltip tag styles */
 [data-theme="dark"] .tooltip-tag {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-hover);
   border: 1px solid var(--lora-border);
 }
 
 /* Model Tags Edit Mode */
 .model-tags-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  overflow: hidden;
 }
 
 .edit-tags-btn {
@@ -130,8 +136,9 @@
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--border-radius-xs);
-  transition: all 0.2s ease;
+  transition: var(--transition-base);
   margin-left: var(--space-1);
+  flex-shrink: 0;
 }
 
 .edit-tags-btn.visible,

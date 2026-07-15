@@ -3,6 +3,94 @@ import { state, getCurrentPageState } from '../state/index.js';
 import { getStorageItem, setStorageItem } from './storageHelpers.js';
 import { NODE_TYPE_ICONS, DEFAULT_NODE_COLOR } from './constants.js';
 import { eventManager } from './EventManager.js';
+import { bannerService } from '../managers/BannerService.js';
+import { modalManager } from '../managers/ModalManager.js';
+import { buildCivitaiUrl, normalizeCivitaiPageHost } from './civitaiUtils.js';
+import { resolveSamplerScheduler, findMatchingWidgets } from './genParamsMapper.js';
+
+const CIVITAI_HOST_INFO_BANNER_ID = 'civitai-host-preference';
+const CIVITAI_HOST_INFO_BANNER_SEEN_KEY = 'civitai_host_info_banner_seen';
+
+function getPreferredCivitaiHost() {
+  return normalizeCivitaiPageHost(state?.global?.settings?.civitai_host);
+}
+
+function maybeRegisterCivitaiHostInfoBanner() {
+  if (getStorageItem(CIVITAI_HOST_INFO_BANNER_SEEN_KEY, false)) {
+    return;
+  }
+
+  setStorageItem(CIVITAI_HOST_INFO_BANNER_SEEN_KEY, true);
+
+  bannerService.registerBanner(CIVITAI_HOST_INFO_BANNER_ID, {
+    id: CIVITAI_HOST_INFO_BANNER_ID,
+    title: translate(
+      'settings.civitaiHostBanner.title',
+      {},
+      'Civitai host preference available'
+    ),
+    content: translate(
+      'settings.civitaiHostBanner.content',
+      {},
+      'Civitai now uses civitai.com for SFW content and civitai.red for unrestricted content. You can change which site opens by default in Settings.'
+    ),
+    actions: [
+      {
+        text: translate('settings.civitaiHostBanner.openSettings', {}, 'Open Settings'),
+        icon: 'fas fa-cog',
+        action: 'open-settings-modal',
+        type: 'primary',
+      },
+    ],
+    dismissible: true,
+    priority: 70,
+    onRegister: (bannerElement) => {
+      const button = bannerElement.querySelector('.banner-action[data-action="open-settings-modal"]');
+      if (button) {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          modalManager.showModal('settingsModal');
+        });
+      }
+    },
+  });
+}
+
+export function openCivitaiUrl(url) {
+  if (!url) {
+    return null;
+  }
+
+  maybeRegisterCivitaiHostInfoBanner();
+  return window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+async function copyExampleImagesValue(value, successKey, fallbackKey, paramsKey = 'path') {
+  if (!value) {
+    return false;
+  }
+
+  const params = { [paramsKey]: value };
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(successKey, params, 'success');
+    return true;
+  } catch (clipboardErr) {
+    console.warn('Clipboard API not available:', clipboardErr);
+    showToast(fallbackKey, params, 'info');
+    return false;
+  }
+}
+
+function tryOpenExternalUri(uri) {
+  try {
+    const openedWindow = window.open(uri, '_blank', 'noopener,noreferrer');
+    return openedWindow !== null;
+  } catch (error) {
+    console.warn('Failed to open external URI:', error);
+    return false;
+  }
+}
 
 /**
  * Utility function to copy text to clipboard with fallback for older browsers
@@ -16,192 +104,228 @@ import { eventManager } from './EventManager.js';
  * @returns {Promise<boolean>} - Promise that resolves to true if copy was successful
  */
 export async function copyToClipboard(text, successMessage = null) {
-    const defaultSuccessMessage = successMessage || translate('uiHelpers.clipboard.copied', {}, 'Copied to clipboard');
-    
-    try {
-        // Modern clipboard API
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-        } else {
-            // Fallback for older browsers
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'absolute';
-            textarea.style.left = '-99999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-        }
-        
-        if (defaultSuccessMessage) {
-            showToast('uiHelpers.clipboard.copied', {}, 'success');
-        }
-        return true;
-    } catch (err) {
-        console.error('Copy failed:', err);
-        showToast('uiHelpers.clipboard.copyFailed', {}, 'error');
-        return false;
+  const defaultSuccessMessage = successMessage || translate('uiHelpers.clipboard.copied', {}, 'Copied to clipboard');
+
+  try {
+    // Modern clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-99999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
     }
+
+    if (defaultSuccessMessage) {
+      showToast('uiHelpers.clipboard.copied', {}, 'success');
+    }
+    return true;
+  } catch (err) {
+    console.error('Copy failed:', err);
+    showToast('uiHelpers.clipboard.copyFailed', {}, 'error');
+    return false;
+  }
 }
 
-export function showToast(key, params = {}, type = 'info') {
-    const message = translate(key, params);
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    
-    // Get or create toast container
-    let toastContainer = document.querySelector('.toast-container');
-    if (!toastContainer) {
-        toastContainer = document.createElement('div');
-        toastContainer.className = 'toast-container';
-        document.body.append(toastContainer);
+export function showToast(key, params = {}, type = 'info', fallback = null) {
+  const message = translate(key, params, fallback);
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  // Get or create toast container
+  let toastContainer = document.querySelector('.toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    document.body.append(toastContainer);
+  }
+
+  toastContainer.append(toast);
+
+  // Calculate vertical position for stacked toasts
+  const existingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
+  const toastIndex = existingToasts.indexOf(toast);
+  const topOffset = 20; // Base offset from top
+  const spacing = 10; // Space between toasts
+
+  // Set position based on existing toasts
+  toast.style.top = `${topOffset + (toastIndex * (toast.offsetHeight || 60 + spacing))}px`;
+
+  requestAnimationFrame(() => {
+    toast.classList.add('show');
+
+    // Set timeout based on type
+    let timeout = 2000; // Default (info)
+    if (type === 'warning' || type === 'error') {
+      timeout = 5000;
     }
-    
-    toastContainer.append(toast);
 
-    // Calculate vertical position for stacked toasts
-    const existingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
-    const toastIndex = existingToasts.indexOf(toast);
-    const topOffset = 20; // Base offset from top
-    const spacing = 10; // Space between toasts
-    
-    // Set position based on existing toasts
-    toast.style.top = `${topOffset + (toastIndex * (toast.offsetHeight || 60 + spacing))}px`;
+    setTimeout(() => {
+      toast.classList.remove('show');
+      toast.addEventListener('transitionend', () => {
+        toast.remove();
 
-    requestAnimationFrame(() => {
-        toast.classList.add('show');
-        
-        // Set timeout based on type
-        let timeout = 2000; // Default (info)
-        if (type === 'warning' || type === 'error') {
-            timeout = 5000;
+        // Reposition remaining toasts
+        if (toastContainer) {
+          const remainingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
+          remainingToasts.forEach((t, index) => {
+            t.style.top = `${topOffset + (index * (t.offsetHeight || 60 + spacing))}px`;
+          });
+
+          // Remove container if empty
+          if (remainingToasts.length === 0) {
+            toastContainer.remove();
+          }
         }
-        
-        setTimeout(() => {
-            toast.classList.remove('show');
-            toast.addEventListener('transitionend', () => {
-                toast.remove();
-                
-                // Reposition remaining toasts
-                if (toastContainer) {
-                    const remainingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
-                    remainingToasts.forEach((t, index) => {
-                        t.style.top = `${topOffset + (index * (t.offsetHeight || 60 + spacing))}px`;
-                    });
-                    
-                    // Remove container if empty
-                    if (remainingToasts.length === 0) {
-                        toastContainer.remove();
-                    }
-                }
-            });
-        }, timeout);
-    });
+      });
+    }, timeout);
+  });
 }
 
 export function restoreFolderFilter() {
-    const activeFolder = getStorageItem('activeFolder');
-    const folderTag = activeFolder && document.querySelector(`.tag[data-folder="${activeFolder}"]`);
-    if (folderTag) {
-        folderTag.classList.add('active');
-        filterByFolder(activeFolder);
-    }
+  const activeFolder = getStorageItem('activeFolder');
+  const folderTag = activeFolder && document.querySelector(`.tag[data-folder="${activeFolder}"]`);
+  if (folderTag) {
+    folderTag.classList.add('active');
+    filterByFolder(activeFolder);
+  }
 }
 
+const CYCLE_ORDER = ['auto', 'light', 'dark'];
+const PRESET_NAMES = ['default', 'nord', 'midnight', 'monokai', 'dracula', 'solarized'];
+
+export { CYCLE_ORDER, PRESET_NAMES };
+
 export function initTheme() {
-    const savedTheme = getStorageItem('theme') || 'auto';
-    applyTheme(savedTheme);
-    
-    // Update theme when system preference changes (for 'auto' mode)
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        const currentTheme = getStorageItem('theme') || 'auto';
-        if (currentTheme === 'auto') {
-            applyTheme('auto');
-        }
-    });
+  const savedTheme = getStorageItem('theme') || 'auto';
+  // Migrate deprecated presets
+  let savedPreset = getStorageItem('theme_preset');
+  if (savedPreset === 'gruvbox') {
+    savedPreset = 'midnight';
+    setStorageItem('theme_preset', 'midnight');
+  }
+  applyTheme(savedTheme);
+  applyPreset(savedPreset || 'default');
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const currentTheme = getStorageItem('theme') || 'auto';
+    if (currentTheme === 'auto') {
+      applyTheme('auto');
+    }
+  });
 }
 
 export function toggleTheme() {
-    const currentTheme = getStorageItem('theme') || 'auto';
-    let newTheme;
-    
-    if (currentTheme === 'light') {
-        newTheme = 'dark';
-    } else {
-        newTheme = 'light';
-    }
-    
-    setStorageItem('theme', newTheme);
-    applyTheme(newTheme);
-    
-    // Force a repaint to ensure theme changes are applied immediately
-    document.body.style.display = 'none';
-    document.body.offsetHeight; // Trigger a reflow
-    document.body.style.display = '';
-    
-    return newTheme;
+  const currentTheme = getStorageItem('theme') || 'auto';
+  const currentIndex = CYCLE_ORDER.indexOf(currentTheme);
+  const nextIndex = (currentIndex + 1) % CYCLE_ORDER.length;
+  const newTheme = CYCLE_ORDER[nextIndex];
+
+  setStorageItem('theme', newTheme);
+  applyTheme(newTheme);
+
+  document.body.style.display = 'none';
+  document.body.offsetHeight;
+  document.body.style.display = '';
+
+  return newTheme;
 }
 
-// Add a new helper function to apply the theme
+export function cyclePreset() {
+  const currentPreset = getStorageItem('theme_preset') || 'default';
+  const currentIndex = PRESET_NAMES.indexOf(currentPreset);
+  const nextIndex = (currentIndex + 1) % PRESET_NAMES.length;
+  const newPreset = PRESET_NAMES[nextIndex];
+
+  setStorageItem('theme_preset', newPreset);
+  applyPreset(newPreset);
+
+  return newPreset;
+}
+
+export function setPreset(name) {
+  if (!PRESET_NAMES.includes(name)) return;
+  setStorageItem('theme_preset', name);
+  applyPreset(name);
+}
+
 function applyTheme(theme) {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const htmlElement = document.documentElement;
-    
-    // Remove any existing theme attributes
-    htmlElement.removeAttribute('data-theme');
-    
-    // Apply the appropriate theme
-    if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
-        htmlElement.setAttribute('data-theme', 'dark');
-        document.body.dataset.theme = 'dark';
-    } else {
-        htmlElement.setAttribute('data-theme', 'light');
-        document.body.dataset.theme = 'light';
-    }
-    
-    // Update the theme-toggle icon state
-    updateThemeToggleIcons(theme);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const htmlElement = document.documentElement;
+
+  htmlElement.removeAttribute('data-theme');
+
+  if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
+    htmlElement.setAttribute('data-theme', 'dark');
+    document.body.dataset.theme = 'dark';
+  } else {
+    htmlElement.setAttribute('data-theme', 'light');
+    document.body.dataset.theme = 'light';
+  }
+
+  updateThemeToggleIcons(theme);
 }
 
-// New function to update theme toggle icons
+function applyPreset(preset) {
+  document.documentElement.setAttribute('data-theme-preset', preset);
+}
+
 function updateThemeToggleIcons(theme) {
-    const themeToggle = document.querySelector('.theme-toggle');
-    if (!themeToggle) return;
-    
-    // Remove any existing active classes
-    themeToggle.classList.remove('theme-light', 'theme-dark', 'theme-auto');
-    
-    // Add the appropriate class based on current theme
-    themeToggle.classList.add(`theme-${theme}`);
+  const themeToggle = document.querySelector('.theme-toggle');
+  if (!themeToggle) return;
+
+  themeToggle.classList.remove('theme-light', 'theme-dark', 'theme-auto');
+  themeToggle.classList.add(`theme-${theme}`);
 }
 
 function filterByFolder(folderPath) {
-    document.querySelectorAll('.model-card').forEach(card => {
-        card.style.display = card.dataset.folder === folderPath ? '' : 'none';
-    });
+  document.querySelectorAll('.model-card').forEach(card => {
+    card.style.display = card.dataset.folder === folderPath ? '' : 'none';
+  });
+}
+
+export function openCivitaiByMetadata(civitaiId, versionId, modelName = null) {
+  const url = buildCivitaiUrl({
+    modelId: civitaiId,
+    versionId,
+    modelName,
+    host: getPreferredCivitaiHost(),
+  });
+
+  if (url) {
+    openCivitaiUrl(url);
+  }
 }
 
 export function openCivitai(filePath) {
-    const loraCard = document.querySelector(`.model-card[data-filepath="${filePath}"]`);
-    if (!loraCard) return;
-    
-    const metaData = JSON.parse(loraCard.dataset.meta);
-    const civitaiId = metaData.modelId;
-    const versionId = metaData.id;
-    
-    if (civitaiId) {
-        let url = `https://civitai.com/models/${civitaiId}`;
-        if (versionId) {
-            url += `?modelVersionId=${versionId}`;
-        }
-        window.open(url, '_blank');
-    } else {
-        // 如果没有ID，尝试使用名称搜索
-        const modelName = loraCard.dataset.name;
-        window.open(`https://civitai.com/models?query=${encodeURIComponent(modelName)}`, '_blank');
-    }
+  const escapedPath = window.CSS && typeof window.CSS.escape === 'function'
+    ? window.CSS.escape(filePath)
+    : filePath.replace(/["\\]/g, '\\$&');
+  const loraCard = document.querySelector(`.model-card[data-filepath="${escapedPath}"]`);
+  if (!loraCard) return;
+
+  const metaData = JSON.parse(loraCard.dataset.meta);
+  const civitaiId = metaData.modelId;
+  const versionId = metaData.id;
+  const modelName = loraCard.dataset.name;
+
+  openCivitaiByMetadata(civitaiId, versionId, modelName);
+}
+
+/**
+ * Open a Hugging Face model page in a new tab
+ * @param {string} hfUrl - The Hugging Face URL
+ */
+export function openHuggingFace(hfUrl) {
+  if (!hfUrl) return;
+  window.open(hfUrl, '_blank', 'noopener,noreferrer');
 }
 
 /**
@@ -209,90 +333,90 @@ export function openCivitai(filePath) {
  * based on the current layout and folder tags container height
  */
 export function updatePanelPositions() {
-    const searchOptionsPanel = document.getElementById('searchOptionsPanel');
-    const filterPanel = document.getElementById('filterPanel');
-    
-    if (!searchOptionsPanel && !filterPanel) return;
-    
-    // Get the header element
-    const header = document.querySelector('.app-header');
-    if (!header) return;
-    
-    // Calculate the position based on the bottom of the header
-    const headerRect = header.getBoundingClientRect();
-    const topPosition = headerRect.bottom + 5; // Add 5px padding
-    
-    // Set the positions
+  const searchOptionsPanel = document.getElementById('searchOptionsPanel');
+  const filterPanel = document.getElementById('filterPanel');
+
+  if (!searchOptionsPanel && !filterPanel) return;
+
+  // Get the header element
+  const header = document.querySelector('.app-header');
+  if (!header) return;
+
+  // Calculate the position based on the bottom of the header
+  const headerRect = header.getBoundingClientRect();
+  const topPosition = headerRect.bottom + 5; // Add 5px padding
+
+  // Set the positions
+  if (searchOptionsPanel) {
+    searchOptionsPanel.style.top = `${topPosition}px`;
+  }
+
+  if (filterPanel) {
+    filterPanel.style.top = `${topPosition}px`;
+  }
+
+  // Adjust panel horizontal position based on the search container
+  const searchContainer = document.querySelector('.header-search');
+  if (searchContainer) {
+    const searchRect = searchContainer.getBoundingClientRect();
+
+    // Position the search options panel aligned with the search container
     if (searchOptionsPanel) {
-      searchOptionsPanel.style.top = `${topPosition}px`;
+      searchOptionsPanel.style.right = `${window.innerWidth - searchRect.right}px`;
     }
-    
+
+    // Position the filter panel aligned with the filter button
     if (filterPanel) {
-      filterPanel.style.top = `${topPosition}px`;
-    }
-    
-    // Adjust panel horizontal position based on the search container
-    const searchContainer = document.querySelector('.header-search');
-    if (searchContainer) {
-      const searchRect = searchContainer.getBoundingClientRect();
-      
-      // Position the search options panel aligned with the search container
-      if (searchOptionsPanel) {
-        searchOptionsPanel.style.right = `${window.innerWidth - searchRect.right}px`;
-      }
-      
-      // Position the filter panel aligned with the filter button
-      if (filterPanel) {
-        const filterButton = document.getElementById('filterButton');
-        if (filterButton) {
-          const filterRect = filterButton.getBoundingClientRect();
-          filterPanel.style.right = `${window.innerWidth - filterRect.right}px`;
-        }
+      const filterButton = document.getElementById('filterButton');
+      if (filterButton) {
+        const filterRect = filterButton.getBoundingClientRect();
+        filterPanel.style.right = `${window.innerWidth - filterRect.right}px`;
       }
     }
+  }
 }
 
 export function initBackToTop() {
-    const button = document.getElementById('backToTopBtn');
-    if (!button) return;
+  const button = document.getElementById('backToTopBtn');
+  if (!button) return;
 
-    // Get the scrollable container
-    const scrollContainer = document.querySelector('.page-content');
-    
-    // Show/hide button based on scroll position
-    const toggleBackToTop = () => {
-        const scrollThreshold = window.innerHeight * 0.3;
-        if (scrollContainer.scrollTop > scrollThreshold) {
-            button.classList.add('visible');
-        } else {
-            button.classList.remove('visible');
-        }
-    };
+  // Get the scrollable container
+  const scrollContainer = document.querySelector('.page-content');
 
-    // Smooth scroll to top
-    button.addEventListener('click', () => {
-        scrollContainer.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
+  // Show/hide button based on scroll position
+  const toggleBackToTop = () => {
+    const scrollThreshold = window.innerHeight * 0.3;
+    if (scrollContainer.scrollTop > scrollThreshold) {
+      button.classList.add('visible');
+    } else {
+      button.classList.remove('visible');
+    }
+  };
+
+  // Smooth scroll to top
+  button.addEventListener('click', () => {
+    scrollContainer.scrollTo({
+      top: 0,
+      behavior: 'smooth'
     });
+  });
 
-    // Listen for scroll events on the scrollable container
-    scrollContainer.addEventListener('scroll', toggleBackToTop);
-    
-    // Initial check
-    toggleBackToTop();
+  // Listen for scroll events on the scrollable container
+  scrollContainer.addEventListener('scroll', toggleBackToTop);
+
+  // Initial check
+  toggleBackToTop();
 }
 
 export function getNSFWLevelName(level) {
-    if (level === 0) return 'Unknown';
-    if (level >= 32) return 'Blocked';
-    if (level >= 16) return 'XXX';
-    if (level >= 8) return 'X';
-    if (level >= 4) return 'R';
-    if (level >= 2) return 'PG13';
-    if (level >= 1) return 'PG';
-    return 'Unknown';
+  if (level === 0) return 'Unknown';
+  if (level >= 32) return 'Blocked';
+  if (level >= 16) return 'XXX';
+  if (level >= 8) return 'X';
+  if (level >= 4) return 'R';
+  if (level >= 2) return 'PG13';
+  if (level >= 1) return 'PG';
+  return 'Unknown';
 }
 
 function parseUsageTipNumber(value) {
@@ -326,17 +450,23 @@ export function getLoraStrengthsFromUsageTips(usageTips = {}) {
 export function buildLoraSyntax(fileName, usageTips = {}) {
   const { strength, hasStrength, clipStrength, hasClipStrength } = getLoraStrengthsFromUsageTips(usageTips);
 
+  const effectiveName = state.global.settings?.lora_syntax_format === 'legacy'
+    ? fileName.split('/').pop()
+    : fileName;
+
   if (hasClipStrength) {
     const modelStrength = hasStrength ? strength : 1;
-    return `<lora:${fileName}:${modelStrength}:${clipStrength}>`;
+    return `<lora:${effectiveName}:${modelStrength}:${clipStrength}>`;
   }
 
-  return `<lora:${fileName}:${strength}>`;
+  return `<lora:${effectiveName}:${strength}>`;
 }
 
 export function copyLoraSyntax(card) {
   const usageTips = JSON.parse(card.dataset.usage_tips || "{}");
-  const baseSyntax = buildLoraSyntax(card.dataset.file_name, usageTips);
+  const folder = card.dataset.folder || '';
+  const loraName = folder ? `${folder}/${card.dataset.file_name}` : card.dataset.file_name;
+  const baseSyntax = buildLoraSyntax(loraName, usageTips);
 
   // Check if trigger words should be included
   const includeTriggerWords = state.global.settings.include_trigger_words;
@@ -398,6 +528,22 @@ export function copyLoraSyntax(card) {
   }
 }
 
+/**
+ * Strip <lora:...> tags from prompt text and clean up residual punctuation/whitespace.
+ * Handles both unescaped (<lora:...>) and HTML-escaped (&lt;lora:...&gt;) variants.
+ * Cleans up artifacts like leading ", ", double commas, and extra whitespace.
+ */
+export function stripLoraTags(text) {
+    return text
+        .replace(/<lora:[^>]*>/gi, '')
+        .replace(/&lt;lora:[^&]*&gt;/gi, '')
+        .replace(/,(\s*,)+/g, ',')
+        .replace(/^,\s*/, '')
+        .replace(/,\s*$/, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
 async function fetchWorkflowRegistry() {
   try {
     const response = await fetch('/api/lm/get-registry');
@@ -406,6 +552,8 @@ async function fetchWorkflowRegistry() {
     if (!registryData.success) {
       if (registryData.error === 'Standalone Mode Active') {
         showToast('toast.general.cannotInteractStandalone', {}, 'warning');
+      } else if (registryData.error === 'Empty Registry') {
+        showToast('uiHelpers.workflow.noSupportedNodes', {}, 'warning');
       } else {
         showToast('toast.general.failedWorkflowInfo', {}, 'error');
       }
@@ -453,6 +601,14 @@ function getWidgetNames(node) {
   return [];
 }
 
+function isNodeEnabled(node) {
+  if (!node) {
+    return false;
+  }
+  // ComfyUI node mode: 0 = Normal/Enabled, others = Always/Never/OnEvent
+  return node.mode === undefined || node.mode === 0;
+}
+
 function isAbsolutePath(path) {
   if (typeof path !== 'string') {
     return false;
@@ -471,8 +627,12 @@ async function ensureRelativeModelPath(modelPath, collectionType) {
     return modelPath;
   }
 
+  // Remove model file extension (.safetensors, .ckpt, .pt, .bin) for cleaner matching
+  // Backend removes extensions from paths before matching, so search term should not include extension
+  const searchTerm = fileName.replace(/\.(safetensors|ckpt|pt|bin)$/i, '');
+
   try {
-    const response = await fetch(`/api/lm/${collectionType}/relative-paths?search=${encodeURIComponent(fileName)}&limit=10`);
+    const response = await fetch(`/api/lm/${collectionType}/relative-paths?search=${encodeURIComponent(searchTerm)}&limit=10`);
     if (!response.ok) {
       return modelPath;
     }
@@ -503,7 +663,7 @@ export async function sendLoraToWorkflow(loraSyntax, replaceMode = false, syntax
   }
 
   const loraNodes = filterRegistryNodes(registry.nodes, (node) => {
-    if (!node) {
+    if (!isNodeEnabled(node)) {
       return false;
     }
     if (node.capabilities && typeof node.capabilities === 'object') {
@@ -565,6 +725,9 @@ export async function sendModelPathToWorkflow(modelPath, options) {
   }
 
   const targetNodes = filterRegistryNodes(registry.nodes, (node) => {
+    if (!isNodeEnabled(node)) {
+      return false;
+    }
     const widgetNames = getWidgetNames(node);
     return widgetNames.includes(widgetName);
   });
@@ -666,25 +829,25 @@ async function sendLoraToNodes(nodeIds, nodesMap, loraSyntax, replaceMode, synta
       },
       body: JSON.stringify(requestBody)
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
       // Use different toast messages based on syntax type
       if (syntaxType === 'recipe') {
-        const messageKey = replaceMode ? 
+        const messageKey = replaceMode ?
           'uiHelpers.workflow.recipeReplaced' :
           'uiHelpers.workflow.recipeAdded';
         showToast(messageKey, {}, 'success');
       } else {
-        const messageKey = replaceMode ? 
+        const messageKey = replaceMode ?
           'uiHelpers.workflow.loraReplaced' :
           'uiHelpers.workflow.loraAdded';
         showToast(messageKey, {}, 'success');
       }
       return true;
     } else {
-      const messageKey = syntaxType === 'recipe' ? 
+      const messageKey = syntaxType === 'recipe' ?
         'uiHelpers.workflow.recipeFailedToSend' :
         'uiHelpers.workflow.loraFailedToSend';
       showToast(messageKey, {}, 'error');
@@ -692,7 +855,7 @@ async function sendLoraToNodes(nodeIds, nodesMap, loraSyntax, replaceMode, synta
     }
   } catch (error) {
     console.error('Failed to send to workflow:', error);
-    const messageKey = syntaxType === 'recipe' ? 
+    const messageKey = syntaxType === 'recipe' ?
       'uiHelpers.workflow.recipeFailedToSend' :
       'uiHelpers.workflow.loraFailedToSend';
     showToast(messageKey, {}, 'error');
@@ -701,6 +864,58 @@ async function sendLoraToNodes(nodeIds, nodesMap, loraSyntax, replaceMode, synta
 }
 
 async function sendWidgetValueToNodes(nodeIds, nodesMap, widgetName, value, messages = {}) {
+  const {
+    successMessage = 'Updated workflow node',
+    failureMessage = 'Failed to update workflow node',
+    missingTargetMessage = 'No target node selected',
+    silent = false,
+  } = messages;
+
+  const targetIds = Array.isArray(nodeIds) ? nodeIds : [];
+  if (targetIds.length === 0) {
+    if (!silent) showToast(missingTargetMessage, {}, 'warning');
+    return false;
+  }
+
+  const references = targetIds
+    .map((nodeKey) => resolveNodeReference(nodeKey, nodesMap))
+    .filter((reference) => reference && reference.node_id !== undefined);
+
+  if (references.length === 0) {
+    if (!silent) showToast(missingTargetMessage, {}, 'warning');
+    return false;
+  }
+
+  try {
+    const response = await fetch('/api/lm/update-node-widget', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        widget_name: widgetName,
+        value,
+        node_ids: references,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      if (!silent) showToast(successMessage, {}, 'success');
+      return true;
+    }
+
+    const errorMessage = result?.error || failureMessage;
+    if (!silent) showToast(errorMessage, {}, 'error');
+    return false;
+  } catch (error) {
+    console.error('Failed to send widget value to workflow:', error);
+    if (!silent) showToast(failureMessage, {}, 'error');
+    return false;
+  }
+}
+
+async function sendTextToNodes(nodeIds, nodesMap, text, mode, messages = {}) {
   const {
     successMessage = 'Updated workflow node',
     failureMessage = 'Failed to update workflow node',
@@ -729,8 +944,9 @@ async function sendWidgetValueToNodes(nodeIds, nodesMap, widgetName, value, mess
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        widget_name: widgetName,
-        value,
+        action: 'inject_text',
+        value: text,
+        mode: mode || 'append',
         node_ids: references,
       }),
     });
@@ -745,10 +961,233 @@ async function sendWidgetValueToNodes(nodeIds, nodesMap, widgetName, value, mess
     showToast(errorMessage, {}, 'error');
     return false;
   } catch (error) {
-    console.error('Failed to send widget value to workflow:', error);
+    console.error('Failed to send text to workflow:', error);
     showToast(failureMessage, {}, 'error');
     return false;
   }
+}
+
+export async function sendEmbeddingToWorkflow(embeddingCode) {
+  const registry = await fetchWorkflowRegistry();
+  if (!registry) {
+    return false;
+  }
+
+  const textNodes = filterRegistryNodes(registry.nodes, (node) => {
+    if (!isNodeEnabled(node)) {
+      return false;
+    }
+    return (
+      node.capabilities?.has_text_widget === true ||
+      node.marker_role === "send_prompt_target"
+    );
+  });
+
+  const nodeKeys = Object.keys(textNodes);
+  if (nodeKeys.length === 0) {
+    showToast('uiHelpers.workflow.noMatchingNodes', {}, 'warning');
+    return false;
+  }
+
+  const messages = {
+    successMessage: translate('uiHelpers.workflow.embeddingAdded', {}, 'Embedding added to workflow'),
+    failureMessage: translate('uiHelpers.workflow.embeddingFailed', {}, 'Failed to add embedding'),
+    missingTargetMessage: translate('uiHelpers.workflow.noTargetNodeSelected', {}, 'No target node selected'),
+  };
+
+  const handleSend = (selectedNodeIds) =>
+    sendTextToNodes(selectedNodeIds, textNodes, embeddingCode, 'append', messages);
+
+  if (nodeKeys.length === 1) {
+    return await handleSend([nodeKeys[0]]);
+  }
+
+  const actionType = translate('uiHelpers.nodeSelector.embedding', {}, 'Embedding');
+
+  showNodeSelector(textNodes, {
+    actionType,
+    actionMode: '',
+    onSend: handleSend,
+  });
+  return true;
+}
+
+/**
+ * Send prompt text to workflow text-capable nodes (replaces existing content).
+ * Uses the same target node discovery as sendEmbeddingToWorkflow.
+ * @param {string} promptText - The prompt/negative prompt text to send
+ * @param {Object} [options] - Optional messages overrides
+ * @param {string} [options.actionTypeText] - Label for the action type (default "Prompt")
+ * @param {string} [options.successMessage] - Success toast message
+ * @param {string} [options.failureMessage] - Failure toast message
+ * @param {string} [options.missingNodesMessage] - No nodes warning message
+ * @param {string} [options.missingTargetMessage] - No target selected warning message
+ * @returns {Promise<boolean>} Whether the send succeeded
+ */
+export async function sendPromptToWorkflow(promptText, options = {}) {
+  const registry = await fetchWorkflowRegistry();
+  if (!registry) {
+    return false;
+  }
+
+  const textNodes = filterRegistryNodes(registry.nodes, (node) => {
+    if (!isNodeEnabled(node)) {
+      return false;
+    }
+    return (
+      node.capabilities?.has_text_widget === true ||
+      node.marker_role === "send_prompt_target"
+    );
+  });
+
+  const nodeKeys = Object.keys(textNodes);
+  if (nodeKeys.length === 0) {
+    showToast(options.missingNodesMessage || 'uiHelpers.workflow.noMatchingNodes', {}, 'warning');
+    return false;
+  }
+
+  const messages = {
+    successMessage: options.successMessage || translate('uiHelpers.workflow.promptSent', {}, 'Prompt sent to workflow'),
+    failureMessage: options.failureMessage || translate('uiHelpers.workflow.promptFailed', {}, 'Failed to send prompt'),
+    missingTargetMessage: options.missingTargetMessage || translate('uiHelpers.workflow.noTargetNodeSelected', {}, 'No target node selected'),
+  };
+
+  const handleSend = (selectedNodeIds) =>
+    sendTextToNodes(selectedNodeIds, textNodes, promptText, 'replace', messages);
+
+  if (nodeKeys.length === 1) {
+    return await handleSend([nodeKeys[0]]);
+  }
+
+  const actionType = options.actionTypeText || translate('uiHelpers.nodeSelector.prompt', {}, 'Prompt');
+
+  showNodeSelector(textNodes, {
+    actionType,
+    actionMode: translate('uiHelpers.nodeSelector.replace', {}, 'Replace'),
+    onSend: handleSend,
+  });
+  return true;
+}
+
+/**
+ * Send generation parameters (seed, steps, cfg, sampler, scheduler) to
+ * workflow nodes that have been marked with "Send Gen Params Target".
+ *
+ * @param {Object} genParams - Raw gen_params from recipe or showcase metadata
+ * @returns {Promise<boolean>} Whether the send succeeded
+ */
+export async function sendGenParamsToWorkflow(genParams) {
+  if (!genParams || typeof genParams !== 'object') {
+    showToast('No generation parameters to send', {}, 'warning');
+    return false;
+  }
+
+  // 1. Extract relevant params (skip prompt, negative_prompt, clip_skip, denoising_strength)
+  const raw = {
+    seed: genParams.seed,
+    steps: genParams.steps,
+    cfg: genParams.cfg_scale,
+  };
+
+  // 2. Resolve sampler/scheduler
+  const resolved = resolveSamplerScheduler(genParams.sampler);
+  if (resolved) {
+    if (resolved.sampler) raw.sampler = resolved.sampler;
+    if (resolved.scheduler) raw.scheduler = resolved.scheduler;
+  }
+
+  // Check if we have anything to send
+  const hasAny = Object.values(raw).some(v => v !== undefined && v !== null && v !== '');
+  if (!hasAny) {
+    showToast('No sendable parameters found', {}, 'warning');
+    return false;
+  }
+
+  // 3. Fetch workflow registry
+  const registry = await fetchWorkflowRegistry();
+  if (!registry) {
+    return false;
+  }
+
+  // 4. Filter nodes by marker_role === "send_gen_params"
+  const targetNodes = filterRegistryNodes(registry.nodes, (node) => {
+    return node.marker_role === 'send_gen_params' && isNodeEnabled(node);
+  });
+
+  const nodeKeys = Object.keys(targetNodes);
+  if (nodeKeys.length === 0) {
+    showToast(
+      'No node marked as Send Gen Params Target.\nRight-click a node in ComfyUI → Mark as → Send Gen Params Target',
+      {},
+      'warning'
+    );
+    return false;
+  }
+
+  // 5. For each candidate node, find matching widgets
+  // Also collect widget_names from registry for matching
+  const sendToNode = async (nodeIds) => {
+    const targetIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+    let allSuccess = true;
+    let totalSent = 0;
+    let totalFailed = 0;
+
+    for (const nodeKey of targetIds) {
+      const node = targetNodes[nodeKey];
+      if (!node) continue;
+
+      const widgetNames = node.widget_names || [];
+      const updates = findMatchingWidgets(widgetNames, raw);
+
+      if (updates.length === 0) {
+        showToast(`Node "${node.title || node.type}" has no matching widgets for these parameters`, {}, 'warning');
+        allSuccess = false;
+        continue;
+      }
+
+      // Send each widget value sequentially
+      for (const update of updates) {
+        const success = await sendWidgetValueToNodes(
+          [nodeKey],
+          targetNodes,
+          update.widgetName,
+          update.value,
+          {
+            silent: true,
+          }
+        );
+        if (success) {
+          totalSent++;
+        } else {
+          totalFailed++;
+          allSuccess = false;
+        }
+      }
+    }
+
+    // Show single summary toast
+    if (totalSent > 0 && totalFailed === 0) {
+      showToast(`Sent ${totalSent} parameter${totalSent > 1 ? 's' : ''} to workflow`, {}, 'success');
+    } else if (totalFailed > 0 && totalSent > 0) {
+      showToast(`Partially updated (${totalSent} ok, ${totalFailed} failed)`, {}, 'warning');
+    } else if (totalFailed > 0) {
+      showToast('Failed to update parameters', {}, 'error');
+    }
+    return allSuccess;
+  };
+
+  // 6. If multiple nodes, show node selector; otherwise send directly
+  if (nodeKeys.length === 1) {
+    return await sendToNode([nodeKeys[0]]);
+  }
+
+  showNodeSelector(targetNodes, {
+    actionType: 'Gen Params',
+    actionMode: 'Update',
+    onSend: sendToNode,
+    enableSendAll: true,
+  });
+  return true;
 }
 
 // Global variable to track active node selector state
@@ -773,7 +1212,7 @@ let nodeSelectorState = {
 function showNodeSelector(nodes, options = {}) {
   const selector = document.getElementById('nodeSelector');
   if (!selector) return;
-  
+
   // Clean up any existing state
   hideNodeSelector();
 
@@ -787,9 +1226,11 @@ function showNodeSelector(nodes, options = {}) {
   nodeSelectorState.currentNodes = safeNodes;
   nodeSelectorState.onSend = onSend;
   nodeSelectorState.enableSendAll = options.enableSendAll !== false;
-  
+
   // Generate node list HTML with icons and proper colors
-  const nodeItems = Object.entries(safeNodes).map(([nodeKey, node]) => {
+  const nodeItems = Object.entries(safeNodes)
+    .sort(([, a], [, b]) => a.type - b.type || a.id - b.id)
+    .map(([nodeKey, node]) => {
     const iconClass = NODE_TYPE_ICONS[node.type] || 'fas fa-question-circle';
     const bgColor = node.bgcolor || DEFAULT_NODE_COLOR;
     const graphLabel = node.graph_name ? ` (${node.graph_name})` : '';
@@ -803,7 +1244,7 @@ function showNodeSelector(nodes, options = {}) {
       </div>
     `;
   }).join('');
-  
+
   // Add header with action mode indicator
   const actionType = options.actionType ?? translate('uiHelpers.nodeSelector.lora', {}, 'LoRA');
   const actionMode = options.actionMode ?? translate('uiHelpers.nodeSelector.replace', {}, 'Replace');
@@ -819,7 +1260,7 @@ function showNodeSelector(nodes, options = {}) {
       <span>${sendToAllText}</span>
     </div>`
     : '';
-  
+
   selector.innerHTML = `
     <div class="node-selector-header">
       <span class="selector-action-type">${actionMode} ${actionType}</span>
@@ -828,17 +1269,17 @@ function showNodeSelector(nodes, options = {}) {
     ${nodeItems}
     ${sendAllMarkup}
   `;
-  
+
   // Position near mouse
   positionNearMouse(selector);
-  
+
   // Show selector
   selector.style.display = 'block';
   nodeSelectorState.isActive = true;
-  
+
   // Update event manager state
   eventManager.setState('nodeSelectorActive', true);
-  
+
   // Setup event listeners with proper cleanup through event manager
   setupNodeSelectorEvents(selector);
 }
@@ -850,7 +1291,7 @@ function showNodeSelector(nodes, options = {}) {
 function setupNodeSelectorEvents(selector) {
   // Clean up any existing event listeners
   cleanupNodeSelectorEvents();
-  
+
   // Register click outside handler with event manager
   eventManager.addHandler('click', 'nodeSelector-outside', (e) => {
     if (!selector.contains(e.target)) {
@@ -861,12 +1302,12 @@ function setupNodeSelectorEvents(selector) {
     priority: 200, // High priority to handle before other click handlers
     onlyWhenNodeSelectorActive: true
   });
-  
+
   // Register node selection handler with event manager  
   eventManager.addHandler('click', 'nodeSelector-selection', async (e) => {
     const nodeItem = e.target.closest('.node-item');
     if (!nodeItem) return false; // Continue with other handlers
-    
+
     const onSend = nodeSelectorState.onSend;
     if (typeof onSend !== 'function') {
       hideNodeSelector();
@@ -874,11 +1315,11 @@ function setupNodeSelectorEvents(selector) {
     }
 
     e.stopPropagation();
-    
+
     const action = nodeItem.dataset.action;
     const nodeId = nodeItem.dataset.nodeId;
     const nodes = nodeSelectorState.currentNodes || {};
-    
+
     try {
       if (action === 'send-all') {
         if (!nodeSelectorState.enableSendAll) {
@@ -908,7 +1349,7 @@ function cleanupNodeSelectorEvents() {
   // Remove event handlers from event manager
   eventManager.removeHandler('click', 'nodeSelector-outside');
   eventManager.removeHandler('click', 'nodeSelector-selection');
-  
+
   // Clear legacy references
   nodeSelectorState.clickHandler = null;
   nodeSelectorState.selectorClickHandler = null;
@@ -923,14 +1364,14 @@ function hideNodeSelector() {
     selector.style.display = 'none';
     selector.innerHTML = ''; // Clear content to prevent memory leaks
   }
-  
+
   // Clean up event listeners
   cleanupNodeSelectorEvents();
   nodeSelectorState.isActive = false;
   nodeSelectorState.currentNodes = {};
   nodeSelectorState.onSend = null;
   nodeSelectorState.enableSendAll = true;
-  
+
   // Update event manager state
   eventManager.setState('nodeSelectorActive', false);
 }
@@ -943,28 +1384,28 @@ function positionNearMouse(element) {
   // Get current mouse position from last mouse event or use default
   const mouseX = window.lastMouseX || window.innerWidth / 2;
   const mouseY = window.lastMouseY || window.innerHeight / 2;
-  
+
   // Show element temporarily to get dimensions
   element.style.visibility = 'hidden';
   element.style.display = 'block';
-  
+
   const rect = element.getBoundingClientRect();
   const viewportWidth = document.documentElement.clientWidth;
   const viewportHeight = document.documentElement.clientHeight;
-  
+
   // Calculate position with offset from mouse
   let x = mouseX + 10;
   let y = mouseY + 10;
-  
+
   // Ensure element doesn't go offscreen
   if (x + rect.width > viewportWidth) {
     x = mouseX - rect.width - 10;
   }
-  
+
   if (y + rect.height > viewportHeight) {
     y = mouseY - rect.height - 10;
   }
-  
+
   // Apply position
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
@@ -1002,11 +1443,35 @@ export async function openExampleImagesFolder(modelHash) {
         model_hash: modelHash
       })
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
-      const message = translate('uiHelpers.exampleImages.openingFolder', {}, 'Opening example images folder');
+      if (result.mode === 'clipboard' && result.path) {
+        await copyExampleImagesValue(
+          result.path,
+          'uiHelpers.exampleImages.copiedPath',
+          'uiHelpers.exampleImages.clipboardFallback',
+          'path'
+        );
+        return true;
+      }
+
+      if (result.mode === 'uri' && result.uri) {
+        const opened = tryOpenExternalUri(result.uri);
+        if (!opened) {
+          await copyExampleImagesValue(
+            result.uri,
+            'uiHelpers.exampleImages.copiedUri',
+            'uiHelpers.exampleImages.uriClipboardFallback',
+            'uri'
+          );
+        } else {
+          showToast('uiHelpers.exampleImages.opened', {}, 'success');
+        }
+        return true;
+      }
+
       showToast('uiHelpers.exampleImages.opened', {}, 'success');
       return true;
     } else {
@@ -1018,4 +1483,41 @@ export async function openExampleImagesFolder(modelHash) {
     showToast('uiHelpers.exampleImages.failedToOpen', {}, 'error');
     return false;
   }
+}
+
+/**
+ * Set up a paste handler on a textarea that automatically appends a newline
+ * after pasted content that looks like a URL (http/https). This lets users
+ * paste multiple URLs one after another without manually pressing Enter.
+ * @param {string} textareaId - The id of the textarea element
+ */
+export function setupAutoNewlineOnPaste(textareaId) {
+  const el = document.getElementById(textareaId);
+  if (!el || el.tagName !== 'TEXTAREA') return;
+
+  el.addEventListener('paste', (e) => {
+    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+    // Only apply to text that starts with http:// or https://
+    if (/^https?:\/\//.test(pastedText) && !pastedText.endsWith('\n')) {
+      e.preventDefault();
+
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const text = el.value;
+      const before = text.substring(0, start);
+      const after = text.substring(end);
+
+      // Append newline after the pasted URL
+      const modifiedText = pastedText + '\n';
+      el.value = before + modifiedText + after;
+
+      // Move cursor to just after the inserted text
+      const newCursorPos = start + modifiedText.length;
+      el.selectionStart = el.selectionEnd = newCursorPos;
+
+      // Trigger input event so any listeners stay in sync
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // Non-URL text or text already ending with \n — let default paste happen
+  });
 }

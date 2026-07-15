@@ -4,7 +4,9 @@
  */
 import { showToast } from '../../../utils/uiHelpers.js';
 import { state } from '../../../state/index.js';
-import { NSFW_LEVELS } from '../../../utils/constants.js';
+import { modalManager } from '../../../managers/ModalManager.js';
+import { translate } from '../../../utils/i18nHelpers.js';
+import { NSFW_LEVELS, getMatureBlurThreshold } from '../../../utils/constants.js';
 import { 
     initLazyLoading,
     initNsfwBlurHandlers, 
@@ -14,6 +16,8 @@ import {
 } from './MediaUtils.js';
 import { generateMetadataPanel } from './MetadataPanel.js';
 import { generateImageWrapper, generateVideoWrapper } from './MediaRenderers.js';
+import { getShowcaseUrl } from '../../../utils/civitaiUtils.js';
+import { openMediaViewer } from '../MediaViewer.js';
 
 export const showcaseListenerMetrics = {
     wheelListeners: 0,
@@ -59,8 +63,14 @@ export async function loadExampleImages(images, modelHash) {
         
         // Re-initialize the showcase event listeners
         const carousel = showcaseTab.querySelector('.carousel');
-        if (carousel && !carousel.classList.contains('collapsed')) {
-            initShowcaseContent(carousel);
+        if (carousel) {
+            // Always bind scroll-indicator click events (even when collapsed)
+            bindScrollIndicatorEvents(carousel);
+            
+            // Only initialize full showcase content when expanded
+            if (!carousel.classList.contains('collapsed')) {
+                initShowcaseContent(carousel);
+            }
         }
         
         // Initialize the example import functionality
@@ -149,14 +159,25 @@ export function renderShowcaseContent(images, exampleFiles = [], startExpanded =
 function renderMediaItem(img, index, exampleFiles) {
     // Find matching file in our list of actual files
     let localFile = findLocalFile(img, index, exampleFiles);
-    
-    const remoteUrl = img.url || '';
+
+    // Get original remote URL
+    const originalRemoteUrl = img.url || '';
+
+    // Determine media type for optimization
+    const isVideo = localFile ? localFile.is_video :
+                  originalRemoteUrl.endsWith('.mp4') || originalRemoteUrl.endsWith('.webm');
+    const mediaType = isVideo ? 'video' : 'image';
+
+    // Optimize CivitAI URLs for showcase display (full quality)
+    const remoteUrl = getShowcaseUrl(originalRemoteUrl, mediaType);
+
     const localUrl = localFile ? localFile.path : '';
-    const isVideo = localFile ? localFile.is_video : 
-                  remoteUrl.endsWith('.mp4') || remoteUrl.endsWith('.webm');
     
     // Calculate appropriate aspect ratio
-    const aspectRatio = (img.height / img.width) * 100;
+    // Defensive fallback: 0 width/height → 4:3 default (prevents NaN layout)
+    const safeW = img.width || 4;
+    const safeH = img.height || 3;
+    const aspectRatio = (safeH / safeW) * 100;
     const containerWidth = 800; // modal content maximum width
     const minHeightPercent = 40; 
     const maxHeightPercent = (window.innerHeight * 0.6 / containerWidth) * 100;
@@ -165,9 +186,13 @@ function renderMediaItem(img, index, exampleFiles) {
         Math.min(maxHeightPercent, aspectRatio)
     );
     
+    // Extract CivitAI image ID from CDN URL for import status check
+    const cdnImageId = (img.url || '').match(/\/(\d+)\.(?:jpeg|jpg|png|webp|gif)(?:\?|#|$)/)?.[1] || '';
+
     // Check if media should be blurred
     const nsfwLevel = img.nsfwLevel !== undefined ? img.nsfwLevel : 0;
-    const shouldBlur = state.settings.blur_mature_content && nsfwLevel > NSFW_LEVELS.PG13;
+    const matureBlurThreshold = getMatureBlurThreshold(state.settings);
+    const shouldBlur = state.settings.blur_mature_content && nsfwLevel >= matureBlurThreshold;
     
     // Determine NSFW warning text based on level
     let nsfwText = "Mature Content";
@@ -188,8 +213,8 @@ function renderMediaItem(img, index, exampleFiles) {
     const model = meta.Model || '';
     const steps = meta.steps || '';
     const sampler = meta.sampler || '';
-    const cfgScale = meta.cfgScale || '';
-    const clipSkip = meta.clipSkip || '';
+    const cfgScale = meta.cfg_scale || meta.cfgScale || '';
+    const clipSkip = meta.clip_skip || meta.clipSkip || '';
     
     // Check if we have any meaningful generation parameters
     const hasParams = seed || model || steps || sampler || cfgScale || clipSkip;
@@ -205,16 +230,37 @@ function renderMediaItem(img, index, exampleFiles) {
     // Determine if this is a custom image (has id property)
     const isCustomImage = Boolean(typeof img.id === 'string' && img.id);
     
+    const hasGenMeta = img.hasMeta || (img.meta && (img.meta.prompt || img.meta.seed || img.meta.resources));
+
     // Create the media control buttons HTML
     const mediaControlsHtml = `
         <div class="media-controls">
             <button class="media-control-btn set-preview-btn" title="Set as preview">
                 <i class="fas fa-image"></i>
             </button>
+            ${hasGenMeta ? `
+            <button class="media-control-btn create-recipe-btn"
+                    title="Create As Recipe"
+                    data-image-meta="${encodeURIComponent(JSON.stringify(img.meta || {}))}"
+                    data-image-url="${img.url || ''}"
+                    data-image-nsfw="${img.nsfwLevel ?? ''}"
+                    data-image-id="${cdnImageId}"
+                    data-img-id="${img.id || ''}"
+                    data-local-path="${localFile ? localFile.path : ''}">
+                <i class="fas fa-book-open"></i>
+            </button>
+            ` : ''}
+            <button class="media-control-btn set-nsfw-btn" 
+                    title="Set content rating"
+                    data-media-index="${index}"
+                    data-media-source="${isCustomImage ? 'custom' : 'civitai'}"
+                    data-media-id="${img.id || ''}">
+                <i class="fas fa-exclamation-triangle"></i>
+            </button>
             <button class="media-control-btn example-delete-btn ${!isCustomImage ? 'disabled' : ''}" 
                     title="${isCustomImage ? 'Delete this example' : 'Only custom images can be deleted'}" 
                     data-short-id="${img.id || ''}" 
-                    ${!isCustomImage ? 'disabled' : ''}>
+                    ${!isCustomImage ? 'aria-disabled="true"' : ''}>
                 <i class="fas fa-trash-alt"></i>
                 <i class="fas fa-check confirm-icon"></i>
             </button>
@@ -268,6 +314,40 @@ function findLocalFile(img, index, exampleFiles) {
  * @returns {string} HTML content for import interface
  */
 function renderImportInterface(isEmpty) {
+    // Check if example images path is configured
+    const exampleImagesPath = state.global.settings.example_images_path;
+    const isPathConfigured = exampleImagesPath && exampleImagesPath.trim() !== '';
+    
+    // If path is not configured, show setup guidance
+    if (!isPathConfigured) {
+        const title = translate('uiHelpers.exampleImages.setupRequired', {}, 'Example Images Storage');
+        const description = translate('uiHelpers.exampleImages.setupDescription', {}, 'To add custom example images, you need to set a download location first.');
+        const usage = translate('uiHelpers.exampleImages.setupUsage', {}, 'This path is used for both downloaded and custom example images.');
+        const openSettings = translate('uiHelpers.exampleImages.openSettings', {}, 'Open Settings');
+        
+        return `
+            <div class="example-import-area ${isEmpty ? 'empty' : ''}">
+                <div class="import-container import-container--needs-setup" id="exampleImportContainer">
+                    <div class="import-setup-guidance">
+                        <div class="setup-icon">
+                            <i class="fas fa-folder-plus"></i>
+                        </div>
+                        <h3>${title}</h3>
+                        <p class="setup-description">
+                            ${description}
+                        </p>
+                        <p class="setup-usage">
+                            ${usage}
+                        </p>
+                        <button class="select-files-btn setup-settings-btn" id="openExampleSettingsBtn">
+                            <i class="fas fa-cog"></i> ${openSettings}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
     return `
         <div class="example-import-area ${isEmpty ? 'empty' : ''}">
             <div class="import-container" id="exampleImportContainer">
@@ -279,9 +359,9 @@ function renderImportInterface(isEmpty) {
                     <button class="select-files-btn" id="selectExampleFilesBtn">
                         <i class="fas fa-folder-open"></i> Select Files
                     </button>
-                    <p class="import-formats">Supported formats: jpg, png, gif, webp, mp4, webm</p>
+                    <p class="import-formats">Supported formats: jpg, png, gif, webp, avif, jxl, mp4, webm</p>
                 </div>
-                <input type="file" id="exampleFilesInput" multiple accept="image/*,video/mp4,video/webm" style="display: none;">
+                <input type="file" id="exampleFilesInput" multiple accept="image/*,image/avif,image/jxl,video/mp4,video/webm" style="display: none;">
                 <div class="import-progress-container" style="display: none;">
                     <div class="import-progress">
                         <div class="progress-bar"></div>
@@ -291,6 +371,33 @@ function renderImportInterface(isEmpty) {
             </div>
         </div>
     `;
+}
+
+/**
+ * Open settings modal and scroll to example images section
+ */
+function openSettingsForExampleImages() {
+    modalManager.showModal('settingsModal');
+    
+    // Wait for modal to be visible, then scroll to example images section
+    setTimeout(() => {
+        const exampleImagesInput = document.getElementById('exampleImagesPath');
+        if (exampleImagesInput) {
+            // Find the parent settings-section
+            const section = exampleImagesInput.closest('.settings-section');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Add a brief highlight effect
+                section.style.transition = 'background-color 0.3s ease';
+                section.style.backgroundColor = 'rgba(66, 153, 225, 0.1)';
+                setTimeout(() => {
+                    section.style.backgroundColor = '';
+                }, 1500);
+            }
+            // Focus the input
+            exampleImagesInput.focus();
+        }
+    }, 100);
 }
 
 /**
@@ -304,6 +411,14 @@ export function initExampleImport(modelHash, container) {
     const importContainer = container.querySelector('#exampleImportContainer');
     const fileInput = container.querySelector('#exampleFilesInput');
     const selectFilesBtn = container.querySelector('#selectExampleFilesBtn');
+    const openSettingsBtn = container.querySelector('#openExampleSettingsBtn');
+    
+    // Set up "Open Settings" button for setup guidance state
+    if (openSettingsBtn) {
+        openSettingsBtn.addEventListener('click', () => {
+            openSettingsForExampleImages();
+        });
+    }
     
     // Set up file selection button
     if (selectFilesBtn) {
@@ -362,7 +477,7 @@ export function initExampleImport(modelHash, container) {
  */
 async function handleImportFiles(files, modelHash, importContainer) {
     // Filter for supported file types
-    const supportedImages = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const supportedImages = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.jxl'];
     const supportedVideos = ['.mp4', '.webm'];
     const supportedExtensions = [...supportedImages, ...supportedVideos];
     
@@ -377,34 +492,49 @@ async function handleImportFiles(files, modelHash, importContainer) {
     }
     
     try {
-        // Use FormData to upload files
-        const formData = new FormData();
-        formData.append('model_hash', modelHash);
-        
-        validFiles.forEach(file => {
-            formData.append('files', file);
-        });
-        
-        // Call API to import files
-        const response = await fetch('/api/lm/import-example-images', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to import example files');
+        // Upload files one at a time to avoid exceeding server size limits
+        let lastSuccessResult = null;
+        let successCount = 0;
+        const errors = [];
+
+        for (const file of validFiles) {
+            try {
+                const formData = new FormData();
+                formData.append('model_hash', modelHash);
+                formData.append('files', file);
+
+                const response = await fetch('/api/lm/import-example-images', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    errors.push(`${file.name}: ${result.error || 'Unknown error'}`);
+                } else {
+                    lastSuccessResult = result;
+                    successCount++;
+                }
+            } catch (err) {
+                errors.push(`${file.name}: ${err.message}`);
+            }
         }
-        
+
+        if (successCount === 0) {
+            throw new Error(errors.join('; '));
+        }
+
+        const result = lastSuccessResult;
+
         // Get updated local files
         const updatedFilesResponse = await fetch(`/api/lm/example-image-files?model_hash=${modelHash}`);
         const updatedFilesResult = await updatedFilesResponse.json();
-        
+
         if (!updatedFilesResult.success) {
             throw new Error(updatedFilesResult.error || 'Failed to get updated file list');
         }
-        
+
         // Re-render the showcase content
         const showcaseTab = document.getElementById('showcase-tab');
         if (showcaseTab) {
@@ -414,18 +544,22 @@ async function handleImportFiles(files, modelHash, importContainer) {
             // Combine both arrays for rendering
             const allImages = [...regularImages, ...customImages];
             showcaseTab.innerHTML = renderShowcaseContent(allImages, updatedFilesResult.files, true);
-            
+
             // Re-initialize showcase functionality
             const carousel = showcaseTab.querySelector('.carousel');
             if (carousel && !carousel.classList.contains('collapsed')) {
                 initShowcaseContent(carousel);
             }
-            
+
             // Initialize the import UI for the new content
             initExampleImport(modelHash, showcaseTab);
-            
-            showToast('toast.import.imagesImported', {}, 'success');
-            
+
+            if (errors.length > 0) {
+                showToast('toast.import.imagesPartial', { success: successCount, failed: errors.length }, 'warning');
+            } else {
+                showToast('toast.import.imagesImported', {}, 'success');
+            }
+
             // Update VirtualScroller if available
             if (state.virtualScroller && result.model_file_path) {
                 // Create an update object with only the necessary properties
@@ -435,7 +569,7 @@ async function handleImportFiles(files, modelHash, importContainer) {
                         customImages: customImages
                     }
                 };
-                
+
                 // Update the item in the virtual scroller
                 state.virtualScroller.updateSingleItem(result.model_file_path, updateData);
             }
@@ -480,6 +614,41 @@ export function toggleShowcase(element) {
 }
 
 /**
+ * Bind scroll-indicator click events (works even when carousel is collapsed)
+ * @param {HTMLElement} carousel - The carousel element
+ */
+function bindScrollIndicatorEvents(carousel) {
+    if (!carousel) return;
+
+    const scrollIndicator = carousel.previousElementSibling;
+    if (scrollIndicator && scrollIndicator.classList.contains('scroll-indicator')) {
+        // Remove previous listeners to avoid duplicates
+        scrollIndicator.onclick = null;
+        scrollIndicator.removeEventListener('click', scrollIndicator._leftClickHandler);
+        scrollIndicator.removeEventListener('mousedown', scrollIndicator._middleClickHandler);
+
+        // Handler for left-click (button 0) - uses 'click' event
+        scrollIndicator._leftClickHandler = (event) => {
+            if (event.button === 0) {
+                event.preventDefault();
+                toggleShowcase(scrollIndicator);
+            }
+        };
+
+        // Handler for middle-click (button 1) - uses 'mousedown' event
+        scrollIndicator._middleClickHandler = (event) => {
+            if (event.button === 1) {
+                event.preventDefault();
+                toggleShowcase(scrollIndicator);
+            }
+        };
+
+        scrollIndicator.addEventListener('click', scrollIndicator._leftClickHandler);
+        scrollIndicator.addEventListener('mousedown', scrollIndicator._middleClickHandler);
+    }
+}
+
+/**
  * Initialize all showcase content interactions
  * @param {HTMLElement} carousel - The carousel element
  */
@@ -492,15 +661,29 @@ export function initShowcaseContent(carousel) {
     initMediaControlHandlers(carousel);
     positionAllMediaControls(carousel);
 
-    // Bind scroll-indicator click to toggleShowcase
-    const scrollIndicator = carousel.previousElementSibling;
-    if (scrollIndicator && scrollIndicator.classList.contains('scroll-indicator')) {
-        // Remove previous click listeners to avoid duplicates
-        scrollIndicator.onclick = null;
-        scrollIndicator.removeEventListener('click', scrollIndicator._toggleShowcaseHandler);
-        scrollIndicator._toggleShowcaseHandler = () => toggleShowcase(scrollIndicator);
-        scrollIndicator.addEventListener('click', scrollIndicator._toggleShowcaseHandler);
-    }
+    // Click-to-view: open full-size media viewer when clicking showcase images/videos
+    const viewerElements = carousel.querySelectorAll('.media-wrapper img, .media-wrapper video');
+    const allItems = [];
+    const elementIndexMap = new Map();
+    viewerElements.forEach((el) => {
+        const isVideo = el.tagName === 'VIDEO';
+        const url = el.src || el.dataset.localSrc || el.dataset.remoteSrc;
+        if (url) {
+            elementIndexMap.set(el, allItems.length);
+            allItems.push({ url, type: isVideo ? 'video' : 'image' });
+        }
+    });
+    viewerElements.forEach((mediaEl) => {
+        const idx = elementIndexMap.get(mediaEl);
+        if (idx === undefined) return;
+        mediaEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openMediaViewer(allItems, idx);
+        });
+    });
+
+    // Bind scroll-indicator click events
+    bindScrollIndicatorEvents(carousel);
     
     // Add window resize handler
     const resizeHandler = () => positionAllMediaControls(carousel);

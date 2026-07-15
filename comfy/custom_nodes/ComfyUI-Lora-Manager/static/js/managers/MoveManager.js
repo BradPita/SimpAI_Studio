@@ -3,8 +3,11 @@ import { state, getCurrentPageState } from '../state/index.js';
 import { modalManager } from './ModalManager.js';
 import { bulkManager } from './BulkManager.js';
 import { getModelApiClient } from '../api/modelApiFactory.js';
+import { RecipeSidebarApiClient } from '../api/recipeApi.js';
 import { FolderTreeManager } from '../components/FolderTreeManager.js';
 import { sidebarManager } from '../components/SidebarManager.js';
+import { getStorageItem, setStorageItem } from '../utils/storageHelpers.js';
+import { translate } from '../utils/i18nHelpers.js';
 
 class MoveManager {
     constructor() {
@@ -12,22 +15,42 @@ class MoveManager {
         this.bulkFilePaths = null;
         this.folderTreeManager = new FolderTreeManager();
         this.initialized = false;
-        
+        this.recipeApiClient = null;
+        this.useDefaultPath = false;
+        this.modelRoots = [];
+
         // Bind methods
         this.updateTargetPath = this.updateTargetPath.bind(this);
+        this.handleToggleDefaultPath = this.handleToggleDefaultPath.bind(this);
+    }
+
+    _getApiClient(modelType = null) {
+        if (state.currentPageType === 'recipes') {
+            if (!this.recipeApiClient) {
+                this.recipeApiClient = new RecipeSidebarApiClient();
+            }
+            return this.recipeApiClient;
+        }
+        return getModelApiClient(modelType);
     }
 
     initializeEventListeners() {
         if (this.initialized) return;
-        
+
         const modelRootSelect = document.getElementById('moveModelRoot');
-        
+
         // Initialize model root directory selector
         modelRootSelect.addEventListener('change', async () => {
             await this.initializeFolderTree();
             this.updateTargetPath();
         });
-        
+
+        // Default path toggle handler
+        const toggleInput = document.getElementById('moveUseDefaultPath');
+        if (toggleInput) {
+            toggleInput.addEventListener('change', this.handleToggleDefaultPath);
+        }
+
         this.initialized = true;
     }
 
@@ -35,11 +58,11 @@ class MoveManager {
         // Reset state
         this.currentFilePath = null;
         this.bulkFilePaths = null;
-        
-        const apiClient = getModelApiClient();
+
+        const apiClient = this._getApiClient(modelType);
         const currentPageType = state.currentPageType;
         const modelConfig = apiClient.apiConfig.config;
-        
+
         // Handle bulk mode
         if (filePath === 'bulk') {
             const selectedPaths = Array.from(state.selectedModels);
@@ -54,15 +77,20 @@ class MoveManager {
             this.currentFilePath = filePath;
             document.getElementById('moveModalTitle').textContent = `Move ${modelConfig.displayName}`;
         }
-        
+
         // Update UI labels based on model type
         document.getElementById('moveRootLabel').textContent = `Select ${modelConfig.displayName} Root:`;
         document.getElementById('moveTargetPathDisplay').querySelector('.path-text').textContent = `Select a ${modelConfig.displayName.toLowerCase()} root directory`;
-        
+
         // Clear folder path input
         const folderPathInput = document.getElementById('moveFolderPath');
         if (folderPathInput) {
             folderPathInput.value = '';
+        }
+
+        // Reset folder tree selection
+        if (this.folderTreeManager) {
+            this.folderTreeManager.clearSelection();
         }
 
         try {
@@ -74,13 +102,13 @@ class MoveManager {
             } else {
                 rootsData = await apiClient.fetchModelRoots();
             }
-            
+
             if (!rootsData.roots || rootsData.roots.length === 0) {
                 throw new Error(`No ${modelConfig.displayName.toLowerCase()} roots found`);
             }
 
             // Populate model root selector
-            modelRootSelect.innerHTML = rootsData.roots.map(root => 
+            modelRootSelect.innerHTML = rootsData.roots.map(root =>
                 `<option value="${root}">${root}</option>`
             ).join('');
 
@@ -91,9 +119,12 @@ class MoveManager {
                 modelRootSelect.value = defaultRoot;
             }
 
+            // Store roots for path calculations
+            this.modelRoots = rootsData.roots || [];
+
             // Initialize event listeners
             this.initializeEventListeners();
-            
+
             // Setup folder tree manager
             this.folderTreeManager.init({
                 onPathChange: (path) => {
@@ -101,9 +132,12 @@ class MoveManager {
                 },
                 elementsPrefix: 'move'
             });
-            
+
             // Initialize folder tree
             await this.initializeFolderTree();
+
+            // Load default path setting
+            this.loadDefaultPathSetting(apiClient.modelType);
 
             this.updateTargetPath();
             modalManager.showModal('moveModal', null, () => {
@@ -112,19 +146,63 @@ class MoveManager {
                     this.folderTreeManager.destroy();
                 }
             });
-            
+
         } catch (error) {
             console.error(`Error fetching ${modelConfig.displayName.toLowerCase()} roots or folders:`, error);
             showToast('toast.models.moveFailed', { message: error.message }, 'error');
         }
     }
 
+    loadDefaultPathSetting(modelType) {
+        const storageKey = `use_default_path_${modelType}`;
+        this.useDefaultPath = getStorageItem(storageKey, false);
+
+        const toggleInput = document.getElementById('moveUseDefaultPath');
+        if (toggleInput) {
+            toggleInput.checked = this.useDefaultPath;
+            this.updatePathSelectionUI();
+        }
+    }
+
+    handleToggleDefaultPath(event) {
+        this.useDefaultPath = event.target.checked;
+
+        // Save to localStorage per model type
+        const apiClient = this._getApiClient();
+        const modelType = apiClient.modelType;
+        const storageKey = `use_default_path_${modelType}`;
+        setStorageItem(storageKey, this.useDefaultPath);
+
+        this.updatePathSelectionUI();
+        this.updateTargetPath();
+    }
+
+    updatePathSelectionUI() {
+        const manualSelection = document.getElementById('moveManualPathSelection');
+        if (!manualSelection) return;
+
+        if (this.useDefaultPath) {
+            manualSelection.classList.add('disabled');
+            // Disable all inputs and buttons inside manualSelection
+            manualSelection.querySelectorAll('input, select, button').forEach(el => {
+                el.disabled = true;
+                el.tabIndex = -1;
+            });
+        } else {
+            manualSelection.classList.remove('disabled');
+            manualSelection.querySelectorAll('input, select, button').forEach(el => {
+                el.disabled = false;
+                el.tabIndex = 0;
+            });
+        }
+    }
+
     async initializeFolderTree() {
         try {
-            const apiClient = getModelApiClient();
+            const apiClient = this._getApiClient();
             // Fetch unified folder tree
             const treeData = await apiClient.fetchUnifiedFolderTree();
-            
+
             if (treeData.success) {
                 // Load tree data into folder tree manager
                 await this.folderTreeManager.loadTree(treeData.tree);
@@ -141,97 +219,200 @@ class MoveManager {
     updateTargetPath() {
         const pathDisplay = document.getElementById('moveTargetPathDisplay');
         const modelRoot = document.getElementById('moveModelRoot').value;
-        const apiClient = getModelApiClient();
+        const apiClient = this._getApiClient();
         const config = apiClient.apiConfig.config;
-        
-        let fullPath = modelRoot || `Select a ${config.displayName.toLowerCase()} root directory`;
-        
+
+        let fullPath = modelRoot || translate('modals.download.selectTypeRoot', { type: config.displayName });
+
         if (modelRoot) {
-            const selectedPath = this.folderTreeManager ? this.folderTreeManager.getSelectedPath() : '';
-            if (selectedPath) {
-                fullPath += '/' + selectedPath;
+            if (this.useDefaultPath) {
+                // Show actual template path
+                try {
+                    const singularType = apiClient.modelType.replace(/s$/, '');
+                    const templates = state.global.settings.download_path_templates;
+                    const template = templates[singularType];
+                    fullPath += `/${template}`;
+                } catch (error) {
+                    console.error('Failed to fetch template:', error);
+                    fullPath += '/' + translate('modals.download.autoOrganizedPath');
+                }
+            } else {
+                // Show manual path selection
+                const selectedPath = this.folderTreeManager ? this.folderTreeManager.getSelectedPath() : '';
+                if (selectedPath) {
+                    fullPath += '/' + selectedPath;
+                }
             }
         }
 
         pathDisplay.innerHTML = `<span class="path-text">${fullPath}</span>`;
     }
 
+    /**
+     * Get relative folder path from absolute file path
+     * @param {string} absolutePath 
+     * @returns {string} Relative folder path using forward slashes
+     */
+    _getRelativeFolder(absolutePath) {
+        if (!absolutePath) return '';
+        const normalizedPath = absolutePath.replace(/\\/g, '/');
+
+        for (const root of this.modelRoots || []) {
+            const normalizedRoot = root.replace(/\\/g, '/');
+            if (normalizedPath.startsWith(normalizedRoot)) {
+                let relative = normalizedPath.substring(normalizedRoot.length);
+                if (relative.startsWith('/')) relative = relative.substring(1);
+
+                // Get the directory part
+                const lastSlash = relative.lastIndexOf('/');
+                if (lastSlash === -1) return ''; // In the root itself
+                return relative.substring(0, lastSlash);
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Check if a model should be visible based on its relative folder and current page state
+     * @param {string} relativeFolder 
+     * @param {Object} pageState 
+     * @returns {boolean}
+     */
+    _isModelVisible(relativeFolder, pageState) {
+        if (!pageState) return true;
+        // If no folder filter is active, check search recursive option
+        if (pageState.activeFolder === null) return true;
+
+        const activeFolder = pageState.activeFolder || '';
+        const recursive = pageState.searchOptions?.recursive ?? true;
+
+        const normalizedActive = activeFolder.replace(/\\/g, '/').replace(/\/$/, '');
+        const normalizedRelative = relativeFolder.replace(/\\/g, '/').replace(/\/$/, '');
+
+        if (recursive) {
+            // Visible if it's in activeFolder or any subfolder
+            // Special case for root: if activeFolder is empty, everything is visible in recursive mode
+            if (normalizedActive === '') return true;
+            
+            return normalizedRelative === normalizedActive ||
+                normalizedRelative.startsWith(normalizedActive + '/');
+        } else {
+            // Only visible if it's exactly in activeFolder
+            return normalizedRelative === normalizedActive;
+        }
+    }
+
     async moveModel() {
         const selectedRoot = document.getElementById('moveModelRoot').value;
-        const apiClient = getModelApiClient();
+        const apiClient = this._getApiClient();
         const config = apiClient.apiConfig.config;
-        
+
         if (!selectedRoot) {
             showToast('toast.models.pleaseSelectRoot', { type: config.displayName.toLowerCase() }, 'error');
             return;
         }
 
         // Get selected folder path from folder tree manager
-        const targetFolder = this.folderTreeManager.getSelectedPath();
-        
+        const targetFolder = this.useDefaultPath ? '' : this.folderTreeManager.getSelectedPath();
+
         let targetPath = selectedRoot;
         if (targetFolder) {
             targetPath = `${targetPath}/${targetFolder}`;
         }
 
         try {
+            let movedFiles = []; // Array of { original_file_path, new_file_path }
+
             if (this.bulkFilePaths) {
                 // Bulk move mode
-                const results = await apiClient.moveBulkModels(this.bulkFilePaths, targetPath);
+                const results = await apiClient.moveBulkModels(this.bulkFilePaths, targetPath, this.useDefaultPath);
+                movedFiles = (results || [])
+                    .filter(r => r.success)
+                    .map(r => ({ original_file_path: r.original_file_path, new_file_path: r.new_file_path }));
 
-                // Update virtual scroller if in active folder view
-                const pageState = getCurrentPageState();
-                if (pageState.activeFolder !== null && state.virtualScroller) {
-                    // Remove items that were successfully moved
-                    results.forEach(result => {
-                        if (result.success) {
-                            state.virtualScroller.removeItemByFilePath(result.original_file_path);
-                        }
-                    });
-                } else {
-                    // Update the model cards' filepath and filename in the DOM
-                    results.forEach(result => {
-                        if (result.success && result.new_file_path !== result.original_file_path) {
-                            const newFileName = result.new_file_path.substring(result.new_file_path.lastIndexOf('/') + 1);
-                            const baseFileName = newFileName.substring(0, newFileName.lastIndexOf('.'));
-                            
-                            state.virtualScroller.updateSingleItem(result.original_file_path, {
-                                file_path: result.new_file_path,
-                                file_name: baseFileName
-                            });
-                        }
-                    });
-                }
+                // Deselect moving items and exit bulk mode
+                this.bulkFilePaths.forEach(path => bulkManager.deselectItem(path));
+                if (state.bulkMode) bulkManager.toggleBulkMode();
             } else {
                 // Single move mode
-                const result = await apiClient.moveSingleModel(this.currentFilePath, targetPath);
+                const result = await apiClient.moveSingleModel(this.currentFilePath, targetPath, this.useDefaultPath);
+                if (result) {
+                    movedFiles.push({
+                        original_file_path: result.original_file_path || this.currentFilePath,
+                        new_file_path: result.new_file_path
+                    });
+                }
 
+                // Deselect moving item
+                bulkManager.deselectItem(this.currentFilePath);
+            }
+
+            // Update VirtualScroller in-place instead of full reload
+            if (movedFiles.length > 0 && state.virtualScroller) {
+                // Get current page state for folder filter check
                 const pageState = getCurrentPageState();
-                if (result && result.new_file_path) {
-                    if (pageState.activeFolder !== null && state.virtualScroller) {
-                        state.virtualScroller.removeItemByFilePath(this.currentFilePath);
-                    } else if (result.new_file_path !== this.currentFilePath) {
-                        // Update both file_path and file_name if they changed
-                        const newFileName = result.new_file_path.substring(result.new_file_path.lastIndexOf('/') + 1);
-                        const baseFileName = newFileName.substring(0, newFileName.lastIndexOf('.'));
-                        
-                        state.virtualScroller.updateSingleItem(this.currentFilePath, {
-                            file_path: result.new_file_path,
-                            file_name: baseFileName
+                const normalizedActive = (pageState.activeFolder || '').replace(/\\/g, '/').replace(/\/$/, '');
+                const isRecursive = pageState.searchOptions?.recursive ?? true;
+                const isFolderFiltered = pageState.activeFolder !== null;
+
+                // Determine which items are still visible after the move
+                const pathsToRemove = [];
+                const pathsToUpdate = []; // { originalPath, newData }
+
+                for (const moved of movedFiles) {
+                    if (!moved.original_file_path) continue;
+
+                    if (isFolderFiltered) {
+                        // Compute relative folder of the new path
+                        const newRelativeFolder = this._getRelativeFolder(moved.new_file_path);
+                        const normalizedNewFolder = newRelativeFolder.replace(/\\/g, '/').replace(/\/$/, '');
+
+                        // Check if the new location is still within the active folder
+                        let stillVisible;
+                        if (isRecursive) {
+                            stillVisible = normalizedActive === '' ||
+                                normalizedNewFolder === normalizedActive ||
+                                normalizedNewFolder.startsWith(normalizedActive + '/');
+                        } else {
+                            stillVisible = normalizedNewFolder === normalizedActive;
+                        }
+
+                        if (stillVisible) {
+                            pathsToUpdate.push({
+                                originalPath: moved.original_file_path,
+                                newData: {
+                                    file_path: moved.new_file_path,
+                                    folder: newRelativeFolder
+                                }
+                            });
+                        } else {
+                            pathsToRemove.push(moved.original_file_path);
+                        }
+                    } else {
+                        // No folder filter active — items remain visible, just update path
+                        pathsToUpdate.push({
+                            originalPath: moved.original_file_path,
+                            newData: {
+                                file_path: moved.new_file_path,
+                                folder: this._getRelativeFolder(moved.new_file_path)
+                            }
                         });
                     }
                 }
+
+                // Apply updates to the VirtualScroller
+                if (pathsToRemove.length > 0) {
+                    state.virtualScroller.removeMultipleItemsByFilePath(pathsToRemove);
+                }
+                for (const update of pathsToUpdate) {
+                    state.virtualScroller.updateSingleItem(update.originalPath, update.newData);
+                }
             }
 
-            // Refresh folder tags after successful move
-            sidebarManager.refresh();
+            // Refresh folder tree in sidebar (no model data reload)
+            await sidebarManager.refresh();
 
             modalManager.closeModal('moveModal');
-            
-            // If we were in bulk mode, exit it after successful move
-            if (this.bulkFilePaths && state.bulkMode) {
-                bulkManager.toggleBulkMode();
-            }
 
         } catch (error) {
             console.error('Error moving model(s):', error);

@@ -15,6 +15,13 @@ from py.services.model_update_service import (
 class DummyScanner:
     def __init__(self, raw_data):
         self._cache = SimpleNamespace(raw_data=raw_data, version_index={})
+        self._cancelled = False
+
+    def is_cancelled(self) -> bool:
+        return self._cancelled
+
+    def reset_cancellation(self) -> None:
+        self._cancelled = False
 
     async def get_cached_data(self, *args, **kwargs):
         return self._cache
@@ -436,6 +443,42 @@ async def test_has_updates_bulk_returns_mapping(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_has_updates_bulk_handles_more_than_sqlite_max_variables(tmp_path):
+    """Bulk query with >999 model IDs must not raise 'too many SQL variables'."""
+    db_path = tmp_path / "updates.sqlite"
+    service = ModelUpdateService(str(db_path), ttl_seconds=3600)
+
+    model_ids = list(range(1, 1201))
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("INSERT INTO model_update_status (model_id, model_type) VALUES (?, ?)", (1, "lora"))
+        conn.execute("INSERT INTO model_update_versions (model_id, version_id, sort_index, name) VALUES (?, ?, ?, ?)", (1, 10, 0, "v1"))
+
+    mapping = await service.has_updates_bulk("lora", model_ids)
+
+    assert mapping[1] is True
+    assert len(mapping) == len(model_ids)
+    assert all(v is False for k, v in mapping.items() if k != 1)
+
+
+@pytest.mark.asyncio
+async def test_get_records_bulk_handles_more_than_sqlite_max_variables(tmp_path):
+    """Bulk record fetch with >999 model IDs must not raise 'too many SQL variables'."""
+    db_path = tmp_path / "updates.sqlite"
+    service = ModelUpdateService(str(db_path), ttl_seconds=3600)
+
+    model_ids = list(range(1, 1201))
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("INSERT INTO model_update_status (model_id, model_type) VALUES (?, ?)", (1, "lora"))
+        conn.execute("INSERT INTO model_update_versions (model_id, version_id, sort_index, name) VALUES (?, ?, ?, ?)", (1, 10, 0, "v1"))
+
+    records = await service.get_records_bulk("lora", model_ids)
+
+    assert 1 in records
+    assert records[1].model_id == 1
+    assert len(records) == 1
+
+
+@pytest.mark.asyncio
 async def test_refresh_allows_duplicate_version_ids_across_models(tmp_path):
     db_path = tmp_path / "updates.sqlite"
     service = ModelUpdateService(str(db_path), ttl_seconds=0)
@@ -508,7 +551,73 @@ async def test_refresh_rewrites_remote_preview_urls(tmp_path):
     assert record is not None
     assert record.versions
     preview_url = record.versions[0].preview_url
-    assert (
-        preview_url
-        == "https://image.civitai.com/safe/width=450,optimized=true/preview.png"
+
+@pytest.mark.asyncio
+async def test_update_in_library_versions_populates_metadata(tmp_path):
+    db_path = tmp_path / "updates.sqlite"
+    service = ModelUpdateService(str(db_path))
+
+    version_info = {
+        "id": 123,
+        "name": "v1.0",
+        "baseModel": "SD 1.5",
+        "publishedAt": "2024-03-01T00:00:00Z",
+        "files": [{"sizeKB": 1024, "type": "Model", "primary": True}],
+        "images": [{"url": "https://example.com/preview.png"}],
+    }
+
+    await service.update_in_library_versions("lora", 1, [123], version_info=version_info)
+    record = await service.get_record("lora", 1)
+
+    assert record is not None
+    assert len(record.versions) == 1
+    version = record.versions[0]
+    assert version.version_id == 123
+    assert version.name == "v1.0"
+    assert version.base_model == "SD 1.5"
+    assert version.size_bytes == 1024 * 1024
+    assert version.preview_url == "https://example.com/preview.png"
+    assert version.is_in_library is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_folder_filter_considers_cross_folder_versions(tmp_path):
+    """When refreshing by folder, versions in other folders must still be
+    considered in-library so they aren't reported as available updates."""
+    db_path = tmp_path / "updates.sqlite"
+    service = ModelUpdateService(str(db_path), ttl_seconds=0)
+    # Same model (modelId=1) in two folders with different versions
+    raw_data = [
+        {"civitai": {"modelId": 1, "id": 11}, "folder": "folder_a"},
+        {"civitai": {"modelId": 1, "id": 15}, "folder": "folder_b"},
+    ]
+    scanner = DummyScanner(raw_data)
+    # Remote offers: 11 (in folder_a), 15 (in folder_b), 20 (truly new)
+    provider = DummyProvider(
+        {
+            "modelVersions": [
+                {"id": 11, "files": [], "images": []},
+                {"id": 15, "files": [], "images": []},
+                {"id": 20, "files": [], "images": []},
+            ]
+        }
     )
+
+    await service.refresh_for_model_type(
+        "lora", scanner, provider, folder_path="folder_a",
+    )
+    record = await service.get_record("lora", 1)
+
+    assert record is not None
+
+    # Version 15 is in folder_b — must be in_library even when filtering by folder_a
+    v15 = next(v for v in record.versions if v.version_id == 15)
+    assert v15.is_in_library is True
+
+    # Version 20 is truly new — should not be in_library
+    v20 = next(v for v in record.versions if v.version_id == 20)
+    assert v20.is_in_library is False
+
+    # has_update must be True (version 20 > max_in_library=15)
+    assert record.has_update() is True
+

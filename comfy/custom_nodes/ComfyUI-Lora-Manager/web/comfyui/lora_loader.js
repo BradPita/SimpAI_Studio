@@ -5,13 +5,15 @@ import {
   updateConnectedTriggerWords,
   chainCallback,
   mergeLoras,
-  setupInputWidgetWithAutocomplete,
   getAllGraphNodes,
   getNodeFromGraph,
+  getWidgetByName,
+  getWidgetSerializedValue,
 } from "./utils.js";
 import { addLorasWidget } from "./loras_widget.js";
 import { applyLoraValuesToText, debounce } from "./lora_syntax_utils.js";
 import { applySelectionHighlight } from "./trigger_word_highlight.js";
+import { updateConnectedLoraInfoNodes } from "./lora_info.js";
 
 app.registerExtension({
   name: "LoraManager.LoraLoader",
@@ -129,12 +131,12 @@ app.registerExtension({
           set(value) {
             const oldValue = _mode;
             _mode = value;
-            
+
             // Trigger mode change handler
             if (self.onModeChange) {
               self.onModeChange(value, oldValue);
             }
-            
+
             console.log(`[Lora Loader] Node mode changed from ${oldValue} to ${value}`);
           }
         });
@@ -142,14 +144,18 @@ app.registerExtension({
         // Define the mode change handler
         this.onModeChange = function(newMode, oldMode) {
           console.log(`Lora Loader node mode changed: from ${oldMode} to ${newMode}`);
-          
+
           // Update connected trigger word toggle nodes when mode changes
           const allActiveLoraNames = collectActiveLorasFromChain(self);
           updateConnectedTriggerWords(self, allActiveLoraNames);
         };
 
-        const inputWidget = this.widgets[0];
-        inputWidget.options.getMaxHeight = () => 100;
+        // Get the text input widget (AUTOCOMPLETE_TEXT_LORAS type, created by Vue widgets)
+        const inputWidget = getWidgetByName(this, "text");
+        if (!inputWidget) {
+          console.warn("LoRA Manager: text widget not found for Lora Loader");
+          return;
+        }
         this.inputWidget = inputWidget;
 
         const scheduleInputSync = debounce((lorasValue) => {
@@ -180,8 +186,10 @@ app.registerExtension({
           this,
           "loras",
           {
-            onSelectionChange: (selection) =>
-              applySelectionHighlight(this, selection),
+            onSelectionChange: (selection) => {
+              applySelectionHighlight(this, selection);
+              updateConnectedLoraInfoNodes(this, selection);
+            },
           },
           (value) => {
             // Prevent recursive calls
@@ -202,7 +210,8 @@ app.registerExtension({
           }
         ).widget;
 
-        const originalCallback = (value) => {
+        // Set up callback for the text input widget to trigger merge logic
+        inputWidget.callback = (value) => {
           if (isUpdating) return;
           isUpdating = true;
 
@@ -218,13 +227,6 @@ app.registerExtension({
             isUpdating = false;
           }
         };
-
-        // Setup input widget with autocomplete
-        inputWidget.callback = setupInputWidgetWithAutocomplete(
-          this,
-          inputWidget,
-          originalCallback
-        );
       });
     }
   },
@@ -234,12 +236,16 @@ app.registerExtension({
       // Restore saved value if exists
       let existingLoras = [];
       if (node.widgets_values && node.widgets_values.length > 0) {
-        // 0 for input widget, 1 for loras widget
-        const savedValue = node.widgets_values[1];
+        const savedValue = getWidgetSerializedValue(node, "loras");
         existingLoras = savedValue || [];
       }
       // Merge the loras data
-      const mergedLoras = mergeLoras(node.widgets[0].value, existingLoras);
+      const inputWidget = node.inputWidget || getWidgetByName(node, "text");
+      if (!inputWidget) {
+        console.warn("LoRA Manager: text widget not found while restoring Lora Loader");
+        return;
+      }
+      const mergedLoras = mergeLoras(inputWidget.value, existingLoras);
       node.lorasWidget.value = mergedLoras;
     }
   },

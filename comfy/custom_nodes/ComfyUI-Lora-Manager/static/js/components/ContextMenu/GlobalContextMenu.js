@@ -15,6 +15,42 @@ export class GlobalContextMenu extends BaseContextMenu {
 
     showMenu(x, y, origin = null) {
         const contextOrigin = origin || { type: 'global' };
+
+        // Conditional visibility for recipes page
+        const isRecipesPage = state.currentPageType === 'recipes';
+        const modelUpdateItem = this.menu.querySelector('[data-action="check-model-updates"]');
+        const licenseRefreshItem = this.menu.querySelector('[data-action="fetch-missing-licenses"]');
+        const downloadExamplesItem = this.menu.querySelector('[data-action="download-example-images"]');
+        const cleanupExamplesItem = this.menu.querySelector('[data-action="cleanup-example-images-folders"]');
+        const excludedModelsItem = this.menu.querySelector('[data-action="manage-excluded-models"]');
+        const repairRecipesItem = this.menu.querySelector('[data-action="repair-recipes"]');
+        const groupByModelItem = this.menu.querySelector('[data-action="toggle-group-by-model"]');
+        const groupByModelCheck = groupByModelItem?.querySelector('.check-indicator');
+
+        // Update check indicator for group-by-model
+        if (groupByModelCheck) {
+            const isEnabled = !!state.global.settings.group_by_model;
+            groupByModelCheck.style.display = isEnabled ? 'block' : 'none';
+        }
+
+        if (isRecipesPage) {
+            modelUpdateItem?.classList.add('hidden');
+            licenseRefreshItem?.classList.add('hidden');
+            downloadExamplesItem?.classList.add('hidden');
+            cleanupExamplesItem?.classList.add('hidden');
+            excludedModelsItem?.classList.add('hidden');
+            groupByModelItem?.classList.add('hidden');
+            repairRecipesItem?.classList.remove('hidden');
+        } else {
+            modelUpdateItem?.classList.remove('hidden');
+            licenseRefreshItem?.classList.remove('hidden');
+            downloadExamplesItem?.classList.remove('hidden');
+            cleanupExamplesItem?.classList.remove('hidden');
+            excludedModelsItem?.classList.remove('hidden');
+            groupByModelItem?.classList.remove('hidden');
+            repairRecipesItem?.classList.add('hidden');
+        }
+
         super.showMenu(x, y, contextOrigin);
     }
 
@@ -40,20 +76,54 @@ export class GlobalContextMenu extends BaseContextMenu {
                     console.error('Failed to refresh missing license metadata:', error);
                 });
                 break;
+            case 'repair-recipes':
+                this.repairRecipes(menuItem).catch((error) => {
+                    console.error('Failed to repair recipes:', error);
+                });
+                break;
+            case 'manage-excluded-models':
+                this.manageExcludedModels();
+                break;
+            case 'toggle-group-by-model':
+                this.toggleGroupByModel();
+                break;
             default:
                 console.warn(`Unhandled global context menu action: ${action}`);
                 break;
         }
     }
 
-    async downloadExampleImages(menuItem) {
-        const exampleImagesManager = window.exampleImagesManager;
+    manageExcludedModels() {
+        window.pageControls?.enterExcludedView?.().catch((error) => {
+            console.error('Failed to open excluded models view:', error);
+        });
+    }
 
-        if (!exampleImagesManager) {
-            showToast('globalContextMenu.downloadExampleImages.unavailable', {}, 'error');
+    toggleGroupByModel() {
+        const sm = window.settingsManager;
+        if (!sm) {
+            console.error('settingsManager not available on window');
             return;
         }
+        const newValue = !state.global.settings.group_by_model;
+        state.global.settings.group_by_model = newValue;
 
+        // Save/restore sort preference when toggling group_by_model
+        if (window.pageControls?.onGroupByModelToggled) {
+            window.pageControls.onGroupByModelToggled(newValue);
+        }
+
+        sm.saveSetting('group_by_model', newValue).catch((error) => {
+            console.error('Failed to save group_by_model setting:', error);
+            // Revert state on failure
+            state.global.settings.group_by_model = !newValue;
+        });
+
+        sm.applyFrontendSettings();
+        sm.reloadContent();
+    }
+
+    async downloadExampleImages(menuItem) {
         const downloadPath = state?.global?.settings?.example_images_path;
         if (!downloadPath) {
             showToast('globalContextMenu.downloadExampleImages.missingPath', {}, 'warning');
@@ -63,7 +133,48 @@ export class GlobalContextMenu extends BaseContextMenu {
         menuItem?.classList.add('disabled');
 
         try {
-            await exampleImagesManager.handleDownloadButton();
+            const optimize = state.global.settings.optimize_example_images;
+
+            const response = await fetch('/api/lm/download-example-images', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    force: true,
+                    optimize,
+                    model_types: ['lora', 'checkpoint', 'embedding']
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('toast.exampleImages.downloadStarted', {}, 'success');
+
+                const exampleImagesManager = window.exampleImagesManager;
+                if (exampleImagesManager) {
+                    exampleImagesManager.isDownloading = true;
+                    exampleImagesManager.isPaused = false;
+                    exampleImagesManager.isStopping = false;
+                    exampleImagesManager.hasShownCompletionToast = false;
+                    exampleImagesManager.startTime = new Date();
+                    exampleImagesManager.updateUI(data.status);
+                    exampleImagesManager.showProgressPanel();
+                    exampleImagesManager.startProgressUpdates();
+                    exampleImagesManager.updateDownloadButtonText();
+
+                    const stopButton = document.getElementById('stopExampleDownloadBtn');
+                    if (stopButton) {
+                        stopButton.disabled = false;
+                    }
+                }
+            } else {
+                showToast('toast.exampleImages.downloadStartFailed', { error: data.error }, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to trigger example images download:', error);
+            showToast('toast.exampleImages.downloadStartFailed', {}, 'error');
         } finally {
             menuItem?.classList.remove('disabled');
         }
@@ -234,5 +345,98 @@ export class GlobalContextMenu extends BaseContextMenu {
         }
 
         return `${displayName}s`;
+    }
+
+    async repairRecipes(menuItem) {
+        if (this._repairInProgress) {
+            return;
+        }
+
+        this._repairInProgress = true;
+        menuItem?.classList.add('disabled');
+
+        const loadingMessage = translate(
+            'globalContextMenu.repairRecipes.loading',
+            {},
+            'Repairing recipe data...'
+        );
+
+        const progressUI = state.loadingManager?.showEnhancedProgress(loadingMessage);
+        progressUI?.showCancelButton(() => this.cancelRepair());
+
+        try {
+            const response = await fetch('/api/lm/recipes/repair', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to start repair');
+            }
+
+            // Poll for progress (or wait for WebSocket if preferred, but polling is simpler for this implementation)
+            let isComplete = false;
+            while (!isComplete && this._repairInProgress) {
+                const progressResponse = await fetch('/api/lm/recipes/repair-progress');
+                if (progressResponse.ok) {
+                    const progressResult = await progressResponse.json();
+                    if (progressResult.success && progressResult.progress) {
+                        const p = progressResult.progress;
+                        if (p.status === 'processing') {
+                            const percent = (p.current / p.total) * 100;
+                            progressUI?.updateProgress(percent, p.recipe_name, `${loadingMessage} (${p.current}/${p.total})`);
+                        } else if (p.status === 'completed') {
+                            isComplete = true;
+                            progressUI?.complete(translate(
+                                'globalContextMenu.repairRecipes.success',
+                                { count: p.repaired },
+                                `Repaired ${p.repaired} recipes.`
+                            ));
+                            showToast('globalContextMenu.repairRecipes.success', { count: p.repaired }, 'success');
+                            // Refresh recipes page if active
+                            if (window.recipesPage) {
+                                window.recipesPage.refresh();
+                            }
+                        } else if (p.status === 'error') {
+                            throw new Error(p.error || 'Repair failed');
+                        } else if (p.status === 'cancelled') {
+                            isComplete = true;
+                            progressUI?.complete(translate(
+                                'globalContextMenu.repairRecipes.cancelled',
+                                { count: p.repaired },
+                                `Repair cancelled. ${p.repaired} recipes were repaired.`
+                            ));
+                            showToast('globalContextMenu.repairRecipes.cancelled', { count: p.repaired }, 'info');
+                        }
+                    } else if (progressResponse.status === 404) {
+                        // Progress might have finished quickly and been cleaned up
+                        isComplete = true;
+                        progressUI?.complete();
+                    }
+                }
+
+                if (!isComplete) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        } catch (error) {
+            console.error('Recipe repair failed:', error);
+            progressUI?.complete(translate('globalContextMenu.repairRecipes.error', { message: error.message }, 'Repair failed: {message}'));
+            showToast('globalContextMenu.repairRecipes.error', { message: error.message }, 'error');
+        } finally {
+            this._repairInProgress = false;
+            menuItem?.classList.remove('disabled');
+        }
+    }
+
+    async cancelRepair() {
+        try {
+            await fetch('/api/lm/recipes/cancel-repair', {
+                method: 'POST',
+            });
+        } catch (error) {
+            console.error('Failed to cancel recipe repair:', error);
+        }
     }
 }

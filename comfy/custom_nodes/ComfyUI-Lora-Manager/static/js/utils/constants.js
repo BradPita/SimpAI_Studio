@@ -27,6 +27,10 @@ export const BASE_MODELS = {
     FLUX_1_KREA: "Flux.1 Krea",
     FLUX_1_KONTEXT: "Flux.1 Kontext",
     FLUX_2_D: "Flux.2 D",
+    FLUX_2_KLEIN_9B: "Flux.2 Klein 9B",
+    FLUX_2_KLEIN_9B_BASE: "Flux.2 Klein 9B-base",
+    FLUX_2_KLEIN_4B: "Flux.2 Klein 4B",
+    FLUX_2_KLEIN_4B_BASE: "Flux.2 Klein 4B-base",
     AURAFLOW: "AuraFlow",
     CHROMA: "Chroma",
     PIXART_A: "PixArt a",
@@ -40,10 +44,15 @@ export const BASE_MODELS = {
     HIDREAM: "HiDream",
     QWEN: "Qwen",
     ZIMAGE_TURBO: "ZImageTurbo",
-    
+    ZIMAGE_BASE: "ZImageBase",
+
     // Video models
     SVD: "SVD",
     LTXV: "LTXV",
+    LTXV2: "LTXV2",
+    LTXV_2_3: "LTXV 2.3",
+    COGVIDE_X: "CogVideoX",
+    MOCHI: "Mochi",
     WAN_VIDEO: "Wan Video",
     WAN_VIDEO_1_3B_T2V: "Wan Video 1.3B t2v",
     WAN_VIDEO_14B_T2V: "Wan Video 14B t2v",
@@ -52,16 +61,65 @@ export const BASE_MODELS = {
     WAN_VIDEO_2_2_TI2V_5B: "Wan Video 2.2 TI2V-5B",
     WAN_VIDEO_2_2_T2V_A14B: "Wan Video 2.2 T2V-A14B",
     WAN_VIDEO_2_2_I2V_A14B: "Wan Video 2.2 I2V-A14B",
+    WAN_VIDEO_2_5_T2V: "Wan Video 2.5 T2V",
+    WAN_VIDEO_2_5_I2V: "Wan Video 2.5 I2V",
     HUNYUAN_VIDEO: "Hunyuan Video",
+    // Other models
+    ANIMA: "Anima",
+    ACE_AUDIO: "ACE Audio",
+    BOOGU: "Boogu",
+    ERNIE: "Ernie",
+    ERNIE_TURBO: "Ernie Turbo",
+    GROK: "Grok",
+    HAPPY_HORSE: "HappyHorse",
+    HIDREAM_O1: "HiDream-O1",
+    IDEOGRAM_4_0: "Ideogram 4.0",
+    KREA_2: "Krea 2",
+    LENS: "Lens",
+    PONY_V7: "Pony V7",
+    MAI: "MAI",
+    NUCLEUS: "Nucleus",
+    QWEN_2: "Qwen 2",
+    UPSCALER: "Upscaler",
+    WAN_IMAGE_2_7: "Wan Image 2.7",
+    WAN_VIDEO_2_7: "Wan Video 2.7",
     // Default
     UNKNOWN: "Other"
 };
 
-export const MODEL_TYPE_DISPLAY_NAMES = {
+// Model sub-type display names (new canonical field: sub_type)
+export const MODEL_SUBTYPE_DISPLAY_NAMES = {
+    // LoRA sub-types
     lora: "LoRA",
     locon: "LyCORIS",
     dora: "DoRA",
+    // Checkpoint sub-types
+    checkpoint: "Checkpoint",
+    diffusion_model: "Diffusion Model",
+    // Embedding sub-types
+    embedding: "Embedding",
 };
+
+// Backward compatibility alias
+export const MODEL_TYPE_DISPLAY_NAMES = MODEL_SUBTYPE_DISPLAY_NAMES;
+
+// Abbreviated sub-type names for compact display (e.g., in model card labels)
+export const MODEL_SUBTYPE_ABBREVIATIONS = {
+    lora: "LoRA",
+    locon: "LyCO",
+    dora: "DoRA",
+    checkpoint: "CKPT",
+    diffusion_model: "DM",
+    embedding: "EMB",
+};
+
+export function getSubTypeAbbreviation(subType) {
+    if (!subType || typeof subType !== 'string') {
+        return '';
+    }
+    const normalized = subType.toLowerCase();
+    return MODEL_SUBTYPE_ABBREVIATIONS[normalized] || subType.toUpperCase().slice(0, 4);
+}
 
 export const BASE_MODEL_ABBREVIATIONS = {
     // Stable Diffusion 1.x models
@@ -92,6 +150,29 @@ export const BASE_MODEL_ABBREVIATIONS = {
     [BASE_MODELS.FLUX_1_KREA]: 'F1KR',
     [BASE_MODELS.FLUX_1_KONTEXT]: 'F1KX',
     [BASE_MODELS.FLUX_2_D]: 'F2D',
+    [BASE_MODELS.FLUX_2_KLEIN_9B]: 'FK9',
+    [BASE_MODELS.FLUX_2_KLEIN_9B_BASE]: 'FK9B',
+    [BASE_MODELS.FLUX_2_KLEIN_4B]: 'FK4',
+    [BASE_MODELS.FLUX_2_KLEIN_4B_BASE]: 'FK4B',
+
+    // Video models
+    [BASE_MODELS.SVD]: 'SVD',
+    [BASE_MODELS.LTXV]: 'LTXV',
+    [BASE_MODELS.LTXV2]: 'LTV2',
+    [BASE_MODELS.LTXV_2_3]: 'LTX',
+    [BASE_MODELS.COGVIDE_X]: 'CVX',
+    [BASE_MODELS.MOCHI]: 'MCHI',
+    [BASE_MODELS.WAN_VIDEO]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_1_3B_T2V]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_14B_T2V]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_14B_I2V_480P]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_14B_I2V_720P]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_2_2_TI2V_5B]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_2_2_T2V_A14B]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_2_2_I2V_A14B]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_2_5_T2V]: 'WAN',
+    [BASE_MODELS.WAN_VIDEO_2_5_I2V]: 'WAN',
+    [BASE_MODELS.HUNYUAN_VIDEO]: 'HYV',
 
     // Other diffusion models
     [BASE_MODELS.AURAFLOW]: 'AF',
@@ -104,22 +185,28 @@ export const BASE_MODEL_ABBREVIATIONS = {
     [BASE_MODELS.NOOBAI]: 'NAI',
     [BASE_MODELS.ILLUSTRIOUS]: 'IL',
     [BASE_MODELS.PONY]: 'PONY',
+    [BASE_MODELS.PONY_V7]: 'PNY7',
     [BASE_MODELS.HIDREAM]: 'HID',
     [BASE_MODELS.QWEN]: 'QWEN',
     [BASE_MODELS.ZIMAGE_TURBO]: 'ZIT',
-
-    // Video models
-    [BASE_MODELS.SVD]: 'SVD',
-    [BASE_MODELS.LTXV]: 'LTXV',
-    [BASE_MODELS.WAN_VIDEO]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_1_3B_T2V]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_14B_T2V]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_14B_I2V_480P]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_14B_I2V_720P]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_2_2_TI2V_5B]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_2_2_T2V_A14B]: 'WAN',
-    [BASE_MODELS.WAN_VIDEO_2_2_I2V_A14B]: 'WAN',
-    [BASE_MODELS.HUNYUAN_VIDEO]: 'HYV',
+    [BASE_MODELS.ZIMAGE_BASE]: 'ZIB',
+    [BASE_MODELS.ANIMA]: 'ANI',
+    [BASE_MODELS.ACE_AUDIO]: 'ACE',
+    [BASE_MODELS.BOOGU]: 'BOOG',
+    [BASE_MODELS.ERNIE]: 'ERNI',
+    [BASE_MODELS.ERNIE_TURBO]: 'ETRB',
+    [BASE_MODELS.GROK]: 'GROK',
+    [BASE_MODELS.HAPPY_HORSE]: 'HAPP',
+    [BASE_MODELS.HIDREAM_O1]: 'HIO1',
+    [BASE_MODELS.IDEOGRAM_4_0]: 'ID40',
+    [BASE_MODELS.KREA_2]: 'KR2',
+    [BASE_MODELS.LENS]: 'LENS',
+    [BASE_MODELS.MAI]: 'MAI',
+    [BASE_MODELS.NUCLEUS]: 'NUCL',
+    [BASE_MODELS.QWEN_2]: 'QWN2',
+    [BASE_MODELS.UPSCALER]: 'UPSC',
+    [BASE_MODELS.WAN_IMAGE_2_7]: 'WI27',
+    [BASE_MODELS.WAN_VIDEO_2_7]: 'WAN',
 
     // Default
     [BASE_MODELS.UNKNOWN]: 'OTH'
@@ -269,6 +356,15 @@ export const NSFW_LEVELS = {
     BLOCKED: 32
 };
 
+export const VALID_MATURE_BLUR_LEVELS = ['PG13', 'R', 'X', 'XXX'];
+
+export function getMatureBlurThreshold(settings = {}) {
+    const rawValue = settings?.mature_blur_level;
+    const normalizedValue = typeof rawValue === 'string' ? rawValue.trim().toUpperCase() : '';
+    const levelName = VALID_MATURE_BLUR_LEVELS.includes(normalizedValue) ? normalizedValue : 'R';
+    return NSFW_LEVELS[levelName] ?? NSFW_LEVELS.R;
+}
+
 // Node type constants
 export const NODE_TYPES = {
     LORA_LOADER: 1,
@@ -300,18 +396,26 @@ export const BASE_MODEL_CATEGORIES = {
     'Stable Diffusion 3.x': [BASE_MODELS.SD_3, BASE_MODELS.SD_3_5, BASE_MODELS.SD_3_5_MEDIUM, BASE_MODELS.SD_3_5_LARGE, BASE_MODELS.SD_3_5_LARGE_TURBO],
     'SDXL': [BASE_MODELS.SDXL, BASE_MODELS.SDXL_LIGHTNING, BASE_MODELS.SDXL_HYPER],
     'Video Models': [
-        BASE_MODELS.SVD, BASE_MODELS.LTXV, BASE_MODELS.HUNYUAN_VIDEO, BASE_MODELS.WAN_VIDEO, 
-        BASE_MODELS.WAN_VIDEO_1_3B_T2V, BASE_MODELS.WAN_VIDEO_14B_T2V,
+        BASE_MODELS.SVD, BASE_MODELS.LTXV, BASE_MODELS.LTXV2, BASE_MODELS.LTXV_2_3, 
+        BASE_MODELS.COGVIDE_X, BASE_MODELS.MOCHI, BASE_MODELS.HUNYUAN_VIDEO,
+        BASE_MODELS.WAN_VIDEO, BASE_MODELS.WAN_VIDEO_1_3B_T2V, BASE_MODELS.WAN_VIDEO_14B_T2V,
         BASE_MODELS.WAN_VIDEO_14B_I2V_480P, BASE_MODELS.WAN_VIDEO_14B_I2V_720P,
         BASE_MODELS.WAN_VIDEO_2_2_TI2V_5B, BASE_MODELS.WAN_VIDEO_2_2_T2V_A14B,
-        BASE_MODELS.WAN_VIDEO_2_2_I2V_A14B
+        BASE_MODELS.WAN_VIDEO_2_2_I2V_A14B, BASE_MODELS.WAN_VIDEO_2_5_T2V,
+        BASE_MODELS.WAN_VIDEO_2_5_I2V,
+        BASE_MODELS.HAPPY_HORSE,
+        BASE_MODELS.WAN_IMAGE_2_7, BASE_MODELS.WAN_VIDEO_2_7
     ],
-    'Flux Models': [BASE_MODELS.FLUX_1_D, BASE_MODELS.FLUX_1_S, BASE_MODELS.FLUX_1_KONTEXT, BASE_MODELS.FLUX_1_KREA, BASE_MODELS.FLUX_2_D],
+    'Flux Models': [BASE_MODELS.FLUX_1_D, BASE_MODELS.FLUX_1_S, BASE_MODELS.FLUX_1_KONTEXT, BASE_MODELS.FLUX_1_KREA, BASE_MODELS.FLUX_2_D, BASE_MODELS.FLUX_2_KLEIN_9B, BASE_MODELS.FLUX_2_KLEIN_9B_BASE, BASE_MODELS.FLUX_2_KLEIN_4B, BASE_MODELS.FLUX_2_KLEIN_4B_BASE],
     'Other Models': [
-        BASE_MODELS.ILLUSTRIOUS, BASE_MODELS.PONY, BASE_MODELS.HIDREAM,
-        BASE_MODELS.QWEN, BASE_MODELS.AURAFLOW, BASE_MODELS.CHROMA, BASE_MODELS.ZIMAGE_TURBO,
+        BASE_MODELS.ILLUSTRIOUS, BASE_MODELS.PONY, BASE_MODELS.PONY_V7, BASE_MODELS.HIDREAM,
+        BASE_MODELS.QWEN, BASE_MODELS.AURAFLOW, BASE_MODELS.CHROMA, BASE_MODELS.ZIMAGE_TURBO, BASE_MODELS.ZIMAGE_BASE,
         BASE_MODELS.PIXART_A, BASE_MODELS.PIXART_E, BASE_MODELS.HUNYUAN_1,
-        BASE_MODELS.LUMINA, BASE_MODELS.KOLORS, BASE_MODELS.NOOBAI,
+        BASE_MODELS.LUMINA, BASE_MODELS.KOLORS, BASE_MODELS.NOOBAI, BASE_MODELS.ANIMA,
+        BASE_MODELS.ACE_AUDIO, BASE_MODELS.BOOGU, BASE_MODELS.ERNIE, BASE_MODELS.ERNIE_TURBO,
+        BASE_MODELS.GROK, BASE_MODELS.HIDREAM_O1, BASE_MODELS.IDEOGRAM_4_0,
+        BASE_MODELS.LENS, BASE_MODELS.MAI, BASE_MODELS.NUCLEUS,
+        BASE_MODELS.QWEN_2, BASE_MODELS.KREA_2, BASE_MODELS.UPSCALER,
         BASE_MODELS.UNKNOWN
     ]
 };
@@ -329,3 +433,106 @@ export const DEFAULT_PRIORITY_TAG_CONFIG = {
     checkpoint: DEFAULT_PRIORITY_TAG_ENTRIES.join(', '),
     embedding: DEFAULT_PRIORITY_TAG_ENTRIES.join(', ')
 };
+
+// ============================================================================
+// Dynamic Base Model Support
+// ============================================================================
+
+/**
+ * Dynamic base model cache
+ * Stores models fetched from Civitai API
+ */
+let dynamicBaseModels = null;
+let dynamicBaseModelsTimestamp = null;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * Set dynamic base models (called after fetching from API)
+ * @param {Array} models - Array of base model names
+ * @param {string} timestamp - ISO timestamp of fetch
+ */
+export function setDynamicBaseModels(models, timestamp) {
+    dynamicBaseModels = models;
+    dynamicBaseModelsTimestamp = timestamp;
+}
+
+/**
+ * Get dynamic base models
+ * @returns {Object|null} { models, timestamp } or null if not set
+ */
+export function getDynamicBaseModels() {
+    if (!dynamicBaseModels) return null;
+    
+    // Check if cache is expired
+    if (dynamicBaseModelsTimestamp) {
+        const age = Date.now() - new Date(dynamicBaseModelsTimestamp).getTime();
+        if (age > CACHE_TTL_MS) {
+            dynamicBaseModels = null;
+            dynamicBaseModelsTimestamp = null;
+            return null;
+        }
+    }
+    
+    return {
+        models: dynamicBaseModels,
+        timestamp: dynamicBaseModelsTimestamp
+    };
+}
+
+/**
+ * Get merged base models (hardcoded + dynamic)
+ * Returns unique sorted list of all available base models
+ * @returns {Array} Sorted array of base model names
+ */
+export function getMergedBaseModels() {
+    const hardcoded = Object.values(BASE_MODELS);
+    const dynamic = getDynamicBaseModels();
+    
+    if (!dynamic || !dynamic.models) {
+        return hardcoded.sort();
+    }
+    
+    // Merge and deduplicate
+    const merged = new Set([...hardcoded, ...dynamic.models]);
+    return Array.from(merged).sort();
+}
+
+/**
+ * Get mappable base models (for UI selection)
+ * Excludes 'Other' value
+ * @returns {Array} Sorted array of base model names (excluding 'Other')
+ */
+export function getMappableBaseModelsDynamic() {
+    const merged = getMergedBaseModels();
+    return merged.filter(model => model !== 'Other');
+}
+
+/**
+ * Clear dynamic base models cache
+ */
+export function clearDynamicBaseModels() {
+    dynamicBaseModels = null;
+    dynamicBaseModelsTimestamp = null;
+}
+
+export const AUTO_TAG_GROUPS = {
+    mode: new Set(['HIGH', 'LOW']),
+    video: new Set(['I2V', 'T2V', 'TI2V']),
+    speed: new Set(['Lightning', 'Turbo']),
+};
+
+export const AUTO_TAG_GROUP_LABELS = {
+    mode: 'High / Low',
+    video: 'I2V / T2V / TI2V',
+    speed: 'Lightning / Turbo',
+};
+
+/**
+ * Check if dynamic base models cache is valid
+ * @returns {boolean}
+ */
+export function isDynamicBaseModelsCacheValid() {
+    if (!dynamicBaseModels || !dynamicBaseModelsTimestamp) return false;
+    const age = Date.now() - new Date(dynamicBaseModelsTimestamp).getTime();
+    return age <= CACHE_TTL_MS;
+}

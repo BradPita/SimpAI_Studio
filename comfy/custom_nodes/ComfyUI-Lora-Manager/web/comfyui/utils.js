@@ -4,6 +4,33 @@ import { AutoComplete } from "./autocomplete.js";
 
 const ROOT_GRAPH_ID = "root";
 
+export const LORA_PROVIDER_NODE_TYPES = [
+  "Lora Stacker (LoraManager)",
+  "Lora Randomizer (LoraManager)",
+  "Lora Cycler (LoraManager)",
+];
+
+export const LORA_STACK_AGGREGATOR_NODE_TYPES = [
+  "Lora Stack Combiner (LoraManager)",
+];
+
+export const LORA_CHAIN_NODE_TYPES = [
+  ...LORA_PROVIDER_NODE_TYPES,
+  ...LORA_STACK_AGGREGATOR_NODE_TYPES,
+];
+
+export function isLoraProviderNode(comfyClass) {
+  return LORA_PROVIDER_NODE_TYPES.includes(comfyClass);
+}
+
+export function isLoraStackAggregatorNode(comfyClass) {
+    return LORA_STACK_AGGREGATOR_NODE_TYPES.includes(comfyClass);
+}
+
+export function isLoraChainNode(comfyClass) {
+    return LORA_CHAIN_NODE_TYPES.includes(comfyClass);
+}
+
 function isMapLike(collection) {
     return collection && typeof collection.entries === "function" && typeof collection.values === "function";
 }
@@ -102,6 +129,27 @@ export function getNodeKey(node) {
         return null;
     }
     return `${getNodeGraphId(node)}:${node.id}`;
+}
+
+export function getWidgetByName(node, widgetName) {
+    if (!node || !Array.isArray(node.widgets)) {
+        return null;
+    }
+
+    return node.widgets.find((widget) => widget?.name === widgetName) || null;
+}
+
+export function getWidgetSerializedValue(node, widgetName) {
+    if (!node || !Array.isArray(node.widgets) || !Array.isArray(node.widgets_values)) {
+        return undefined;
+    }
+
+    const widgetIndex = node.widgets.findIndex((widget) => widget?.name === widgetName);
+    if (widgetIndex === -1) {
+        return undefined;
+    }
+
+    return node.widgets_values[widgetIndex];
 }
 
 export function getLinkFromGraph(graph, linkId) {
@@ -214,16 +262,20 @@ export function hideWidgetForGood(node, widget, suffix = "") {
 // Update pattern to match both formats: <lora:name:model_strength> or <lora:name:model_strength:clip_strength>
 export const LORA_PATTERN = /<lora:([^:]+):([-\d\.]+)(?::([-\d\.]+))?>/g;
 
-// Get connected Lora Stacker nodes that feed into the current node
-export function getConnectedInputStackers(node) {
-    const connectedStackers = [];
+function isLoraStackInput(input) {
+    return input?.type === "LORA_STACK";
+}
+
+// Get connected LORA_STACK chain nodes that feed into the current node
+export function getConnectedInputLoraChainNodes(node) {
+    const connectedNodes = [];
 
     if (!node?.inputs) {
-        return connectedStackers;
+        return connectedNodes;
     }
 
     for (const input of node.inputs) {
-        if (input.name !== "lora_stack" || !input.link) {
+        if (!isLoraStackInput(input) || !input.link) {
             continue;
         }
 
@@ -233,12 +285,12 @@ export function getConnectedInputStackers(node) {
         }
 
         const sourceNode = node.graph?.getNodeById?.(link.origin_id);
-        if (sourceNode && sourceNode.comfyClass === "Lora Stacker (LoraManager)") {
-            connectedStackers.push(sourceNode);
+        if (sourceNode && isLoraChainNode(sourceNode.comfyClass)) {
+            connectedNodes.push(sourceNode);
         }
     }
 
-    return connectedStackers;
+    return connectedNodes;
 }
 
 // Get connected TriggerWord Toggle nodes that receive output from the current node
@@ -273,16 +325,35 @@ export function getConnectedTriggerToggleNodes(node) {
 // Extract active lora names from a node's widgets
 export function getActiveLorasFromNode(node) {
     const activeLoraNames = new Set();
-    
-    // For lorasWidget style entries (array of objects)
-    if (node.lorasWidget && node.lorasWidget.value) {
-        node.lorasWidget.value.forEach(lora => {
+
+    // Handle Lora Cycler (single LoRA from cycler_config widget)
+    if (node.comfyClass === "Lora Cycler (LoraManager)") {
+        const cyclerWidget = node.widgets?.find(w => w.name === 'cycler_config');
+        if (cyclerWidget?.value?.current_lora_filename) {
+            activeLoraNames.add(cyclerWidget.value.current_lora_filename);
+        }
+        return activeLoraNames;
+    }
+
+    // Aggregator nodes do not own LoRA state directly; they only forward upstream stacks.
+    if (isLoraStackAggregatorNode(node.comfyClass)) {
+        return activeLoraNames;
+    }
+
+    // Handle Lora Stacker and Lora Randomizer (lorasWidget)
+    let lorasWidget = node.lorasWidget;
+    if (!lorasWidget && node.widgets) {
+        lorasWidget = node.widgets.find(w => w.name === 'loras');
+    }
+
+    if (lorasWidget && lorasWidget.value) {
+        lorasWidget.value.forEach(lora => {
             if (lora.active) {
                 activeLoraNames.add(lora.name);
             }
         });
     }
-    
+
     return activeLoraNames;
 }
 
@@ -303,14 +374,18 @@ export function collectActiveLorasFromChain(node, visited = new Set()) {
     // Mode 2 is Never, Mode 4 is Bypass
     const isNodeActive = node.mode === undefined || node.mode === 0 || node.mode === 3;
     
+    if (!isNodeActive) {
+        return new Set();
+    }
+
     // Get active loras from current node only if node is active
-    const allActiveLoraNames = isNodeActive ? getActiveLorasFromNode(node) : new Set();
+    const allActiveLoraNames = getActiveLorasFromNode(node);
     
-    // Get connected input stackers and collect their active loras
-    const inputStackers = getConnectedInputStackers(node);
-    for (const stacker of inputStackers) {
-        const stackerLoras = collectActiveLorasFromChain(stacker, visited);
-        stackerLoras.forEach(name => allActiveLoraNames.add(name));
+    // Get connected input LORA_STACK chain nodes and collect their active loras
+    const inputChainNodes = getConnectedInputLoraChainNodes(node);
+    for (const chainNode of inputChainNodes) {
+        const upstreamLoras = collectActiveLorasFromChain(chainNode, visited);
+        upstreamLoras.forEach(name => allActiveLoraNames.add(name));
     }
     
     return allActiveLoraNames;
@@ -384,6 +459,91 @@ export function mergeLoras(lorasText, lorasArr) {
 }
 
 /**
+ * Find the actual input element for a widget
+ * @param {Object} node - The node instance
+ * @param {Object} widget - The widget to find input element for
+ * @returns {Promise<HTMLElement|null>} The input element or null
+ */
+async function findWidgetInputElement(node, widget) {
+    if (widget.inputEl && document.body.contains(widget.inputEl)) {
+        return widget.inputEl;
+    }
+
+    const nodeId = node.id;
+    const widgetName = widget.name;
+    const maxAttempts = 20;
+    const searchInterval = 50;
+
+    const searchForInput = (attempt = 0) => {
+        return new Promise((resolve) => {
+            const doSearch = () => {
+                let inputElement = null;
+
+                // PRIORITY 1: Use data-node-id attribute (most reliable)
+                // Always try this first, regardless of mode - Vue elements may still exist after mode switch
+                const nodeContainer = document.querySelector(`[data-node-id="${nodeId}"]`);
+                if (nodeContainer) {
+                    // For text widgets, specifically look for textarea (not checkbox/toggle inputs)
+                    if (widgetName === 'text') {
+                        const textarea = nodeContainer.querySelector('textarea');
+                        if (textarea) {
+                            inputElement = textarea;
+                            console.log(`[Lora Manager] Found textarea for widget "${widgetName}" on node ${nodeId} via data-node-id`);
+                        }
+                    } else {
+                        // For other widgets, find input within widget containers
+                        const widgetContainers = nodeContainer.querySelectorAll('.lg-node-widget');
+                        for (const container of widgetContainers) {
+                            const input = container.querySelector('input:not([type="checkbox"]), textarea');
+                            if (input) {
+                                inputElement = input;
+                                console.log(`[Lora Manager] Found input element for widget "${widgetName}" on node ${nodeId} via data-node-id`);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // PRIORITY 2: Fallback - heuristic search using widget containers
+                if (!inputElement) {
+                    const allWidgetContainers = document.querySelectorAll('.lg-node-widget, .dom-widget');
+
+                    for (const container of allWidgetContainers) {
+                        const hasInput = !!container.querySelector('input, textarea');
+                        if (!hasInput) continue;
+
+                        const textContent = container.textContent.toLowerCase();
+                        const containsWidgetName = textContent.includes(widgetName.toLowerCase());
+                        const containsNodeTitle = textContent.includes(node.title?.toLowerCase() || '');
+
+                        // For text widgets, check if it's a textarea
+                        const isTextareaWidget = widgetName === 'text' && container.querySelector('textarea');
+
+                        if (containsWidgetName || containsNodeTitle || isTextareaWidget) {
+                            inputElement = container.querySelector('input, textarea');
+                            console.log(`[Lora Manager] Found input element for widget "${widgetName}" on node ${nodeId} via heuristic`);
+                            break;
+                        }
+                    }
+                }
+
+                if (inputElement) {
+                    resolve(inputElement);
+                } else if (attempt < maxAttempts) {
+                    setTimeout(() => searchForInput(attempt + 1).then(resolve), searchInterval);
+                } else {
+                    console.warn(`[Lora Manager] Could not find input element for widget "${widgetName}" on node ${nodeId} after ${maxAttempts} attempts`);
+                    resolve(null);
+                }
+            };
+            doSearch();
+        });
+    };
+
+    return searchForInput();
+}
+
+/**
  * Initialize autocomplete for an input widget and setup cleanup
  * @param {Object} node - The node instance
  * @param {Object} inputWidget - The input widget to add autocomplete to
@@ -393,32 +553,125 @@ export function mergeLoras(lorasText, lorasArr) {
  * @returns {Function} Enhanced callback function with autocomplete
  */
 export function setupInputWidgetWithAutocomplete(node, inputWidget, originalCallback, modelType = 'loras', autocompleteOptions = {}) {
-    let autocomplete = null;
     const defaultOptions = {
         maxItems: 20,
         minChars: 1,
         debounceDelay: 200,
     };
     const mergedOptions = { ...defaultOptions, ...autocompleteOptions };
-    
-    // Enhanced callback that initializes autocomplete and calls original callback
-    const enhancedCallback = (value) => {
-        // Initialize autocomplete on first callback if not already done
-        if (!autocomplete && inputWidget.inputEl) {
-            autocomplete = new AutoComplete(inputWidget.inputEl, modelType, mergedOptions);
-            // Store reference for cleanup
-            node.autocomplete = autocomplete;
+
+    setupAutocompleteCleanup(node);
+
+    // Track rendering mode changes per node
+    let lastVueNodesMode = typeof LiteGraph !== 'undefined' ? LiteGraph.vueNodesMode : false;
+
+    const initializeAutocomplete = async () => {
+        if (node.autocomplete) {
+            console.log(`[Lora Manager] Autocomplete already initialized for widget "${inputWidget.name}" on node ${node.id}`);
+            return;
         }
-        
-        // Call the original callback
+
+        try {
+            let inputElement = null;
+
+            // PRIORITY 1: Always prefer widget.inputEl if it exists (even if not yet in DOM)
+            // This is the authoritative element created by ComfyUI
+            if (inputWidget.inputEl) {
+                inputElement = inputWidget.inputEl;
+                // If not yet in DOM, wait for it to be added
+                if (!document.body.contains(inputElement)) {
+                    console.log(`[Lora Manager] widget.inputEl exists but not in DOM yet, waiting for node ${node.id}`);
+                    const maxWait = 1000; // 1 second max
+                    const checkInterval = 50;
+                    let waited = 0;
+                    while (!document.body.contains(inputElement) && waited < maxWait) {
+                        await new Promise(r => setTimeout(r, checkInterval));
+                        waited += checkInterval;
+                    }
+                    if (!document.body.contains(inputElement)) {
+                        console.warn(`[Lora Manager] widget.inputEl still not in DOM after ${maxWait}ms for node ${node.id}`);
+                        inputElement = null; // Fall through to DOM search
+                    }
+                }
+                if (inputElement) {
+                    console.log(`[Lora Manager] Using widget.inputEl for widget "${inputWidget.name}" on node ${node.id}`);
+                }
+            }
+
+            // PRIORITY 2: DOM search only if widget.inputEl doesn't exist
+            if (!inputElement) {
+                console.log(`[Lora Manager] Searching DOM for input element for widget "${inputWidget.name}" on node ${node.id}`);
+                inputElement = await findWidgetInputElement(node, inputWidget);
+            }
+
+            if (inputElement) {
+                const autocomplete = new AutoComplete(inputElement, modelType, mergedOptions);
+                node.autocomplete = autocomplete;
+                console.log(`[Lora Manager] Autocomplete initialized for widget "${inputWidget.name}" on node ${node.id}`);
+            } else {
+                console.warn(`[Lora Manager] Could not find input element for widget "${inputWidget.name}" on node ${node.id}`);
+            }
+        } catch (error) {
+            console.error('[Lora Manager] Error initializing autocomplete:', error);
+        }
+    };
+
+    const checkAndInvalidateAutocomplete = () => {
+        // Check for rendering mode change
+        const currentMode = typeof LiteGraph !== 'undefined' ? LiteGraph.vueNodesMode : false;
+        if (currentMode !== lastVueNodesMode) {
+            lastVueNodesMode = currentMode;
+            if (node.autocomplete) {
+                console.log(`[Lora Manager] Rendering mode changed, reinitializing autocomplete for node ${node.id}`);
+                node.autocomplete.destroy();
+                node.autocomplete = null;
+            }
+            return true;
+        }
+
+        // Check if existing autocomplete's input element is still valid
+        if (node.autocomplete) {
+            const currentInputEl = node.autocomplete.inputElement;
+            if (!currentInputEl || !document.body.contains(currentInputEl)) {
+                console.log(`[Lora Manager] Autocomplete element detached, reinitializing for node ${node.id}`);
+                node.autocomplete.destroy();
+                node.autocomplete = null;
+                return true;
+            }
+
+            // Check if autocomplete is bound to wrong element (different from widget.inputEl)
+            // Only do this check if widget.inputEl is actually in the DOM - it may be stale
+            if (inputWidget.inputEl && document.body.contains(inputWidget.inputEl) && currentInputEl !== inputWidget.inputEl) {
+                console.log(`[Lora Manager] Autocomplete bound to wrong element, rebinding for node ${node.id}`);
+                node.autocomplete.destroy();
+                node.autocomplete = null;
+                return true;
+            }
+
+            // Check if events need rebinding (element exists but events not bound)
+            // This can happen when Vue moves the element in the DOM
+            if (node.autocomplete.needsRebind()) {
+                console.log(`[Lora Manager] Autocomplete events need rebinding for node ${node.id}`);
+                node.autocomplete.rebindEvents();
+            }
+        }
+
+        return false;
+    };
+
+    const enhancedCallback = (value) => {
+        // Check validity and invalidate if needed
+        checkAndInvalidateAutocomplete();
+
+        if (!node.autocomplete) {
+            initializeAutocomplete();
+        }
+
         if (typeof originalCallback === "function") {
             originalCallback.call(node, value);
         }
     };
-    
-    // Setup cleanup on node removal
-    setupAutocompleteCleanup(node);
-    
+
     return enhancedCallback;
 }
 
@@ -466,4 +719,188 @@ export function forwardMiddleMouseToCanvas(container) {
             app.canvas.processMouseUp(event);
         }
     });
+}
+
+/**
+ * Forward wheel events from a container to the ComfyUI canvas for zooming,
+ * unless the container has scrollable content.
+ * This allows canvas zoom to work when hovering over DOM widgets.
+ * @param {HTMLElement} container - The root DOM element of the widget
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.captureWheel - If true, always capture wheel events (default: false)
+ */
+export function forwardWheelToCanvas(container, options = {}) {
+    if (!container) return;
+
+    const { captureWheel = false } = options;
+
+    container.addEventListener('wheel', (event) => {
+        // If explicitly capturing wheel (for internal scrolling), stop here
+        if (captureWheel) {
+            event.stopPropagation();
+            return;
+        }
+
+        // Access ComfyUI app from global window
+        const comfyApp = window.app;
+        if (!comfyApp || !comfyApp.canvas || typeof comfyApp.canvas.processMouseWheel !== 'function') {
+            return;
+        }
+
+        const deltaX = event.deltaX;
+        const deltaY = event.deltaY;
+        const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+
+        // 1. Handle pinch-to-zoom (ctrlKey is true for pinch-to-zoom on most browsers)
+        if (event.ctrlKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            comfyApp.canvas.processMouseWheel(event);
+            return;
+        }
+
+        // 2. Horizontal scroll: pass to canvas (widgets usually don't scroll horizontally)
+        if (isHorizontal) {
+            event.preventDefault();
+            event.stopPropagation();
+            comfyApp.canvas.processMouseWheel(event);
+            return;
+        }
+
+        // 3. Vertical scrolling: check if container is scrollable
+        const canScrollY = container.scrollHeight > container.clientHeight;
+
+        if (canScrollY) {
+            // Container is scrollable, let it handle the wheel event but stop propagation
+            // to prevent the canvas from zooming while the user is trying to scroll
+            event.stopPropagation();
+        } else {
+            // Container is NOT scrollable, forward the wheel event to the canvas
+            // so it can trigger zoom in/out
+            event.preventDefault();
+            event.stopPropagation();
+            comfyApp.canvas.processMouseWheel(event);
+        }
+    }, { passive: false });
+}
+
+// Marks scrollable containers whose wheel scrolling must win over canvas zoom.
+const LM_WHEEL_CLASS = 'lm-wheel-scrollable';
+let lmWheelHookInstalled = false;
+
+/**
+ * Keep vertical wheel scrolling inside a scrollable widget container, even in
+ * Nodes 2.0 / Vue mode where ComfyUI's wheel→zoom handler runs on the document
+ * in the capture phase (outer than any container-level listener).
+ * Installs a single capture-phase hook on `window` (the outermost dispatch
+ * point). When the wheel is over a marked, scrollable element, we manually
+ * scroll it and fully consume the event so canvas zoom never sees it.
+ */
+export function enableListWheelScroll(container) {
+    if (!container) return;
+    container.classList.add(LM_WHEEL_CLASS);
+
+    if (lmWheelHookInstalled) return;
+    lmWheelHookInstalled = true;
+
+    window.addEventListener('wheel', (event) => {
+        // Let pinch/zoom and horizontal gestures pass through.
+        if (event.ctrlKey) return;
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+
+        const target = event.target;
+        if (!target || typeof target.closest !== 'function') return;
+        const el = target.closest(`.${LM_WHEEL_CLASS}`);
+        if (!el) return;
+
+        const canScrollY = el.scrollHeight > el.clientHeight + 1;
+        if (!canScrollY) return;
+
+        // Translate deltaMode to approximate pixels.
+        const unit = event.deltaMode === 1 ? 16
+            : event.deltaMode === 2 ? el.clientHeight
+            : 1;
+
+        el.scrollTop += event.deltaY * unit;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+    }, { capture: true, passive: false });
+}
+
+// Get connected Lora Pool node from pool_config input
+export function getConnectedPoolConfigNode(node) {
+    if (!node?.inputs) {
+        return null;
+    }
+
+    for (const input of node.inputs) {
+        if (input.name !== "pool_config" || !input.link) {
+            continue;
+        }
+
+        const link = getLinkFromGraph(node.graph, input.link);
+        if (!link) {
+            continue;
+        }
+
+        const sourceNode = node.graph?.getNodeById?.(link.origin_id);
+        if (sourceNode && sourceNode.comfyClass === "Lora Pool (LoraManager)") {
+            return sourceNode;
+        }
+    }
+
+    return null;
+}
+
+// Get pool config widget value from connected Lora Pool node
+export function getPoolConfigFromConnectedNode(node) {
+    const poolNode = getConnectedPoolConfigNode(node);
+    if (!poolNode) {
+        return null;
+    }
+
+    const isNodeActive = poolNode.mode === undefined || poolNode.mode === 0 || poolNode.mode === 3;
+    if (!isNodeActive) {
+        return null;
+    }
+
+    const poolWidget = poolNode.widgets?.find(w => w.name === "pool_config");
+    return poolWidget?.value || null;
+}
+
+// Helper function to find and update downstream Lora Loader nodes
+export function updateDownstreamLoaders(startNode, visited = new Set()) {
+  const nodeKey = getNodeKey(startNode);
+  if (!nodeKey || visited.has(nodeKey)) return;
+  visited.add(nodeKey);
+
+  // Check each output link
+  if (startNode.outputs) {
+    for (const output of startNode.outputs) {
+      if (output.links) {
+        for (const linkId of output.links) {
+          const link = getLinkFromGraph(startNode.graph, linkId);
+          if (link) {
+            const targetNode = startNode.graph?.getNodeById?.(link.target_id);
+
+            // If target is a Lora Loader, collect all active loras in the chain and update
+            if (
+              targetNode &&
+              targetNode.comfyClass === "Lora Loader (LoraManager)"
+            ) {
+              const allActiveLoraNames =
+                collectActiveLorasFromChain(targetNode);
+              updateConnectedTriggerWords(targetNode, allActiveLoraNames);
+            }
+            // If target is another LORA_STACK chain node, recursively check its outputs
+            else if (targetNode && isLoraChainNode(targetNode.comfyClass)) {
+              updateDownstreamLoaders(targetNode, visited);
+            }
+          }
+        }
+      }
+    }
+  }
 }

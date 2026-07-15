@@ -1,10 +1,10 @@
-import { showToast, openCivitai, copyToClipboard, copyLoraSyntax, sendLoraToWorkflow, openExampleImagesFolder, buildLoraSyntax, sendModelPathToWorkflow } from '../../utils/uiHelpers.js';
+import { showToast, openCivitai, openHuggingFace, copyToClipboard, copyLoraSyntax, sendLoraToWorkflow, sendEmbeddingToWorkflow, openExampleImagesFolder, buildLoraSyntax, sendModelPathToWorkflow } from '../../utils/uiHelpers.js';
 import { state, getCurrentPageState } from '../../state/index.js';
 import { showModelModal } from './ModelModal.js';
 import { toggleShowcase } from './showcase/ShowcaseView.js';
 import { bulkManager } from '../../managers/BulkManager.js';
 import { modalManager } from '../../managers/ModalManager.js';
-import { NSFW_LEVELS, getBaseModelAbbreviation } from '../../utils/constants.js';
+import { NSFW_LEVELS, getBaseModelAbbreviation, getSubTypeAbbreviation, getMatureBlurThreshold, MODEL_SUBTYPE_DISPLAY_NAMES } from '../../utils/constants.js';
 import { MODEL_TYPES } from '../../api/apiConfig.js';
 import { getModelApiClient } from '../../api/modelApiFactory.js';
 import { showDeleteModal } from '../../utils/modalUtils.js';
@@ -14,11 +14,11 @@ import { eventManager } from '../../utils/EventManager.js';
 // Helper function to get display name based on settings
 function getDisplayName(model) {
     const displayNameSetting = state.global.settings.model_name_display || 'model_name';
-    
+
     if (displayNameSetting === 'file_name') {
         return model.file_name || model.model_name || 'Unknown Model';
     }
-    
+
     return model.model_name || model.file_name || 'Unknown Model';
 }
 
@@ -26,7 +26,7 @@ function getDisplayName(model) {
 export function setupModelCardEventDelegation(modelType) {
     // Remove any existing handler first
     eventManager.removeHandler('click', 'modelCard-delegation');
-    
+
     // Register model card event delegation with event manager
     eventManager.addHandler('click', 'modelCard-delegation', (event) => {
         return handleModelCardEvent_internal(event, modelType);
@@ -42,64 +42,72 @@ function handleModelCardEvent_internal(event, modelType) {
     // Find the closest card element
     const card = event.target.closest('.model-card');
     if (!card) return false; // Continue with other handlers
-    
+
     // Handle specific elements within the card
     if (event.target.closest('.toggle-blur-btn')) {
         event.stopPropagation();
         toggleBlurContent(card);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.show-content-btn')) {
         event.stopPropagation();
         showBlurredContent(card);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-star')) {
         event.stopPropagation();
         toggleFavorite(card);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-globe')) {
         event.stopPropagation();
         if (card.dataset.from_civitai === 'true') {
             openCivitai(card.dataset.filepath);
+        } else if (card.dataset.hf_url) {
+            openHuggingFace(card.dataset.hf_url);
         }
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-paper-plane')) {
         event.stopPropagation();
         handleSendToWorkflow(card, event.shiftKey, modelType);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-copy')) {
         event.stopPropagation();
         handleCopyAction(card, modelType);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-trash')) {
         event.stopPropagation();
         showDeleteModal(card.dataset.filepath);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-image')) {
         event.stopPropagation();
         getModelApiClient().replaceModelPreview(card.dataset.filepath);
         return true; // Stop propagation
     }
-    
+
     if (event.target.closest('.fa-folder-open')) {
         event.stopPropagation();
         handleExampleImagesAccess(card, modelType);
         return true; // Stop propagation
     }
-    
+
+    if (event.target.closest('.version-count-link')) {
+        event.stopPropagation();
+        handleViewLocalVersionsFromCard(card, modelType);
+        return true;
+    }
+
     // If no specific element was clicked, handle the card click (show modal or toggle selection)
     handleCardClick(card, modelType);
     return false; // Continue with other handlers (e.g., bulk selection)
@@ -110,14 +118,14 @@ function toggleBlurContent(card) {
     const preview = card.querySelector('.card-preview');
     const isBlurred = preview.classList.toggle('blurred');
     const icon = card.querySelector('.toggle-blur-btn i');
-    
+
     // Update the icon based on blur state
     if (isBlurred) {
         icon.className = 'fas fa-eye';
     } else {
         icon.className = 'fas fa-eye-slash';
     }
-    
+
     // Toggle the overlay visibility
     const overlay = card.querySelector('.nsfw-overlay');
     if (overlay) {
@@ -128,13 +136,13 @@ function toggleBlurContent(card) {
 function showBlurredContent(card) {
     const preview = card.querySelector('.card-preview');
     preview.classList.remove('blurred');
-    
+
     // Update the toggle button icon
     const toggleBtn = card.querySelector('.toggle-blur-btn');
     if (toggleBtn) {
         toggleBtn.querySelector('i').className = 'fas fa-eye-slash';
     }
-    
+
     // Hide the overlay
     const overlay = card.querySelector('.nsfw-overlay');
     if (overlay) {
@@ -146,10 +154,10 @@ async function toggleFavorite(card) {
     const starIcon = card.querySelector('.fa-star');
     const isFavorite = starIcon.classList.contains('fas');
     const newFavoriteState = !isFavorite;
-    
+
     try {
-        await getModelApiClient().saveModelMetadata(card.dataset.filepath, { 
-            favorite: newFavoriteState 
+        await getModelApiClient().saveModelMetadata(card.dataset.filepath, {
+            favorite: newFavoriteState
         });
 
         if (newFavoriteState) {
@@ -166,7 +174,9 @@ async function toggleFavorite(card) {
 function handleSendToWorkflow(card, replaceMode, modelType) {
     if (modelType === MODEL_TYPES.LORA) {
         const usageTips = JSON.parse(card.dataset.usage_tips || '{}');
-        const loraSyntax = buildLoraSyntax(card.dataset.file_name, usageTips);
+        const folder = card.dataset.folder || '';
+        const loraName = folder ? `${folder}/${card.dataset.file_name}` : card.dataset.file_name;
+        const loraSyntax = buildLoraSyntax(loraName, usageTips);
         sendLoraToWorkflow(loraSyntax, replaceMode, 'lora');
     } else if (modelType === MODEL_TYPES.CHECKPOINT) {
         const modelPath = card.dataset.filepath;
@@ -176,7 +186,7 @@ function handleSendToWorkflow(card, replaceMode, modelType) {
             return;
         }
 
-        const subtype = (card.dataset.model_type || 'checkpoint').toLowerCase();
+        const subtype = (card.dataset.sub_type || 'checkpoint').toLowerCase();
         const isDiffusionModel = subtype === 'diffusion_model';
         const widgetName = isDiffusionModel ? 'unet_name' : 'ckpt_name';
         const actionTypeText = translate(
@@ -185,14 +195,14 @@ function handleSendToWorkflow(card, replaceMode, modelType) {
             isDiffusionModel ? 'Diffusion Model' : 'Checkpoint'
         );
         const successMessage = translate(
-            isDiffusionModel ? 'uiHelpers.workflow.diffusionModelUpdated' : 'uiHelpers.workflow.checkpointUpdated',
+            'uiHelpers.workflow.modelUpdated',
             {},
-            isDiffusionModel ? 'Diffusion model updated in workflow' : 'Checkpoint updated in workflow'
+            'Model updated in workflow'
         );
         const failureMessage = translate(
-            isDiffusionModel ? 'uiHelpers.workflow.diffusionModelFailed' : 'uiHelpers.workflow.checkpointFailed',
+            'uiHelpers.workflow.modelFailed',
             {},
-            isDiffusionModel ? 'Failed to update diffusion model node' : 'Failed to update checkpoint node'
+            'Failed to update model node'
         );
         const missingNodesMessage = translate(
             'uiHelpers.workflow.noMatchingNodes',
@@ -214,6 +224,11 @@ function handleSendToWorkflow(card, replaceMode, modelType) {
             missingNodesMessage,
             missingTargetMessage,
         });
+    } else if (modelType === MODEL_TYPES.EMBEDDING) {
+        const folder = card.dataset.folder || '';
+        const name = card.dataset.file_name || '';
+        const embeddingCode = folder ? `embedding:${folder}/${name}` : `embedding:${name}`;
+        sendEmbeddingToWorkflow(embeddingCode);
     } else {
         showToast('modelCard.sendToWorkflow.checkpointNotImplemented', {}, 'info');
     }
@@ -228,8 +243,11 @@ function handleCopyAction(card, modelType) {
         const message = translate('modelCard.actions.checkpointNameCopied', {}, 'Checkpoint name copied');
         copyToClipboard(checkpointName, message);
     } else if (modelType === MODEL_TYPES.EMBEDDING) {
-        const embeddingName = card.dataset.file_name;
-        copyToClipboard(embeddingName, 'Embedding name copied');
+        const folder = card.dataset.folder || '';
+        const name = card.dataset.file_name || '';
+        const embeddingCode = folder ? `embedding:${folder}/${name}` : `embedding:${name}`;
+        const message = translate('modelCard.actions.embeddingNameCopied', {}, 'Embedding syntax copied');
+        copyToClipboard(embeddingCode, message);
     }
 }
 
@@ -239,11 +257,11 @@ function handleReplacePreview(filePath, modelType) {
 
 async function handleExampleImagesAccess(card, modelType) {
     const modelHash = card.dataset.sha256;
-    
+
     try {
         const response = await fetch(`/api/lm/has-example-images?model_hash=${modelHash}`);
         const data = await response.json();
-        
+
         if (data.has_images) {
             openExampleImagesFolder(modelHash);
         } else {
@@ -255,9 +273,25 @@ async function handleExampleImagesAccess(card, modelType) {
     }
 }
 
+function handleViewLocalVersionsFromCard(card, modelType) {
+    const modelId = card.dataset.modelId;
+    const modelName = card.dataset.name;
+    if (!modelId) return;
+    // Respect version_grouping: only filter by base model when the strategy says so
+    const strategy = state.global?.settings?.version_grouping;
+    const shouldFilterByBase = strategy === 'same_base';
+    const baseModel = shouldFilterByBase && card.dataset.base_model !== 'Unknown'
+        ? card.dataset.base_model
+        : undefined;
+    // Use the no-reload VLM flow via PageControls
+    if (window.pageControls && typeof window.pageControls.triggerVlmView === 'function') {
+        window.pageControls.triggerVlmView(modelId, modelName, baseModel, modelType);
+    }
+}
+
 function handleCardClick(card, modelType) {
     const pageState = getCurrentPageState();
-    
+
     if (state.bulkMode) {
         // Toggle selection using the bulk manager
         bulkManager.toggleCardSelection(card);
@@ -281,6 +315,7 @@ async function showModelModalFromCard(card, modelType) {
         modified: card.dataset.modified,
         file_size: parseInt(card.dataset.file_size || '0'),
         from_civitai: card.dataset.from_civitai === 'true',
+        hf_url: card.dataset.hf_url || '',
         base_model: card.dataset.base_model,
         notes: card.dataset.notes || '',
         favorite: card.dataset.favorite === 'true',
@@ -294,7 +329,7 @@ async function showModelModalFromCard(card, modelType) {
             usage_tips: card.dataset.usage_tips,
         })
     };
-    
+
     await showModelModal(modelMeta, modelType);
 }
 
@@ -310,9 +345,9 @@ function showExampleAccessModal(card, modelType) {
     try {
         const metaData = JSON.parse(card.dataset.meta || '{}');
         hasRemoteExamples = metaData.images &&
-                            Array.isArray(metaData.images) &&
-                            metaData.images.length > 0 &&
-                            metaData.images[0].url;
+            Array.isArray(metaData.images) &&
+            metaData.images.length > 0 &&
+            metaData.images[0].url;
     } catch (e) {
         console.error('Error parsing meta data:', e);
     }
@@ -329,10 +364,10 @@ function showExampleAccessModal(card, modelType) {
                     showToast('modelCard.exampleImages.missingHash', {}, 'error');
                     return;
                 }
-                
+
                 // Close the modal
                 modalManager.closeModal('exampleAccessModal');
-                
+
                 try {
                     // Use the appropriate model API client to download examples
                     const apiClient = getModelApiClient(modelType);
@@ -369,6 +404,7 @@ function showExampleAccessModal(card, modelType) {
                 modified: card.dataset.modified,
                 file_size: card.dataset.file_size,
                 from_civitai: card.dataset.from_civitai === 'true',
+                hf_url: card.dataset.hf_url || '',
                 base_model: card.dataset.base_model,
                 notes: card.dataset.notes,
                 favorite: card.dataset.favorite === 'true',
@@ -430,11 +466,24 @@ export function createModelCard(model, modelType) {
     card.dataset.modified = model.modified;
     card.dataset.file_size = model.file_size;
     card.dataset.from_civitai = model.from_civitai;
+    card.dataset.usage_count = String(model.usage_count);
     card.dataset.notes = model.notes || '';
     card.dataset.base_model = model.base_model || 'Unknown';
     card.dataset.favorite = model.favorite ? 'true' : 'false';
+    card.dataset.exclude = model.exclude ? 'true' : 'false';
+    card.dataset.hf_url = model.hf_url || '';
     const hasUpdateAvailable = Boolean(model.update_available);
     card.dataset.update_available = hasUpdateAvailable ? 'true' : 'false';
+    card.dataset.skip_metadata_refresh = model.skip_metadata_refresh ? 'true' : 'false';
+    // Store version_count for group-by-model display
+    if (model.version_count !== undefined) {
+        card.dataset.version_count = model.version_count;
+    }
+
+    // To only show usage_count when sorting by usage. 
+    const pageState = getCurrentPageState();
+    const isUsageSort = pageState?.sortBy?.startsWith('usage');
+    const hasUsageCount = isUsageSort && typeof model.usage_count === 'number';
 
     const civitaiData = model.civitai || {};
     const modelId = civitaiData?.modelId ?? civitaiData?.model_id;
@@ -447,16 +496,16 @@ export function createModelCard(model, modelType) {
         card.dataset.usage_tips = model.usage_tips;
     }
 
-    // checkpoint specific data
-    if (modelType === MODEL_TYPES.CHECKPOINT) {
-        card.dataset.model_type = model.model_type; // checkpoint or diffusion_model
+    // Set sub_type for all model types (lora/locon/dora, checkpoint/diffusion_model, embedding)
+    if (model.sub_type) {
+        card.dataset.sub_type = model.sub_type;
     }
 
     // Store metadata if available
     if (model.civitai) {
         card.dataset.meta = JSON.stringify(model.civitai || {});
     }
-    
+
     // Store tags if available
     if (model.tags && Array.isArray(model.tags)) {
         card.dataset.tags = JSON.stringify(model.tags);
@@ -469,11 +518,19 @@ export function createModelCard(model, modelType) {
     // Store NSFW level if available
     const nsfwLevel = model.preview_nsfw_level !== undefined ? model.preview_nsfw_level : 0;
     card.dataset.nsfwLevel = nsfwLevel;
-    
+
     // Determine if the preview should be blurred based on NSFW level and user settings
-    const shouldBlur = state.settings.blur_mature_content && nsfwLevel > NSFW_LEVELS.PG13;
+    const matureBlurThreshold = getMatureBlurThreshold(state.settings);
+    const shouldBlur = state.settings.blur_mature_content && nsfwLevel >= matureBlurThreshold;
     if (shouldBlur) {
         card.classList.add('nsfw-content');
+    }
+
+    if (model.skip_metadata_refresh) {
+        card.classList.add('skip-refresh');
+    }
+    if (model.exclude) {
+        card.classList.add('excluded-model');
     }
 
     // Apply selection state if in bulk mode and this card is in the selected set (LoRA only)
@@ -500,7 +557,7 @@ export function createModelCard(model, modelType) {
 
     // Check if autoplayOnHover is enabled for video previews
     const autoplayOnHover = state.global?.settings?.autoplay_on_hover || false;
-    const isVideo = previewUrl.endsWith('.mp4');
+    const isVideo = previewUrl.endsWith('.mp4') || previewUrl.endsWith('.webm');
     const videoAttrs = [
         'controls',
         'muted',
@@ -521,12 +578,15 @@ export function createModelCard(model, modelType) {
     }
 
     // Generate action icons based on model type with i18n support
-    const favoriteTitle = isFavorite ? 
+    const favoriteTitle = isFavorite ?
         translate('modelCard.actions.removeFromFavorites', {}, 'Remove from favorites') :
         translate('modelCard.actions.addToFavorites', {}, 'Add to favorites');
-    const globeTitle = model.from_civitai ? 
+    const globeTitle = model.from_civitai ?
         translate('modelCard.actions.viewOnCivitai', {}, 'View on Civitai') :
-        translate('modelCard.actions.notAvailableFromCivitai', {}, 'Not available from Civitai');
+        model.hf_url ?
+            translate('modelCard.actions.viewOnHuggingFace', {}, 'View on Hugging Face') :
+            translate('modelCard.actions.notAvailableFromCivitai', {}, 'Not available from Civitai');
+    const globeEnabled = model.from_civitai || !!model.hf_url;
     let sendTitle;
     let copyTitle;
     if (modelType === MODEL_TYPES.LORA) {
@@ -551,7 +611,7 @@ export function createModelCard(model, modelType) {
         </i>
         <i class="fas fa-globe" 
            title="${globeTitle}"
-           ${!model.from_civitai ? 'style="opacity: 0.5; cursor: not-allowed"' : ''}>
+           ${!globeEnabled ? 'style="opacity: 0.5; cursor: not-allowed"' : ''}>
         </i>
         <i class="fas fa-paper-plane" 
            title="${sendTitle}">
@@ -574,24 +634,42 @@ export function createModelCard(model, modelType) {
     const baseModelLabel = model.base_model || 'Unknown';
     const baseModelAbbreviation = getBaseModelAbbreviation(baseModelLabel);
 
+    // Sub-type display (e.g., LoRA, LyCO, DoRA, CKPT, DM, EMB)
+    const subType = model.sub_type || '';
+    const subTypeAbbreviation = getSubTypeAbbreviation(subType);
+    const fullSubTypeName = MODEL_SUBTYPE_DISPLAY_NAMES[subType?.toLowerCase()] || subType || '';
+
     card.innerHTML = `
         <div class="card-preview ${shouldBlur ? 'blurred' : ''}">
-            ${isVideo ? 
-                `<video ${videoAttrs.join(' ')} style="pointer-events: none;"></video>` :
-                `<img src="${versionedPreviewUrl}" alt="${model.model_name}">`
-            }
+            ${isVideo ?
+            `<video ${videoAttrs.join(' ')} style="pointer-events: none;"></video>` :
+            `<img src="${versionedPreviewUrl}" alt="${model.model_name}" onerror="this.onerror=null; this.src='/loras_static/images/no-preview.png'">`
+        }
             <div class="card-header">
-                ${shouldBlur ? 
-                  `<button class="toggle-blur-btn" title="${toggleBlurTitle}">
+                ${shouldBlur ?
+            `<button class="toggle-blur-btn" title="${toggleBlurTitle}">
                       <i class="fas fa-eye"></i>
                   </button>` : ''}
                 <div class="card-header-info">
-                    <span class="base-model-label ${shouldBlur ? 'with-toggle' : ''}" title="${baseModelLabel}">
-                        ${baseModelAbbreviation}
+                    <span class="base-model-label ${shouldBlur ? 'with-toggle' : ''}"
+                          title="${fullSubTypeName ? fullSubTypeName + ' | ' : ''}${baseModelLabel}">
+                        ${subTypeAbbreviation ? `<span class="model-sub-type">${subTypeAbbreviation}</span>` : ''}
+                        ${subTypeAbbreviation ? `<span class="model-separator"></span>` : ''}
+                        <span class="model-base-type">${baseModelAbbreviation}</span>
                     </span>
                     ${hasUpdateAvailable ? `
                         <span class="model-update-badge" title="${updateBadgeTooltip}">
-                            ${updateBadgeLabel}
+                            <i class="fas fa-arrow-up"></i>
+                        </span>
+                    ` : ''}
+                    ${model.skip_metadata_refresh ? `
+                        <span class="model-skip-refresh-badge" title="${translate('modelCard.badges.skipRefresh', {}, 'Metadata refresh skipped')}">
+                            <i class="fas fa-ban"></i>
+                        </span>
+                    ` : ''}
+                    ${model.exclude ? `
+                        <span class="model-excluded-badge" title="${translate('globalContextMenu.manageExcludedModels.label', {}, 'Excluded Models')}">
+                            <i class="fas fa-eye-slash"></i>
                         </span>
                     ` : ''}
                 </div>
@@ -609,8 +687,38 @@ export function createModelCard(model, modelType) {
             ` : ''}
             <div class="card-footer">
                 <div class="model-info">
-                    <span class="model-name">${getDisplayName(model)}</span>
-                    ${model.civitai?.name ? `<span class="version-name">${model.civitai.name}</span>` : ''}
+                    <span class="model-name" title="${getDisplayName(model).replace(/"/g, '&quot;')}">${getDisplayName(model)}</span>
+                    <div class="version-row">
+                        ${(() => {
+                            const autoTags = model.auto_tags || [];
+                            const hlTags = autoTags.filter(t => t === 'HIGH' || t === 'LOW');
+                            const hasVersionName = model.civitai?.name;
+                            // When group_by_model is active and model has multiple versions,
+                            // show clickable version count instead of version name (and hide badges)
+                            const isGroupByModel = state.global.settings.group_by_model;
+                            const versionCount = model.version_count;
+                            const showVersionCount = isGroupByModel && versionCount > 1;
+                            if (!hlTags.length && !hasVersionName && !showVersionCount) return '';
+                            const density = state.global.settings.display_density || 'default';
+                            const shortLabels = density === 'medium' || density === 'compact';
+                            // Don't show HIGH/LOW badges when showing version count (confusing in grouped mode)
+                            const badges = !showVersionCount ? hlTags.map(t => {
+                                const cls = t === 'HIGH' ? 'hl-badge hl-badge--high' : 'hl-badge hl-badge--low';
+                                const label = shortLabels ? (t === 'HIGH' ? 'H' : 'L') : t;
+                                const titleAttr = shortLabels ? ` title="${t}"` : '';
+                                return `<span class="${cls}"${titleAttr}>${label}</span>`;
+                            }).join('') : '';
+                            let versionHtml = '';
+                            if (showVersionCount) {
+                                const countLabel = translate('modelCard.footer.versionCount', { count: versionCount }, `${versionCount} versions`);
+                                versionHtml = `<span class="version-count-link" title="${translate('modelCard.footer.viewAllVersions', {}, 'View all local versions')}">${countLabel}</span>`;
+                            } else if (hasVersionName) {
+                                versionHtml = `<span class="version-name civitai-version">${model.civitai.name}</span>`;
+                            }
+                            return `<span class="badge-version-unit">${badges}${versionHtml}</span>`;
+                        })()}
+                        ${hasUsageCount ? `<span class="version-name" title="${translate('modelCard.usage.timesUsed', {}, 'Times used')}">${model.usage_count}×</span>` : ''}
+                    </div>
                 </div>
                 <div class="card-actions">
                     <i class="${footerActionIcon}" 
@@ -620,7 +728,7 @@ export function createModelCard(model, modelType) {
             </div>
         </div>
     `;
-    
+
     // Add video auto-play on hover functionality if needed
     const videoElement = card.querySelector('video');
     if (videoElement) {
@@ -756,7 +864,7 @@ function cleanupHoverHandlers(videoElement) {
 function requestSafePlay(videoElement) {
     const playPromise = videoElement.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {});
+        playPromise.catch(() => { });
     }
 }
 
@@ -878,16 +986,16 @@ export function configureModelCardVideo(videoElement, autoplayOnHover) {
 export function updateCardsForBulkMode(isBulkMode) {
     // Update the state
     state.bulkMode = isBulkMode;
-    
+
     document.body.classList.toggle('bulk-mode', isBulkMode);
-    
+
     // Get all lora cards - this can now be from the DOM or through the virtual scroller
     const loraCards = document.querySelectorAll('.model-card');
-    
+
     loraCards.forEach(card => {
         // Get all action containers for this card
         const actions = card.querySelectorAll('.card-actions');
-        
+
         // Handle display property based on mode
         if (isBulkMode) {
             // Hide actions when entering bulk mode
@@ -902,12 +1010,12 @@ export function updateCardsForBulkMode(isBulkMode) {
             });
         }
     });
-    
+
     // If using virtual scroller, we need to rerender after toggling bulk mode
     if (state.virtualScroller && typeof state.virtualScroller.scheduleRender === 'function') {
         state.virtualScroller.scheduleRender();
     }
-    
+
     // Apply selection state to cards if entering bulk mode
     if (isBulkMode) {
         bulkManager.applySelectionState();

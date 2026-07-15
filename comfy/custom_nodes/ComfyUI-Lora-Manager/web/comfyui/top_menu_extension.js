@@ -1,12 +1,12 @@
 import { app } from "../../scripts/app.js";
-import { ComfyButtonGroup } from "../../scripts/ui/components/buttonGroup.js";
-import { ComfyButton } from "../../scripts/ui/components/button.js";
 
-const BUTTON_GROUP_CLASS = "lora-manager-top-menu-group";
 const BUTTON_TOOLTIP = "Launch LoRA Manager (Shift+Click opens in new window)";
 const LORA_MANAGER_PATH = "/loras";
 const NEW_WINDOW_FEATURES = "width=1200,height=800,resizable=yes,scrollbars=yes,status=yes";
 const MAX_ATTACH_ATTEMPTS = 120;
+const BUTTON_GROUP_CLASS = "lora-manager-top-menu-group";
+
+const MIN_VERSION_FOR_ACTION_BAR = [1, 33, 9];
 
 const openLoraManager = (event) => {
     const url = `${window.location.origin}${LORA_MANAGER_PATH}`;
@@ -19,7 +19,83 @@ const openLoraManager = (event) => {
     window.open(url, "_blank");
 };
 
-const createTopMenuButton = () => {
+const getComfyUIFrontendVersion = async () => {
+    try {
+        if (window['__COMFYUI_FRONTEND_VERSION__']) {
+            return window['__COMFYUI_FRONTEND_VERSION__'];
+        }
+    } catch (error) {
+        console.warn("LoRA Manager: unable to read __COMFYUI_FRONTEND_VERSION__:", error);
+    }
+
+    try {
+        const response = await fetch("/system_stats");
+        const data = await response.json();
+        
+        if (data?.system?.comfyui_frontend_version) {
+            return data.system.comfyui_frontend_version;
+        }
+        
+        if (data?.system?.required_frontend_version) {
+            return data.system.required_frontend_version;
+        }
+    } catch (error) {
+        console.warn("LoRA Manager: unable to fetch system_stats:", error);
+    }
+
+    return "0.0.0";
+};
+
+const parseVersion = (versionStr) => {
+    if (!versionStr || typeof versionStr !== 'string') {
+        return [0, 0, 0];
+    }
+    
+    const cleanVersion = versionStr.replace(/^[vV]/, '').split('-')[0];
+    const parts = cleanVersion.split('.').map(part => parseInt(part, 10) || 0);
+    
+    while (parts.length < 3) {
+        parts.push(0);
+    }
+    
+    return parts;
+};
+
+const compareVersions = (version1, version2) => {
+    const v1 = typeof version1 === 'string' ? parseVersion(version1) : version1;
+    const v2 = typeof version2 === 'string' ? parseVersion(version2) : version2;
+    
+    for (let i = 0; i < 3; i++) {
+        if (v1[i] > v2[i]) return 1;
+        if (v1[i] < v2[i]) return -1;
+    }
+    
+    return 0;
+};
+
+const supportsActionBarButtons = async () => {
+    const version = await getComfyUIFrontendVersion();
+    return compareVersions(version, MIN_VERSION_FOR_ACTION_BAR) >= 0;
+};
+
+const fetchVersionInfo = async () => {
+    try {
+        const response = await fetch("/api/lm/version-info");
+        const data = await response.json();
+
+        if (data.success) {
+            return data.version;
+        }
+    } catch (error) {
+        console.error("LoRA Manager: error fetching version info:", error);
+    }
+
+    return "";
+};
+
+const createTopMenuButton = async () => {
+    const { ComfyButton } = await import("../../scripts/ui/components/button.js");
+    
     const button = new ComfyButton({
         icon: "loramanager",
         tooltip: BUTTON_TOOLTIP,
@@ -41,7 +117,7 @@ const createTopMenuButton = () => {
     return button;
 };
 
-const attachTopMenuButton = (attempt = 0) => {
+const attachTopMenuButton = async (attempt = 0) => {
     if (document.querySelector(`.${BUTTON_GROUP_CLASS}`)) {
         return;
     }
@@ -57,26 +133,13 @@ const attachTopMenuButton = (attempt = 0) => {
         return;
     }
 
-    const loraManagerButton = createTopMenuButton();
+    const loraManagerButton = await createTopMenuButton();
+    const { ComfyButtonGroup } = await import("../../scripts/ui/components/buttonGroup.js");
+    
     const buttonGroup = new ComfyButtonGroup(loraManagerButton);
     buttonGroup.element.classList.add(BUTTON_GROUP_CLASS);
 
     settingsGroup.element.before(buttonGroup.element);
-};
-
-const fetchVersionInfo = async () => {
-    try {
-        const response = await fetch("/api/lm/version-info");
-        const data = await response.json();
-
-        if (data.success) {
-            return data.version;
-        }
-    } catch (error) {
-        console.error("LoRA Manager: error fetching version info:", error);
-    }
-
-    return "";
 };
 
 const createAboutBadge = (version) => {
@@ -89,16 +152,107 @@ const createAboutBadge = (version) => {
     };
 };
 
-app.registerExtension({
-    name: "LoraManager.TopMenu",
-    aboutPageBadges: [createAboutBadge()],
-    async setup() {
-        attachTopMenuButton();
+const createExtensionObject = (useActionBar) => {
+    const extensionObj = {
+        name: "LoraManager.TopMenu",
+        async setup() {
+            const version = await fetchVersionInfo();
+            
+            if (!useActionBar) {
+                console.log("LoRA Manager: using legacy button attachment (frontend version < 1.33.9)");
+                await attachTopMenuButton();
+            } else {
+                console.log("LoRA Manager: using actionBarButtons API (frontend version >= 1.33.9)");
+            }
+            
+            this.aboutPageBadges = [createAboutBadge(version)];
 
-        const version = await fetchVersionInfo();
-        this.aboutPageBadges = [createAboutBadge(version)];
-    },
-});
+            const injectStyles = () => {
+                const styleId = 'lm-top-menu-button-styles';
+                if (document.getElementById(styleId)) return;
+
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.textContent = `
+                    button[aria-label="Launch LoRA Manager (Shift+Click opens in new window)"].lm-top-menu-button {
+                        transition: all 0.2s ease;
+                        border: 1px solid transparent;
+                    }
+                    button[aria-label="Launch LoRA Manager (Shift+Click opens in new window)"].lm-top-menu-button:hover {
+                        background-color: var(--primary-hover-bg) !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            };
+            injectStyles();
+
+            const applyIconToButton = (button) => {
+                // Skip if the SVG icon is already in place
+                if (button.querySelector('svg')) return;
+                button.classList.add('lm-top-menu-button');
+                button.innerHTML = getLoraManagerIcon();
+                button.style.borderRadius = '4px';
+                button.style.padding = '6px';
+                button.style.backgroundColor = 'var(--primary-bg)';
+                const svg = button.querySelector('svg');
+                if (svg) {
+                    svg.style.width = '20px';
+                    svg.style.height = '20px';
+                }
+            };
+
+            // Initial application — retry until the button is rendered by Vue
+            const pollUntilFound = () => {
+                const buttons = document.querySelectorAll('button[aria-label="Launch LoRA Manager (Shift+Click opens in new window)"]');
+                if (buttons.length > 0) {
+                    buttons.forEach(applyIconToButton);
+                } else {
+                    requestAnimationFrame(pollUntilFound);
+                }
+            };
+            requestAnimationFrame(pollUntilFound);
+
+            // MutationObserver: keep the SVG icon in place after Vue re-renders
+            // (e.g. when the properties panel is toggled inside a subgraph)
+            if (typeof MutationObserver !== 'undefined') {
+                const observer = new MutationObserver(() => {
+                    const buttons = document.querySelectorAll('button[aria-label="Launch LoRA Manager (Shift+Click opens in new window)"]');
+                    buttons.forEach(button => {
+                        // Only re-apply when Vue has reset innerHTML back to <i>
+                        if (button.querySelector('i')) {
+                            applyIconToButton(button);
+                        }
+                    });
+                });
+                // Watch the action bar and a broad ancestor so we cover re-mounts
+                const watchNode = document.querySelector('[data-testid="action-bar-buttons"]')
+                    || document.querySelector('.actionbar-container')
+                    || document.body;
+                observer.observe(watchNode, { childList: true, subtree: true });
+                // Store reference for potential cleanup
+                window.__lmIconObserver = observer;
+            }
+        },
+    };
+    
+    if (useActionBar) {
+        extensionObj.actionBarButtons = [
+            {
+                icon: "icon-[lucide--layers] size-4",
+                tooltip: BUTTON_TOOLTIP,
+                onClick: openLoraManager
+            }
+        ];
+    }
+    
+    return extensionObj;
+};
+
+(async () => {
+    const useActionBar = await supportsActionBarButtons();
+    const extensionObj = createExtensionObject(useActionBar);
+    app.registerExtension(extensionObj);
+})();
 
 const getLoraManagerIcon = () => {
     return `

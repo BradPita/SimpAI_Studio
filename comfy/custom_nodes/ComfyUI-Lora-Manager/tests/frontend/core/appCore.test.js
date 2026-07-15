@@ -50,6 +50,12 @@ vi.mock('../../../static/js/managers/HelpManager.js', () => ({
   },
 }));
 
+vi.mock('../../../static/js/managers/DoctorManager.js', () => ({
+  doctorManager: {
+    initialize: vi.fn(),
+  },
+}));
+
 vi.mock('../../../static/js/managers/BannerService.js', () => ({
   bannerService: {
     initialize: vi.fn(),
@@ -103,6 +109,7 @@ import { moveManager } from '../../../static/js/managers/MoveManager.js';
 import { bulkManager } from '../../../static/js/managers/BulkManager.js';
 import { ExampleImagesManager } from '../../../static/js/managers/ExampleImagesManager.js';
 import { helpManager } from '../../../static/js/managers/HelpManager.js';
+import { doctorManager } from '../../../static/js/managers/DoctorManager.js';
 import { bannerService } from '../../../static/js/managers/BannerService.js';
 import { initTheme, initBackToTop } from '../../../static/js/utils/uiHelpers.js';
 import { onboardingManager } from '../../../static/js/managers/OnboardingManager.js';
@@ -187,6 +194,7 @@ describe('AppCore initialization flow', () => {
     delete window.helpManager;
     delete window.moveManager;
     delete window.bulkManager;
+    delete window.doctorManager;
     delete window.headerManager;
     delete window.i18n;
     delete window.pageContextMenu;
@@ -214,6 +222,7 @@ describe('AppCore initialization flow', () => {
     expect(bannerService.initialize).toHaveBeenCalledTimes(1);
     expect(window.modalManager).toBe(modalManager);
     expect(window.settingsManager).toBe(settingsManager);
+    expect(window.doctorManager).toBe(doctorManager);
     expect(window.moveManager).toBe(moveManager);
     expect(window.bulkManager).toBe(bulkManager);
     expect(HeaderManager).toHaveBeenCalledTimes(1);
@@ -227,6 +236,7 @@ describe('AppCore initialization flow', () => {
     expect(window.exampleImagesManager).toBe(exampleImagesManagerInstance);
     expect(exampleImagesManagerInitialize).toHaveBeenCalledTimes(1);
     expect(helpManager.initialize).toHaveBeenCalledTimes(1);
+    expect(doctorManager.initialize).toHaveBeenCalledTimes(1);
     expect(document.body.classList.contains('hover-reveal')).toBe(true);
     expect(initializeEventManagement).toHaveBeenCalledTimes(1);
     expect(onboardingManager.start).not.toHaveBeenCalled();
@@ -234,7 +244,6 @@ describe('AppCore initialization flow', () => {
     await vi.runAllTimersAsync();
 
     expect(onboardingManager.start).toHaveBeenCalledTimes(1);
-    expect(bannerService.isBannerVisible).toHaveBeenCalledWith('version-mismatch');
   });
 
   it('does not reinitialize once initialized', async () => {
@@ -253,22 +262,13 @@ describe('AppCore initialization flow', () => {
     expect(onboardingManager.start).not.toHaveBeenCalled();
   });
 
-  it('skips bulk setup when viewing recipes', async () => {
+  it('initializes bulk setup when viewing recipes', async () => {
     state.currentPageType = 'recipes';
 
     await appCore.initialize();
 
-    expect(bulkManager.initialize).not.toHaveBeenCalled();
-    expect(BulkContextMenu).not.toHaveBeenCalled();
-    expect(bulkManager.setBulkContextMenu).not.toHaveBeenCalled();
-  });
-
-  it('suppresses onboarding when version mismatch banner is visible', async () => {
-    bannerService.isBannerVisible.mockReturnValueOnce(true);
-
-    await appCore.initialize();
-    await vi.runAllTimersAsync();
-
-    expect(onboardingManager.start).not.toHaveBeenCalled();
+    expect(bulkManager.initialize).toHaveBeenCalledTimes(1);
+    expect(BulkContextMenu).toHaveBeenCalledTimes(1);
+    expect(bulkManager.setBulkContextMenu).toHaveBeenCalledTimes(1);
   });
 });

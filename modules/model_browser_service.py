@@ -1,11 +1,14 @@
 import base64
 import binascii
+import html
 import io
 import hashlib
 import json
 import logging
 import mimetypes
 import os
+import re
+import struct
 import tempfile
 import threading
 import time
@@ -24,8 +27,23 @@ logger = logging.getLogger(__name__)
 
 MODEL_FILE_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf")
 PREVIEW_EXTENSIONS = (".webp", ".png", ".jpg", ".jpeg")
+PREVIEW_SUFFIXES = (
+    ".preview.webp",
+    ".preview.png",
+    ".preview.jpg",
+    ".preview.jpeg",
+    ".webp",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".civitai_bak.webp",
+    ".civitai_bak.png",
+    ".civitai_bak.jpg",
+    ".civitai_bak.jpeg",
+)
 VIDEO_PREVIEW_EXTENSIONS = (".mp4", ".webm", ".mov", ".m4v")
 PREVIEW_MAX_EDGE = 1024
+SAFETENSORS_HEADER_MAX_BYTES = 100 * 1024 * 1024
 REMOTE_DISABLED_TYPES = {"clip", "vae"}
 MODEL_BROWSER_CATALOG_CACHE_TTL = 120.0
 MODEL_BROWSER_CATALOG_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -706,6 +724,61 @@ def _persist_arch_family_for_item(item: Dict[str, Any], arch_family: str, source
     return entry
 
 
+def _arch_family_from_base_model(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        return "unknown"
+    if "anima" in text:
+        return "anima"
+    if "z-image" in text or "zimage" in text:
+        return "z_image"
+    if "qwen" in text:
+        return "qwen"
+    if "hunyuan" in text:
+        return "hunyuan"
+    if "ltx" in text:
+        return "ltx2"
+    if re.search(r"(^|[^a-z0-9])wan(?:2(?:\.[0-9]+)?)?([^a-z0-9]|$)", text):
+        return "wan"
+    if "flux" in text:
+        return "flux"
+    if "stable diffusion 3" in text or "stable-diffusion-3" in text or re.search(r"(^|[^a-z0-9])sd3([^a-z0-9]|$)", text):
+        return "sd3"
+    if "stable diffusion 2" in text or "stable-diffusion-2" in text or re.search(r"(^|[^a-z0-9])sd2([^a-z0-9]|$)", text):
+        return "sd2"
+    if any(token in text for token in ("sdxl", "sd-xl", "stable diffusion xl", "stable-diffusion-xl", "sd 1.5", "sd1.5", "sd-1.5", "pony", "illustrious", "noobai")):
+        return "sdxl"
+    return "unknown"
+
+
+def _inspect_and_persist_architecture(
+    item: Dict[str, Any],
+    remote_base_model: Any = "",
+    preserve_existing: bool = True,
+) -> Tuple[Dict[str, Any], str, str]:
+    current = str(item.get("arch_family") or "").strip().lower()
+    if preserve_existing and current and current != "unknown":
+        return {}, current, str(item.get("arch_family_source") or "cached")
+    import enhanced.weight_inspector as weight_inspector
+
+    result = weight_inspector.inspect_weight_file(
+        str(item.get("path") or ""),
+        torch_ckpt_load=False,
+        include_metadata=False,
+        include_key_examples=False,
+    )
+    arch_family = str(result.get("arch_family") or "unknown").strip().lower() or "unknown"
+    source = "weight_inspector"
+    if arch_family not in ARCH_FAMILY_CHOICES:
+        arch_family = "unknown"
+    remote_family = _arch_family_from_base_model(remote_base_model)
+    if arch_family == "unknown" and remote_family != "unknown":
+        arch_family = remote_family
+        source = "civitai"
+    _persist_arch_family_for_item(item, arch_family, source, result)
+    return result, arch_family, source
+
+
 def _format_size(size: Any) -> str:
     try:
         value = float(size or 0)
@@ -765,11 +838,182 @@ def _read_json_file(path: str) -> Dict[str, Any]:
         return {}
 
 
+def _valid_hex_hash(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if re.fullmatch(r"[0-9a-f]{64}", text) else ""
+
+
+def _civitai_sha256(payload: Dict[str, Any]) -> str:
+    files = payload.get("files") if isinstance(payload.get("files"), list) else []
+    for file_info in files:
+        hashes = file_info.get("hashes") if isinstance(file_info, dict) else None
+        if not isinstance(hashes, dict):
+            continue
+        sha256 = _valid_hex_hash(hashes.get("SHA256") or hashes.get("sha256"))
+        if sha256:
+            return sha256
+    return ""
+
+
+def _metadata_list(value: Any, limit: int = 64) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    items: List[str] = []
+    for raw in value:
+        if isinstance(raw, dict):
+            raw = raw.get("name") or raw.get("label") or ""
+        text = str(raw or "").strip()
+        if text and text not in items:
+            items.append(text)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _plain_text_description(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"<(?:br|hr)\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(?:p|div|li|h[1-6])\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def _normalize_external_sidecar(raw: Dict[str, Any], path: str = "") -> Dict[str, Any]:
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    model = raw.get("model") if isinstance(raw.get("model"), dict) else {}
+    creator = model.get("creator") if isinstance(model.get("creator"), dict) else {}
+    raw_creator = raw.get("creator")
+    if isinstance(raw_creator, dict):
+        raw_creator = raw_creator.get("username") or raw_creator.get("name") or ""
+    model_id = model.get("id") or raw.get("modelId") or raw.get("model_id")
+    version_id = raw.get("id") or raw.get("modelVersionId") or raw.get("model_version_id")
+    model_name = model.get("name") or raw.get("modelName") or raw.get("model_name") or ""
+    version_name = raw.get("name") or raw.get("version_name") or ""
+    base_model = raw.get("baseModel") or raw.get("base_model") or ""
+    description = raw.get("description") or model.get("description") or ""
+    trained_words = raw.get("trainedWords")
+    if not isinstance(trained_words, list):
+        trained_words = raw.get("trained_words")
+    tags = model.get("tags") if isinstance(model.get("tags"), list) else raw.get("tags")
+    sha256 = (
+        _civitai_sha256(raw)
+        or _valid_hex_hash(raw.get("sha256"))
+        or _valid_hex_hash(raw.get("hash"))
+    )
+    preview_remote_url = str(raw.get("preview_remote_url") or "").strip()
+    if not preview_remote_url:
+        preview_remote_url = _remote_preview_url(raw)
+    civitai_url = str(raw.get("civitai_url") or "").strip()
+    if not civitai_url and model_id:
+        civitai_url = f"https://civitai.com/models/{model_id}"
+        if version_id:
+            civitai_url += f"?modelVersionId={version_id}"
+    return {
+        "source": str(raw.get("source") or "civitai-sidecar"),
+        "metadata_origin": os.path.basename(path) if path else str(raw.get("metadata_origin") or "external sidecar"),
+        "sha256": sha256,
+        "hash": sha256,
+        "model_id": model_id,
+        "model_version_id": version_id,
+        "model_name": str(model_name or "").strip(),
+        "version_name": str(version_name or "").strip(),
+        "type": str(model.get("type") or raw.get("type") or "").strip(),
+        "base_model": str(base_model or "").strip(),
+        "creator": str(creator.get("username") or model.get("creatorName") or raw_creator or "").strip(),
+        "tags": _metadata_list(tags),
+        "trained_words": _metadata_list(trained_words),
+        "description": _plain_text_description(description),
+        "preview_remote_url": preview_remote_url,
+        "civitai_url": civitai_url,
+    }
+
+
+def _standard_sidecar_paths(model_path: str) -> List[str]:
+    root, _ = os.path.splitext(model_path)
+    return [f"{root}.civitai.info", f"{root}.info"]
+
+
+def _load_standard_sidecar(model_path: str) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    for path in _standard_sidecar_paths(model_path):
+        normalized = _normalize_external_sidecar(_read_json_file(path), path)
+        if not normalized:
+            continue
+        if not merged:
+            merged = normalized
+            continue
+        for key, value in normalized.items():
+            if merged.get(key) in (None, "", [], {}):
+                merged[key] = value
+    return merged
+
+
+def _read_safetensors_embedded_hashes(model_path: str) -> List[Dict[str, str]]:
+    if os.path.splitext(model_path)[1].lower() != ".safetensors":
+        return []
+    try:
+        file_size = os.path.getsize(model_path)
+        with open(model_path, "rb") as f:
+            header_size_raw = f.read(8)
+            if len(header_size_raw) != 8:
+                return []
+            header_size = struct.unpack("<Q", header_size_raw)[0]
+            if header_size <= 0 or header_size > min(SAFETENSORS_HEADER_MAX_BYTES, max(0, file_size - 8)):
+                return []
+            header = json.loads(f.read(header_size).decode("utf-8"))
+    except Exception:
+        return []
+    metadata = header.get("__metadata__") if isinstance(header, dict) else None
+    if not isinstance(metadata, dict):
+        return []
+    candidates: List[Dict[str, str]] = []
+    seen = set()
+
+    def append(value: Any, algorithm: str, key: str) -> None:
+        digest = _valid_hex_hash(value)
+        if digest and digest not in seen:
+            seen.add(digest)
+            candidates.append({"hash": digest, "algorithm": algorithm, "key": key})
+
+    append(metadata.get("modelspec.hash.sha256"), "sha256", "modelspec.hash.sha256")
+    append(metadata.get("modelspec.hash.blake3"), "blake3", "modelspec.hash.blake3")
+    for key, value in metadata.items():
+        key_text = str(key or "").lower()
+        if "hash" not in key_text and "civitai" not in key_text:
+            continue
+        append(value, "sha256" if "sha256" in key_text else "unknown", str(key))
+    return candidates
+
+
+def _hash_stamp_for_model_path(model_path: str) -> Dict[str, int]:
+    try:
+        stat = os.stat(model_path)
+        return {"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)}
+    except Exception:
+        return {}
+
+
+def _hash_stamp_is_current(metadata: Dict[str, Any], model_path: str) -> bool:
+    stamp = metadata.get("hash_file_stamp") if isinstance(metadata, dict) else None
+    if not isinstance(stamp, dict) or not stamp:
+        return True
+    return stamp == _hash_stamp_for_model_path(model_path)
+
+
 def _load_sidecar(model_path: str) -> Dict[str, Any]:
     if not model_path:
         return {}
     sidecar = _read_json_file(_sidecar_path(model_path))
     if sidecar:
+        external = _load_standard_sidecar(model_path)
+        for key, value in external.items():
+            if sidecar.get(key) in (None, "", [], {}):
+                sidecar[key] = value
         return sidecar
     legacy_path = _legacy_sidecar_path(model_path)
     legacy = _read_json_file(legacy_path)
@@ -780,7 +1024,7 @@ def _load_sidecar(model_path: str) -> Dict[str, Any]:
         except Exception as exc:
             logger.debug("Model browser sidecar migration failed: %s", exc)
         return legacy
-    return {}
+    return _load_standard_sidecar(model_path)
 
 
 def _save_sidecar(model_path: str, metadata: Dict[str, Any]) -> None:
@@ -804,10 +1048,10 @@ def _preview_candidates(model_path: str) -> List[str]:
         return []
     directory = os.path.dirname(model_path)
     stem = os.path.splitext(os.path.basename(model_path))[0]
-    candidates = [os.path.join(directory, f"{stem}{ext}") for ext in PREVIEW_EXTENSIONS]
+    candidates = [os.path.join(directory, f"{stem}{suffix}") for suffix in PREVIEW_SUFFIXES]
     parent = os.path.dirname(directory)
     if parent and parent != directory:
-        candidates.extend(os.path.join(parent, f"{stem}{ext}") for ext in PREVIEW_EXTENSIONS)
+        candidates.extend(os.path.join(parent, f"{stem}{suffix}") for suffix in PREVIEW_SUFFIXES)
     return [os.path.abspath(path) for path in candidates]
 
 
@@ -943,6 +1187,7 @@ def _basic_item_from_choice(model_type: str, name: str) -> Dict[str, Any]:
         "relative_path": _normalize_model_name(name),
         "sha256": "",
         "hash_source": "synthetic" if synthetic else "missing",
+        "hash_stale": False,
         "muid": "",
         "size": 0,
         "size_label": "",
@@ -951,6 +1196,7 @@ def _basic_item_from_choice(model_type: str, name: str) -> Dict[str, Any]:
         "preview_url": "",
         "preview_source": "none",
         "metadata_status": "synthetic" if synthetic else "missing",
+        "remote_status": "disabled" if synthetic or model_type in REMOTE_DISABLED_TYPES else "unknown",
         "tags": [],
         "trained_words": [],
         "metadata_trained_words": [],
@@ -959,8 +1205,14 @@ def _basic_item_from_choice(model_type: str, name: str) -> Dict[str, Any]:
         "trigger_words_text": "",
         "trigger_words_source": "none",
         "base_model": "",
+        "remote_model_name": "",
+        "remote_version_name": "",
         "creator": "",
         "description": "",
+        "civitai_url": "",
+        "metadata_origin": "",
+        "download_count": 0,
+        "rating": 0,
         "synthetic": synthetic,
         "path_exists": False,
         "remote_enabled": False if synthetic or model_type in REMOTE_DISABLED_TYPES else True,
@@ -997,10 +1249,16 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any], lora_tri
             effective_words = user_trigger_words
             trigger_words_text = user_trigger_text
             trigger_words_source = "user"
-    entry_hash = _hash_from_entry(entry)
-    sidecar_hash = str(sidecar.get("sha256") or sidecar.get("hash") or "").strip().lower()
+    entry_hash_current = _hash_stamp_is_current(entry, model_path)
+    sidecar_hash_current = _hash_stamp_is_current(sidecar, model_path)
+    entry_hash = _valid_hex_hash(_hash_from_entry(entry)) if entry_hash_current else ""
+    sidecar_hash = _valid_hex_hash(sidecar.get("sha256") or sidecar.get("hash")) if sidecar_hash_current else ""
     sha256 = sidecar_hash or entry_hash
-    hash_source = "sidecar" if sidecar_hash else ("models_info" if entry_hash else "missing")
+    hash_source = (
+        str(sidecar.get("hash_source") or "sidecar")
+        if sidecar_hash
+        else (str(entry.get("hash_source") or "models_info") if entry_hash else "missing")
+    )
     arch_family, arch_family_source, arch_family_algo = _arch_family_from_entry(entry)
     preview_path = find_preview_path(model_path)
     try:
@@ -1019,6 +1277,7 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any], lora_tri
         "path_exists": bool(model_path and os.path.isfile(model_path)),
         "sha256": sha256,
         "hash_source": hash_source,
+        "hash_stale": bool((not sidecar_hash_current and _hash_from_entry(sidecar)) or (not entry_hash_current and _hash_from_entry(entry))),
         "muid": str(entry.get("muid") or "").strip() if isinstance(entry, dict) else "",
         "size": int(size or 0) if str(size or "").isdigit() else size or 0,
         "size_label": _format_size(size),
@@ -1026,7 +1285,8 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any], lora_tri
         "modified_label": time.strftime("%Y-%m-%d %H:%M", time.localtime(modified)) if modified else "",
         "preview_url": preview_url(preview_path),
         "preview_source": "local" if preview_path else "none",
-        "metadata_status": "local" if sidecar else "missing",
+        "metadata_status": "remote" if sidecar.get("source") == "civitai" else ("local" if sidecar else "missing"),
+        "remote_status": str(sidecar.get("remote_status") or ("found" if sidecar.get("source") == "civitai" else "unknown")),
         "tags": sidecar.get("tags") if isinstance(sidecar.get("tags"), list) else [],
         "trained_words": effective_words,
         "metadata_trained_words": metadata_words,
@@ -1035,8 +1295,14 @@ def _item_from_choice(model_type: str, name: str, data: Dict[str, Any], lora_tri
         "trigger_words_text": trigger_words_text,
         "trigger_words_source": trigger_words_source,
         "base_model": str(sidecar.get("base_model") or entry.get("base_model") or "").strip() if isinstance(entry, dict) else str(sidecar.get("base_model") or "").strip(),
+        "remote_model_name": str(sidecar.get("model_name") or "").strip(),
+        "remote_version_name": str(sidecar.get("version_name") or "").strip(),
         "creator": str(sidecar.get("creator") or "").strip(),
         "description": str(sidecar.get("description") or "").strip(),
+        "civitai_url": str(sidecar.get("civitai_url") or "").strip(),
+        "metadata_origin": str(sidecar.get("metadata_origin") or sidecar.get("source") or "").strip(),
+        "download_count": sidecar.get("download_count") or 0,
+        "rating": sidecar.get("rating") or 0,
         "arch_family": arch_family,
         "arch_family_source": arch_family_source,
         "arch_family_algo": arch_family_algo,
@@ -1229,18 +1495,7 @@ def inspect_arch_family(payload: Optional[Dict[str, Any]] = None) -> Dict[str, A
     if not is_model_path_allowed(model_path):
         return {"ok": False, "error": "model file is missing or outside model directories", "item": item}
     try:
-        import enhanced.weight_inspector as weight_inspector
-
-        result = weight_inspector.inspect_weight_file(
-            model_path,
-            torch_ckpt_load=False,
-            include_metadata=False,
-            include_key_examples=False,
-        )
-        arch_family = str(result.get("arch_family") or "unknown").strip().lower() or "unknown"
-        if arch_family not in ARCH_FAMILY_CHOICES:
-            arch_family = "unknown"
-        _persist_arch_family_for_item(item, arch_family, "weight_inspector", result)
+        result, arch_family, source = _inspect_and_persist_architecture(item, preserve_existing=False)
     except Exception as exc:
         return {"ok": False, "error": f"architecture inspection failed: {type(exc).__name__}: {exc}", "item": item}
 
@@ -1249,7 +1504,7 @@ def inspect_arch_family(payload: Optional[Dict[str, Any]] = None) -> Dict[str, A
         "ok": True,
         "item": refreshed,
         "arch_family": refreshed.get("arch_family") or arch_family,
-        "arch_family_source": refreshed.get("arch_family_source") or "weight_inspector",
+        "arch_family_source": refreshed.get("arch_family_source") or source,
         "inspect": _inspector_summary(result),
         "message": "architecture classification updated",
     }
@@ -1285,15 +1540,17 @@ def _compute_sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
-def _persist_hash_for_item(item: Dict[str, Any], sha256: str) -> None:
+def _persist_hash_for_item(item: Dict[str, Any], sha256: str, source: str = "computed") -> None:
     model_path = str(item.get("path") or "").strip()
+    stamp = _hash_stamp_for_model_path(model_path)
     if model_path:
         sidecar = _load_sidecar(model_path)
         sidecar.update({
             "sha256": sha256,
             "hash": sha256,
-            "hash_source": "computed",
+            "hash_source": source,
             "hash_computed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "hash_file_stamp": stamp,
         })
         _save_sidecar(model_path, sidecar)
 
@@ -1305,6 +1562,8 @@ def _persist_hash_for_item(item: Dict[str, Any], sha256: str) -> None:
     if isinstance(entry, dict):
         entry["hash"] = sha256
         entry["sha256"] = sha256
+        entry["hash_source"] = source
+        entry["hash_file_stamp"] = stamp
         try:
             if model_path and os.path.isfile(model_path):
                 entry["size"] = os.path.getsize(model_path)
@@ -1329,7 +1588,7 @@ def _ensure_item_sha256(item: Dict[str, Any], force: bool = False) -> Tuple[str,
     if not is_model_path_allowed(model_path):
         raise FileNotFoundError("model file is missing or outside model directories")
     sha256 = _compute_sha256_file(model_path)
-    _persist_hash_for_item(item, sha256)
+    _persist_hash_for_item(item, sha256, "computed")
     refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
     return sha256, refreshed, "computed"
 
@@ -1394,7 +1653,7 @@ def set_preview(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         return {"ok": False, "error": f"preview image is invalid: {type(exc).__name__}: {exc}", "item": item}
 
     base, _ = os.path.splitext(model_path)
-    webp_path = f"{base}.webp"
+    webp_path = f"{base}.preview.webp"
     try:
         os.makedirs(os.path.dirname(webp_path), exist_ok=True)
         image = _prepare_preview_image(image)
@@ -1434,13 +1693,57 @@ def set_preview(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     }
 
 
-def _fetch_civitai_model_version(sha256: str) -> Dict[str, Any]:
-    url = f"https://civitai.com/api/v1/model-versions/by-hash/{urllib.parse.quote(sha256)}"
-    request = urllib.request.Request(url, headers={"User-Agent": "SimpAI-Studio-ModelBrowser/2.0"})
-    with urllib.request.urlopen(request, timeout=30) as response:
+def _civitai_headers() -> Dict[str, str]:
+    headers = {"User-Agent": "SimpAI-Studio-ModelBrowser/3.0", "Accept": "application/json"}
+    api_key = str(
+        os.environ.get("CIVITAI_API_KEY")
+        or os.environ.get("CIVITAI_TOKEN")
+        or getattr(config, "civitai_api_key", "")
+        or ""
+    ).strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _fetch_civitai_json(url: str, timeout: int = 30) -> Dict[str, Any]:
+    request = urllib.request.Request(url, headers=_civitai_headers())
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = response.read()
     data = json.loads(payload.decode("utf-8", errors="replace"))
     return data if isinstance(data, dict) else {}
+
+
+def _fetch_civitai_model_version(file_hash: str) -> Dict[str, Any]:
+    url = f"https://civitai.com/api/v1/model-versions/by-hash/{urllib.parse.quote(file_hash, safe='')}"
+    return _fetch_civitai_json(url)
+
+
+def _fetch_civitai_model(model_id: Any) -> Dict[str, Any]:
+    if model_id in (None, ""):
+        return {}
+    url = f"https://civitai.com/api/v1/models/{urllib.parse.quote(str(model_id), safe='')}"
+    return _fetch_civitai_json(url)
+
+
+def _merge_civitai_model_detail(version: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(version or {})
+    version_model = merged.get("model") if isinstance(merged.get("model"), dict) else {}
+    model_id = version_model.get("id") or merged.get("modelId")
+    if not model_id:
+        return merged
+    try:
+        detail = _fetch_civitai_model(model_id)
+    except Exception as exc:
+        logger.debug("Civitai model detail request failed for %s: %s", model_id, exc)
+        return merged
+    if detail:
+        combined_model = dict(version_model)
+        for key, value in detail.items():
+            if value not in (None, "", [], {}):
+                combined_model[key] = value
+        merged["model"] = combined_model
+    return merged
 
 
 def _remote_preview_url(metadata: Dict[str, Any]) -> str:
@@ -1463,12 +1766,21 @@ def _metadata_payload(remote: Dict[str, Any], sha256: str, preview_remote_url: s
     creator = model.get("creator") if isinstance(model.get("creator"), dict) else {}
     tags = model.get("tags") if isinstance(model.get("tags"), list) else []
     trained_words = remote.get("trainedWords") if isinstance(remote.get("trainedWords"), list) else []
+    model_id = model.get("id") or remote.get("modelId")
+    version_id = remote.get("id")
+    civitai_url = f"https://civitai.com/models/{model_id}" if model_id else ""
+    if civitai_url and version_id:
+        civitai_url += f"?modelVersionId={version_id}"
+    version_stats = remote.get("stats") if isinstance(remote.get("stats"), dict) else {}
+    model_stats = model.get("stats") if isinstance(model.get("stats"), dict) else {}
     return {
         "source": "civitai",
+        "metadata_origin": "Civitai API",
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "sha256": sha256,
-        "model_id": model.get("id"),
-        "model_version_id": remote.get("id"),
+        "hash": sha256,
+        "model_id": model_id,
+        "model_version_id": version_id,
         "model_name": model.get("name") or remote.get("modelName") or "",
         "version_name": remote.get("name") or "",
         "type": model.get("type") or "",
@@ -1476,8 +1788,12 @@ def _metadata_payload(remote: Dict[str, Any], sha256: str, preview_remote_url: s
         "creator": creator.get("username") or model.get("creatorName") or "",
         "tags": [str(tag) for tag in tags[:64]],
         "trained_words": [str(word) for word in trained_words[:64]],
-        "description": str(model.get("description") or "").strip(),
+        "description": _plain_text_description(model.get("description") or remote.get("description")),
         "preview_remote_url": preview_remote_url,
+        "civitai_url": civitai_url,
+        "published_at": remote.get("publishedAt") or model.get("publishedAt") or "",
+        "download_count": version_stats.get("downloadCount") or model_stats.get("downloadCount") or 0,
+        "rating": version_stats.get("rating") or model_stats.get("rating") or 0,
     }
 
 
@@ -1577,7 +1893,9 @@ def _download_preview_to_model(model_path: str, image_url: str, force: bool = Fa
     if os.path.isfile(webp_path) and _is_valid_preview_image(webp_path) and not force:
         return webp_path, "kept existing webp"
 
-    request = urllib.request.Request(image_url, headers={"User-Agent": "SimpAI-Studio-ModelBrowser/2.0"})
+    headers = _civitai_headers()
+    headers["Accept"] = "image/avif,image/webp,image/*,video/*,*/*"
+    request = urllib.request.Request(image_url, headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         content_type = response.headers.get("Content-Type", "")
         raw = response.read()
@@ -1616,6 +1934,69 @@ def _download_preview_to_model(model_path: str, image_url: str, force: bool = Fa
         return fallback_path, f"webp conversion failed; saved original: {type(exc).__name__}"
 
 
+def _try_civitai_hash_candidates(candidates: Iterable[Dict[str, str]]) -> Tuple[Dict[str, Any], Dict[str, str], List[Dict[str, str]]]:
+    attempted: List[Dict[str, str]] = []
+    seen = set()
+    for raw in candidates:
+        file_hash = _valid_hex_hash(raw.get("hash"))
+        if not file_hash or file_hash in seen:
+            continue
+        seen.add(file_hash)
+        candidate = dict(raw, hash=file_hash)
+        attempted.append(candidate)
+        try:
+            remote = _fetch_civitai_model_version(file_hash)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                continue
+            raise
+        if remote:
+            return remote, candidate, attempted
+    return {}, {}, attempted
+
+
+def _local_metadata_fallback(
+    item: Dict[str, Any],
+    sha256: str,
+    hash_source: str,
+    attempted: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    model_path = str(item.get("path") or "").strip()
+    architecture_warning = ""
+    if _architecture_manageable_item(item):
+        try:
+            _inspect_and_persist_architecture(item, preserve_existing=True)
+        except Exception as exc:
+            architecture_warning = f"architecture inspection failed: {type(exc).__name__}: {exc}"
+    metadata = _load_sidecar(model_path)
+    metadata.update({
+        "source": metadata.get("source") or "local-inspection",
+        "metadata_origin": metadata.get("metadata_origin") or "Local model header",
+        "remote_status": "not_found",
+        "remote_checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
+    if sha256:
+        metadata["sha256"] = sha256
+        metadata["hash"] = sha256
+        metadata["hash_source"] = hash_source
+        metadata["hash_file_stamp"] = _hash_stamp_for_model_path(model_path)
+    _save_sidecar(model_path, metadata)
+    refreshed = _item_from_choice(item["type"], item["name"], _load_models_info())
+    preview_ok = bool(refreshed.get("preview_url"))
+    return {
+        "ok": True,
+        "remote_found": False,
+        "item": refreshed,
+        "metadata": metadata,
+        "metadata_ok": True,
+        "preview_ok": preview_ok,
+        "preview_status": "ready" if preview_ok else "missing",
+        "preview_message": "Civitai has no matching model; local hash and architecture were saved",
+        "architecture_warning": architecture_warning,
+        "hash_attempts": attempted,
+    }
+
+
 def fetch_metadata(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = payload if isinstance(payload, dict) else {}
     item = _resolve_single_item(payload)
@@ -1626,29 +2007,67 @@ def fetch_metadata(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     model_path = str(item.get("path") or "").strip()
     if not is_model_path_allowed(model_path):
         return {"ok": False, "error": "model file is missing", "item": item}
-    sha256 = str(item.get("sha256") or "").strip().lower()
+
+    compute_hash_allowed = bool(payload.get("compute_hash", True))
+    force_hash = bool(payload.get("force_hash"))
+    sha256 = _valid_hex_hash(item.get("sha256"))
     hash_source = str(item.get("hash_source") or "")
-    if (not sha256 or payload.get("force_hash")) and payload.get("compute_hash", True):
-        try:
-            sha256, item, hash_source = _ensure_item_sha256(item, bool(payload.get("force_hash")))
-            model_path = str(item.get("path") or model_path).strip()
-        except Exception as exc:
-            return {"ok": False, "error": f"model hash calculation failed: {type(exc).__name__}: {exc}", "item": item}
-    if not sha256:
-        return {"ok": False, "error": "model hash is missing; use Compute hash first", "item": item}
+    remote: Dict[str, Any] = {}
+    matched_candidate: Dict[str, str] = {}
+    attempted: List[Dict[str, str]] = []
 
     try:
-        remote = _fetch_civitai_model_version(sha256)
+        if force_hash:
+            if not compute_hash_allowed:
+                return {"ok": False, "error": "force_hash requires hash calculation", "item": item}
+            sha256, item, hash_source = _ensure_item_sha256(item, True)
+            remote, matched_candidate, attempted = _try_civitai_hash_candidates([
+                {"hash": sha256, "algorithm": "sha256", "source": "computed"}
+            ])
+        else:
+            candidates: List[Dict[str, str]] = []
+            if sha256:
+                candidates.append({"hash": sha256, "algorithm": "sha256", "source": hash_source or "cached"})
+            else:
+                candidates.extend(
+                    dict(candidate, source="safetensors-header")
+                    for candidate in _read_safetensors_embedded_hashes(model_path)
+                )
+            remote, matched_candidate, attempted = _try_civitai_hash_candidates(candidates)
+            if not remote and not sha256 and compute_hash_allowed:
+                sha256, item, hash_source = _ensure_item_sha256(item, True)
+                remote, matched_candidate, full_attempts = _try_civitai_hash_candidates([
+                    {"hash": sha256, "algorithm": "sha256", "source": "computed"}
+                ])
+                attempted.extend(full_attempts)
     except urllib.error.HTTPError as exc:
-        return {"ok": False, "error": f"Civitai HTTP {exc.code}", "item": item}
+        return {"ok": False, "error": f"Civitai HTTP {exc.code}", "item": item, "hash_attempts": attempted}
     except Exception as exc:
-        return {"ok": False, "error": f"Civitai request failed: {type(exc).__name__}: {exc}", "item": item}
+        return {"ok": False, "error": f"model information request failed: {type(exc).__name__}: {exc}", "item": item, "hash_attempts": attempted}
+
+    if not remote:
+        return _local_metadata_fallback(item, sha256, hash_source, attempted)
+
+    remote = _merge_civitai_model_detail(remote)
+    canonical_sha256 = _civitai_sha256(remote)
+    if not canonical_sha256 and matched_candidate.get("algorithm") == "sha256":
+        canonical_sha256 = _valid_hex_hash(matched_candidate.get("hash"))
+    if canonical_sha256:
+        sha256 = canonical_sha256
+        hash_source = "civitai-header-match" if matched_candidate.get("source") == "safetensors-header" else (hash_source or matched_candidate.get("source") or "civitai")
+        _persist_hash_for_item(item, sha256, hash_source)
+
+    architecture_warning = ""
+    if _architecture_manageable_item(item):
+        try:
+            _inspect_and_persist_architecture(item, remote.get("baseModel"), preserve_existing=True)
+        except Exception as exc:
+            architecture_warning = f"architecture inspection failed: {type(exc).__name__}: {exc}"
 
     preview_remote = _remote_preview_url(remote)
     preview_message = ""
     preview_path = find_preview_path(model_path)
-    webp_path = f"{os.path.splitext(model_path)[0]}.webp"
-    if preview_remote and (payload.get("force") or not _is_valid_preview_image(webp_path)):
+    if preview_remote and (payload.get("force") or not preview_path):
         try:
             preview_path, preview_message = _download_preview_to_model(model_path, preview_remote, bool(payload.get("force")))
         except Exception as exc:
@@ -1660,6 +2079,9 @@ def fetch_metadata(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
 
     metadata = _metadata_payload(remote, sha256, preview_remote)
     metadata["hash_source"] = hash_source
+    metadata["hash_file_stamp"] = _hash_stamp_for_model_path(model_path)
+    metadata["remote_status"] = "found"
+    metadata["hash_lookup"] = matched_candidate
     if preview_path:
         metadata["preview_path"] = preview_path
     _save_sidecar(model_path, metadata)
@@ -1667,12 +2089,16 @@ def fetch_metadata(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     preview_ok = bool(refreshed.get("preview_url"))
     return {
         "ok": True,
+        "remote_found": True,
         "item": refreshed,
         "metadata": metadata,
         "metadata_ok": True,
         "preview_ok": preview_ok,
         "preview_status": "ready" if preview_ok else "missing",
         "preview_message": preview_message,
+        "architecture_warning": architecture_warning,
+        "hash_attempts": attempted,
+        "hash_lookup": matched_candidate,
     }
 
 
@@ -1696,7 +2122,7 @@ def fetch_batch(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         query_payload["page_size"] = min(int(payload.get("limit") or 100), 500)
         result = query_models(query_payload)
         for item in result.get("items") or []:
-            if payload.get("missing_only") and item.get("preview_url") and item.get("metadata_status") != "missing":
+            if payload.get("missing_only") and not _needs_remote_metadata(item):
                 continue
             targets.append({
                 "type": item.get("type"),
@@ -1714,7 +2140,7 @@ def fetch_batch(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             counts["skipped"] += 1
             results.append({"ok": False, "skipped": True, "error": "not fetchable", "item": item or target})
             continue
-        if payload.get("missing_only") and item.get("preview_url") and item.get("metadata_status") != "missing" and not payload.get("force"):
+        if payload.get("missing_only") and not _needs_remote_metadata(item) and not payload.get("force"):
             counts["skipped"] += 1
             results.append({"ok": True, "skipped": True, "item": item})
             continue
@@ -1733,13 +2159,21 @@ def fetch_batch(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     }
 
 
+def _needs_remote_metadata(item: Dict[str, Any]) -> bool:
+    if not item or not item.get("remote_enabled") or item.get("synthetic"):
+        return False
+    if item.get("remote_status") == "not_found" and item.get("metadata_status") != "missing":
+        return False
+    return not item.get("preview_url") or item.get("metadata_status") == "missing"
+
+
 def _associated_local_metadata_paths(model_path: str) -> List[str]:
     if not model_path:
         return []
     base, _ = os.path.splitext(model_path)
-    paths = [_sidecar_path(model_path), _legacy_sidecar_path(model_path)]
-    paths.extend(f"{base}{ext}" for ext in PREVIEW_EXTENSIONS)
-    return [os.path.abspath(path) for path in paths if path]
+    paths = [_sidecar_path(model_path), _legacy_sidecar_path(model_path), *_standard_sidecar_paths(model_path)]
+    paths.extend(f"{base}{suffix}" for suffix in PREVIEW_SUFFIXES)
+    return list(dict.fromkeys(os.path.abspath(path) for path in paths if path))
 
 
 def _remove_from_runtime_catalog(item: Dict[str, Any]) -> None:

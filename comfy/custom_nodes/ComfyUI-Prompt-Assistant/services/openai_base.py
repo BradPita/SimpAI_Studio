@@ -9,41 +9,13 @@ import asyncio
 import httpx
 from typing import Optional, Dict, Any, List, Callable
 from .core import BaseAPIService, HTTPClientPool
+from .ollama_utils import wait_before_ollama_unload
 from ..utils.common import (
     format_api_error, ProgressBar, log_complete, log_error,
-    PREFIX, PROCESS_PREFIX, WARN_PREFIX, ERROR_PREFIX, format_elapsed_time
+    PREFIX, PROCESS_PREFIX, WARN_PREFIX, ERROR_PREFIX, format_elapsed_time,
+    TASK_IMAGE_CAPTION, TASK_VIDEO_CAPTION
 )
 from .thinking_control import build_thinking_suppression
-import re
-
-
-# ==================== 思维链输出过滤 ====================
-
-def filter_thinking_content(text: str) -> str:
-    """
-    过滤模型输出中的思维链内容
-    支持多种标签格式：<think>, <reasoning>, <thoughts>
-    
-    参数:
-        text: 原始模型输出文本
-    
-    返回:
-        str: 过滤后的文本
-    """
-    if not text:
-        return text
-    
-    # 1. 优先匹配成对的思维链标签
-    # 匹配 <think>...</think> 等成对结构
-    pattern_pair = r'<(think|thinking|reasoning|thoughts?)>[\s\S]*?</\1>'
-    text = re.sub(pattern_pair, '', text, flags=re.IGNORECASE)
-    
-    # 2. 兜底处理：如果还有残留的结束标签（可能缺少开始标签），则移除该标签及其之前的所有内容
-    # 假设：思考过程总是出现在回答的最前面
-    pattern_orphan_end = r'^[\s\S]*?</(think|thinking|reasoning|thoughts?)>'
-    text = re.sub(pattern_orphan_end, '', text, flags=re.IGNORECASE)
-    
-    return text.strip()
 
 
 class OpenAICompatibleService(BaseAPIService):
@@ -86,6 +58,9 @@ class OpenAICompatibleService(BaseAPIService):
                 # 已包含完整端点，直接返回（移除末尾斜杠）
                 return url.rstrip('/')
         
+        if 'api.openai.com' in url and '/v1' not in url:
+            url = url.rstrip('/') + '/v1'
+        
         # 规则3：常规模式 - 需要拼接 /chat/completions
         return url.rstrip('/') + '/chat/completions'
     
@@ -105,10 +80,12 @@ class OpenAICompatibleService(BaseAPIService):
             
         filtered = payload.copy()
         
-        # Level 1: 移除思维链参数
+        # Level 1: 移除思维链参数 + response_format
+        # 注：response_format 在 Zhipu GLM-4V 等严格服务商上会触发 400，Level-1 同步移除
         thinking_keys = [
             "thinking", "enable_thinking", "reasoning_effort", 
-            "reasoning", "thinking_level", "think"
+            "reasoning", "thinking_level", "think",
+            "response_format",  # BUG-02 修复：Level-1 一并移除，防止部分服务商拒绝该字段
         ]
         for k in thinking_keys:
             filtered.pop(k, None)
@@ -164,7 +141,8 @@ class OpenAICompatibleService(BaseAPIService):
         provider_display_name: str = "未知服务",
         cancel_event: Optional[Any] = None,
         task_type: str = None,
-        source: str = None
+        source: str = None,
+        filter_thinking_output: bool = True
     ) -> Dict[str, Any]:
         """
         使用HTTP直连调用/chat/completions接口
@@ -176,6 +154,10 @@ class OpenAICompatibleService(BaseAPIService):
         from ..server import is_streaming_progress_enabled
         
         try:
+            # 清理输入参数
+            base_url = cls._sanitize_config_str(base_url)
+            api_key = cls._sanitize_config_str(api_key)
+            
             # 构建请求URL
             url = cls.parse_api_url(base_url)
             
@@ -189,12 +171,23 @@ class OpenAICompatibleService(BaseAPIService):
                 "stream": True
             }
             
-            # 仅在用户开启"启用高级参数"时才发送 temperature、top_p、max_tokens
-            if enable_advanced_params:
+            # 视觉任务(图像/视频反推)对于某些模型严格要求带有 max_tokens，否则会触发 openai_error，兼容 V1
+            is_vision_task = task_type in [TASK_IMAGE_CAPTION, TASK_VIDEO_CAPTION] if task_type else False
+            
+            # 仅在用户开启"启用高级参数"时才发送 temperature、top_p、max_tokens（视觉任务强制发送）
+            if enable_advanced_params or is_vision_task:
                 initial_payload["temperature"] = temperature
                 initial_payload["top_p"] = top_p
-                initial_payload["max_tokens"] = max_tokens
+                if is_vision_task and not enable_advanced_params:
+                    # BUG-07 修复：视觉任务强制发送 max_tokens 时，使用保守上限
+                    # 部分中转站（如 Gemini Flash via 代理）的 max_tokens 上限为 1024-1500
+                    # 采用 min(max_tokens, 1500) 作为兜底，降低兼容性问题
+                    initial_payload["max_tokens"] = min(max_tokens, 1500)
+                else:
+                    initial_payload["max_tokens"] = max_tokens
+
             
+
             # 添加思维链控制参数
             if thinking_extra:
                 initial_payload.update(thinking_extra)
@@ -205,10 +198,13 @@ class OpenAICompatibleService(BaseAPIService):
                 headers["Authorization"] = f"Bearer {api_key}"
             
             # 获取HTTP客户端
+            request_timeout = 180.0
+            if task_type in (TASK_IMAGE_CAPTION, TASK_VIDEO_CAPTION):
+                request_timeout = 300.0
             client = HTTPClientPool.get_client(
                 provider=provider_display_name,
                 base_url=base_url,
-                timeout=60.0
+                timeout=request_timeout
             )
 
             # 前置中断检查：如果 ComfyUI 已经中断了，不启动请求
@@ -240,8 +236,11 @@ class OpenAICompatibleService(BaseAPIService):
                     
                     # 关键修复：停止旧的进度条后再创建新的，防止线程泄漏
                     if pbar:
-                        pbar._closed = True
-                        pbar._stop_event.set()
+                        try:
+                            pbar.error(f"Retry Level {retry_level}...") # 标记前一个进度条为错误/重试状态
+                        except:
+                            pbar._stop_timer()
+
                     
                     # 重新创建进度条用于新一轮重试
                     pbar = ProgressBar(
@@ -281,6 +280,7 @@ class OpenAICompatibleService(BaseAPIService):
                             
                             full_content = ""
                             reasoning_content = ""
+                            stream_error = None  # 用于捕获流内错误
                             
                             async for line in response.aiter_lines():
                                 # 此处的循环检查依然保留，作为双重保险
@@ -293,32 +293,89 @@ class OpenAICompatibleService(BaseAPIService):
                                 
                                 try:
                                     chunk = json.loads(line)
+                                    # --- 调试日志 (2级): 输出原始流式数据 ---
+                                    # print(f"[DEBUG-2] Chunk: {line[:200]}...", flush=True)
+                                    
+                                    # 关键修复：检测流内错误（部分代理以HTTP 200+SSE方式返回错误）
+                                    if chunk.get('error'):
+                                        err = chunk['error']
+                                        if isinstance(err, dict):
+                                            stream_error = err.get('message', str(err))
+                                        else:
+                                            stream_error = str(err)
+                                        break  # 立即中止流读取
+                                    
                                     if chunk.get('choices'):
                                         delta = chunk['choices'][0].get('delta', {})
                                         content = delta.get('content', '') or ''
+                                        # 针对不同厂商的推理字段进行广谱捕获
                                         reasoning = (
                                             delta.get('reasoning_content', '') or 
                                             delta.get('reasoning', '') or 
-                                            delta.get('thinking', '') or ''
+                                            delta.get('thinking', '') or 
+                                            delta.get('thinking_process', '') or  # 备选
+                                            ''
                                         )
-                                        if reasoning: reasoning_content += reasoning
+                                        if reasoning:
+                                            reasoning_content += reasoning
+                                            progress_count = len(full_content) + len(reasoning_content)
+                                            pbar.set_generating(progress_count)
+                                            pbar.update(progress_count)
                                         if content:
                                             full_content += content
                                             if stream_callback: stream_callback(content)
-                                            pbar.set_generating(len(full_content))
-                                            pbar.update(len(full_content))
-                                except:
+                                            progress_count = len(full_content) + len(reasoning_content)
+                                            pbar.set_generating(progress_count)
+                                            pbar.update(progress_count)
+                                except json.JSONDecodeError:
+                                    continue  # 非 JSON 行（如注释、空行），正常跳过
+                                except asyncio.CancelledError:
+                                    raise  # 必须重新抛出，不能被吐掉
+                                except Exception as chunk_err:
+                                    # 其他异常：记录警告后继续，避免因单块错误中断整个流
+                                    print(f"\n{WARN_PREFIX} SSE 块解析异常: {chunk_err}", flush=True)
                                     continue
                             
+                            # 如果流中检测到错误，动态判断是否应该触发降级重试
+                            if stream_error:
+                                # BUG-05 修复: 部分代理（xFlow/Grok等）以 HTTP 200+SSE error 返回参数错误时
+                                # 应当触发降级重试，而非直接永久失败
+                                _RETRYABLE_STREAM_ERROR_KEYWORDS = [
+                                    "unsupported", "invalid parameter", "invalid_request",
+                                    "unknown field", "extra inputs", "not supported",
+                                    "unrecognized", "unexpected", "disallowed",
+                                    "does not support"
+                                ]
+                                stream_error_lower = stream_error.lower()
+                                is_retryable_stream_error = any(
+                                    kw in stream_error_lower
+                                    for kw in _RETRYABLE_STREAM_ERROR_KEYWORDS
+                                )
+                                return {
+                                    "success": False,
+                                    "error": stream_error,
+                                    "status_code": 200,  # HTTP层面成功，业务层面失败
+                                    "should_retry": is_retryable_stream_error  # 动态判断是否应该降级重试
+                                }
+                            
                             final_content = full_content
-                            if reasoning_content:
+                            # 只有当用户没有开启“过滤思维链”时，才手动把 reasoning_content 拼回去
+                            if reasoning_content and not filter_thinking_output:
                                 final_content = f"<think>{reasoning_content}</think>\n{full_content}"
                             
                             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
                             if not final_content.strip():
                                 pbar.error("响应内容为空")
-                            else:
-                                pbar.done(char_count=len(final_content), elapsed_ms=elapsed_ms)
+                                # --- 调试日志 (1级): 警告响应内容为空 ---
+                                print(f"\n{WARN_PREFIX} [API响应调试] 模型:{model} | 状态:成功 | 但最终内容为空字符串，触发降级重试", flush=True)
+                                return {
+                                    "success": False,
+                                    "error": "API returned empty content",
+                                    "status_code": 200,
+                                    "should_retry": True
+                                }
+                            
+                            pbar.done(char_count=len(final_content), elapsed_ms=elapsed_ms)
                             
                             return {"success": True, "content": final_content}
 
@@ -348,6 +405,10 @@ class OpenAICompatibleService(BaseAPIService):
                     
                     try:
                         result = await req_task
+                        # 关键修复：API 返回错误时，确保进度条被停止
+                        if not result.get("success") and not result.get("interrupted"):
+                            if not getattr(pbar, '_closed', False):
+                                pbar.error(result.get("error", "API 错误"))
                         return result
                     except asyncio.CancelledError:
                         pbar.cancel(f"{WARN_PREFIX} 任务被中断 | 服务:{provider_display_name}")
@@ -360,11 +421,17 @@ class OpenAICompatibleService(BaseAPIService):
                 try:
                     result = await _do_stream_request()
                 except Exception as req_err:
-                    last_error_msg = str(req_err)
-                    # 网络层面的异常（非HTTP响应），通常不适合通过参数降级解决，除非确认是特定的协议问题
-                    # 这里选择继续抛出或作为错误返回，不盲目重试
-                    # 但为了稳健，如果是非连接已建立后的错误，可以选择不重试
-                    # 为简单起见，仅记录错误
+                    # 网络层面的异常（非HTTP响应）
+                    
+                    # 特别处理编码错误 (UnicodeEncodeError)
+                    if isinstance(req_err, UnicodeEncodeError):
+                        error_detail = "网络请求编码异常: 检测到非法字符 (\u2026 或其他非 ASCII 字符)。请检查服务商配置中的 API Key 或 URL 是否包含多余的省略号、引号或空格。"
+                        if 'pbar' in locals() and pbar:
+                            pbar.error(error_detail)
+                        return {"success": False, "error": error_detail}
+                    
+                    if 'pbar' in locals() and pbar:
+                        pbar.error(f"网络请求异常: {req_err}")
                     return {"success": False, "error": f"网络请求异常: {req_err}"}
 
                 # 检查结果
@@ -374,6 +441,8 @@ class OpenAICompatibleService(BaseAPIService):
                         try:
                             from ..config_manager import config_manager
                             service_config = config_manager.get_service(provider_display_name) or {}
+                            # 注入当前实际使用的 base_url，防止回退到 localhost 导致清理显存失败
+                            service_config['base_url'] = base_url
                             await cls._unload_ollama_model(model, service_config)
                         except:
                             pass
@@ -421,6 +490,8 @@ class OpenAICompatibleService(BaseAPIService):
                 print(f"{PROCESS_PREFIX} Ollama模型已保留 | 模型:{model}")
                 return
             
+            await wait_before_ollama_unload()
+            
             # 获取base_url
             base_url = provider_config.get('base_url', 'http://localhost:11434')
             if base_url.endswith('/v1'):
@@ -433,8 +504,8 @@ class OpenAICompatibleService(BaseAPIService):
                 "keep_alive": 0
             }
             
-            # 创建临时客户端（卸载操作不需要复用）
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            # 创建临时客户端（卸载操作不需要复用，禁用代理避免localhost请求被拦截）
+            async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     from ..utils.common import PROCESS_PREFIX
@@ -476,3 +547,23 @@ class OpenAICompatibleService(BaseAPIService):
             return base_url
         
         return None
+
+    @staticmethod
+    def _sanitize_config_str(s: str) -> str:
+        """
+        清理配置字符串中的非法字符（如空格、引号、不可见字符等）
+        防止因复制粘贴导致的请求失败。
+        
+        关键修复：传入 None 或非字符串时统一返回空字符串 ""，
+        避免后续拼接产生 "Bearer None" 等无效认证头。
+        """
+        if not s or not isinstance(s, str):
+            return ""  # 统一返回空字符串，不返回 None
+        # 1. 移除两端空格和常见引号
+        s = s.strip().strip('"').strip("'")
+        # 2. 移除常见的 Unicode 干扰字符（如 \u2026 省略号）
+        # 注意：这里我们选择将其替换为空，因为 API Key 中不应包含这些字符
+        s = s.replace('\u2026', '') 
+        # 3. 移除不可见的制表符和换行符
+        s = s.replace('\t', '').replace('\n', '').replace('\r', '')
+        return s

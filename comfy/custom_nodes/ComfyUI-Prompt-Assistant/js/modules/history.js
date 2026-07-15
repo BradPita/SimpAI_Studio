@@ -20,6 +20,7 @@ class HistoryManager {
     static onCloseCallback = null;
     static currentNodeId = null;  // 当前节点ID
     static currentInputId = null; // 当前输入框ID
+    static currentWidgetKey = null; // 当前widgetKey
     static eventCleanups = [];    // 事件清理函数数组
     static activeTooltip = null;  // 当前活动的 tooltip
 
@@ -30,11 +31,12 @@ class HistoryManager {
         const { anchorButton, nodeId, inputId, onClose } = params;
 
         try {
-            // 保存当前节点和输入框ID
+            // 保存数据
             this.currentNodeId = nodeId;
             this.currentInputId = inputId;
+            this.currentWidgetKey = params.widgetKey || null;
 
-            logger.debug(`历史弹窗 | 触发显示 | 节点:${nodeId} | 输入框:${inputId}`);
+            // logger.debug(`历史弹窗 | 触发显示 | 节点:${nodeId} | 输入框:${inputId}`);
 
             // 清理现有事件监听
             this._cleanupEvents();
@@ -64,7 +66,7 @@ class HistoryManager {
                 }
             });
 
-            logger.debug(`历史弹窗 | 结果:显示成功 | 节点:${nodeId}`);
+            // logger.debug(`历史弹窗 | 结果:显示成功 | 节点:${nodeId}`);
         } catch (error) {
             logger.error(`历史弹窗 | 结果:失败 | 错误:${error.message}`);
             this._cleanupAll();
@@ -198,7 +200,8 @@ class HistoryManager {
             this.hideHistoryPopup();
             try {
                 // 获取当前输入框内容
-                const inputEl = window.PromptAssistantInputWidgetMap?.[`${nodeId}_${this.currentInputId}`]?.inputEl;
+                const mapping = UIToolkit._findMapping(nodeId, this.currentInputId, this.currentWidgetKey);
+                const inputEl = mapping?.inputEl;
                 const currentContent = inputEl?.value || '';
 
                 // 清除当前节点的历史
@@ -218,8 +221,8 @@ class HistoryManager {
                 }
 
                 // 更新按钮状态
-                if (window.PromptAssistantInputWidgetMap?.[`${nodeId}_${this.currentInputId}`]?.widget) {
-                    const widget = window.PromptAssistantInputWidgetMap[`${nodeId}_${this.currentInputId}`].widget;
+                if (mapping?.widget) {
+                    const widget = mapping.widget;
                     UIToolkit.updateUndoRedoButtonState(widget, HistoryCacheService);
                 }
 
@@ -242,7 +245,8 @@ class HistoryManager {
             this.hideHistoryPopup();
             try {
                 // 获取当前输入框内容
-                const inputEl = window.PromptAssistantInputWidgetMap?.[`${nodeId}_${this.currentInputId}`]?.inputEl;
+                const mapping = UIToolkit._findMapping(nodeId, this.currentInputId, this.currentWidgetKey);
+                const inputEl = mapping?.inputEl;
                 const currentContent = inputEl?.value || '';
 
                 // 清除所有历史
@@ -262,8 +266,8 @@ class HistoryManager {
                 }
 
                 // 更新按钮状态
-                if (window.PromptAssistantInputWidgetMap?.[`${nodeId}_${this.currentInputId}`]?.widget) {
-                    const widget = window.PromptAssistantInputWidgetMap[`${nodeId}_${this.currentInputId}`].widget;
+                if (mapping?.widget) {
+                    const widget = mapping.widget;
                     UIToolkit.updateUndoRedoButtonState(widget, HistoryCacheService);
                 }
 
@@ -513,7 +517,8 @@ class HistoryManager {
                         // 使用UIToolkit写入内容到输入框
                         const success = UIToolkit.writeToInput(item.content, this.currentNodeId, this.currentInputId, {
                             highlight: true,
-                            focus: true
+                            focus: true,
+                            widgetKey: this.currentWidgetKey
                         });
 
                         if (success) {

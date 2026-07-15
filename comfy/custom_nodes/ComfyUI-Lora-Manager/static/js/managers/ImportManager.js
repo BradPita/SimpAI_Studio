@@ -28,7 +28,7 @@ export class ImportManager {
         this.importMode = 'url'; // Default mode: 'url' or 'upload'
         this.useDefaultPath = false;
         this.apiClient = null;
-        
+
         // Initialize sub-managers
         this.loadingManager = new LoadingManager();
         this.stepManager = new ImportStepManager();
@@ -36,7 +36,7 @@ export class ImportManager {
         this.recipeDataManager = new RecipeDataManager(this);
         this.downloadManager = new DownloadManager(this);
         this.folderTreeManager = new FolderTreeManager();
-        
+
         // Bind methods
         this.formatFileSize = formatFileSize;
         this.updateTargetPath = this.updateTargetPath.bind(this);
@@ -53,17 +53,17 @@ export class ImportManager {
             this.initializeEventHandlers();
             this.initialized = true;
         }
-        
+
         // Get API client for LoRAs
         this.apiClient = getModelApiClient(MODEL_TYPES.LORA);
-        
+
         // Reset state
         this.resetSteps();
         if (recipeData) {
             this.downloadableLoRAs = recipeData.loras;
             this.recipeId = recipeId;
         }
-        
+
         // Show modal
         modalManager.showModal('importModal', null, () => {
             this.cleanupFolderBrowser();
@@ -71,7 +71,7 @@ export class ImportManager {
         });
 
         // Verify visibility and focus on URL input
-        setTimeout(() => {      
+        setTimeout(() => {
             // Ensure URL option is selected and focus on the input
             this.toggleImportMode('url');
             const urlInput = document.getElementById('imageUrlInput');
@@ -93,32 +93,32 @@ export class ImportManager {
         // Clear UI state
         this.stepManager.removeInjectedStyles();
         this.stepManager.showStep('uploadStep');
-        
+
         // Reset form inputs
         const fileInput = document.getElementById('recipeImageUpload');
         if (fileInput) fileInput.value = '';
-        
+
         const urlInput = document.getElementById('imageUrlInput');
         if (urlInput) urlInput.value = '';
-        
+
         const uploadError = document.getElementById('uploadError');
         if (uploadError) uploadError.textContent = '';
-        
+
         const importUrlError = document.getElementById('importUrlError');
         if (importUrlError) importUrlError.textContent = '';
-        
+
         const recipeName = document.getElementById('recipeName');
         if (recipeName) recipeName.value = '';
-        
+
         const tagsContainer = document.getElementById('tagsContainer');
         if (tagsContainer) tagsContainer.innerHTML = `<div class="empty-tags">${translate('recipes.controls.import.noTagsAdded', {}, 'No tags added')}</div>`;
-        
+
         // Clear folder path input
         const folderPathInput = document.getElementById('importFolderPath');
         if (folderPathInput) {
             folderPathInput.value = '';
         }
-        
+
         // Reset state variables
         this.recipeImage = null;
         this.recipeData = null;
@@ -127,30 +127,52 @@ export class ImportManager {
         this.missingLoras = [];
         this.downloadableLoRAs = [];
         this.selectedFolder = '';
-        
+
         // Reset import mode
         this.importMode = 'url';
         this.toggleImportMode('url');
-        
+
         // Clear folder tree selection
         if (this.folderTreeManager) {
             this.folderTreeManager.clearSelection();
         }
-        
+
         // Reset default path toggle
         this.loadDefaultPathSetting();
-        
+
         // Reset duplicate related properties
         this.duplicateRecipes = [];
+
+        // Reset button visibility in location step
+        this.resetLocationStepButtons();
+    }
+
+    resetLocationStepButtons() {
+        // Reset buttons to default state
+        const locationStep = document.getElementById('locationStep');
+        if (!locationStep) return;
+        
+        const backBtn = locationStep.querySelector('.secondary-btn');
+        const primaryBtn = locationStep.querySelector('.primary-btn');
+        
+        // Back button - show
+        if (backBtn) {
+            backBtn.style.display = 'inline-block';
+        }
+        
+        // Primary button - reset text
+        if (primaryBtn) {
+            primaryBtn.textContent = translate('recipes.controls.import.downloadAndSaveRecipe', {}, 'Download & Save Recipe');
+        }
     }
 
     toggleImportMode(mode) {
         this.importMode = mode;
-        
+
         // Update toggle buttons
         const uploadBtn = document.querySelector('.toggle-btn[data-mode="upload"]');
         const urlBtn = document.querySelector('.toggle-btn[data-mode="url"]');
-        
+
         if (uploadBtn && urlBtn) {
             if (mode === 'upload') {
                 uploadBtn.classList.add('active');
@@ -160,11 +182,11 @@ export class ImportManager {
                 urlBtn.classList.add('active');
             }
         }
-        
+
         // Show/hide appropriate sections
         const uploadSection = document.getElementById('uploadSection');
         const urlSection = document.getElementById('urlSection');
-        
+
         if (uploadSection && urlSection) {
             if (mode === 'upload') {
                 uploadSection.style.display = 'block';
@@ -174,11 +196,11 @@ export class ImportManager {
                 urlSection.style.display = 'block';
             }
         }
-        
+
         // Clear error messages
         const uploadError = document.getElementById('uploadError');
         const importUrlError = document.getElementById('importUrlError');
-        
+
         if (uploadError) uploadError.textContent = '';
         if (importUrlError) importUrlError.textContent = '';
     }
@@ -206,7 +228,7 @@ export class ImportManager {
     addTag() {
         this.recipeDataManager.addTag();
     }
-    
+
     removeTag(tag) {
         this.recipeDataManager.removeTag(tag);
     }
@@ -217,12 +239,12 @@ export class ImportManager {
 
     async proceedToLocation() {
         this.stepManager.showStep('locationStep');
-        
+
         try {
             // Fetch LoRA roots
             const rootsData = await this.apiClient.fetchModelRoots();
             const loraRoot = document.getElementById('importLoraRoot');
-            loraRoot.innerHTML = rootsData.roots.map(root => 
+            loraRoot.innerHTML = rootsData.roots.map(root =>
                 `<option value="${root}">${root}</option>`
             ).join('');
 
@@ -247,40 +269,86 @@ export class ImportManager {
                     this.updateTargetPath();
                 }
             });
-            
+
             // Initialize folder tree
             await this.initializeFolderTree();
-            
+
             // Setup lora root change handler
             loraRoot.addEventListener('change', async () => {
                 await this.initializeFolderTree();
                 this.updateTargetPath();
             });
-            
+
             // Load default path setting for LoRAs
             this.loadDefaultPathSetting();
-            
+
             this.updateTargetPath();
+
+            // Update download button with missing LoRA count (if any)
+            if (this.missingLoras && this.missingLoras.length > 0) {
+                this.updateDownloadButtonCount();
+                this.updateImportButtonsVisibility(true);
+            } else {
+                this.updateImportButtonsVisibility(false);
+            }
         } catch (error) {
             showToast('toast.recipes.importFailed', { message: error.message }, 'error');
         }
     }
 
+    updateImportButtonsVisibility(hasMissingLoras) {
+        // Update primary button text based on whether there are missing LoRAs
+        const locationStep = document.getElementById('locationStep');
+        if (!locationStep) return;
+        
+        const backBtn = locationStep.querySelector('.secondary-btn');
+        const primaryBtn = locationStep.querySelector('.primary-btn');
+        
+        // Back button - always show
+        if (backBtn) {
+            backBtn.style.display = 'inline-block';
+        }
+        
+        // Update primary button text
+        if (primaryBtn) {
+            const downloadCountSpan = locationStep.querySelector('#downloadLoraCount');
+            if (hasMissingLoras) {
+                // Rebuild button content to ensure proper structure
+                const buttonText = translate('recipes.controls.import.importAndDownload', {}, 'Import & Download');
+                primaryBtn.innerHTML = `${buttonText} <span id="downloadLoraCount"></span>`;
+            } else {
+                primaryBtn.textContent = translate('recipes.controls.import.downloadAndSaveRecipe', {}, 'Download & Save Recipe');
+            }
+        }
+    }
+
+    updateDownloadButtonCount() {
+        // Update the download count badge on the primary button
+        const locationStep = document.getElementById('locationStep');
+        if (!locationStep) return;
+        
+        const downloadCountSpan = locationStep.querySelector('#downloadLoraCount');
+        if (downloadCountSpan) {
+            const missingCount = this.missingLoras?.length || 0;
+            downloadCountSpan.textContent = missingCount > 0 ? `(${missingCount})` : '';
+        }
+    }
+
     backToUpload() {
         this.stepManager.showStep('uploadStep');
-        
+
         // Reset file input
         const fileInput = document.getElementById('recipeImageUpload');
         if (fileInput) fileInput.value = '';
-        
+
         // Reset URL input
         const urlInput = document.getElementById('imageUrlInput');
         if (urlInput) urlInput.value = '';
-        
+
         // Clear error messages
         const uploadError = document.getElementById('uploadError');
         if (uploadError) uploadError.textContent = '';
-        
+
         const importUrlError = document.getElementById('importUrlError');
         if (importUrlError) importUrlError.textContent = '';
     }
@@ -296,7 +364,7 @@ export class ImportManager {
     loadDefaultPathSetting() {
         const storageKey = 'use_default_path_loras';
         this.useDefaultPath = getStorageItem(storageKey, false);
-        
+
         const toggleInput = document.getElementById('importUseDefaultPath');
         if (toggleInput) {
             toggleInput.checked = this.useDefaultPath;
@@ -306,18 +374,18 @@ export class ImportManager {
 
     toggleDefaultPath(event) {
         this.useDefaultPath = event.target.checked;
-        
+
         // Save to localStorage for LoRAs
         const storageKey = 'use_default_path_loras';
         setStorageItem(storageKey, this.useDefaultPath);
-        
+
         this.updatePathSelectionUI();
         this.updateTargetPath();
     }
 
     updatePathSelectionUI() {
         const manualSelection = document.getElementById('importManualPathSelection');
-        
+
         // Always show manual path selection, but disable/enable based on useDefaultPath
         if (manualSelection) {
             manualSelection.style.display = 'block';
@@ -336,7 +404,7 @@ export class ImportManager {
                 });
             }
         }
-        
+
         // Always update the main path display
         this.updateTargetPath();
     }
@@ -345,7 +413,7 @@ export class ImportManager {
         try {
             // Fetch unified folder tree
             const treeData = await this.apiClient.fetchUnifiedFolderTree();
-            
+
             if (treeData.success) {
                 // Load tree data into folder tree manager
                 await this.folderTreeManager.loadTree(treeData.tree);
@@ -368,8 +436,8 @@ export class ImportManager {
     updateTargetPath() {
         const pathDisplay = document.getElementById('importTargetPathDisplay');
         const loraRoot = document.getElementById('importLoraRoot').value;
-        
-        let fullPath = loraRoot || translate('recipes.controls.import.selectLoraRoot', {}, 'Select a LoRA root directory');         if (loraRoot) {
+
+        let fullPath = loraRoot || translate('recipes.controls.import.selectLoraRoot', {}, 'Select a LoRA root directory'); if (loraRoot) {
             if (this.useDefaultPath) {
                 // Show actual template path
                 try {
@@ -417,21 +485,63 @@ export class ImportManager {
         // Store the recipe data and ID
         this.recipeData = recipeData;
         this.recipeId = recipeId;
-        
+
         // Show the modal and go to location step
         this.showImportModal(recipeData, recipeId);
         this.proceedToLocation();
-        
+
         // Update the modal title
         const modalTitle = document.querySelector('#importModal h2');
         if (modalTitle) modalTitle.textContent = translate('recipes.controls.import.downloadMissingLoras', {}, 'Download Missing LoRAs');
+
+        // Update button texts and show download count
+        const locationStep = document.getElementById('locationStep');
+        if (!locationStep) return;
         
-        // Update the save button text
-        const saveButton = document.querySelector('#locationStep .primary-btn');
-        if (saveButton) saveButton.textContent = translate('recipes.controls.import.downloadMissingLoras', {}, 'Download Missing LoRAs');
+        const primaryBtn = locationStep.querySelector('.primary-btn');
+        const backBtn = locationStep.querySelector('.secondary-btn');
         
-        // Hide the back button
-        const backButton = document.querySelector('#locationStep .secondary-btn');
-        if (backButton) backButton.style.display = 'none';
+        // primaryBtn should be the "Import & Download" button
+        if (primaryBtn) {
+            const buttonText = translate('recipes.controls.import.importAndDownload', {}, 'Import & Download');
+            primaryBtn.innerHTML = `${buttonText} <span id="downloadLoraCount">(${recipeData.loras?.length || 0})</span>`;
+        }
+        
+        // Hide the "Back" button in download-only mode
+        if (backBtn) {
+            backBtn.style.display = 'none';
+        }
+    }
+
+    saveRecipeWithoutDownload() {
+        // Call save recipe with skip download flag
+        return this.downloadManager.saveRecipe(true);
+    }
+
+    async saveRecipeOnlyFromDetails() {
+        // Validate recipe name first
+        if (!this.recipeName) {
+            showToast('toast.recipes.enterRecipeName', {}, 'error');
+            return;
+        }
+
+        // Mark deleted LoRAs as excluded
+        if (this.recipeData && this.recipeData.loras) {
+            this.recipeData.loras.forEach(lora => {
+                if (lora.isDeleted) {
+                    lora.exclude = true;
+                }
+            });
+        }
+
+        // Update missing LoRAs list
+        this.missingLoras = this.recipeData.loras.filter(lora =>
+            !lora.existsLocally && !lora.isDeleted);
+        
+        // For import only, we don't need downloadableLoRAs
+        this.downloadableLoRAs = [];
+
+        // Save recipe without downloading
+        await this.downloadManager.saveRecipe(true);
     }
 }

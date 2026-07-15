@@ -9,17 +9,18 @@ from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Set,
 
 from ..utils.models import BaseModelMetadata
 from ..config import config
-from ..utils.file_utils import find_preview_file, get_preview_extension
+from ..utils.file_utils import find_preview_file, get_preview_extension, calculate_sha256
 from ..utils.metadata_manager import MetadataManager
 from ..utils.civitai_utils import resolve_license_info
 from .model_cache import ModelCache
 from .model_hash_index import ModelHashIndex
-from ..utils.constants import PREVIEW_EXTENSIONS
 from .model_lifecycle_service import delete_model_artifacts
 from .service_registry import ServiceRegistry
 from .websocket_manager import ws_manager
 from .persistent_model_cache import get_persistent_cache
 from .settings_manager import get_settings_manager
+from .cache_entry_validator import CacheEntryValidator
+from .cache_health_monitor import CacheHealthMonitor, CacheHealthStatus
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class ModelScanner:
         self._excluded_models = []  # List to track excluded models
         self._persistent_cache = get_persistent_cache()
         self._name_display_mode = self._resolve_name_display_mode()
+        self._cancel_requested = False  # Flag for cancellation
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -225,6 +227,11 @@ class ModelScanner:
 
         entry: Dict[str, Any] = {
             'file_path': normalized_path,
+            # file_name is always stored WITHOUT extension (e.g. "OWSMianne_ANIMA_V1",
+            # not "OWSMianne_ANIMA_V1.safetensors"). All upstream population points
+            # (MetadataManager, from_civitai_info, download manager, etc.) strip the
+            # extension via os.path.splitext before writing. Code consuming this field
+            # should match against names that are likewise extension-free.
             'file_name': get_value('file_name', '') or '',
             'model_name': get_value('model_name', '') or '',
             'folder': normalized_folder,
@@ -245,6 +252,8 @@ class ModelScanner:
             'tags': tags_list,
             'civitai': civitai_slim,
             'civitai_deleted': bool(get_value('civitai_deleted', False)),
+            'skip_metadata_refresh': bool(get_value('skip_metadata_refresh', False)),
+            'hf_url': get_value('hf_url', '') or '',
         }
 
         license_source: Dict[str, Any] = {}
@@ -274,9 +283,15 @@ class ModelScanner:
         _, license_flags = resolve_license_info(license_source or {})
         entry['license_flags'] = license_flags
 
-        model_type = get_value('model_type', None)
-        if model_type:
-            entry['model_type'] = model_type
+        # Handle sub_type (new canonical field)
+        sub_type = get_value('sub_type', None)
+        if sub_type:
+            entry['sub_type'] = sub_type
+        
+        # Handle hash_status for lazy hash calculation (checkpoints)
+        hash_status = get_value('hash_status', 'completed')
+        if hash_status:
+            entry['hash_status'] = hash_status
 
         return entry
 
@@ -402,6 +417,7 @@ class ModelScanner:
             if scan_result:
                 await self._apply_scan_result(scan_result)
                 await self._save_persistent_cache(scan_result)
+                await self._sync_download_history(scan_result.raw_data, source='scan')
 
             # Send final progress update
             await ws_manager.broadcast_init_progress({
@@ -466,6 +482,48 @@ class ModelScanner:
             for tag in adjusted_item.get('tags') or []:
                 tags_count[tag] = tags_count.get(tag, 0) + 1
 
+        # Validate cache entries and check health.
+        # Always use the validated/repaired entries — even when there are no
+        # invalid entries, auto_repair may have filled in missing optional
+        # fields (model_name, file_name, folder) with safe defaults on a copied
+        # working_entry.  Without this unconditional replacement the repaired
+        # copies are discarded and None values propagate to format_response.
+        # See issue #730.
+        valid_entries, invalid_entries = CacheEntryValidator.validate_batch(
+            adjusted_raw_data, auto_repair=True
+        )
+
+        # Always use the validated entries (repaired copies)
+        adjusted_raw_data = valid_entries
+
+        if invalid_entries:
+            monitor = CacheHealthMonitor()
+            report = monitor.check_health(adjusted_raw_data, auto_repair=True)
+
+            if report.status != CacheHealthStatus.HEALTHY:
+                # Broadcast health warning to frontend
+                await ws_manager.broadcast_cache_health_warning(report, page_type)
+                logger.warning(
+                    f"{self.model_type.capitalize()} Scanner: Cache health issue detected - "
+                    f"{report.invalid_entries} invalid entries, {report.repaired_entries} repaired"
+                )
+
+            # Use only valid entries
+            adjusted_raw_data = valid_entries
+
+            # Rebuild tags count from valid entries only
+            tags_count = {}
+            for item in adjusted_raw_data:
+                for tag in item.get('tags') or []:
+                    tags_count[tag] = tags_count.get(tag, 0) + 1
+
+            # Remove invalid entries from hash index
+            for invalid_entry in invalid_entries:
+                file_path = CacheEntryValidator.get_file_path_safe(invalid_entry)
+                sha256 = CacheEntryValidator.get_sha256_safe(invalid_entry)
+                if file_path:
+                    hash_index.remove_by_path(file_path, sha256)
+
         scan_result = CacheBuildResult(
             raw_data=adjusted_raw_data,
             hash_index=hash_index,
@@ -474,6 +532,7 @@ class ModelScanner:
         )
 
         await self._apply_scan_result(scan_result)
+        await self._sync_download_history(adjusted_raw_data, source='scan')
 
         await ws_manager.broadcast_init_progress({
             'stage': 'loading_cache',
@@ -486,6 +545,13 @@ class ModelScanner:
 
     async def _save_persistent_cache(self, scan_result: CacheBuildResult) -> None:
         if not scan_result or not getattr(self, '_persistent_cache', None):
+            return
+
+        if self.is_cancelled():
+            logger.info(
+                f"{self.model_type.capitalize()} Scanner: Skipping _save_persistent_cache "
+                "after cancellation"
+            )
             return
 
         hash_snapshot = self._build_hash_index_snapshot(scan_result.hash_index)
@@ -534,6 +600,7 @@ class ModelScanner:
             excluded_models=list(self._excluded_models)
         )
         await self._save_persistent_cache(snapshot)
+        await self._sync_download_history(snapshot.raw_data, source='scan')
     def _count_model_files(self) -> int:
         """Count all model files with supported extensions in all roots
         
@@ -649,21 +716,31 @@ class ModelScanner:
 
     async def _initialize_cache(self) -> None:
         """Initialize or refresh the cache"""
-        print("init start", flush=True)
         self._is_initializing = True  # Set flag
         try:
             start_time = time.time()
+            
+            # Manually trigger a symlink rescan during a full rebuild.
+            # This ensures that any new symlink mappings are correctly picked up.
+            config.rebuild_symlink_cache()
+
             # Determine the page type based on model type
             # Scan for new data
             scan_result = await self._gather_model_data()
-            await self._apply_scan_result(scan_result)
-            await self._save_persistent_cache(scan_result)
-            print("init end", flush=True)
+            if not self.is_cancelled():
+                await self._apply_scan_result(scan_result)
+                await self._save_persistent_cache(scan_result)
+                await self._sync_download_history(scan_result.raw_data, source='scan')
 
-            logger.info(
-                f"{self.model_type.capitalize()} Scanner: Cache initialization completed in {time.time() - start_time:.2f} seconds, "
-                f"found {len(scan_result.raw_data)} models"
-            )
+                logger.info(
+                    f"{self.model_type.capitalize()} Scanner: Cache initialization completed in {time.time() - start_time:.2f} seconds, "
+                    f"found {len(scan_result.raw_data)} models"
+                )
+            else:
+                logger.info(
+                    f"{self.model_type.capitalize()} Scanner: Cache initialization cancelled "
+                    f"after {time.time() - start_time:.2f} seconds"
+                )
         except Exception as e:
             logger.error(f"{self.model_type.capitalize()} Scanner: Error initializing cache: {e}")
             # Ensure cache is at least an empty structure on error
@@ -678,6 +755,7 @@ class ModelScanner:
 
     async def _reconcile_cache(self) -> None:
         """Fast cache reconciliation - only process differences between cache and filesystem"""
+        self.reset_cancellation()
         self._is_initializing = True # Set flag for reconciliation duration
         try:
             start_time = time.time()
@@ -686,18 +764,23 @@ class ModelScanner:
             # Get current cached file paths
             cached_paths = {item['file_path'] for item in self._cache.raw_data}
             path_to_item = {item['file_path']: item for item in self._cache.raw_data}
+            cached_real_paths = {}
+            for cached_path in cached_paths:
+                try:
+                    cached_real_paths.setdefault(os.path.realpath(cached_path), cached_path)
+                except Exception:
+                    continue
             
             # Track found files and new files
             found_paths = set()
             new_files = []
+            visited_real_paths = set()
+            discovered_real_files = set()
             
             # Scan all model roots
             for root_path in self.get_model_roots():
                 if not os.path.exists(root_path):
                     continue
-                    
-                # Track visited real paths to avoid symlink loops
-                visited_real_paths = set()
                 
                 # Recursively scan directory
                 for root, _, files in os.walk(root_path, followlinks=True):
@@ -711,10 +794,16 @@ class ModelScanner:
                         if ext in self.file_extensions:
                             # Construct paths exactly as they would be in cache
                             file_path = os.path.join(root, file).replace(os.sep, '/')
+                            real_file_path = os.path.realpath(os.path.join(root, file))
                             
                             # Check if this file is already in cache
                             if file_path in cached_paths:
                                 found_paths.add(file_path)
+                                continue
+
+                            cached_real_match = cached_real_paths.get(real_file_path)
+                            if cached_real_match:
+                                found_paths.add(cached_real_match)
                                 continue
 
                             if file_path in self._excluded_models:
@@ -732,11 +821,18 @@ class ModelScanner:
                                 if matched:
                                     continue
                                 
+                            if real_file_path in discovered_real_files:
+                                continue
+
+                            discovered_real_files.add(real_file_path)
                             # This is a new file to process
                             new_files.append(file_path)
                     
                     # Yield control periodically
                     await asyncio.sleep(0)
+                    if self.is_cancelled():
+                        logger.info(f"{self.model_type.capitalize()} Scanner: Reconcile scan cancelled")
+                        return
             
             # Process new files in batches
             total_added = 0
@@ -765,6 +861,18 @@ class ModelScanner:
                                     model_data = self.adjust_cached_entry(dict(model_data))
                                     if not model_data:
                                         continue
+
+                                    # Validate the new entry before adding
+                                    validation_result = CacheEntryValidator.validate(
+                                        model_data, auto_repair=True
+                                    )
+                                    if not validation_result.is_valid:
+                                        logger.warning(
+                                            f"Skipping invalid entry during reconcile: {path}"
+                                        )
+                                        continue
+                                    model_data = validation_result.entry
+
                                     self._ensure_license_flags(model_data)
                                     # Add to cache
                                     self._cache.raw_data.append(model_data)
@@ -784,6 +892,10 @@ class ModelScanner:
                                 logger.error(f"Could not determine root path for {path}")
                         except Exception as e:
                             logger.error(f"Error adding {path} to cache: {e}")
+                        
+                        if self.is_cancelled():
+                            logger.info(f"{self.model_type.capitalize()} Scanner: Reconcile processing cancelled")
+                            return
             
             # Find missing files (in cache but not in filesystem)
             missing_files = cached_paths - found_paths
@@ -837,6 +949,19 @@ class ModelScanner:
     def is_initializing(self) -> bool:
         """Check if the scanner is currently initializing"""
         return self._is_initializing
+    
+    def cancel_task(self) -> None:
+        """Request cancellation of the current long-running task."""
+        self._cancel_requested = True
+        logger.info(f"{self.model_type.capitalize()} Scanner: Cancellation requested")
+
+    def reset_cancellation(self) -> None:
+        """Reset the cancellation flag."""
+        self._cancel_requested = False
+
+    def is_cancelled(self) -> bool:
+        """Check if cancellation has been requested."""
+        return self._cancel_requested
     
     def get_model_roots(self) -> List[str]:
         """Get model root directories"""
@@ -927,7 +1052,7 @@ class ModelScanner:
                         metadata = self.model_class.from_civitai_info(version_info, file_info, file_path)
                         metadata.preview_url = find_preview_file(file_name, os.path.dirname(file_path))
                         await MetadataManager.save_metadata(file_path, metadata)
-                        logger.debug(f"Created metadata from .civitai.info for {file_path}")
+                        logger.info(f"Created metadata from .civitai.info for {file_path} (Reason: .civitai.info was found but .metadata.json was missing)")
                 except Exception as e:
                     logger.error(f"Error creating metadata from .civitai.info for {file_path}: {e}")
         else:
@@ -970,18 +1095,26 @@ class ModelScanner:
 
         model_data = self._build_cache_entry(metadata, folder=normalized_folder)
 
+        # Compute SHA256 hash when metadata provided none (e.g., CivitAI API response has empty hashes).
+        # Respect hash_status='pending' (set by CheckpointScanner for large models) to defer
+        # hash calculation until on-demand — avoids reading entire checkpoint files at startup.
+        hash_status = model_data.get('hash_status', '')
+        if not model_data.get('sha256') and hash_status != 'pending' and file_path:
+            try:
+                logger.info(f"Computing SHA256 hash for {file_path} (was empty from metadata)")
+                sha256 = await calculate_sha256(file_path)
+                if sha256:
+                    model_data['sha256'] = sha256.lower()
+                    if isinstance(metadata, BaseModelMetadata):
+                        metadata.sha256 = sha256.lower()
+                    await MetadataManager.save_metadata(file_path, metadata)
+            except Exception as e:
+                logger.error(f"Failed to compute SHA256 for {file_path}: {e}")
+
         # Skip excluded models
         if model_data.get('exclude', False):
             excluded_models.append(model_data['file_path'])
             return None
-
-        # Check for duplicate filename before adding to hash index
-        # filename = os.path.splitext(os.path.basename(file_path))[0]
-        # existing_hash = hash_index.get_hash_by_filename(filename)
-        # if existing_hash and existing_hash != model_data.get('sha256', '').lower():
-        #     existing_path = hash_index.get_path(existing_hash)
-        #     if existing_path and existing_path != file_path:
-        #         logger.warning(f"Duplicate filename detected: '{filename}' - files: '{existing_path}' and '{file_path}'")
 
         return model_data
 
@@ -989,6 +1122,13 @@ class ModelScanner:
         """Apply scan results to the cache and associated indexes."""
 
         if scan_result is None:
+            return
+
+        if self.is_cancelled():
+            logger.info(
+                f"{self.model_type.capitalize()} Scanner: Skipping _apply_scan_result "
+                "after cancellation"
+            )
             return
 
         self._hash_index = scan_result.hash_index
@@ -1008,6 +1148,82 @@ class ModelScanner:
 
         await self._cache.resort()
 
+        self._log_duplicate_filename_summary()
+
+    def _log_duplicate_filename_summary(self) -> None:
+        """Log a batched summary of duplicate filename conflicts once per scan."""
+        # Duplicate filename detection is only relevant for LoRAs, which use
+        # basename-only syntax (<lora:name:strength>). Checkpoints and embeddings
+        # use full relative paths for resolution, so conflicts are not ambiguous.
+        if self._hash_index is None or self.model_type != "lora":
+            return
+
+        # When full path syntax is active, duplicate filenames across subfolders
+        # are fully qualified, so there is no ambiguity — skip the warning.
+        if get_settings_manager().get("lora_syntax_format", "legacy") == "full":
+            return
+
+        duplicates = self._hash_index.get_duplicate_filenames()
+        if not duplicates:
+            return
+
+        total_files = sum(len(paths) for paths in duplicates.values())
+        conflict_count = len(duplicates)
+        model_type_label = self.model_type or "model"
+
+        logger.warning(
+            "Duplicate filename conflict detected: %d %s filename(s) "
+            "are shared by %d files total, causing ambiguity in %s resolution. "
+            "Open the Doctor panel to resolve one-click.",
+            conflict_count,
+            model_type_label,
+            total_files,
+            model_type_label.capitalize(),
+        )
+
+    async def _sync_download_history(
+        self,
+        raw_data: List[Mapping[str, Any]],
+        *,
+        source: str,
+    ) -> None:
+        records: List[Dict[str, Any]] = []
+        for item in raw_data or []:
+            if not isinstance(item, Mapping):
+                continue
+            civitai = item.get('civitai')
+            if not isinstance(civitai, Mapping):
+                continue
+
+            version_id = civitai.get('id')
+            if version_id in (None, ''):
+                continue
+
+            records.append(
+                {
+                    'version_id': version_id,
+                    'model_id': civitai.get('modelId'),
+                    'file_path': item.get('file_path'),
+                }
+            )
+
+        if not records:
+            return
+
+        try:
+            history_service = await ServiceRegistry.get_downloaded_version_history_service()
+            await history_service.mark_downloaded_bulk(
+                self.model_type,
+                records,
+                source=source,
+            )
+        except Exception as exc:
+            logger.debug(
+                "%s Scanner: Failed to sync download history: %s",
+                self.model_type.capitalize(),
+                exc,
+            )
+
     async def _gather_model_data(
         self,
         *,
@@ -1021,6 +1237,8 @@ class ModelScanner:
         tags_count: Dict[str, int] = {}
         excluded_models: List[str] = []
         processed_files = 0
+        processed_real_files: Set[str] = set()
+        visited_real_dirs: Set[str] = set()
 
         async def handle_progress() -> None:
             if progress_callback is None:
@@ -1030,14 +1248,17 @@ class ModelScanner:
             except Exception as exc:  # pragma: no cover - defensive logging
                 logger.error(f"Error reporting progress for {self.model_type}: {exc}")
 
+        self.reset_cancellation()
+
         async def scan_recursive(current_path: str, root_path: str, visited_paths: Set[str]) -> None:
             nonlocal processed_files
 
             try:
                 real_path = os.path.realpath(current_path)
-                if real_path in visited_paths:
+                if real_path in visited_paths or real_path in visited_real_dirs:
                     return
                 visited_paths.add(real_path)
+                visited_real_dirs.add(real_path)
 
                 with os.scandir(current_path) as iterator:
                     entries = list(iterator)
@@ -1050,6 +1271,11 @@ class ModelScanner:
                                 continue
 
                             file_path = entry.path.replace(os.sep, "/")
+                            real_file_path = os.path.realpath(entry.path)
+                            if real_file_path in processed_real_files:
+                                continue
+
+                            processed_real_files.add(real_file_path)
                             result = await self._process_model_file(
                                 file_path,
                                 root_path,
@@ -1060,6 +1286,17 @@ class ModelScanner:
                             processed_files += 1
 
                             if result:
+                                # Validate the entry before adding
+                                validation_result = CacheEntryValidator.validate(
+                                    result, auto_repair=True
+                                )
+                                if not validation_result.is_valid:
+                                    logger.warning(
+                                        f"Skipping invalid scan result: {file_path}"
+                                    )
+                                    continue
+                                result = validation_result.entry
+
                                 self._ensure_license_flags(result)
                                 raw_data.append(result)
 
@@ -1073,12 +1310,17 @@ class ModelScanner:
 
                             await handle_progress()
                             await asyncio.sleep(0)
+                            if self.is_cancelled():
+                                return
                         elif entry.is_dir(follow_symlinks=True):
                             await scan_recursive(entry.path, root_path, visited_paths)
                     except Exception as entry_error:
                         logger.error(f"Error processing entry {entry.path}: {entry_error}")
             except Exception as scan_error:
                 logger.error(f"Error scanning {current_path}: {scan_error}")
+
+            if self.is_cancelled():
+                return
 
         for model_root in self.get_model_roots():
             if not os.path.exists(model_root):
@@ -1216,9 +1458,12 @@ class ModelScanner:
                 except Exception as e:
                     logger.error(f"Error moving metadata file: {e}")
             
-            await self.update_single_model_cache(source_path, target_file, metadata)
+            update_result = await self.update_single_model_cache(source_path, target_file, metadata, recalculate_type=True)
             
-            return target_file
+            return {
+                "new_path": target_file,
+                "cache_entry": update_result if isinstance(update_result, dict) else None
+            }
             
         except Exception as e:
             logger.error(f"Error moving model: {e}", exc_info=True)
@@ -1250,7 +1495,7 @@ class ModelScanner:
             logger.error(f"Error updating metadata paths: {e}", exc_info=True)
             return None
 
-    async def update_single_model_cache(self, original_path: str, new_path: str, metadata: Dict) -> bool:
+    async def update_single_model_cache(self, original_path: str, new_path: str, metadata: Dict, recalculate_type: bool = False) -> Union[bool, Dict]:
         """Update cache after a model has been moved or modified"""
         cache = await self.get_cached_data()
 
@@ -1287,6 +1532,18 @@ class ModelScanner:
                 file_path_override=normalized_new_path,
             )
 
+            # Ensure sha256 is populated even when metadata doesn't have it
+            if not cache_entry.get('sha256') and normalized_new_path and os.path.exists(normalized_new_path):
+                try:
+                    sha256 = await calculate_sha256(normalized_new_path)
+                    if sha256:
+                        cache_entry['sha256'] = sha256.lower()
+                except Exception as e:
+                    logger.error(f"Failed to compute SHA256 for {normalized_new_path}: {e}")
+
+            if recalculate_type:
+                cache_entry = self.adjust_cached_entry(cache_entry)
+
             cache.raw_data.append(cache_entry)
             cache.add_to_version_index(cache_entry)
 
@@ -1307,7 +1564,7 @@ class ModelScanner:
         if cache_modified:
             await self._persist_current_cache()
 
-        return True
+        return cache_entry if metadata else True
         
     def has_hash(self, sha256: str) -> bool:
         """Check if a model with given hash exists"""
@@ -1339,18 +1596,17 @@ class ModelScanner:
         file_path = self._hash_index.get_path(sha256.lower())
         if not file_path:
             return None
-            
-        base_name = os.path.splitext(file_path)[0]
-        
-        for ext in PREVIEW_EXTENSIONS:
-            preview_path = f"{base_name}{ext}"
-            if os.path.exists(preview_path):
-                return config.get_preview_static_url(preview_path)
-        
+
+        dir_path = os.path.dirname(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        preview_path = find_preview_file(base_name, dir_path)
+        if preview_path:
+            return config.get_preview_static_url(preview_path)
+
         return None
         
     async def get_top_tags(self, limit: int = 20) -> List[Dict[str, any]]:
-        """Get top tags sorted by count"""
+        """Get top tags sorted by count. If limit is 0, return all tags."""
         await self.get_cached_data()
         
         sorted_tags = sorted(
@@ -1359,10 +1615,12 @@ class ModelScanner:
             reverse=True
         )
         
+        if limit == 0:
+            return sorted_tags
         return sorted_tags[:limit]
         
     async def get_base_models(self, limit: int = 20) -> List[Dict[str, any]]:
-        """Get base models sorted by frequency"""
+        """Get base models sorted by count. If limit is 0, return all."""
         cache = await self.get_cached_data()
         
         base_model_counts = {}
@@ -1373,19 +1631,48 @@ class ModelScanner:
         
         sorted_models = [{'name': model, 'count': count} for model, count in base_model_counts.items()]
         sorted_models.sort(key=lambda x: x['count'], reverse=True)
-        
+
+        if limit == 0:
+            return sorted_models
         return sorted_models[:limit]
         
     async def get_model_info_by_name(self, name):
         """Get model information by name"""
         try:
             cache = await self.get_cached_data()
-            
+
+            name_normalized = name.replace("\\", "/")
+            name_no_ext = name_normalized
+            for ext in (".safetensors", ".ckpt", ".pt", ".bin"):
+                if name_no_ext.lower().endswith(ext):
+                    name_no_ext = name_no_ext[: -len(ext)]
+                    break
+
+            has_path = "/" in name_no_ext
+            basename = os.path.basename(name_no_ext) if has_path else name_no_ext
+            best_fallback = None
+
             for model in cache.raw_data:
-                if model.get("file_name") == name:
+                file_name = model.get("file_name", "")
+                folder = model.get("folder", "")
+                file_name_no_ext = file_name
+                for ext in (".safetensors", ".ckpt", ".pt", ".bin"):
+                    if file_name_no_ext.lower().endswith(ext):
+                        file_name_no_ext = file_name_no_ext[: -len(ext)]
+                        break
+                path_name = f"{folder}/{file_name_no_ext}".replace("\\", "/") if folder else file_name_no_ext
+
+                if name_no_ext == file_name_no_ext or name_no_ext == path_name:
                     return model
-                    
-            return None
+
+                if has_path and file_name_no_ext == basename:
+                    if folder and name_no_ext.startswith(folder.replace("\\", "/") + "/"):
+                        best_fallback = model
+                    elif best_fallback is None:
+                        best_fallback = model
+
+            return best_fallback
+
         except Exception as e:
             logger.error(f"Error getting model info by name: {e}", exc_info=True)
             return None
@@ -1442,6 +1729,10 @@ class ModelScanner:
             deleted_models = []
             
             for file_path in file_paths:
+                if self.is_cancelled():
+                    logger.info(f"{self.model_type.capitalize()} Scanner: Bulk delete cancelled by user")
+                    break
+
                 try:
                     target_dir = os.path.dirname(file_path)
                     base_name = os.path.basename(file_path)
@@ -1482,6 +1773,7 @@ class ModelScanner:
                 
             return {
                 'success': True,
+                'status': 'cancelled' if self.is_cancelled() else 'success',
                 'total_deleted': total_deleted,
                 'total_attempted': len(file_paths),
                 'cache_updated': cache_updated,
@@ -1506,6 +1798,13 @@ class ModelScanner:
             bool: True if cache was updated and saved successfully
         """
         if not file_paths or self._cache is None:
+            return False
+
+        if self.is_cancelled():
+            logger.info(
+                f"{self.model_type.capitalize()} Scanner: Skipping cache update "
+                "after cancelled bulk delete"
+            )
             return False
             
         try:

@@ -1,13 +1,12 @@
 import json
 import logging
 import os
-import re
 import sqlite3
 import threading
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from ..utils.settings_paths import get_project_root, get_settings_dir
+from ..utils.cache_paths import CacheType, resolve_cache_path_with_migration
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +52,12 @@ class PersistentModelCache:
         "trained_words",
         "license_flags",
         "civitai_deleted",
+        "skip_metadata_refresh",
         "exclude",
         "db_checked",
         "last_checked_at",
+        "hash_status",
+        "hf_url",
     )
     _MODEL_UPDATE_COLUMNS: Tuple[str, ...] = _MODEL_COLUMNS[2:]
     _instances: Dict[str, "PersistentModelCache"] = {}
@@ -164,8 +166,8 @@ class PersistentModelCache:
 
             item = {
                 "file_path": file_path,
-                "file_name": row["file_name"],
-                "model_name": row["model_name"],
+                "file_name": row["file_name"] or "",
+                "model_name": row["model_name"] or "",
                 "folder": row["folder"] or "",
                 "size": row["size"] or 0,
                 "modified": row["modified"] or 0.0,
@@ -184,7 +186,10 @@ class PersistentModelCache:
                 "tags": tags.get(file_path, []),
                 "civitai": civitai,
                 "civitai_deleted": bool(row["civitai_deleted"]),
+                "skip_metadata_refresh": bool(row["skip_metadata_refresh"]),
                 "license_flags": int(license_value),
+                "hash_status": row["hash_status"] or "completed",
+                "hf_url": row["hf_url"] or "",
             }
             raw_data.append(item)
 
@@ -404,20 +409,12 @@ class PersistentModelCache:
     # Internal helpers -------------------------------------------------
 
     def _resolve_default_path(self, library_name: str) -> str:
-        override = os.environ.get("LORA_MANAGER_CACHE_DB")
-        if override:
-            return override
-        try:
-            settings_dir = get_settings_dir(create=True)
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.warning("Falling back to project directory for cache: %s", exc)
-            settings_dir = get_project_root()
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", library_name or "default")
-        if safe_name.lower() in ("default", ""):
-            legacy_path = os.path.join(settings_dir, self._DEFAULT_FILENAME)
-            if os.path.exists(legacy_path):
-                return legacy_path
-        return os.path.join(settings_dir, "model_cache", f"{safe_name}.sqlite")
+        env_override = os.environ.get("LORA_MANAGER_CACHE_DB")
+        return resolve_cache_path_with_migration(
+            CacheType.MODEL,
+            library_name=library_name,
+            env_override=env_override,
+        )
 
     def _initialize_schema(self) -> None:
         with self._db_lock:
@@ -456,6 +453,8 @@ class PersistentModelCache:
                             exclude INTEGER,
                             db_checked INTEGER,
                             last_checked_at REAL,
+                            hash_status TEXT,
+                            hf_url TEXT DEFAULT '',
                             PRIMARY KEY (model_type, file_path)
                         );
 
@@ -500,8 +499,11 @@ class PersistentModelCache:
             "civitai_creator_username": "TEXT",
             "civitai_model_type": "TEXT",
             "civitai_deleted": "INTEGER DEFAULT 0",
+            "skip_metadata_refresh": "INTEGER DEFAULT 0",
             # Persisting without explicit flags should assume CivitAI's documented defaults (0b111001 == 57).
             "license_flags": f"INTEGER DEFAULT {DEFAULT_LICENSE_FLAGS}",
+            "hash_status": "TEXT DEFAULT 'completed'",
+            "hf_url": "TEXT DEFAULT ''",
         }
 
         for column, definition in required_columns.items():
@@ -550,19 +552,19 @@ class PersistentModelCache:
         return (
             model_type,
             item.get("file_path"),
-            item.get("file_name"),
-            item.get("model_name"),
-            item.get("folder"),
+            item.get("file_name") or "",
+            item.get("model_name") or "",
+            item.get("folder") or "",
             int(item.get("size") or 0),
             float(item.get("modified") or 0.0),
             (item.get("sha256") or "").lower() or None,
-            item.get("base_model"),
-            item.get("preview_url"),
+            item.get("base_model") or "",
+            item.get("preview_url") or "",
             int(item.get("preview_nsfw_level") or 0),
             1 if item.get("from_civitai", True) else 0,
             1 if item.get("favorite") else 0,
-            item.get("notes"),
-            item.get("usage_tips"),
+            item.get("notes") or "",
+            item.get("usage_tips") or "",
             metadata_source,
             civitai.get("id"),
             civitai.get("modelId"),
@@ -572,9 +574,12 @@ class PersistentModelCache:
             trained_words_json,
             int(license_flags),
             1 if item.get("civitai_deleted") else 0,
+            1 if item.get("skip_metadata_refresh") else 0,
             1 if item.get("exclude") else 0,
             1 if item.get("db_checked") else 0,
             float(item.get("last_checked_at") or 0.0),
+            item.get("hash_status", "completed"),
+            item.get("hf_url") or "",
         )
 
     def _insert_model_sql(self) -> str:

@@ -1,19 +1,15 @@
-import { createToggle, createArrowButton, createDragHandle, updateEntrySelection, createExpandButton, updateExpandButtonState } from "./loras_widget_components.js";
+import { createToggle, createArrowButton, createDragHandle, updateEntrySelection, createExpandButton, updateExpandButtonState, createLockButton, updateLockButtonState } from "./loras_widget_components.js";
 import { 
   parseLoraValue, 
   formatLoraValue, 
-  updateWidgetHeight, 
   shouldShowClipEntry, 
-  syncClipStrengthIfCollapsed,
-  LORA_ENTRY_HEIGHT, 
-  HEADER_HEIGHT, 
-  CONTAINER_PADDING, 
-  EMPTY_CONTAINER_HEIGHT 
+  syncClipStrengthIfCollapsed
 } from "./loras_widget_utils.js";
 import { initDrag, createContextMenu, initHeaderDrag, initReorderDrag, handleKeyboardNavigation } from "./loras_widget_events.js";
-import { forwardMiddleMouseToCanvas } from "./utils.js";
+import { forwardMiddleMouseToCanvas, forwardWheelToCanvas, enableListWheelScroll } from "./utils.js";
 import { PreviewTooltip } from "./preview_tooltip.js";
 import { ensureLmStyles } from "./lm_styles_loader.js";
+import { getStrengthStepPreference } from "./settings.js";
 
 export function addLorasWidget(node, name, opts, callback) {
   ensureLmStyles();
@@ -23,9 +19,25 @@ export function addLorasWidget(node, name, opts, callback) {
   container.className = "lm-loras-container";
 
   forwardMiddleMouseToCanvas(container);
+  forwardWheelToCanvas(container);
 
   // Set initial height using CSS variables approach
   const defaultHeight = 200;
+
+  // Set a fixed minimum height so the node has a reasonable starting size.
+  // Adding or removing LoRAs does NOT change the node size — the container
+  // scrolls when content exceeds the allocated space.
+  container.style.setProperty('--comfy-widget-min-height', `${defaultHeight}px`);
+
+  if (typeof LiteGraph !== 'undefined' && LiteGraph.vueNodesMode) {
+    container.classList.add('lm-vue-node');
+    // Window capture-phase hook: scroll the widget instead of zooming the canvas
+    // when the wheel is over a scrollable loras list.
+    enableListWheelScroll(container);
+  }
+
+  // Check if this is a randomizer node (lock button instead of drag handle)
+  const isRandomizerNode = opts?.isRandomizerNode === true;
 
   // Initialize default value
   const defaultValue = opts?.defaultVal || [];
@@ -191,9 +203,6 @@ export function addLorasWidget(node, name, opts, callback) {
       emptyMessage.textContent = "No LoRAs added";
       emptyMessage.className = "lm-lora-empty-state";
       container.appendChild(emptyMessage);
-      
-      // Set fixed height for empty state
-      updateWidgetHeight(container, EMPTY_CONTAINER_HEIGHT, defaultHeight, node);
       return;
     }
 
@@ -240,9 +249,6 @@ export function addLorasWidget(node, name, opts, callback) {
     // Initialize the header drag functionality
     initHeaderDrag(header, widget, renderLoras);
 
-    // Track the total visible entries for height calculation
-    let totalVisibleEntries = lorasData.length;
-
     // Render each lora entry
     lorasData.forEach((loraData) => {
       const { name, strength, clipStrength, active } = loraData;
@@ -255,32 +261,52 @@ export function addLorasWidget(node, name, opts, callback) {
       const loraEl = document.createElement("div");
       loraEl.className = "lm-lora-entry";
 
-      // Store lora name and active state in dataset for selection
+      // Store lora name, active state, and locked state in dataset
       loraEl.dataset.loraName = name;
       loraEl.dataset.active = active ? "true" : "false";
+      loraEl.dataset.locked = (loraData.locked || false) ? "true" : "false";
 
       // Add click handler for selection
       loraEl.addEventListener('click', (e) => {
         // Skip if clicking on interactive elements
-        if (e.target.closest('.lm-lora-toggle') || 
-            e.target.closest('input') || 
+        if (e.target.closest('.lm-lora-toggle') ||
+            e.target.closest('input') ||
             e.target.closest('.lm-lora-arrow') ||
             e.target.closest('.lm-lora-drag-handle') ||
+            e.target.closest('.lm-lora-lock-button') ||
             e.target.closest('.lm-lora-expand-button')) {
           return;
         }
-        
+
         e.preventDefault();
         e.stopPropagation();
-        selectLora(name);
-        container.focus(); // Focus container for keyboard events
+        selectLora(name === selectedLora ? null : name);
+        container.focus();
       });
 
-      // Create drag handle for reordering
-      const dragHandle = createDragHandle();
-      
-      // Initialize reorder drag functionality
-      initReorderDrag(dragHandle, name, widget, renderLoras);
+      // Conditionally create drag handle OR lock button
+      let dragHandleOrLockButton;
+
+      if (isRandomizerNode) {
+        // For randomizer node, show lock button instead of drag handle
+        const isLocked = loraData.locked || false;
+        dragHandleOrLockButton = createLockButton(isLocked, (newLocked) => {
+          // Update this lora's locked state
+          const lorasData = parseLoraValue(widget.value);
+          const loraIndex = lorasData.findIndex(l => l.name === name);
+
+          if (loraIndex >= 0) {
+            lorasData[loraIndex].locked = newLocked;
+            const newValue = formatLoraValue(lorasData);
+            updateWidgetValue(newValue);
+          }
+        });
+      } else {
+        // For other nodes, show drag handle
+        dragHandleOrLockButton = createDragHandle();
+        // Initialize reorder drag functionality
+        initReorderDrag(dragHandleOrLockButton, name, widget, renderLoras);
+      }
 
       // Create toggle for this lora
       const toggle = createToggle(active, (newActive) => {
@@ -393,7 +419,7 @@ export function addLorasWidget(node, name, opts, callback) {
         const loraIndex = lorasData.findIndex(l => l.name === name);
         
         if (loraIndex >= 0) {
-          lorasData[loraIndex].strength = (parseFloat(lorasData[loraIndex].strength) - 0.05).toFixed(2);
+          lorasData[loraIndex].strength = (parseFloat(lorasData[loraIndex].strength) - getStrengthStepPreference()).toFixed(2);
           // Sync clipStrength if collapsed
           syncClipStrengthIfCollapsed(lorasData[loraIndex]);
           
@@ -465,7 +491,7 @@ export function addLorasWidget(node, name, opts, callback) {
         const loraIndex = lorasData.findIndex(l => l.name === name);
         
         if (loraIndex >= 0) {
-          lorasData[loraIndex].strength = (parseFloat(lorasData[loraIndex].strength) + 0.05).toFixed(2);
+          lorasData[loraIndex].strength = (parseFloat(lorasData[loraIndex].strength) + getStrengthStepPreference()).toFixed(2);
           // Sync clipStrength if collapsed
           syncClipStrengthIfCollapsed(lorasData[loraIndex]);
           
@@ -481,8 +507,8 @@ export function addLorasWidget(node, name, opts, callback) {
       // Assemble entry
       const leftSection = document.createElement("div");
       leftSection.className = "lm-lora-entry-left";
-      
-      leftSection.appendChild(dragHandle); // Add drag handle first
+
+      leftSection.appendChild(dragHandleOrLockButton); // Add drag handle or lock button first
       leftSection.appendChild(toggle);
       leftSection.appendChild(expandButton); // Add expand button
       leftSection.appendChild(nameEl);
@@ -494,7 +520,6 @@ export function addLorasWidget(node, name, opts, callback) {
 
       // If expanded, show the clip entry
       if (isExpanded) {
-        totalVisibleEntries++;
         const clipEl = document.createElement("div");
         clipEl.className = "lm-lora-clip-entry";
 
@@ -518,7 +543,7 @@ export function addLorasWidget(node, name, opts, callback) {
           const loraIndex = lorasData.findIndex(l => l.name === name);
           
           if (loraIndex >= 0) {
-            lorasData[loraIndex].clipStrength = (parseFloat(lorasData[loraIndex].clipStrength) - 0.05).toFixed(2);
+            lorasData[loraIndex].clipStrength = (parseFloat(lorasData[loraIndex].clipStrength) - getStrengthStepPreference()).toFixed(2);
             
             const newValue = formatLoraValue(lorasData);
             updateWidgetValue(newValue);
@@ -588,7 +613,7 @@ export function addLorasWidget(node, name, opts, callback) {
           const loraIndex = lorasData.findIndex(l => l.name === name);
           
           if (loraIndex >= 0) {
-            lorasData[loraIndex].clipStrength = (parseFloat(lorasData[loraIndex].clipStrength) + 0.05).toFixed(2);
+            lorasData[loraIndex].clipStrength = (parseFloat(lorasData[loraIndex].clipStrength) + getStrengthStepPreference()).toFixed(2);
             
             const newValue = formatLoraValue(lorasData);
             updateWidgetValue(newValue);
@@ -618,10 +643,6 @@ export function addLorasWidget(node, name, opts, callback) {
       }
     });
     
-    // Calculate height based on number of loras and fixed sizes
-    const calculatedHeight = CONTAINER_PADDING + HEADER_HEIGHT + (Math.min(totalVisibleEntries, 12) * LORA_ENTRY_HEIGHT);
-    updateWidgetHeight(container, calculatedHeight, defaultHeight, node);
-
     // After all LoRA elements are created, apply selection state as the last step
     // This ensures the selection state is not overwritten
     container.querySelectorAll('.lm-lora-entry').forEach(entry => {
@@ -685,16 +706,17 @@ export function addLorasWidget(node, name, opts, callback) {
       }, []);
       
       // Apply existing clip strength values and transfer them to the new value
-      const updatedValue = uniqueValue.map(lora => {       
+      const updatedValue = uniqueValue.map(lora => {
         // For new loras, default clip strength to model strength and expanded to false
         // unless clipStrength is already different from strength
         const clipStrength = lora.clipStrength || lora.strength;
         return {
           ...lora,
           clipStrength: clipStrength,
-          expanded: lora.hasOwnProperty('expanded') ? 
-                    lora.expanded : 
-                    Number(clipStrength) !== Number(lora.strength)
+          expanded: lora.hasOwnProperty('expanded') ?
+                    lora.expanded :
+                    Number(clipStrength) !== Number(lora.strength),
+          locked: lora.hasOwnProperty('locked') ? lora.locked : false  // Initialize locked to false if not present
         };
       });
 
@@ -708,10 +730,6 @@ export function addLorasWidget(node, name, opts, callback) {
   widget.value = defaultValue;
   
   widget.callback = callback;
-
-  widget.serializeValue = () => {
-    return widgetValue;
-  }
 
   widget.onRemove = () => {
     container.remove(); 

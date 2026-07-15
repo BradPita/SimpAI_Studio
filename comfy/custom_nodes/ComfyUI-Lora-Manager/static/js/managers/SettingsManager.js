@@ -2,13 +2,21 @@ import { modalManager } from './ModalManager.js';
 import { showToast } from '../utils/uiHelpers.js';
 import { state, createDefaultSettings } from '../state/index.js';
 import { resetAndReload } from '../api/modelApiFactory.js';
-import { DOWNLOAD_PATH_TEMPLATES, MAPPABLE_BASE_MODELS, PATH_TEMPLATE_PLACEHOLDERS, DEFAULT_PATH_TEMPLATES, DEFAULT_PRIORITY_TAG_CONFIG } from '../utils/constants.js';
+import { 
+    DOWNLOAD_PATH_TEMPLATES, 
+    MAPPABLE_BASE_MODELS, 
+    PATH_TEMPLATE_PLACEHOLDERS, 
+    DEFAULT_PATH_TEMPLATES, 
+    DEFAULT_PRIORITY_TAG_CONFIG,
+    getMappableBaseModelsDynamic
+} from '../utils/constants.js';
 import { translate } from '../utils/i18nHelpers.js';
 import { i18n } from '../i18n/index.js';
 import { configureModelCardVideo } from '../components/shared/ModelCard.js';
 import { validatePriorityTagString, getPriorityTagSuggestionsMap, invalidatePriorityTagSuggestionsCache } from '../utils/priorityTagHelpers.js';
 import { bannerService } from './BannerService.js';
-import { sidebarManager } from '../components/SidebarManager.js';
+
+const VALID_MATURE_BLUR_LEVELS = new Set(['PG13', 'R', 'X', 'XXX']);
 
 export class SettingsManager {
     constructor() {
@@ -17,9 +25,8 @@ export class SettingsManager {
         this.initializationPromise = null;
         this.availableLibraries = {};
         this.activeLibrary = '';
-        this.settingsFilePath = null;
         this.registeredStartupBannerIds = new Set();
-        
+
         // Add initialization to sync with modal state
         this.currentPage = document.body.dataset.page || 'loras';
 
@@ -56,7 +63,6 @@ export class SettingsManager {
             const data = await response.json();
             if (data.success && data.settings) {
                 state.global.settings = this.mergeSettingsWithDefaults(data.settings);
-                this.settingsFilePath = data.settings.settings_file || this.settingsFilePath;
                 this.registerStartupMessages(data.messages);
                 console.log('Settings synced from backend');
             } else {
@@ -135,9 +141,35 @@ export class SettingsManager {
             backendSettings?.auto_organize_exclusions ?? defaults.auto_organize_exclusions
         );
 
+        merged.metadata_refresh_skip_paths = this.normalizePatternList(
+            backendSettings?.metadata_refresh_skip_paths ?? defaults.metadata_refresh_skip_paths
+        );
+
+        merged.skip_previously_downloaded_model_versions =
+            backendSettings?.skip_previously_downloaded_model_versions
+            ?? defaults.skip_previously_downloaded_model_versions;
+
+        merged.download_skip_base_models = this.normalizeDownloadSkipBaseModels(
+            backendSettings?.download_skip_base_models ?? defaults.download_skip_base_models
+        );
+
+        merged.mature_blur_level = this.normalizeMatureBlurLevel(
+            backendSettings?.mature_blur_level ?? defaults.mature_blur_level
+        );
+
         Object.keys(merged).forEach(key => this.backendSettingKeys.add(key));
 
         return merged;
+    }
+
+    normalizeMatureBlurLevel(value) {
+        if (typeof value === 'string') {
+            const normalized = value.trim().toUpperCase();
+            if (VALID_MATURE_BLUR_LEVELS.has(normalized)) {
+                return normalized;
+            }
+        }
+        return 'R';
     }
 
     normalizePatternList(value) {
@@ -161,6 +193,17 @@ export class SettingsManager {
         return [];
     }
 
+    getAvailableDownloadSkipBaseModels() {
+        // Use dynamic base models if available, fallback to hardcoded
+        const models = getMappableBaseModelsDynamic();
+        return models.filter(model => model !== 'Other');
+    }
+
+    normalizeDownloadSkipBaseModels(value) {
+        const allowed = new Set(this.getAvailableDownloadSkipBaseModels());
+        return this.normalizePatternList(value).filter(model => allowed.has(model));
+    }
+
     registerStartupMessages(messages = []) {
         if (!Array.isArray(messages) || messages.length === 0) {
             return;
@@ -175,10 +218,6 @@ export class SettingsManager {
         messages.forEach((message, index) => {
             if (!message || typeof message !== 'object') {
                 return;
-            }
-
-            if (!this.settingsFilePath && typeof message.settings_file === 'string') {
-                this.settingsFilePath = message.settings_file;
             }
 
             const bannerId = `startup-${message.code || index}`;
@@ -255,6 +294,13 @@ export class SettingsManager {
         // Update state
         state.global.settings[settingKey] = value;
 
+        if (settingKey === 'lora_syntax_format') {
+            try {
+                localStorage.setItem('lm:lora-syntax-format-changed', Date.now().toString());
+            } catch (_) {
+            }
+        }
+
         if (!this.isBackendSetting(settingKey)) {
             return;
         }
@@ -289,7 +335,7 @@ export class SettingsManager {
 
     initialize() {
         if (this.initialized) return;
-        
+
         // Add event listener to sync state when modal is closed via other means (like Escape key)
         const settingsModal = document.getElementById('settingsModal');
         if (settingsModal) {
@@ -297,18 +343,23 @@ export class SettingsManager {
                 mutations.forEach((mutation) => {
                     if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
                         this.isOpen = settingsModal.style.display === 'block';
-                        
-                        // When modal is opened, update checkbox state from current settings
+
                         if (this.isOpen) {
                             this.loadSettingsToUI();
+                        } else {
+                            // Reset API key edit mode on close
+                            this.cancelEditApiKey(true);
+                            // Clear proxy password on close
+                            const proxyPasswordInput = document.getElementById('proxyPassword');
+                            if (proxyPasswordInput) proxyPasswordInput.value = '';
                         }
                     }
                 });
             });
-            
+
             observer.observe(settingsModal, { attributes: true });
         }
-        
+
         // Add event listeners for all toggle-visibility buttons
         document.querySelectorAll('.toggle-visibility').forEach(button => {
             button.addEventListener('click', () => this.toggleInputVisibility(button));
@@ -316,12 +367,15 @@ export class SettingsManager {
 
         const openSettingsLocationButton = document.querySelector('.settings-open-location-trigger');
         if (openSettingsLocationButton) {
-            if (openSettingsLocationButton.dataset.settingsPath) {
-                this.settingsFilePath = openSettingsLocationButton.dataset.settingsPath;
-            }
             openSettingsLocationButton.addEventListener('click', () => {
-                const filePath = openSettingsLocationButton.dataset.settingsPath;
-                this.openSettingsFileLocation(filePath);
+                this.openSettingsFileLocation();
+            });
+        }
+
+        const openBackupLocationButton = document.getElementById('backupOpenLocationBtn');
+        if (openBackupLocationButton) {
+            openBackupLocationButton.addEventListener('click', () => {
+                this.openBackupLocation();
             });
         }
 
@@ -359,38 +413,400 @@ export class SettingsManager {
             });
         }
 
+        const metadataRefreshSkipPathsInput = document.getElementById('metadataRefreshSkipPaths');
+        if (metadataRefreshSkipPathsInput) {
+            metadataRefreshSkipPathsInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    this.saveMetadataRefreshSkipPaths();
+                }
+            });
+        }
+
+        const downloadSkipBaseModelsContainer = document.getElementById('downloadSkipBaseModelsContainer');
+        if (downloadSkipBaseModelsContainer) {
+            downloadSkipBaseModelsContainer.addEventListener('change', (event) => {
+                if (event.target instanceof HTMLInputElement && event.target.name === 'downloadSkipBaseModel') {
+                    this.saveDownloadSkipBaseModels();
+                }
+            });
+        }
+
+        const downloadSkipBaseModelsToggle = document.getElementById('downloadSkipBaseModelsToggle');
+        if (downloadSkipBaseModelsToggle) {
+            downloadSkipBaseModelsToggle.addEventListener('click', () => {
+                this.toggleDownloadSkipBaseModelsPanel();
+            });
+        }
+
+        const downloadSkipBaseModelsSearch = document.getElementById('downloadSkipBaseModelsSearch');
+        if (downloadSkipBaseModelsSearch) {
+            downloadSkipBaseModelsSearch.addEventListener('input', () => {
+                this.renderDownloadSkipBaseModels();
+            });
+        }
+
+        const downloadSkipBaseModelsClear = document.getElementById('downloadSkipBaseModelsClear');
+        if (downloadSkipBaseModelsClear) {
+            downloadSkipBaseModelsClear.addEventListener('click', () => {
+                this.clearDownloadSkipBaseModels();
+            });
+        }
+
         this.setupPriorityTagInputs();
+        this.initializeNavigation();
+        this.initializeSearch();
 
         this.initialized = true;
     }
 
-    async openSettingsFileLocation(filePath) {
-        const targetPath = filePath || this.settingsFilePath || document.querySelector('.settings-open-location-trigger')?.dataset.settingsPath;
+    initializeNavigation() {
+        const navItems = document.querySelectorAll('.settings-nav-item');
+        const sections = document.querySelectorAll('.settings-section');
 
-        if (!targetPath) {
-            showToast('settings.openSettingsFileLocation.failed', {}, 'error');
+        if (navItems.length === 0 || sections.length === 0) return;
+
+        // Handle navigation item clicks - macOS Settings style: show section instead of scroll
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                const sectionId = item.dataset.section;
+                if (!sectionId) return;
+
+                // Hide all sections
+                sections.forEach(section => {
+                    section.classList.remove('active');
+                });
+
+                // Show target section
+                const targetSection = document.getElementById(`section-${sectionId}`);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                }
+
+                // Update active nav state
+                navItems.forEach(nav => nav.classList.remove('active'));
+                item.classList.add('active');
+            });
+        });
+
+        // Show first section by default
+        const firstSection = sections[0];
+        if (firstSection) {
+            firstSection.classList.add('active');
+        }
+    }
+
+    initializeSearch() {
+        const searchInput = document.getElementById('settingsSearchInput');
+        const searchClear = document.getElementById('settingsSearchClear');
+        
+        if (!searchInput) return;
+
+        // Debounced search handler
+        let searchTimeout;
+        const debouncedSearch = (query) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                this.performSearch(query);
+            }, 150);
+        };
+
+        // Handle input changes
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            
+            // Show/hide clear button
+            if (searchClear) {
+                searchClear.style.display = query ? 'flex' : 'none';
+            }
+            
+            debouncedSearch(query);
+        });
+
+        // Handle clear button click
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                searchClear.style.display = 'none';
+                searchInput.focus();
+                this.performSearch('');
+            });
+        }
+
+        // Handle Escape key to clear search
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (searchInput.value) {
+                    searchInput.value = '';
+                    if (searchClear) searchClear.style.display = 'none';
+                    this.performSearch('');
+                }
+            }
+        });
+    }
+
+    performSearch(query) {
+        const sections = document.querySelectorAll('.settings-section');
+        const navItems = document.querySelectorAll('.settings-nav-item');
+        const settingsForm = document.querySelector('.settings-form');
+        
+        // Remove existing empty state
+        const existingEmptyState = settingsForm?.querySelector('.settings-search-empty');
+        if (existingEmptyState) {
+            existingEmptyState.remove();
+        }
+
+        if (!query) {
+            // Reset: remove highlights only, keep current section visible
+            sections.forEach(section => {
+                this.removeSearchHighlights(section);
+            });
             return;
         }
 
+        const lowerQuery = query.toLowerCase();
+        let firstMatchSection = null;
+        let firstMatchElement = null;
+        let matchCount = 0;
+
+        sections.forEach(section => {
+            const sectionText = this.getSectionSearchableText(section);
+            const hasMatch = sectionText.includes(lowerQuery);
+
+            if (hasMatch) {
+                const firstHighlight = this.highlightSearchMatches(section, lowerQuery);
+                matchCount++;
+                
+                // Track first match to auto-switch
+                if (!firstMatchSection) {
+                    firstMatchSection = section;
+                    firstMatchElement = firstHighlight;
+                }
+            } else {
+                this.removeSearchHighlights(section);
+            }
+        });
+
+        // Auto-switch to first matching section
+        if (firstMatchSection) {
+            const sectionId = firstMatchSection.id.replace('section-', '');
+            
+            // Hide all sections
+            sections.forEach(section => section.classList.remove('active'));
+            
+            // Show matching section
+            firstMatchSection.classList.add('active');
+            
+            // Update nav active state
+            navItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.section === sectionId) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Scroll to first match after a short delay to allow section to become visible
+            if (firstMatchElement) {
+                requestAnimationFrame(() => {
+                    firstMatchElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                    });
+                });
+            }
+        }
+
+        // Show empty state if no matches found
+        if (matchCount === 0 && settingsForm) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'settings-search-empty';
+            emptyState.innerHTML = `
+                <i class="fas fa-search"></i>
+                <p>${translate('settings.search.noResults', { query }, `No settings found matching "${query}"`)}</p>
+            `;
+            settingsForm.appendChild(emptyState);
+        }
+    }
+
+    getSectionSearchableText(section) {
+        // Get all text content from labels, help text, and headers
+        const labels = section.querySelectorAll('label');
+        const helpTexts = section.querySelectorAll('.input-help');
+        const headers = section.querySelectorAll('h3');
+        
+        let text = '';
+        
+        labels.forEach(el => text += ' ' + el.textContent);
+        helpTexts.forEach(el => text += ' ' + el.textContent);
+        headers.forEach(el => text += ' ' + el.textContent);
+        
+        return text.toLowerCase();
+    }
+
+    highlightSearchMatches(section, query) {
+        // Remove existing highlights first
+        this.removeSearchHighlights(section);
+        
+        if (!query) return null;
+
+        // Highlight in labels and help text
+        const textElements = section.querySelectorAll('label, .input-help, h3');
+        let firstHighlight = null;
+        
+        textElements.forEach(element => {
+            const walker = document.createTreeWalker(
+                element,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            
+            const textNodes = [];
+            let node;
+            while (node = walker.nextNode()) {
+                if (node.textContent.toLowerCase().includes(query)) {
+                    textNodes.push(node);
+                }
+            }
+            
+            textNodes.forEach(textNode => {
+                const parent = textNode.parentElement;
+                const text = textNode.textContent;
+                const lowerText = text.toLowerCase();
+                
+                // Split text by query and wrap matches in highlight spans
+                const parts = [];
+                let lastIndex = 0;
+                let index;
+                
+                while ((index = lowerText.indexOf(query, lastIndex)) !== -1) {
+                    // Add text before match
+                    if (index > lastIndex) {
+                        parts.push(document.createTextNode(text.substring(lastIndex, index)));
+                    }
+                    
+                    // Add highlighted match
+                    const highlight = document.createElement('span');
+                    highlight.className = 'settings-search-highlight';
+                    highlight.textContent = text.substring(index, index + query.length);
+                    parts.push(highlight);
+                    
+                    // Track first highlight for scrolling
+                    if (!firstHighlight) {
+                        firstHighlight = highlight;
+                    }
+                    
+                    lastIndex = index + query.length;
+                }
+                
+                // Add remaining text
+                if (lastIndex < text.length) {
+                    parts.push(document.createTextNode(text.substring(lastIndex)));
+                }
+                
+                // Replace original text node with highlighted version
+                if (parts.length > 1) {
+                    parts.forEach(part => parent.insertBefore(part, textNode));
+                    parent.removeChild(textNode);
+                }
+            });
+        });
+        
+        return firstHighlight;
+    }
+
+    removeSearchHighlights(section) {
+        const highlights = section.querySelectorAll('.settings-search-highlight');
+        
+        highlights.forEach(highlight => {
+            const parent = highlight.parentElement;
+            if (parent) {
+                // Replace highlight with its text content
+                parent.insertBefore(document.createTextNode(highlight.textContent), highlight);
+                parent.removeChild(highlight);
+                
+                // Normalize to merge adjacent text nodes
+                parent.normalize();
+            }
+        });
+    }
+
+    async openSettingsFileLocation() {
         try {
-            const response = await fetch('/api/lm/open-file-location', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ file_path: targetPath }),
+            const response = await fetch('/api/lm/settings/open-location', {
+                method: 'POST'
             });
 
             if (!response.ok) {
                 throw new Error(`Request failed with status ${response.status}`);
             }
 
-            this.settingsFilePath = targetPath;
+            const data = await response.json();
 
-            showToast('settings.openSettingsFileLocation.success', {}, 'success');
+            if (data.mode === 'clipboard' && data.path) {
+                try {
+                    await navigator.clipboard.writeText(data.path);
+                    showToast('settings.openSettingsFileLocation.copied', { path: data.path }, 'success');
+                } catch (clipboardErr) {
+                    console.warn('Clipboard API not available:', clipboardErr);
+                    showToast('settings.openSettingsFileLocation.clipboardFallback', { path: data.path }, 'info');
+                }
+            } else {
+                showToast('settings.openSettingsFileLocation.success', {}, 'success');
+            }
         } catch (error) {
             console.error('Failed to open settings file location:', error);
             showToast('settings.openSettingsFileLocation.failed', {}, 'error');
+        }
+    }
+
+    async openBackupLocation() {
+        try {
+            const response = await fetch('/api/lm/backup/open-location', {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.mode === 'clipboard' && data.path) {
+                try {
+                    await navigator.clipboard.writeText(data.path);
+                    showToast('settings.backup.locationCopied', { path: data.path }, 'success');
+                } catch (clipboardErr) {
+                    console.warn('Clipboard API not available:', clipboardErr);
+                    showToast('settings.backup.locationClipboardFallback', { path: data.path }, 'info');
+                }
+            } else {
+                showToast('settings.backup.openFolderSuccess', {}, 'success');
+            }
+        } catch (error) {
+            console.error('Failed to open backup folder:', error);
+            showToast('settings.backup.openFolderFailed', {}, 'error');
+        }
+    }
+
+    async _fetchProviderModelsAsync() {
+        try {
+            const resp = await fetch('/api/lm/llm/provider-models');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.success && data.models) {
+                this._providerModels = data.models;
+                // Refresh model combobox if the settings modal is still open.
+                // Skip when provider is Ollama — it fetches its own live list
+                // from the local Ollama API and we must not overwrite it.
+                const llmProviderSelect = document.getElementById('llmProvider');
+                const provider = llmProviderSelect ? llmProviderSelect.value : 'openai';
+                if (this._llmModelCombobox && provider !== 'ollama') {
+                    this._llmModelCombobox.updatePresets(this._providerModels[provider] || []);
+                }
+            }
+        } catch (_) {
+            // Silently ignore — models stay empty until next modal open
         }
     }
 
@@ -406,9 +822,160 @@ export class SettingsManager {
             showOnlySFWCheckbox.checked = state.global.settings.show_only_sfw ?? false;
         }
 
+        const matureBlurLevelSelect = document.getElementById('matureBlurLevel');
+        if (matureBlurLevelSelect) {
+            matureBlurLevelSelect.value = this.normalizeMatureBlurLevel(
+                state.global.settings.mature_blur_level
+            );
+        }
+
+        // Set card blur amount slider
+        const cardBlurAmountInput = document.getElementById('cardBlurAmount');
+        const cardBlurValue = state.global.settings.card_blur_amount ?? 8;
+        if (cardBlurAmountInput) {
+            cardBlurAmountInput.value = cardBlurValue;
+            cardBlurAmountInput.style.setProperty('--range-fill', (cardBlurValue / 20 * 100) + '%');
+        }
+        const cardBlurAmountValue = document.getElementById('cardBlurAmountValue');
+        if (cardBlurAmountValue) {
+            cardBlurAmountValue.textContent = `${cardBlurValue}px`;
+        }
+
         const usePortableCheckbox = document.getElementById('usePortableSettings');
         if (usePortableCheckbox) {
             usePortableCheckbox.checked = !!state.global.settings.use_portable_settings;
+        }
+
+        // Update API key status display (do NOT pre-fill the input)
+        this.updateApiKeyStatus();
+        this.updateLlmApiKeyStatus();
+
+        // ── AI Provider settings ──────────────────────────────────────
+        // Load provider presets from the JSON script tag embedded in the template
+        this._providerPresets = {};
+        this._providerModels = {};
+        const presetsScript = document.getElementById('llmProviderPresets');
+        if (presetsScript) {
+            try {
+                this._providerPresets = JSON.parse(presetsScript.textContent);
+            } catch (_) {
+                this._providerPresets = {};
+            }
+        }
+        const modelsScript = document.getElementById('llmProviderModels');
+        if (modelsScript) {
+            try {
+                this._providerModels = JSON.parse(modelsScript.textContent);
+            } catch (_) {
+                this._providerModels = {};
+            }
+        }
+
+        // If the embedded provider models is empty (server did not block on
+        // the remote catalog during page render), fetch asynchronously.
+        if (!this._providerModels || Object.keys(this._providerModels).length === 0) {
+            this._fetchProviderModelsAsync();
+        }
+
+        const llmProviderSelect = document.getElementById('llmProvider');
+        if (llmProviderSelect) {
+            llmProviderSelect.value = state.global.settings.llm_provider || 'openai';
+        }
+
+        // Destroy previous combobox instances before creating new ones,
+        // since loadSettingsToUI() runs on every modal open.
+        if (this._llmApiBaseCombobox) { this._llmApiBaseCombobox.destroy(); }
+        if (this._llmModelCombobox) { this._llmModelCombobox.destroy(); }
+
+        const llmApiBaseInput = document.getElementById('llmApiBase');
+        if (llmApiBaseInput) {
+            llmApiBaseInput.value = state.global.settings.llm_api_base || '';
+            const presetUrls = Object.values(this._providerPresets)
+                .map(p => p.api_base)
+                .filter(Boolean);
+            if (typeof Combobox !== 'undefined') {
+                this._llmApiBaseCombobox = new Combobox(llmApiBaseInput, {
+                    presets: presetUrls,
+                    placeholder: 'https://api.openai.com/v1',
+                });
+            }
+        }
+
+        // Helper to update model Combobox presets from catalog / Ollama API
+        const llmModelInput = document.getElementById('llmModel');
+        this._llmModelCombobox = null;
+        if (llmModelInput && typeof Combobox !== 'undefined') {
+            const currentProvider = llmProviderSelect ? llmProviderSelect.value : 'openai';
+            const fallbackModels = currentProvider === 'ollama' ? [] : (this._providerModels[currentProvider] || []);
+            this._llmModelCombobox = new Combobox(llmModelInput, {
+                presets: fallbackModels,
+                placeholder: translate('settings.aiProvider.modelPlaceholder', {}, 'Select a model...'),
+                onSelect: (value) => {
+                    state.global.settings.llm_model = value;
+                    this.saveSetting('llm_model', value)
+                        .then(() => showToast('toast.settings.settingsUpdated', { setting: 'model' }, 'success'))
+                        .catch(() => {});
+                },
+            });
+        }
+
+        const _loadModelPresets = async (provider) => {
+            if (!this._llmModelCombobox) return;
+            if (provider === 'ollama') {
+                try {
+                    const apiBase = document.getElementById('llmApiBase')?.value?.trim() || 'http://localhost:11434/v1';
+                    const resp = await fetch(`/api/lm/llm/models?provider=ollama&api_base=${encodeURIComponent(apiBase)}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.success && Array.isArray(data.models)) {
+                            this._llmModelCombobox.updatePresets(data.models);
+                            return;
+                        }
+                    }
+                } catch (_) {}
+                this._llmModelCombobox.updatePresets([]);
+            } else {
+                this._llmModelCombobox.updatePresets(this._providerModels[provider] || []);
+            }
+        };
+        _loadModelPresets(llmProviderSelect ? llmProviderSelect.value : 'openai');
+
+        // Provider change → auto-fill API Base URL + update model presets
+        if (llmProviderSelect) {
+            llmProviderSelect.addEventListener('change', () => {
+                const provider = llmProviderSelect.value;
+                const preset = this._providerPresets[provider];
+                if (preset) {
+                    if (llmApiBaseInput && preset.api_base) {
+                        llmApiBaseInput.value = preset.api_base;
+                        if (this._llmApiBaseCombobox) {
+                            this._llmApiBaseCombobox.setValue(preset.api_base);
+                        }
+                        llmApiBaseInput.dispatchEvent(new Event('blur'));
+                    }
+                }
+                _loadModelPresets(provider);
+            });
+        }
+
+        const civitaiHostSelect = document.getElementById('civitaiHost');
+        if (civitaiHostSelect) {
+            civitaiHostSelect.value = state.global.settings.civitai_host || 'civitai.com';
+        }
+
+        const downloadBackendSelect = document.getElementById('downloadBackend');
+        if (downloadBackendSelect) {
+            downloadBackendSelect.value = state.global.settings.download_backend || 'python';
+        }
+
+        const aria2cPathInput = document.getElementById('aria2cPath');
+        if (aria2cPathInput) {
+            aria2cPathInput.value = state.global.settings.aria2c_path || '';
+        }
+
+        const recipesPathInput = document.getElementById('recipesPath');
+        if (recipesPathInput) {
+            recipesPathInput.value = state.global.settings.recipes_path || '';
         }
 
         const autoOrganizeExclusionsInput = document.getElementById('autoOrganizeExclusions');
@@ -420,6 +987,23 @@ export class SettingsManager {
         if (autoOrganizeExclusionsError) {
             autoOrganizeExclusionsError.textContent = '';
         }
+
+        const metadataRefreshSkipPathsInput = document.getElementById('metadataRefreshSkipPaths');
+        if (metadataRefreshSkipPathsInput) {
+            const skipPaths = this.normalizePatternList(state.global.settings.metadata_refresh_skip_paths);
+            metadataRefreshSkipPathsInput.value = skipPaths.join(', ');
+        }
+        const metadataRefreshSkipPathsError = document.getElementById('metadataRefreshSkipPathsError');
+        if (metadataRefreshSkipPathsError) {
+            metadataRefreshSkipPathsError.textContent = '';
+        }
+
+        this.renderDownloadSkipBaseModels();
+        const downloadSkipBaseModelsError = document.getElementById('downloadSkipBaseModelsError');
+        if (downloadSkipBaseModelsError) {
+            downloadSkipBaseModelsError.textContent = '';
+        }
+        this.setDownloadSkipBaseModelsPanelOpen(false);
 
         // Set video autoplay on hover setting
         const autoplayOnHoverCheckbox = document.getElementById('autoplayOnHover');
@@ -439,16 +1023,22 @@ export class SettingsManager {
             cardInfoDisplaySelect.value = state.global.settings.card_info_display || 'always';
         }
 
-        const showFolderSidebarCheckbox = document.getElementById('showFolderSidebar');
-        if (showFolderSidebarCheckbox) {
-            const showSidebarSetting = state.global.settings.show_folder_sidebar;
-            showFolderSidebarCheckbox.checked = showSidebarSetting !== false;
-        }
-
         // Set model card footer action
         const modelCardFooterActionSelect = document.getElementById('modelCardFooterAction');
         if (modelCardFooterActionSelect) {
             modelCardFooterActionSelect.value = state.global.settings.model_card_footer_action || 'example_images';
+        }
+
+        // Set show version on card
+        const showVersionOnCardCheckbox = document.getElementById('showVersionOnCard');
+        if (showVersionOnCardCheckbox) {
+            showVersionOnCardCheckbox.checked = state.global.settings.show_version_on_card !== false;
+        }
+
+        // Set group by model
+        const groupByModelCheckbox = document.getElementById('groupByModel');
+        if (groupByModelCheckbox) {
+            groupByModelCheckbox.checked = !!state.global.settings.group_by_model;
         }
 
         // Set model name display setting
@@ -457,9 +1047,21 @@ export class SettingsManager {
             modelNameDisplaySelect.value = state.global.settings.model_name_display || 'model_name';
         }
 
-        const updateFlagStrategySelect = document.getElementById('updateFlagStrategy');
-        if (updateFlagStrategySelect) {
-            updateFlagStrategySelect.value = state.global.settings.update_flag_strategy || 'same_base';
+        const versionGroupingSelect = document.getElementById('versionGrouping');
+        if (versionGroupingSelect) {
+            versionGroupingSelect.value = state.global.settings.version_grouping || 'same_base';
+        }
+
+        // Set hide early access updates setting
+        const hideEarlyAccessUpdatesCheckbox = document.getElementById('hideEarlyAccessUpdates');
+        if (hideEarlyAccessUpdatesCheckbox) {
+            hideEarlyAccessUpdatesCheckbox.checked = state.global.settings.hide_early_access_updates || false;
+        }
+
+        const skipPreviouslyDownloadedModelVersionsCheckbox = document.getElementById('skipPreviouslyDownloadedModelVersions');
+        if (skipPreviouslyDownloadedModelVersionsCheckbox) {
+            skipPreviouslyDownloadedModelVersionsCheckbox.checked =
+                state.global.settings.skip_previously_downloaded_model_versions || false;
         }
 
         // Set optimize example images setting
@@ -474,6 +1076,23 @@ export class SettingsManager {
             autoDownloadExampleImagesCheckbox.checked = state.global.settings.auto_download_example_images || false;
         }
 
+        const exampleImagesOpenModeSelect = document.getElementById('exampleImagesOpenMode');
+        if (exampleImagesOpenModeSelect) {
+            exampleImagesOpenModeSelect.value = state.global.settings.example_images_open_mode || 'system';
+        }
+
+        const exampleImagesLocalRootInput = document.getElementById('exampleImagesLocalRoot');
+        if (exampleImagesLocalRootInput) {
+            exampleImagesLocalRootInput.value = state.global.settings.example_images_local_root || '';
+        }
+
+        const exampleImagesOpenUriTemplateInput = document.getElementById('exampleImagesOpenUriTemplate');
+        if (exampleImagesOpenUriTemplateInput) {
+            exampleImagesOpenUriTemplateInput.value = state.global.settings.example_images_open_uri_template || '';
+        }
+
+        this.updateExampleImagesOpenSettingsVisibility();
+
         // Load download path templates
         this.loadDownloadPathTemplates();
 
@@ -486,8 +1105,17 @@ export class SettingsManager {
             includeTriggerWordsCheckbox.checked = state.global.settings.include_trigger_words || false;
         }
 
+        // Set lora syntax format
+        const loraSyntaxFormatSelect = document.getElementById('loraSyntaxFormat');
+        if (loraSyntaxFormatSelect) {
+            loraSyntaxFormatSelect.value = state.global.settings.lora_syntax_format || 'legacy';
+        }
+
         // Load metadata archive settings
         await this.loadMetadataArchiveSettings();
+
+        // Load backup settings
+        await this.loadBackupSettings();
 
         // Load base model path mappings
         this.loadBaseModelMappings();
@@ -497,12 +1125,18 @@ export class SettingsManager {
 
         // Load default lora root
         await this.loadLoraRoots();
-        
+
         // Load default checkpoint root
         await this.loadCheckpointRoots();
 
         // Load default embedding root
         await this.loadEmbeddingRoots();
+
+        // Load default unet root
+        await this.loadUnetRoots();
+
+        // Load extra folder paths
+        this.loadExtraFolderPaths();
 
         // Load language setting
         const languageSelect = document.getElementById('languageSelect');
@@ -511,7 +1145,40 @@ export class SettingsManager {
             languageSelect.value = currentLanguage;
         }
 
+        this.loadDownloadBackendSettings();
         this.loadProxySettings();
+
+        // Set license icon style
+        const useNewLicenseIconsCheckbox = document.getElementById('useNewLicenseIcons');
+        if (useNewLicenseIconsCheckbox) {
+            useNewLicenseIconsCheckbox.checked = state.global.settings.use_new_license_icons !== false;
+        }
+    }
+
+    loadDownloadBackendSettings() {
+        const downloadBackendSelect = document.getElementById('downloadBackend');
+        const aria2PathSetting = document.getElementById('aria2PathSetting');
+        const updateVisibility = () => {
+            if (!aria2PathSetting || !downloadBackendSelect) {
+                return;
+            }
+            aria2PathSetting.style.display = downloadBackendSelect.value === 'aria2' ? 'block' : 'none';
+        };
+
+        if (downloadBackendSelect) {
+            downloadBackendSelect.value = state.global.settings.download_backend || 'python';
+            downloadBackendSelect.onchange = () => {
+                updateVisibility();
+                this.saveSelectSetting('downloadBackend', 'download_backend');
+            };
+        }
+
+        const aria2cPathInput = document.getElementById('aria2cPath');
+        if (aria2cPathInput) {
+            aria2cPathInput.value = state.global.settings.aria2c_path || '';
+        }
+
+        updateVisibility();
     }
 
     setupPriorityTagInputs() {
@@ -658,7 +1325,7 @@ export class SettingsManager {
         const proxyEnabledCheckbox = document.getElementById('proxyEnabled');
         if (proxyEnabledCheckbox) {
             proxyEnabledCheckbox.checked = state.global.settings.proxy_enabled || false;
-            
+
             // Add event listener for toggling proxy settings group visibility
             proxyEnabledCheckbox.addEventListener('change', () => {
                 const proxySettingsGroup = document.getElementById('proxySettingsGroup');
@@ -666,7 +1333,7 @@ export class SettingsManager {
                     proxySettingsGroup.style.display = proxyEnabledCheckbox.checked ? 'block' : 'none';
                 }
             });
-            
+
             // Set initial visibility
             const proxySettingsGroup = document.getElementById('proxySettingsGroup');
             if (proxySettingsGroup) {
@@ -854,23 +1521,20 @@ export class SettingsManager {
         try {
             const defaultLoraRootSelect = document.getElementById('defaultLoraRoot');
             if (!defaultLoraRootSelect) return;
-            
+
             // Fetch lora roots
             const response = await fetch('/api/lm/loras/roots');
             if (!response.ok) {
                 throw new Error('Failed to fetch LoRA roots');
             }
-            
+
             const data = await response.json();
             if (!data.roots || data.roots.length === 0) {
                 throw new Error('No LoRA roots found');
             }
-            
-            // Clear existing options except the first one (No Default)
-            const noDefaultOption = defaultLoraRootSelect.querySelector('option[value=""]');
+
             defaultLoraRootSelect.innerHTML = '';
-            defaultLoraRootSelect.appendChild(noDefaultOption);
-            
+
             // Add options for each root
             data.roots.forEach(root => {
                 const option = document.createElement('option');
@@ -878,11 +1542,10 @@ export class SettingsManager {
                 option.textContent = root;
                 defaultLoraRootSelect.appendChild(option);
             });
-            
-            // Set selected value from settings
+
             const defaultRoot = state.global.settings.default_lora_root || '';
-            defaultLoraRootSelect.value = defaultRoot;
-            
+            defaultLoraRootSelect.value = data.roots.includes(defaultRoot) ? defaultRoot : data.roots[0];
+
         } catch (error) {
             console.error('Error loading LoRA roots:', error);
             showToast('toast.settings.loraRootsFailed', { message: error.message }, 'error');
@@ -893,23 +1556,20 @@ export class SettingsManager {
         try {
             const defaultCheckpointRootSelect = document.getElementById('defaultCheckpointRoot');
             if (!defaultCheckpointRootSelect) return;
-            
-            // Fetch checkpoint roots
-            const response = await fetch('/api/lm/checkpoints/roots');
+
+            // Fetch checkpoint roots (checkpoint paths only, not unet)
+            const response = await fetch('/api/lm/checkpoints/checkpoints_roots');
             if (!response.ok) {
                 throw new Error('Failed to fetch checkpoint roots');
             }
-            
+
             const data = await response.json();
             if (!data.roots || data.roots.length === 0) {
                 throw new Error('No checkpoint roots found');
             }
-            
-            // Clear existing options except the first one (No Default)
-            const noDefaultOption = defaultCheckpointRootSelect.querySelector('option[value=""]');
+
             defaultCheckpointRootSelect.innerHTML = '';
-            defaultCheckpointRootSelect.appendChild(noDefaultOption);
-            
+
             // Add options for each root
             data.roots.forEach(root => {
                 const option = document.createElement('option');
@@ -917,14 +1577,48 @@ export class SettingsManager {
                 option.textContent = root;
                 defaultCheckpointRootSelect.appendChild(option);
             });
-            
-            // Set selected value from settings
+
             const defaultRoot = state.global.settings.default_checkpoint_root || '';
-            defaultCheckpointRootSelect.value = defaultRoot;
-            
+            defaultCheckpointRootSelect.value = data.roots.includes(defaultRoot) ? defaultRoot : data.roots[0];
+
         } catch (error) {
             console.error('Error loading checkpoint roots:', error);
             showToast('toast.settings.checkpointRootsFailed', { message: error.message }, 'error');
+        }
+    }
+
+    async loadUnetRoots() {
+        try {
+            const defaultUnetRootSelect = document.getElementById('defaultUnetRoot');
+            if (!defaultUnetRootSelect) return;
+
+            // Fetch unet roots (diffusion model paths only)
+            const response = await fetch('/api/lm/checkpoints/unet_roots');
+            if (!response.ok) {
+                throw new Error('Failed to fetch diffusion model roots');
+            }
+
+            const data = await response.json();
+            if (!data.roots || data.roots.length === 0) {
+                throw new Error('No diffusion model roots found');
+            }
+
+            defaultUnetRootSelect.innerHTML = '';
+
+            // Add options for each root
+            data.roots.forEach(root => {
+                const option = document.createElement('option');
+                option.value = root;
+                option.textContent = root;
+                defaultUnetRootSelect.appendChild(option);
+            });
+
+            const defaultRoot = state.global.settings.default_unet_root || '';
+            defaultUnetRootSelect.value = data.roots.includes(defaultRoot) ? defaultRoot : data.roots[0];
+
+        } catch (error) {
+            console.error('Error loading diffusion model roots:', error);
+            showToast('toast.settings.unetRootsFailed', { message: error.message }, 'error');
         }
     }
 
@@ -944,10 +1638,7 @@ export class SettingsManager {
                 throw new Error('No embedding roots found');
             }
 
-            // Clear existing options except the first one (No Default)
-            const noDefaultOption = defaultEmbeddingRootSelect.querySelector('option[value=""]');
             defaultEmbeddingRootSelect.innerHTML = '';
-            defaultEmbeddingRootSelect.appendChild(noDefaultOption);
 
             // Add options for each root
             data.roots.forEach(root => {
@@ -957,13 +1648,209 @@ export class SettingsManager {
                 defaultEmbeddingRootSelect.appendChild(option);
             });
 
-            // Set selected value from settings
             const defaultRoot = state.global.settings.default_embedding_root || '';
-            defaultEmbeddingRootSelect.value = defaultRoot;
+            defaultEmbeddingRootSelect.value = data.roots.includes(defaultRoot) ? defaultRoot : data.roots[0];
 
         } catch (error) {
             console.error('Error loading embedding roots:', error);
             showToast('toast.settings.embeddingRootsFailed', { message: error.message }, 'error');
+        }
+    }
+
+    loadExtraFolderPaths() {
+        const extraFolderPaths = state.global.settings.extra_folder_paths || {};
+
+        // Load paths for each model type
+        ['loras', 'checkpoints', 'unet', 'embeddings'].forEach((modelType) => {
+            const container = document.getElementById(`extraFolderPaths-${modelType}`);
+            if (!container) return;
+
+            // Clear existing paths
+            container.innerHTML = '';
+
+            // Add existing paths
+            const paths = extraFolderPaths[modelType] || [];
+            paths.forEach((path) => {
+                this.addExtraFolderPathRow(modelType, path);
+            });
+
+            // Add empty row for new path if no paths exist
+            if (paths.length === 0) {
+                this.addExtraFolderPathRow(modelType, '', false);
+            }
+        });
+    }
+
+    addExtraFolderPathRow(modelType, path = '', shouldFocus = true) {
+        const container = document.getElementById(`extraFolderPaths-${modelType}`);
+        if (!container) return;
+
+        const row = document.createElement('div');
+        row.className = 'extra-folder-path-row mapping-row';
+
+        row.innerHTML = `
+            <div class="path-controls">
+                <input type="text" class="extra-folder-path-input"
+                       placeholder="${translate('settings.extraFolderPaths.pathPlaceholder', {}, '/path/to/models')}" value="${path}"
+                       onblur="settingsManager.updateExtraFolderPaths('${modelType}')"
+                       onfocus="settingsManager.clearExtraFolderPathError(this)"
+                       onkeydown="if(event.key === 'Enter') { this.blur(); }" />
+                <button type="button" class="remove-path-btn"
+                        onclick="settingsManager.removeExtraFolderPathRow(this, '${modelType}')"
+                        title="${translate('common.actions.delete', {}, 'Delete')}">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="extra-folder-path-error"></div>
+        `;
+
+        container.appendChild(row);
+
+        // Focus the input if it's empty (new row)
+        if (!path && shouldFocus) {
+            const input = row.querySelector('.extra-folder-path-input');
+            if (input) {
+                setTimeout(() => input.focus(), 0);
+            }
+        }
+    }
+
+    clearExtraFolderPathError(input) {
+        input.classList.remove('has-error');
+        const row = input.closest('.extra-folder-path-row');
+        if (row) {
+            const errEl = row.querySelector('.extra-folder-path-error');
+            if (errEl) {
+                errEl.classList.remove('visible');
+                errEl.textContent = '';
+            }
+        }
+    }
+
+    _clearAllExtraFolderPathErrors() {
+        document.querySelectorAll('.extra-folder-path-input.has-error').forEach((input) => {
+            input.classList.remove('has-error');
+        });
+        document.querySelectorAll('.extra-folder-path-error.visible').forEach((el) => {
+            el.classList.remove('visible');
+            el.textContent = '';
+        });
+    }
+
+    _markExtraFolderPathsError(modelType, overlappingPaths, showMessage = false) {
+        const container = document.getElementById(`extraFolderPaths-${modelType}`);
+        if (!container) return;
+
+        const inputs = container.querySelectorAll('.extra-folder-path-input');
+        inputs.forEach((input) => {
+            const val = input.value.trim();
+            if (val && overlappingPaths.includes(val)) {
+                input.classList.add('has-error');
+                if (showMessage) {
+                    const row = input.closest('.extra-folder-path-row');
+                    if (row) {
+                        const errEl = row.querySelector('.extra-folder-path-error');
+                        if (errEl) {
+                            errEl.textContent = translate('settings.extraFolderPaths.validation.checkpointUnetOverlapInline', {}, 'This path is also used for a different model type. Use separate folders for checkpoints and diffusion models.');
+                            errEl.classList.add('visible');
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    removeExtraFolderPathRow(btn, modelType) {
+        const row = btn.closest('.extra-folder-path-row');
+        if (row) {
+            row.remove();
+            this.updateExtraFolderPaths(modelType);
+        }
+    }
+
+    async updateExtraFolderPaths(changedModelType) {
+        // Clear previous errors
+        this._clearAllExtraFolderPathErrors();
+
+        const extraFolderPaths = {};
+
+        // Collect paths for all model types
+        ['loras', 'checkpoints', 'unet', 'embeddings'].forEach((modelType) => {
+            const container = document.getElementById(`extraFolderPaths-${modelType}`);
+            if (!container) return;
+
+            const inputs = container.querySelectorAll('.extra-folder-path-input');
+            const paths = [];
+
+            inputs.forEach((input) => {
+                const value = input.value.trim();
+                if (value) {
+                    paths.push(value);
+                }
+            });
+
+            extraFolderPaths[modelType] = paths;
+        });
+
+        // Client-side pre-check: checkpoints and unet must not share the same path.
+        // Normalise paths to reduce false negatives vs the backend's realpath + normcase.
+        const normalise = (p) => p.replace(/[/\\]+$/, '').toLowerCase();
+        const ckptSet = new Set((extraFolderPaths.checkpoints || []).map(normalise));
+        const unetSet = new Set((extraFolderPaths.unet || []).map(normalise));
+        const ckptOverlap = (extraFolderPaths.checkpoints || []).filter(p => p && unetSet.has(normalise(p)));
+        const unetOverlap = (extraFolderPaths.unet || []).filter(p => p && ckptSet.has(normalise(p)));
+        const hasOverlap = ckptOverlap.length > 0 || unetOverlap.length > 0;
+
+        if (hasOverlap) {
+            // Error message only on the side the user just edited.
+            // The other side gets red border only (passive conflict indicator).
+            if (changedModelType === 'checkpoints') {
+                this._markExtraFolderPathsError('checkpoints', ckptOverlap, true);
+                this._markExtraFolderPathsError('unet', unetOverlap, false);
+            } else if (changedModelType === 'unet') {
+                this._markExtraFolderPathsError('unet', unetOverlap, true);
+                this._markExtraFolderPathsError('checkpoints', ckptOverlap, false);
+            } else {
+                // Pre-existing conflict from direct config edit — mark both without messages
+                this._markExtraFolderPathsError('checkpoints', ckptOverlap, false);
+                this._markExtraFolderPathsError('unet', unetOverlap, false);
+            }
+            return;
+        }
+
+        // Check if paths have actually changed
+        const currentPaths = state.global.settings.extra_folder_paths || {};
+        const pathsChanged = JSON.stringify(currentPaths) !== JSON.stringify(extraFolderPaths);
+
+        if (!pathsChanged) {
+            return;
+        }
+
+        // Update state
+        state.global.settings.extra_folder_paths = extraFolderPaths;
+
+        try {
+            // Save to backend - this triggers path validation
+            await this.saveSetting('extra_folder_paths', extraFolderPaths);
+            showToast('settings.extraFolderPaths.saveSuccess', {}, 'success');
+
+            // Add empty row if no valid paths exist for the changed type
+            const container = document.getElementById(`extraFolderPaths-${changedModelType}`);
+            if (container) {
+                const inputs = container.querySelectorAll('.extra-folder-path-input');
+                const hasEmptyRow = Array.from(inputs).some((input) => !input.value.trim());
+
+                if (!hasEmptyRow) {
+                    this.addExtraFolderPathRow(changedModelType, '');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to save extra folder paths:', error);
+            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+
+            // Restore previous state on error
+            state.global.settings.extra_folder_paths = currentPaths;
+            this.loadExtraFolderPaths();
         }
     }
 
@@ -972,7 +1859,7 @@ export class SettingsManager {
         if (!mappingsContainer) return;
 
         const mappings = state.global.settings.base_model_path_mappings || {};
-        
+
         // Clear existing mappings
         mappingsContainer.innerHTML = '';
 
@@ -993,8 +1880,8 @@ export class SettingsManager {
 
         const row = document.createElement('div');
         row.className = 'mapping-row';
-        
-        const availableModels = MAPPABLE_BASE_MODELS.filter(model => {
+
+        const availableModels = getMappableBaseModelsDynamic().filter(model => {
             const existingMappings = state.global.settings.base_model_path_mappings || {};
             return !existingMappings.hasOwnProperty(model) || model === baseModel;
         });
@@ -1003,9 +1890,9 @@ export class SettingsManager {
             <div class="mapping-controls">
                 <select class="base-model-select">
                     <option value="">${translate('settings.downloadPathTemplates.selectBaseModel', {}, 'Select Base Model')}</option>
-                    ${availableModels.map(model => 
-                        `<option value="${model}" ${model === baseModel ? 'selected' : ''}>${model}</option>`
-                    ).join('')}
+                    ${availableModels.map(model =>
+            `<option value="${model}" ${model === baseModel ? 'selected' : ''}>${model}</option>`
+        ).join('')}
                 </select>
                 <input type="text" class="path-value-input" placeholder="${translate('settings.downloadPathTemplates.customPathPlaceholder', {}, 'Custom path (e.g., flux)')}" value="${pathValue}">
                 <button type="button" class="remove-mapping-btn" title="${translate('settings.downloadPathTemplates.removeMapping', {}, 'Remove mapping')}">
@@ -1021,7 +1908,7 @@ export class SettingsManager {
 
         // Save on select change immediately
         baseModelSelect.addEventListener('change', () => this.updateBaseModelMappings());
-        
+
         // Save on input blur or Enter key
         pathValueInput.addEventListener('blur', () => this.updateBaseModelMappings());
         pathValueInput.addEventListener('keydown', (e) => {
@@ -1029,7 +1916,7 @@ export class SettingsManager {
                 e.target.blur();
             }
         });
-        
+
         removeBtn.addEventListener('click', () => {
             row.remove();
             this.updateBaseModelMappings();
@@ -1049,10 +1936,10 @@ export class SettingsManager {
         rows.forEach(row => {
             const baseModelSelect = row.querySelector('.base-model-select');
             const pathValueInput = row.querySelector('.path-value-input');
-            
+
             const baseModel = baseModelSelect.value.trim();
             const pathValue = pathValueInput.value.trim();
-            
+
             if (baseModel && pathValue) {
                 newMappings[baseModel] = pathValue;
                 hasValidMapping = true;
@@ -1094,15 +1981,15 @@ export class SettingsManager {
         rows.forEach(row => {
             const select = row.querySelector('.base-model-select');
             const currentValue = select.value;
-            
+
             // Get available models (not already mapped, except current)
-            const availableModels = MAPPABLE_BASE_MODELS.filter(model => 
+            const availableModels = getMappableBaseModelsDynamic().filter(model =>
                 !existingMappings.hasOwnProperty(model) || model === currentValue
             );
 
             // Rebuild options
             select.innerHTML = `<option value="">${translate('settings.downloadPathTemplates.selectBaseModel', {}, 'Select Base Model')}</option>` +
-                availableModels.map(model => 
+                availableModels.map(model =>
                     `<option value="${model}" ${model === currentValue ? 'selected' : ''}>${model}</option>`
                 ).join('');
         });
@@ -1116,7 +2003,7 @@ export class SettingsManager {
             // Show success toast
             const mappingCount = Object.keys(state.global.settings.base_model_path_mappings).length;
             if (mappingCount > 0) {
-                showToast('toast.settings.mappingsUpdated', { 
+                showToast('toast.settings.mappingsUpdated', {
                     count: mappingCount,
                     plural: mappingCount !== 1 ? 's' : ''
                 }, 'success');
@@ -1132,7 +2019,7 @@ export class SettingsManager {
 
     loadDownloadPathTemplates() {
         const templates = state.global.settings.download_path_templates || DEFAULT_PATH_TEMPLATES;
-        
+
         Object.keys(templates).forEach(modelType => {
             this.loadTemplateForModelType(modelType, templates[modelType]);
         });
@@ -1142,12 +2029,12 @@ export class SettingsManager {
         const presetSelect = document.getElementById(`${modelType}TemplatePreset`);
         const customRow = document.getElementById(`${modelType}CustomRow`);
         const customInput = document.getElementById(`${modelType}CustomTemplate`);
-        
+
         if (!presetSelect) return;
 
         // Find matching preset
         const matchingPreset = this.findMatchingPreset(template);
-        
+
         if (matchingPreset !== null) {
             presetSelect.value = matchingPreset;
             if (customRow) customRow.style.display = 'none';
@@ -1160,7 +2047,7 @@ export class SettingsManager {
                 this.validateTemplate(modelType, template);
             }
         }
-        
+
         this.updateTemplatePreview(modelType, template);
     }
 
@@ -1168,14 +2055,14 @@ export class SettingsManager {
         const presetValues = Object.values(DOWNLOAD_PATH_TEMPLATES)
             .map(t => t.value)
             .filter(v => v !== 'custom');
-        
+
         return presetValues.includes(template) ? template : null;
     }
 
     updateTemplatePreset(modelType, value) {
         const customRow = document.getElementById(`${modelType}CustomRow`);
         const customInput = document.getElementById(`${modelType}CustomTemplate`);
-        
+
         if (value === 'custom') {
             if (customRow) customRow.style.display = 'block';
             if (customInput) customInput.focus();
@@ -1183,7 +2070,7 @@ export class SettingsManager {
         } else {
             if (customRow) customRow.style.display = 'none';
         }
-        
+
         // Update template
         this.updateTemplate(modelType, value);
     }
@@ -1195,16 +2082,16 @@ export class SettingsManager {
                 return; // Don't save invalid templates
             }
         }
-        
+
         // Update state
         if (!state.global.settings.download_path_templates) {
             state.global.settings.download_path_templates = { ...DEFAULT_PATH_TEMPLATES };
         }
         state.global.settings.download_path_templates[modelType] = template;
-        
+
         // Update preview
         this.updateTemplatePreview(modelType, template);
-        
+
         // Save settings
         this.saveDownloadPathTemplates();
     }
@@ -1212,17 +2099,17 @@ export class SettingsManager {
     validateTemplate(modelType, template) {
         const validationElement = document.getElementById(`${modelType}Validation`);
         if (!validationElement) return true;
-        
+
         // Reset validation state
         validationElement.innerHTML = '';
         validationElement.className = 'template-validation';
-        
+
         if (!template) {
             validationElement.innerHTML = `<i class="fas fa-check"></i> ${translate('settings.downloadPathTemplates.validation.validFlat', {}, 'Valid (flat structure)')}`;
             validationElement.classList.add('valid');
             return true;
         }
-        
+
         // Check for invalid characters
         const invalidChars = /[<>:"|?*]/;
         if (invalidChars.test(template)) {
@@ -1230,36 +2117,36 @@ export class SettingsManager {
             validationElement.classList.add('invalid');
             return false;
         }
-        
+
         // Check for double slashes
         if (template.includes('//')) {
             validationElement.innerHTML = `<i class="fas fa-times"></i> ${translate('settings.downloadPathTemplates.validation.doubleSlashes', {}, 'Double slashes not allowed')}`;
             validationElement.classList.add('invalid');
             return false;
         }
-        
+
         // Check if it starts or ends with slash
         if (template.startsWith('/') || template.endsWith('/')) {
             validationElement.innerHTML = `<i class="fas fa-times"></i> ${translate('settings.downloadPathTemplates.validation.leadingTrailingSlash', {}, 'Cannot start or end with slash')}`;
             validationElement.classList.add('invalid');
             return false;
         }
-        
+
         // Extract placeholders
         const placeholderRegex = /\{([^}]+)\}/g;
         const matches = template.match(placeholderRegex) || [];
-        
+
         // Check for invalid placeholders
-        const invalidPlaceholders = matches.filter(match => 
+        const invalidPlaceholders = matches.filter(match =>
             !PATH_TEMPLATE_PLACEHOLDERS.includes(match)
         );
-        
+
         if (invalidPlaceholders.length > 0) {
             validationElement.innerHTML = `<i class="fas fa-times"></i> ${translate('settings.downloadPathTemplates.validation.invalidPlaceholder', { placeholder: invalidPlaceholders[0] }, `Invalid placeholder: ${invalidPlaceholders[0]}`)}`;
             validationElement.classList.add('invalid');
             return false;
         }
-        
+
         // Template is valid
         validationElement.innerHTML = `<i class="fas fa-check"></i> ${translate('settings.downloadPathTemplates.validation.validTemplate', {}, 'Valid template')}`;
         validationElement.classList.add('valid');
@@ -1269,7 +2156,7 @@ export class SettingsManager {
     updateTemplatePreview(modelType, template) {
         const previewElement = document.getElementById(`${modelType}Preview`);
         if (!previewElement) return;
-        
+
         if (!template) {
             previewElement.textContent = 'model-name.safetensors';
         } else {
@@ -1308,7 +2195,7 @@ export class SettingsManager {
     async saveToggleSetting(elementId, settingKey) {
         const element = document.getElementById(elementId);
         if (!element) return;
-        
+
         const value = element.checked;
 
         try {
@@ -1325,12 +2212,16 @@ export class SettingsManager {
             if (settingKey === 'enable_metadata_archive_db') {
                 await this.updateMetadataArchiveStatus();
             }
-                
+
+            if (settingKey === 'backup_auto_enabled') {
+                await this.updateBackupStatus();
+            }
+
             showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
-            
+
             // Apply frontend settings immediately
             this.applyFrontendSettings();
-            
+
             // Trigger auto download setup/teardown when setting changes
             if (settingKey === 'auto_download_example_images' && window.exampleImagesManager) {
                 if (value) {
@@ -1339,11 +2230,15 @@ export class SettingsManager {
                     window.exampleImagesManager.clearAutoDownload();
                 }
             }
-            
-            if (settingKey === 'show_only_sfw' || settingKey === 'blur_mature_content') {
+
+            if (settingKey === 'show_only_sfw' || settingKey === 'blur_mature_content' || settingKey === 'group_by_model') {
+                // Save/restore sort preference when toggling group_by_model
+                if (settingKey === 'group_by_model' && window.pageControls?.onGroupByModelToggled) {
+                    window.pageControls.onGroupByModelToggled(value);
+                }
                 this.reloadContent();
             }
-            
+
             // Recalculate layout when compact mode changes
             if (settingKey === 'compact_mode' && state.virtualScroller) {
                 state.virtualScroller.calculateLayout();
@@ -1356,40 +2251,91 @@ export class SettingsManager {
             showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
         }
     }
-    
+
     async saveSelectSetting(elementId, settingKey) {
         const element = document.getElementById(elementId);
         if (!element) return;
-        
-        const value = element.value;
-        
+
+        const value = settingKey === 'mature_blur_level'
+            ? this.normalizeMatureBlurLevel(element.value)
+            : element.value;
+
         try {
             // Update frontend state with mapped keys
             await this.saveSetting(settingKey, value);
 
             // Apply frontend settings immediately
             this.applyFrontendSettings();
-            
+
             // Recalculate layout when display density changes
             if (settingKey === 'display_density' && state.virtualScroller) {
                 state.virtualScroller.calculateLayout();
-                
+
                 let densityName = "Default";
                 if (value === 'medium') densityName = "Medium";
                 if (value === 'compact') densityName = "Compact";
-                
+
                 showToast('toast.settings.displayDensitySet', { density: densityName }, 'success');
                 return;
             }
-            
+
             showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
 
-            if (settingKey === 'model_name_display' || settingKey === 'model_card_footer_action' || settingKey === 'update_flag_strategy') {
+            if (
+                settingKey === 'model_name_display'
+                || settingKey === 'model_card_footer_action'
+                || settingKey === 'version_grouping'
+                || settingKey === 'mature_blur_level'
+            ) {
                 this.reloadContent();
             }
         } catch (error) {
             showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
         }
+    }
+
+    async saveRangeSetting(elementId, displayId, settingKey) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+
+        const value = parseInt(element.value, 10);
+
+        try {
+            await this.saveSetting(settingKey, value);
+            this.applyFrontendSettings();
+
+            // Update the displayed value next to the slider
+            const displayEl = document.getElementById(displayId);
+            if (displayEl) {
+                displayEl.textContent = `${value}px`;
+            }
+
+            const max = parseInt(element.max, 10) || 20;
+            element.style.setProperty('--range-fill', (value / max * 100) + '%');
+
+            showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
+        } catch (error) {
+            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+        }
+    }
+
+    updateExampleImagesOpenSettingsVisibility() {
+        const openMode = state.global.settings.example_images_open_mode || 'system';
+        const localRootSetting = document.getElementById('exampleImagesLocalRootSetting');
+        const uriTemplateSetting = document.getElementById('exampleImagesUriTemplateSetting');
+
+        if (localRootSetting) {
+            localRootSetting.style.display = openMode === 'system' ? 'none' : 'block';
+        }
+
+        if (uriTemplateSetting) {
+            uriTemplateSetting.style.display = openMode === 'uri_template' ? 'block' : 'none';
+        }
+    }
+
+    async handleExampleImagesOpenModeChange() {
+        await this.saveSelectSetting('exampleImagesOpenMode', 'example_images_open_mode');
+        this.updateExampleImagesOpenSettingsVisibility();
     }
 
     async loadMetadataArchiveSettings() {
@@ -1407,6 +2353,163 @@ export class SettingsManager {
         }
     }
 
+    async loadBackupSettings() {
+        const backupAutoEnabledCheckbox = document.getElementById('backupAutoEnabled');
+        if (backupAutoEnabledCheckbox) {
+            backupAutoEnabledCheckbox.checked = state.global.settings.backup_auto_enabled ?? true;
+        }
+
+        const backupRetentionCountInput = document.getElementById('backupRetentionCount');
+        if (backupRetentionCountInput) {
+            backupRetentionCountInput.value = state.global.settings.backup_retention_count ?? 5;
+        }
+
+        await this.updateBackupStatus();
+    }
+
+    async updateBackupStatus() {
+        try {
+            const response = await fetch('/api/lm/backup/status');
+            const data = await response.json();
+
+            const statusContainer = document.getElementById('backupStatus');
+            if (!statusContainer || !data.success) {
+                return;
+            }
+
+            const status = data.status || {};
+            const latestAutoSnapshot = status.latestAutoSnapshot;
+            const retentionCount = status.retentionCount ?? state.global.settings.backup_retention_count ?? 5;
+            const enabled = status.enabled ?? state.global.settings.backup_auto_enabled ?? true;
+            const backupDir = status.backupDir || '';
+            const backupLocationPath = document.getElementById('backupLocationPath');
+            if (backupLocationPath) {
+                backupLocationPath.textContent = backupDir;
+                backupLocationPath.title = backupDir;
+            }
+
+            const formatTimestamp = (timestamp) => {
+                if (!timestamp) {
+                    return translate('common.status.unknown', {}, 'Unknown');
+                }
+                return new Date(timestamp * 1000).toLocaleString();
+            };
+
+            const renderSnapshotDetail = (snapshot) => {
+                if (!snapshot) {
+                    return translate('settings.backup.noneAvailable', {}, 'No snapshots yet');
+                }
+
+                const size = typeof snapshot.size === 'number' ? ` (${this.formatFileSize(snapshot.size)})` : '';
+                return `${snapshot.name}${size}`;
+            };
+
+            statusContainer.innerHTML = `
+                <div class="backup-summary-grid">
+                    <div class="backup-summary-card">
+                        <div class="backup-summary-label">${translate('settings.backup.autoEnabled', {}, 'Automatic snapshots')}</div>
+                        <div class="backup-summary-value status-${enabled ? 'enabled' : 'disabled'}">
+                            ${enabled ? translate('common.status.enabled') : translate('common.status.disabled')}
+                        </div>
+                    </div>
+                    <div class="backup-summary-card">
+                        <div class="backup-summary-label">${translate('settings.backup.retention', {}, 'Retention')}</div>
+                        <div class="backup-summary-value">${retentionCount}</div>
+                    </div>
+                    <div class="backup-summary-card">
+                        <div class="backup-summary-label">${translate('settings.backup.snapshotCount', {}, 'Saved snapshots')}</div>
+                        <div class="backup-summary-value">${status.snapshotCount ?? 0}</div>
+                    </div>
+                </div>
+                <div class="backup-status-list">
+                    <div class="backup-status-row">
+                        <div class="backup-status-label">${translate('settings.backup.latestAutoSnapshot', {}, 'Latest auto snapshot')}</div>
+                        <div class="backup-status-content">
+                            <div class="backup-status-primary">${formatTimestamp(latestAutoSnapshot?.mtime)}</div>
+                            <div class="backup-status-secondary">${renderSnapshotDetail(latestAutoSnapshot)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error updating backup status:', error);
+        }
+    }
+
+    async exportBackup() {
+        try {
+            const response = await fetch('/api/lm/backup/export', {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const contentDisposition = response.headers.get('Content-Disposition') || '';
+            const match = contentDisposition.match(/filename="([^"]+)"/);
+            const filename = match?.[1] || `lora-manager-backup-${Date.now()}.zip`;
+
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            showToast('settings.backup.exportSuccess', {}, 'success');
+        } catch (error) {
+            console.error('Failed to export backup:', error);
+            showToast('settings.backup.exportFailed', { message: error.message }, 'error');
+        }
+    }
+
+    triggerBackupImport() {
+        const input = document.getElementById('backupImportInput');
+        input?.click();
+    }
+
+    async handleBackupImportFile(input) {
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file) {
+            return;
+        }
+
+        if (!confirm(translate('settings.backup.importConfirm', {}, 'Import this backup and overwrite local user state?'))) {
+            return;
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('archive', file);
+
+            const response = await fetch('/api/lm/backup/import', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+                throw new Error(data.error || `Request failed with status ${response.status}`);
+            }
+
+            showToast('settings.backup.importSuccess', {}, 'success');
+            await this.updateBackupStatus();
+            window.location.reload();
+        } catch (error) {
+            console.error('Failed to import backup:', error);
+            showToast('settings.backup.importFailed', { message: error.message }, 'error');
+        }
+    }
+
     async updateMetadataArchiveStatus() {
         try {
             const response = await fetch('/api/lm/metadata-archive-status');
@@ -1416,7 +2519,7 @@ export class SettingsManager {
             if (statusContainer && data.success) {
                 const status = data;
                 const sizeText = status.databaseSize > 0 ? ` (${this.formatFileSize(status.databaseSize)})` : '';
-                
+
                 statusContainer.innerHTML = `
                     <div class="archive-status-item">
                         <span class="archive-status-label">${translate('settings.metadataArchive.status')}:</span>
@@ -1436,14 +2539,14 @@ export class SettingsManager {
                 // Update button states
                 const downloadBtn = document.getElementById('downloadMetadataArchiveBtn');
                 const removeBtn = document.getElementById('removeMetadataArchiveBtn');
-                
+
                 if (downloadBtn) {
                     downloadBtn.disabled = status.isAvailable;
-                    downloadBtn.textContent = status.isAvailable ? 
-                        translate('settings.metadataArchive.downloadedButton') : 
+                    downloadBtn.textContent = status.isAvailable ?
+                        translate('settings.metadataArchive.downloadedButton') :
                         translate('settings.metadataArchive.downloadButton');
                 }
-                
+
                 if (removeBtn) {
                     removeBtn.disabled = !status.isAvailable;
                 }
@@ -1464,12 +2567,12 @@ export class SettingsManager {
     async downloadMetadataArchive() {
         try {
             const downloadBtn = document.getElementById('downloadMetadataArchiveBtn');
-            
+
             if (downloadBtn) {
                 downloadBtn.disabled = true;
                 downloadBtn.textContent = translate('settings.metadataArchive.downloadingButton');
             }
-            
+
             // Show loading with enhanced progress
             const progressUpdater = state.loadingManager.showEnhancedProgress(translate('settings.metadataArchive.preparing'));
 
@@ -1477,20 +2580,20 @@ export class SettingsManager {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
             const downloadId = `metadata_archive_${Date.now()}`;
             const ws = new WebSocket(`${wsProtocol}${window.location.host}/ws/download-progress?id=${downloadId}`);
-            
+
             let wsConnected = false;
             let actualDownloadId = downloadId; // Will be updated when WebSocket confirms the ID
-            
+
             // Promise to wait for WebSocket connection and ID confirmation
             const wsReady = new Promise((resolve) => {
                 ws.onopen = () => {
                     wsConnected = true;
                     console.log('Connected to metadata archive download progress WebSocket');
                 };
-                
+
                 ws.onmessage = (event) => {
                     const data = JSON.parse(event.data);
-                    
+
                     // Handle download ID confirmation
                     if (data.type === 'download_id') {
                         actualDownloadId = data.download_id;
@@ -1498,11 +2601,11 @@ export class SettingsManager {
                         resolve(data.download_id);
                         return;
                     }
-                    
+
                     // Handle metadata archive download progress
                     if (data.type === 'metadata_archive_download') {
                         const message = data.message || '';
-                        
+
                         // Update progress bar based on stage
                         let progressPercent = 0;
                         if (data.stage === 'download') {
@@ -1516,21 +2619,21 @@ export class SettingsManager {
                         } else if (data.stage === 'extract') {
                             progressPercent = 95; // Near completion for extraction
                         }
-                        
+
                         // Update loading manager progress
                         progressUpdater.updateProgress(progressPercent, '', `${message}`);
                     }
                 };
-                
+
                 ws.onerror = (error) => {
                     console.error('WebSocket error:', error);
                     resolve(downloadId); // Fallback to original ID
                 };
-                
+
                 // Timeout fallback
                 setTimeout(() => resolve(downloadId), 5000);
             });
-            
+
             ws.onclose = () => {
                 console.log('WebSocket connection closed');
             };
@@ -1555,18 +2658,18 @@ export class SettingsManager {
             if (data.success) {
                 // Complete progress
                 await progressUpdater.complete(translate('settings.metadataArchive.downloadComplete'));
-                
+
                 showToast('settings.metadataArchive.downloadSuccess', 'success');
-                
+
                 // Update settings using universal save method
                 await this.saveSetting('enable_metadata_archive_db', true);
-                
+
                 // Update UI
                 const enableCheckbox = document.getElementById('enableMetadataArchive');
                 if (enableCheckbox) {
                     enableCheckbox.checked = true;
                 }
-                
+
                 await this.updateMetadataArchiveStatus();
             } else {
                 // Hide loading on error
@@ -1575,7 +2678,7 @@ export class SettingsManager {
             }
         } catch (error) {
             console.error('Error downloading metadata archive:', error);
-            
+
             // Hide loading on error
             state.loadingManager.hide();
 
@@ -1615,13 +2718,13 @@ export class SettingsManager {
 
                 // Update settings using universal save method
                 await this.saveSetting('enable_metadata_archive_db', false);
-                
+
                 // Update UI
                 const enableCheckbox = document.getElementById('enableMetadataArchive');
                 if (enableCheckbox) {
                     enableCheckbox.checked = false;
                 }
-                
+
                 await this.updateMetadataArchiveStatus();
             } else {
                 showToast('settings.metadataArchive.removeError' + ': ' + data.error, 'error');
@@ -1690,28 +2793,274 @@ export class SettingsManager {
         }
     }
 
+    renderDownloadSkipBaseModels() {
+        const container = document.getElementById('downloadSkipBaseModelsContainer');
+        const searchInput = document.getElementById('downloadSkipBaseModelsSearch');
+        const emptyState = document.getElementById('downloadSkipBaseModelsEmpty');
+        if (!container) {
+            return;
+        }
+
+        const selectedValues = this.normalizeDownloadSkipBaseModels(
+            state.global.settings.download_skip_base_models
+        );
+        const selected = new Set(selectedValues);
+        const options = this.getAvailableDownloadSkipBaseModels();
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        const filteredOptions = query
+            ? options.filter((baseModel) => baseModel.toLowerCase().includes(query))
+            : options;
+
+        container.innerHTML = filteredOptions.map((baseModel) => `
+            <label class="base-model-skip-option">
+                <input
+                    type="checkbox"
+                    name="downloadSkipBaseModel"
+                    value="${baseModel}"
+                    ${selected.has(baseModel) ? 'checked' : ''}
+                >
+                <span>${baseModel}</span>
+            </label>
+        `).join('');
+
+        if (emptyState) {
+            emptyState.hidden = filteredOptions.length > 0;
+        }
+
+        this.renderDownloadSkipBaseModelsSummary(selectedValues);
+    }
+
+    renderDownloadSkipBaseModelsSummary(selectedValues = null) {
+        const summaryElement = document.getElementById('downloadSkipBaseModelsSummary');
+        if (!summaryElement) {
+            return;
+        }
+
+        const values = Array.isArray(selectedValues)
+            ? selectedValues
+            : this.normalizeDownloadSkipBaseModels(state.global.settings.download_skip_base_models);
+
+        if (values.length === 0) {
+            summaryElement.textContent = translate(
+                'settings.downloadSkipBaseModels.summary.none',
+                {},
+                'None selected'
+            );
+            return;
+        }
+
+        if (values.length <= 2) {
+            summaryElement.textContent = values.join(', ');
+            return;
+        }
+
+        summaryElement.textContent = translate(
+            'settings.downloadSkipBaseModels.summary.count',
+            { count: values.length },
+            `${values.length} selected`
+        );
+    }
+
+    setDownloadSkipBaseModelsPanelOpen(isOpen) {
+        const panel = document.getElementById('downloadSkipBaseModelsPanel');
+        const toggle = document.getElementById('downloadSkipBaseModelsToggle');
+        const toggleLabel = toggle?.querySelector('.base-model-skip-toggle-label');
+        if (!panel || !toggle) {
+            return;
+        }
+
+        panel.hidden = !isOpen;
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (toggleLabel) {
+            toggleLabel.textContent = isOpen
+                ? translate('settings.downloadSkipBaseModels.actions.collapse', {}, 'Collapse')
+                : translate('settings.downloadSkipBaseModels.actions.edit', {}, 'Edit');
+        }
+
+        if (isOpen) {
+            const searchInput = document.getElementById('downloadSkipBaseModelsSearch');
+            searchInput?.focus();
+        }
+    }
+
+    toggleDownloadSkipBaseModelsPanel() {
+        const panel = document.getElementById('downloadSkipBaseModelsPanel');
+        if (!panel) {
+            return;
+        }
+        this.setDownloadSkipBaseModelsPanelOpen(panel.hidden);
+    }
+
+    async saveDownloadSkipBaseModels() {
+        const container = document.getElementById('downloadSkipBaseModelsContainer');
+        const errorElement = document.getElementById('downloadSkipBaseModelsError');
+        if (!container) return;
+
+        const selected = Array.from(
+            container.querySelectorAll('input[name="downloadSkipBaseModel"]:checked')
+        ).map((input) => input.value);
+        const normalized = this.normalizeDownloadSkipBaseModels(selected);
+        const current = this.normalizeDownloadSkipBaseModels(state.global.settings.download_skip_base_models);
+
+        if (normalized.join('|') === current.join('|')) {
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
+            return;
+        }
+
+        try {
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
+
+            await this.saveSetting('download_skip_base_models', normalized);
+            this.renderDownloadSkipBaseModels();
+
+            showToast(
+                'toast.settings.settingsUpdated',
+                { setting: translate('settings.downloadSkipBaseModels.label') },
+                'success'
+            );
+        } catch (error) {
+            console.error('Failed to save download skip base models:', error);
+            if (errorElement) {
+                errorElement.textContent = translate(
+                    'settings.downloadSkipBaseModels.validation.saveFailed',
+                    { message: error.message },
+                    `Unable to save excluded base models: ${error.message}`
+                );
+            }
+            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+        }
+    }
+
+    async clearDownloadSkipBaseModels() {
+        const searchInput = document.getElementById('downloadSkipBaseModelsSearch');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        const current = this.normalizeDownloadSkipBaseModels(
+            state.global.settings.download_skip_base_models
+        );
+        if (current.length === 0) {
+            this.renderDownloadSkipBaseModels();
+            return;
+        }
+
+        try {
+            const errorElement = document.getElementById('downloadSkipBaseModelsError');
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
+
+            await this.saveSetting('download_skip_base_models', []);
+            this.renderDownloadSkipBaseModels();
+
+            showToast(
+                'toast.settings.settingsUpdated',
+                { setting: translate('settings.downloadSkipBaseModels.label') },
+                'success'
+            );
+        } catch (error) {
+            const errorElement = document.getElementById('downloadSkipBaseModelsError');
+            console.error('Failed to clear download skip base models:', error);
+            if (errorElement) {
+                errorElement.textContent = translate(
+                    'settings.downloadSkipBaseModels.validation.saveFailed',
+                    { message: error.message },
+                    `Unable to save excluded base models: ${error.message}`
+                );
+            }
+            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+        }
+    }
+
+    async saveMetadataRefreshSkipPaths() {
+        const input = document.getElementById('metadataRefreshSkipPaths');
+        const errorElement = document.getElementById('metadataRefreshSkipPathsError');
+        if (!input) return;
+
+        const normalized = this.normalizePatternList(input.value);
+
+        if (input.value.trim() && normalized.length === 0) {
+            if (errorElement) {
+                errorElement.textContent = translate(
+                    'settings.metadataRefreshSkipPaths.validation.noPaths',
+                    {},
+                    'Enter at least one path separated by commas.'
+                );
+            }
+            return;
+        }
+
+        const current = this.normalizePatternList(state.global.settings.metadata_refresh_skip_paths);
+        if (normalized.join('|') === current.join('|')) {
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
+            return;
+        }
+
+        try {
+            if (errorElement) {
+                errorElement.textContent = '';
+            }
+
+            await this.saveSetting('metadata_refresh_skip_paths', normalized);
+            input.value = normalized.join(', ');
+
+            showToast(
+                'toast.settings.settingsUpdated',
+                { setting: translate('settings.metadataRefreshSkipPaths.label') },
+                'success'
+            );
+        } catch (error) {
+            console.error('Failed to save metadata refresh skip paths:', error);
+            if (errorElement) {
+                errorElement.textContent = translate(
+                    'settings.metadataRefreshSkipPaths.validation.saveFailed',
+                    { message: error.message },
+                    `Unable to save skip paths: ${error.message}`
+                );
+            }
+            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+        }
+    }
+
     async saveInputSetting(elementId, settingKey) {
         const element = document.getElementById(elementId);
         if (!element) return;
 
         const value = element.value.trim(); // Trim whitespace
-        
+        const shouldShowLoading = settingKey === 'recipes_path';
+
         try {
             // Check if value has changed from existing value
-            const currentValue = state.global.settings[settingKey] || '';
-            if (value === currentValue) {
+            const currentValue = state.global.settings[settingKey];
+            const normalizedCurrentValue = currentValue === undefined || currentValue === null
+                ? ''
+                : String(currentValue).trim();
+            if (value === normalizedCurrentValue) {
                 return; // No change, exit early
             }
-            
+
+            if (shouldShowLoading) {
+                state.loadingManager?.showSimpleLoading(
+                    translate('settings.folderSettings.recipesPathMigrating', {}, 'Migrating recipes...')
+                );
+            }
+
             // For username and password, handle empty values specially
             if ((settingKey === 'proxy_username' || settingKey === 'proxy_password') && value === '') {
                 // Remove from state instead of setting to empty string
                 delete state.global.settings[settingKey];
-                
+
                 // Send delete flag to backend
                 const payload = {};
                 payload[settingKey] = '__DELETE__';
-                
+
                 const response = await fetch('/api/lm/settings', {
                     method: 'POST',
                     headers: {
@@ -1727,11 +3076,29 @@ export class SettingsManager {
                 // Use the universal save method
                 await this.saveSetting(settingKey, value);
             }
-            
-            showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
-            
+
+            if (shouldShowLoading) {
+                state.loadingManager?.hide();
+            }
+
+            if (settingKey === 'recipes_path') {
+                showToast('toast.settings.recipesPathUpdated', {}, 'success');
+            } else if (settingKey === 'backup_retention_count') {
+                await this.updateBackupStatus();
+                showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
+            } else {
+                showToast('toast.settings.settingsUpdated', { setting: settingKey.replace(/_/g, ' ') }, 'success');
+            }
+
         } catch (error) {
-            showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+            if (shouldShowLoading) {
+                state.loadingManager?.hide();
+            }
+            if (settingKey === 'recipes_path') {
+                showToast('toast.settings.recipesPathSaveFailed', { message: error.message }, 'error');
+            } else {
+                showToast('toast.settings.settingSaveFailed', { message: error.message }, 'error');
+            }
         }
     }
 
@@ -1753,16 +3120,129 @@ export class SettingsManager {
         }
     }
 
+    // ── CivitAI API Key management ──────────────────────────────
+
+    updateApiKeyStatus() {
+        const hasKey = !!(state.global.settings.civitai_api_key_set ||
+                          state.global.settings.civitai_api_key);
+        const statusEl = document.getElementById('civitaiApiKeyStatus');
+        const statusText = document.getElementById('civitaiApiKeyStatusText');
+        const actionBtn = document.getElementById('civitaiApiKeyActionBtn');
+        if (!statusText || !actionBtn) return;
+
+        if (hasKey) {
+            statusText.classList.remove('api-key-status--unconfigured');
+            statusText.classList.add('api-key-status--configured');
+            statusText.innerHTML = '<i class="fas fa-check-circle text-success"></i> '
+                + translate('settings.civitaiApiKeyConfigured', {}, 'Configured');
+            actionBtn.textContent = translate('common.actions.change', {}, 'Change');
+        } else {
+            statusText.classList.remove('api-key-status--configured');
+            statusText.classList.add('api-key-status--unconfigured');
+            statusText.innerHTML = '<i class="fas fa-times-circle text-error"></i> '
+                + translate('settings.civitaiApiKeyNotConfigured', {}, 'Not configured');
+            actionBtn.textContent = translate('settings.civitaiApiKeySet', {}, 'Set up');
+        }
+    }
+
+    updateLlmApiKeyStatus() {
+        const hasKey = !!(state.global.settings.llm_api_key_set || state.global.settings.llm_api_key);
+        const statusText = document.getElementById('llmApiKeyStatusText');
+        const actionBtn = document.getElementById('llmApiKeyActionBtn');
+        if (!statusText || !actionBtn) return;
+
+        if (hasKey) {
+            statusText.classList.remove('api-key-status--unconfigured');
+            statusText.classList.add('api-key-status--configured');
+            statusText.innerHTML = '<i class="fas fa-check-circle text-success"></i> '
+                + translate('settings.aiProvider.apiKeyConfigured', {}, 'Configured');
+            actionBtn.textContent = translate('common.actions.change', {}, 'Change');
+        } else {
+            statusText.classList.remove('api-key-status--configured');
+            statusText.classList.add('api-key-status--unconfigured');
+            statusText.innerHTML = '<i class="fas fa-times-circle text-error"></i> '
+                + translate('settings.aiProvider.apiKeyNotSet', {}, 'Not set');
+            actionBtn.textContent = translate('settings.aiProvider.apiKeySet', {}, 'Set up');
+        }
+    }
+
+    editApiKey(settingsKey = 'civitai_api_key', inputId = 'civitaiApiKey') {
+        const statusId = inputId + 'Status';
+        const editId = inputId + 'Edit';
+        const statusEl = document.getElementById(statusId);
+        if (statusEl) statusEl.classList.add('is-hidden');
+        const editContainer = document.getElementById(editId);
+        if (editContainer) editContainer.classList.remove('is-hidden');
+        // Focus the input
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.value = '';  // Never pre-fill the secret
+            setTimeout(() => input.focus(), 50);
+        }
+    }
+
+    cancelEditApiKey(silent, inputId = 'civitaiApiKey') {
+        const editId = inputId + 'Edit';
+        const statusId = inputId + 'Status';
+        const editContainer = document.getElementById(editId);
+        if (editContainer) editContainer.classList.add('is-hidden');
+        const statusContainer = document.getElementById(statusId);
+        if (statusContainer) statusContainer.classList.remove('is-hidden');
+        // Clear any typed value
+        const input = document.getElementById(inputId);
+        if (input) input.value = '';
+        if (!silent) {
+            if (inputId === 'civitaiApiKey') {
+                this.updateApiKeyStatus();
+            }
+        }
+    }
+
+    async saveApiKey(settingsKey = 'civitai_api_key', inputId = 'civitaiApiKey') {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        const value = input.value.trim();
+
+        try {
+            await this.saveSetting(settingsKey, value);
+            const labelName = settingsKey === 'civitai_api_key' ? 'CivitAI API Key' : 'LLM API Key';
+            showToast('toast.settings.settingsUpdated',
+                { setting: labelName }, 'success');
+        } catch (error) {
+            showToast('toast.settings.settingSaveFailed',
+                { message: error.message }, 'error');
+            return;
+        }
+
+        // Update the in-memory flag so the UI reflects the change
+        if (settingsKey === 'civitai_api_key') {
+            state.global.settings.civitai_api_key_set = !!value;
+        }
+        this.cancelEditApiKey(true, inputId);
+        if (inputId === 'civitaiApiKey') {
+            this.updateApiKeyStatus();
+        }
+    }
+
     toggleInputVisibility(button) {
         const input = button.parentElement.querySelector('input');
+        if (!input) return;
         const icon = button.querySelector('i');
-        
-        if (input.type === 'password') {
+        if (input.dataset.mask === 'css') {
+            // CSS-masked input (CivitAI API key) — toggle class, not type
+            input.classList.toggle('api-key-masked');
+            if (icon) {
+                icon.className = input.classList.contains('api-key-masked')
+                    ? 'fas fa-eye'
+                    : 'fas fa-eye-slash';
+            }
+        } else if (input.type === 'password') {
             input.type = 'text';
-            icon.className = 'fas fa-eye-slash';
+            if (icon) icon.className = 'fas fa-eye-slash';
         } else {
             input.type = 'password';
-            icon.className = 'fas fa-eye';
+            if (icon) icon.className = 'fas fa-eye';
         }
     }
 
@@ -1777,7 +3257,7 @@ export class SettingsManager {
             await resetAndReload(false);
         } else if (this.currentPage === 'recipes') {
             // Reload the recipes without updating folders
-            await window.recipeManager.loadRecipes();
+            await window.recipeManager.loadRecipes(true);
         } else if (this.currentPage === 'checkpoints') {
             // Reload the checkpoints without updating folders
             await resetAndReload(false);
@@ -1788,12 +3268,16 @@ export class SettingsManager {
     }
 
     applyFrontendSettings() {
+        // Apply card blur amount to CSS custom property
+        const cardBlurAmount = state.global.settings.card_blur_amount ?? 8;
+        document.documentElement.style.setProperty('--card-blur-amount', `${cardBlurAmount}px`);
+
         // Apply autoplay setting to existing videos in card previews
         const autoplayOnHover = state.global.settings.autoplay_on_hover;
         document.querySelectorAll('.card-preview video').forEach(video => {
             configureModelCardVideo(video, autoplayOnHover);
         });
-        
+
         // Apply display density class to grid
         const grid = document.querySelector('.card-grid');
         if (grid) {
@@ -1810,12 +3294,18 @@ export class SettingsManager {
         const cardInfoDisplay = state.global.settings.card_info_display || 'always';
         document.body.classList.toggle('hover-reveal', cardInfoDisplay === 'hover');
 
-        const shouldShowSidebar = state.global.settings.show_folder_sidebar !== false;
-        if (sidebarManager && typeof sidebarManager.setSidebarEnabled === 'function') {
-            sidebarManager.setSidebarEnabled(shouldShowSidebar).catch((error) => {
-                console.error('Failed to apply sidebar visibility setting:', error);
-            });
-        }
+        // Apply show version on card setting
+        const showVersionOnCard = state.global.settings.show_version_on_card !== false;
+        document.body.classList.toggle('hide-card-version', !showVersionOnCard);
+
+        // Apply license icon style
+        const useNewLicenseIcons = state.global.settings.use_new_license_icons !== false;
+        document.body.classList.toggle('use-new-license-icons', useNewLicenseIcons);
+
+        // Apply group-by-model mode
+        const groupByModel = !!state.global.settings.group_by_model;
+        document.body.classList.toggle('group-by-model', groupByModel);
+
     }
 }
 

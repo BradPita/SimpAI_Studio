@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -43,8 +44,15 @@ class ExampleImagesProcessor:
         return media_url
     
     @staticmethod
-    def _get_file_extension_from_content_or_headers(content, headers, fallback_url=None):
-        """Determine file extension from content magic bytes or headers"""
+    def _get_file_extension_from_content_or_headers(content, headers, fallback_url=None, media_type_hint=None):
+        """Determine file extension from content magic bytes or headers
+        
+        Args:
+            content: File content bytes
+            headers: HTTP response headers
+            fallback_url: Original URL for extension extraction
+            media_type_hint: Optional media type hint from metadata (e.g., "video" or "image")
+        """
         # Check magic bytes for common formats
         if content:
             if content.startswith(b'\xFF\xD8\xFF'):
@@ -55,6 +63,10 @@ class ExampleImagesProcessor:
                 return '.gif'
             elif content.startswith(b'RIFF') and b'WEBP' in content[:12]:
                 return '.webp'
+            elif len(content) >= 12 and content[4:8] == b'ftyp' and b'avif' in content[8:24]:
+                return '.avif'
+            elif content.startswith(b'\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a'):
+                return '.jxl'
             elif content.startswith(b'\x00\x00\x00\x18ftypmp4') or content.startswith(b'\x00\x00\x00\x20ftypmp4'):
                 return '.mp4'
             elif content.startswith(b'\x1A\x45\xDF\xA3'):
@@ -68,6 +80,8 @@ class ExampleImagesProcessor:
                 'image/png': '.png',
                 'image/gif': '.gif',
                 'image/webp': '.webp',
+                'image/avif': '.avif',
+                'image/jxl': '.jxl',
                 'video/mp4': '.mp4',
                 'video/webm': '.webm',
                 'video/quicktime': '.mov'
@@ -81,6 +95,10 @@ class ExampleImagesProcessor:
             ext = os.path.splitext(filename)[1].lower()
             if ext in SUPPORTED_MEDIA_EXTENSIONS['images'] or ext in SUPPORTED_MEDIA_EXTENSIONS['videos']:
                 return ext
+        
+        # Use media type hint from metadata if available
+        if media_type_hint == "video":
+            return '.mp4'
         
         # Default fallback
         return '.jpg'
@@ -136,7 +154,7 @@ class ExampleImagesProcessor:
                 if success:
                     # Determine file extension from content or headers
                     media_ext = ExampleImagesProcessor._get_file_extension_from_content_or_headers(
-                        content, headers, original_url
+                        content, headers, original_url, image.get("type")
                     )
                     
                     # Check if the detected file type is supported
@@ -178,15 +196,21 @@ class ExampleImagesProcessor:
         return model_success, False  # (success, is_metadata_stale)
     
     @staticmethod
+    def _extract_retry_after(error_message: str) -> int:
+        if not error_message:
+            return 60
+        match = re.search(r"retry after (\d+)s", str(error_message))
+        if match:
+            return max(1, int(match.group(1)))
+        return 60
+
+    @staticmethod
     async def download_model_images_with_tracking(model_hash, model_name, model_images, model_dir, optimize, downloader):
-        """Download images for a single model with tracking of failed image URLs
-        
-        Returns:
-            tuple: (success, is_stale_metadata, failed_images) - whether download was successful, whether metadata is stale, list of failed image URLs
-        """
         model_success = True
         failed_images = []
-        
+        rate_limited_images = []
+        any_successful_download = False
+
         for i, image in enumerate(model_images):
             image_url = image.get('url')
             if not image_url:
@@ -204,64 +228,110 @@ class ExampleImagesProcessor:
             original_url = image_url
             if optimize and 'civitai.com' in image_url:
                 image_url = ExampleImagesProcessor.get_civitai_optimized_url(image_url)
-            
-            # Download the file first to determine the actual file type
-            try:
-                logger.debug(f"Downloading media file {i} for {model_name}")
-                
-                # Download using the unified downloader with headers
-                success, content, headers = await downloader.download_to_memory(
+
+            async def _attempt_download() -> tuple:
+                logger.debug("Downloading media file %s for %s", i, model_name)
+                return await downloader.download_to_memory(
                     image_url,
-                    use_auth=False,  # Example images don't need auth
-                    return_headers=True
+                    use_auth=False,
+                    return_headers=True,
                 )
-                
+
+            try:
+                success, content, headers = await _attempt_download()
+
                 if success:
-                    # Determine file extension from content or headers
                     media_ext = ExampleImagesProcessor._get_file_extension_from_content_or_headers(
-                        content, headers, original_url
+                        content, headers, original_url, image.get("type")
                     )
-                    
-                    # Check if the detected file type is supported
                     is_image = media_ext in SUPPORTED_MEDIA_EXTENSIONS['images']
                     is_video = media_ext in SUPPORTED_MEDIA_EXTENSIONS['videos']
-                    
+
                     if not (is_image or is_video):
-                        logger.debug(f"Skipping unsupported file type: {media_ext}")
+                        logger.debug("Skipping unsupported file type: %s", media_ext)
                         continue
-                    
-                    # Use 0-based indexing with the detected extension
+
                     save_filename = f"image_{i}{media_ext}"
                     save_path = os.path.join(model_dir, save_filename)
-                    
-                    # Check if already downloaded
+
                     if os.path.exists(save_path):
-                        logger.debug(f"File already exists: {save_path}")
+                        logger.debug("File already exists: %s", save_path)
                         continue
-                    
-                    # Save the file
+
                     with open(save_path, 'wb') as f:
                         f.write(content)
-                    
+                    any_successful_download = True
+
                 elif ExampleImagesProcessor._is_not_found_error(content):
                     error_msg = f"Failed to download file: {image_url}, status code: 404 - Model metadata might be stale"
                     logger.warning(error_msg)
-                    model_success = False  # Mark the model as failed due to 404 error
-                    failed_images.append(image_url)  # Track failed URL
-                    # Return early to trigger metadata refresh attempt
-                    return False, True, failed_images  # (success, is_metadata_stale, failed_images)
+                    model_success = False
+                    failed_images.append(image_url)
+                    return False, True, failed_images, rate_limited_images
+
+                elif "Rate limited (429)" in str(content):
+                    max_attempts = 3
+                    for attempt in range(1, max_attempts + 1):
+                        wait = ExampleImagesProcessor._extract_retry_after(str(content)) * (2 ** (attempt - 1))
+                        logger.warning(
+                            "Rate limited (429) for %s, retry %d/%d after %ds",
+                            image_url, attempt, max_attempts, wait,
+                        )
+                        await asyncio.sleep(wait)
+
+                        success, content, headers = await _attempt_download()
+                        if success:
+                            media_ext = ExampleImagesProcessor._get_file_extension_from_content_or_headers(
+                                content, headers, original_url, image.get("type")
+                            )
+                            is_image = media_ext in SUPPORTED_MEDIA_EXTENSIONS['images']
+                            is_video = media_ext in SUPPORTED_MEDIA_EXTENSIONS['videos']
+
+                            if not (is_image or is_video):
+                                logger.debug("Skipping unsupported file type: %s", media_ext)
+                                break
+
+                            save_filename = f"image_{i}{media_ext}"
+                            save_path = os.path.join(model_dir, save_filename)
+                            if os.path.exists(save_path):
+                                logger.debug("File already exists: %s", save_path)
+                                break
+
+                            with open(save_path, 'wb') as f:
+                                f.write(content)
+                            any_successful_download = True
+                            break
+                        elif "Rate limited (429)" in str(content):
+                            continue
+                        elif ExampleImagesProcessor._is_not_found_error(content):
+                            logger.warning("Failed to download file: %s, status code: 404", image_url)
+                            model_success = False
+                            failed_images.append(image_url)
+                            break
+                        else:
+                            logger.warning("Failed to download file: %s, error: %s", image_url, content)
+                            model_success = False
+                            failed_images.append(image_url)
+                            break
+                    else:
+                        logger.warning(
+                            "Giving up on %s after %d retries due to rate limiting",
+                            image_url, max_attempts,
+                        )
+                        rate_limited_images.append(image_url)
+                        model_success = False
                 else:
                     error_msg = f"Failed to download file: {image_url}, error: {content}"
                     logger.warning(error_msg)
-                    model_success = False  # Mark the model as failed
-                    failed_images.append(image_url)  # Track failed URL
+                    model_success = False
+                    failed_images.append(image_url)
             except Exception as e:
                 error_msg = f"Error downloading file {image_url}: {str(e)}"
                 logger.error(error_msg)
-                model_success = False  # Mark the model as failed
-                failed_images.append(image_url)  # Track failed URL
-        
-        return model_success, False, failed_images  # (success, is_metadata_stale, failed_images)
+                model_success = False
+                failed_images.append(image_url)
+
+        return any_successful_download or model_success, False, failed_images, rate_limited_images
     
     @staticmethod
     async def process_local_examples(model_file_path, model_file_name, model_name, model_dir, optimize):
@@ -592,6 +662,115 @@ class ExampleImagesProcessor:
                 'success': False,
                 'error': str(e)
             }, status=500)
+
+    @staticmethod
+    async def set_example_image_nsfw_level(request: web.Request) -> web.StreamResponse:
+        """
+        Update the NSFW level for a single example image (regular or custom).
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({'success': False, 'error': 'Invalid JSON body'}, status=400)
+
+        model_hash = data.get('model_hash')
+        raw_level = data.get('nsfw_level')
+        source = (data.get('source') or 'civitai').lower()
+        index = data.get('index')
+        image_id = data.get('id')
+
+        if model_hash is None or raw_level is None:
+            return web.json_response(
+                {'success': False, 'error': 'Missing required parameters: model_hash and nsfw_level'},
+                status=400,
+            )
+
+        try:
+            nsfw_level = int(raw_level)
+        except (TypeError, ValueError):
+            return web.json_response(
+                {'success': False, 'error': 'nsfw_level must be an integer'}, status=400
+            )
+
+        if source == 'custom':
+            if not image_id:
+                return web.json_response(
+                    {'success': False, 'error': 'Custom images require an id field'}, status=400
+                )
+        else:
+            try:
+                index = int(index)
+            except (TypeError, ValueError):
+                return web.json_response(
+                    {'success': False, 'error': 'Regular images require a numeric index'}, status=400
+                )
+
+        try:
+            lora_scanner = await ServiceRegistry.get_lora_scanner()
+            checkpoint_scanner = await ServiceRegistry.get_checkpoint_scanner()
+            embedding_scanner = await ServiceRegistry.get_embedding_scanner()
+
+            model_data = None
+            scanner = None
+
+            for scan_obj in [lora_scanner, checkpoint_scanner, embedding_scanner]:
+                if scan_obj.has_hash(model_hash):
+                    cache = await scan_obj.get_cached_data()
+                    for item in cache.raw_data:
+                        if item.get('sha256') == model_hash:
+                            model_data = item
+                            scanner = scan_obj
+                            break
+                if model_data:
+                    break
+
+            if not model_data:
+                return web.json_response(
+                    {'success': False, 'error': f"Model with hash {model_hash} not found in cache"},
+                    status=404,
+                )
+
+            await MetadataManager.hydrate_model_data(model_data)
+            civitai_data = model_data.setdefault('civitai', {})
+            regular_images = civitai_data.get('images') or []
+            custom_images = civitai_data.get('customImages') or []
+
+            target_image = None
+            if source == 'custom':
+                for image in custom_images:
+                    if image.get('id') == image_id:
+                        target_image = image
+                        break
+            else:
+                if 0 <= index < len(regular_images):
+                    target_image = regular_images[index]
+
+            if target_image is None:
+                return web.json_response(
+                    {'success': False, 'error': 'Target image not found'}, status=404
+                )
+
+            target_image['nsfwLevel'] = nsfw_level
+            civitai_data['images'] = regular_images
+            civitai_data['customImages'] = custom_images
+
+            file_path = model_data.get('file_path')
+            if file_path:
+                model_copy = model_data.copy()
+                model_copy.pop('folder', None)
+                await MetadataManager.save_metadata(file_path, model_copy)
+                await scanner.update_single_model_cache(file_path, file_path, model_data)
+
+            return web.json_response({
+                'success': True,
+                'regular_images': regular_images,
+                'custom_images': custom_images,
+                'model_file_path': model_data.get('file_path', ''),
+                'nsfw_level': nsfw_level
+            })
+        except Exception as exc:
+            logger.error("Failed to update example image NSFW level: %s", exc, exc_info=True)
+            return web.json_response({'success': False, 'error': str(exc)}, status=500)
 
 
     

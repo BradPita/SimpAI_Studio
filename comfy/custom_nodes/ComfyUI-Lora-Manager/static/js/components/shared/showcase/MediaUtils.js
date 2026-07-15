@@ -3,9 +3,11 @@
  * Media-specific utility functions for showcase components
  * (Moved from uiHelpers.js to better organize code)
  */
-import { showToast, copyToClipboard } from '../../../utils/uiHelpers.js';
+import { showToast, copyToClipboard, getNSFWLevelName, sendPromptToWorkflow, stripLoraTags, sendGenParamsToWorkflow } from '../../../utils/uiHelpers.js';
 import { state } from '../../../state/index.js';
 import { getModelApiClient } from '../../../api/modelApiFactory.js';
+import { NSFW_LEVELS, getMatureBlurThreshold } from '../../../utils/constants.js';
+import { getNsfwLevelSelector } from '../NsfwLevelSelector.js';
 
 /**
  * Try to load local image first, fall back to remote if local fails
@@ -132,6 +134,39 @@ export function initLazyLoading(container) {
 
     lazyElements.forEach(element => observer.observe(element));
 }
+
+/**
+ * Check which Create As Recipe buttons correspond to already-imported
+ * images and disable them.
+ */
+async function checkImportedRecipes(container) {
+    const recipeButtons = container.querySelectorAll('.create-recipe-btn');
+    if (!recipeButtons.length) return;
+
+    const imageIds = [];
+    recipeButtons.forEach(btn => {
+        const id = btn.dataset.imageId;
+        if (id) imageIds.push(id);
+    });
+    if (!imageIds.length) return;
+
+    try {
+        const response = await fetch(`/api/lm/recipes/check-image-exists?image_ids=${imageIds.join(',')}`);
+        const data = await response.json();
+        if (!data.success || !data.results) return;
+        recipeButtons.forEach(btn => {
+            const id = btn.dataset.imageId;
+            if (id && data.results[id]?.in_library) {
+                btn.title = 'Already imported as recipe';
+                btn.classList.add('disabled');
+                btn.setAttribute('aria-disabled', 'true');
+            }
+        });
+    } catch (err) {
+        console.error('Failed to check imported recipes:', err);
+    }
+}
+
 
 /**
  * Get the actual rendered rectangle of a media element with object-fit: contain
@@ -282,6 +317,74 @@ export function initMetadataPanelHandlers(container) {
                     }
                 });
             });
+            
+            // Handle send prompt buttons
+            const sendBtns = metadataPanel.querySelectorAll('.send-prompt-btn');
+            sendBtns.forEach(sendBtn => {
+                const promptIndex = sendBtn.dataset.promptIndex;
+                const promptElement = wrapper.querySelector(`#prompt-${promptIndex}`);
+                
+                sendBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    
+                    if (!promptElement) return;
+                    
+                    let promptText = promptElement.textContent || '';
+                    if (!promptText.trim()) {
+                        showToast('toast.recipes.noPromptToSend', {}, 'warning');
+                        return;
+                    }
+                    
+                    // Respect strip <lora> setting from global state
+                    if (state.global.settings?.strip_lora_on_copy) {
+                        promptText = stripLoraTags(promptText);
+                    }
+                    
+                    sendPromptToWorkflow(promptText);
+                });
+            });
+            
+            // Handle send params buttons
+            const paramsBtn = metadataPanel.querySelector('.send-params-btn');
+            if (paramsBtn) {
+                paramsBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    
+                    // Collect gen params from the param-tag elements
+                    const tagsContainer = wrapper.querySelector('.params-tags');
+                    if (!tagsContainer) return;
+                    
+                    const paramTags = tagsContainer.querySelectorAll('.param-tag');
+                    const genParams = {};
+                    
+                    // Map display labels to genParams keys
+                    const labelToKey = {
+                        'Seed': 'seed',
+                        'Steps': 'steps',
+                        'Sampler': 'sampler',
+                        'CFG': 'cfg_scale',
+                    };
+                    
+                    paramTags.forEach(tag => {
+                        const nameEl = tag.querySelector('.param-name');
+                        const valueEl = tag.querySelector('.param-value');
+                        if (!nameEl || !valueEl) return;
+                        
+                        const label = nameEl.textContent.replace(':', '').trim();
+                        const key = labelToKey[label];
+                        if (key) {
+                            genParams[key] = valueEl.textContent.trim();
+                        }
+                    });
+                    
+                    if (Object.keys(genParams).length === 0) {
+                        showToast('No sendable parameters found', {}, 'warning');
+                        return;
+                    }
+                    
+                    await sendGenParamsToWorkflow(genParams);
+                });
+            }
             
             // Prevent panel scroll from causing modal scroll
             metadataPanel.addEventListener('wheel', (e) => {
@@ -469,8 +572,82 @@ export function initMediaControlHandlers(container) {
         });
     });
     
+    // Create As Recipe buttons
+    const recipeButtons = container.querySelectorAll('.create-recipe-btn');
+    recipeButtons.forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            
+            // Ignore clicks when disabled
+            if (this.classList.contains('disabled')) {
+                return;
+            }
+            
+            const imageMetaRaw = this.dataset.imageMeta;
+            const imageUrl = this.dataset.imageUrl;
+            const imageNsfw = this.dataset.imageNsfw;
+            const imgId = this.dataset.imgId || '';
+            const localPath = this.dataset.localPath || '';
+            const showcaseSection = this.closest('.showcase-section');
+            const modelHash = showcaseSection ? showcaseSection.dataset.modelHash : '';
+            const modelName = showcaseSection ? showcaseSection.dataset.modelName : '';
+            const modelType = showcaseSection ? showcaseSection.dataset.modelType : '';
+            
+            if (!imageMetaRaw || !modelHash) {
+                showToast('toast.recipes.createMissingData', {}, 'error');
+                return;
+            }
+            
+            // Show loading state
+            const originalHtml = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            this.disabled = true;
+            
+            try {
+                const imageMeta = JSON.parse(decodeURIComponent(imageMetaRaw));
+                
+                const response = await fetch('/api/lm/recipes/create-from-example', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image_data: {
+                            meta: imageMeta,
+                            url: imageUrl,
+                            nsfwLevel: imageNsfw ? parseInt(imageNsfw, 10) : undefined,
+                            id: imgId || undefined,
+                        },
+                        model_hash: modelHash,
+                        model_name: modelName || modelHash,
+                        model_type: modelType,
+                        local_image_path: localPath,
+                    }),
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.recipe_id) {
+                    showToast('toast.recipes.created', { recipeId: result.recipe_id }, 'success');
+                } else {
+                    showToast('toast.recipes.createFailed', { error: result.error || 'Unknown error' }, 'error');
+                }
+            } catch (error) {
+                console.error('Failed to create recipe:', error);
+                showToast('toast.recipes.createError', { message: error.message }, 'error');
+            } finally {
+                this.innerHTML = originalHtml;
+                this.disabled = false;
+            }
+        });
+    });
+    
+    // Check which images are already imported as recipes → disable button
+    checkImportedRecipes(container);
+    
     // Initialize set preview buttons
     initSetPreviewHandlers(container);
+
+    // Initialize NSFW level buttons
+    initSetNsfwHandlers(container);
     
     // Media control visibility is now handled in initMetadataPanelHandlers
     // Any click handlers or other functionality can still be added here
@@ -522,17 +699,18 @@ function initSetPreviewHandlers(container) {
                     const response = await fetch(mediaElement.dataset.localSrc);
                     const blob = await response.blob();
                     const file = new File([blob], 'preview.jpg', { type: blob.type });
-                    
+
                     // Use the existing baseModelApi uploadPreview method with nsfw level
-                    await apiClient.uploadPreview(modelFilePath, file, modelType, nsfwLevel);
+                    await apiClient.uploadPreview(modelFilePath, file, nsfwLevel);
                 } else {
-                    // We need to download the remote file first
-                    const response = await fetch(mediaElement.src);
-                    const blob = await response.blob();
-                    const file = new File([blob], 'preview.jpg', { type: blob.type });
-                    
-                    // Use the existing baseModelApi uploadPreview method with nsfw level
-                    await apiClient.uploadPreview(modelFilePath, file, modelType, nsfwLevel);
+                    // Remote file - send URL to backend to download (avoids CORS issues)
+                    const imageUrl = mediaElement.src || mediaElement.dataset.remoteSrc;
+                    if (!imageUrl) {
+                        throw new Error('No image URL available');
+                    }
+
+                    // Use the new setPreviewFromUrl method
+                    await apiClient.setPreviewFromUrl(modelFilePath, imageUrl, nsfwLevel);
                 }
             } catch (error) {
                 console.error('Error setting preview:', error);
@@ -589,5 +767,145 @@ export function positionAllMediaControls(container) {
     const mediaWrappers = container.querySelectorAll('.media-wrapper');
     mediaWrappers.forEach(wrapper => {
         positionMediaControlsInMediaRect(wrapper);
+    });
+}
+
+function applyNsfwLevelChange(mediaWrapper, nsfwLevel) {
+    if (!mediaWrapper) return;
+
+    const mediaElement = mediaWrapper.querySelector('img, video');
+    if (mediaElement) {
+        mediaElement.dataset.nsfwLevel = String(nsfwLevel);
+    }
+    mediaWrapper.dataset.nsfwLevel = String(nsfwLevel);
+
+    const matureBlurThreshold = getMatureBlurThreshold(state.settings);
+    const shouldBlur = state.settings.blur_mature_content && nsfwLevel >= matureBlurThreshold;
+    let overlay = mediaWrapper.querySelector('.nsfw-overlay');
+    let toggleBtn = mediaWrapper.querySelector('.toggle-blur-btn');
+
+    if (shouldBlur) {
+        mediaWrapper.classList.add('nsfw-media-wrapper');
+        if (mediaElement) {
+            mediaElement.classList.add('blurred');
+        }
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'nsfw-overlay';
+            overlay.innerHTML = `
+                <div class="nsfw-warning">
+                    <p>Mature Content</p>
+                    <button class="show-content-btn">Show</button>
+                </div>
+            `;
+            mediaWrapper.appendChild(overlay);
+        } else {
+            overlay.style.display = 'flex';
+        }
+
+        if (!toggleBtn) {
+            toggleBtn = document.createElement('button');
+            toggleBtn.className = 'toggle-blur-btn showcase-toggle-btn';
+            toggleBtn.title = 'Toggle blur';
+            toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
+            mediaWrapper.insertBefore(toggleBtn, mediaWrapper.firstChild);
+        } else {
+            const icon = toggleBtn.querySelector('i');
+            if (icon) {
+                icon.className = 'fas fa-eye';
+            }
+        }
+    } else {
+        mediaWrapper.classList.remove('nsfw-media-wrapper');
+        if (mediaElement) {
+            mediaElement.classList.remove('blurred');
+        }
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+        if (toggleBtn) {
+            const icon = toggleBtn.querySelector('i');
+            if (icon) {
+                icon.className = 'fas fa-eye-slash';
+            }
+        }
+    }
+
+    // Re-bind blur toggles for any newly added elements
+    initNsfwBlurHandlers(mediaWrapper);
+}
+
+function initSetNsfwHandlers(container) {
+    const nsfwButtons = container.querySelectorAll('.set-nsfw-btn');
+    const selector = getNsfwLevelSelector();
+
+    nsfwButtons.forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            if (!selector) {
+                console.warn('NSFW selector not available');
+                return;
+            }
+
+            const mediaWrapper = btn.closest('.media-wrapper');
+            const currentLevel = parseInt(mediaWrapper?.dataset.nsfwLevel || '0', 10);
+            const modelHash = document.querySelector('.showcase-section')?.dataset.modelHash;
+            const mediaSource = btn.dataset.mediaSource || 'civitai';
+            const mediaIndex = parseInt(btn.dataset.mediaIndex || '-1', 10);
+            const mediaId = btn.dataset.mediaId || '';
+
+            selector.show({
+                currentLevel,
+                onSelect: async (level) => {
+                    if (!modelHash) {
+                        showToast('toast.contextMenu.contentRatingFailed', { message: 'Missing model hash' }, 'error');
+                        return false;
+                    }
+
+                    const originalIcon = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+                    try {
+                        const payload = {
+                            model_hash: modelHash,
+                            nsfw_level: level,
+                            source: mediaSource,
+                        };
+
+                        if (mediaSource === 'custom') {
+                            payload.id = mediaId;
+                        } else {
+                            payload.index = mediaIndex;
+                        }
+
+                        const response = await fetch('/api/lm/example-images/set-nsfw-level', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(payload),
+                        });
+
+                        const result = await response.json();
+                        if (!result.success) {
+                            throw new Error(result.error || 'Failed to update NSFW level');
+                        }
+
+                        applyNsfwLevelChange(mediaWrapper, level);
+                        showToast('toast.contextMenu.contentRatingSet', { level: getNSFWLevelName(level) }, 'success');
+                        return true;
+                    } catch (error) {
+                        console.error('Error updating NSFW level:', error);
+                        showToast('toast.contextMenu.contentRatingFailed', { message: error.message }, 'error');
+                        return false;
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = originalIcon;
+                    }
+                },
+            });
+        });
     });
 }

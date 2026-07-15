@@ -296,6 +296,7 @@ class ProgressBar:
         self._state = self.STATE_WAITING
         self._char_count = 0
         self._start_time = time.perf_counter()
+        self._last_refresh_time = 0.0  # 新增：记录最后一次刷新时间，用于限流
         self._closed = False
         self._stop_event = threading.Event()
         self._timer_thread = None
@@ -306,7 +307,7 @@ class ProgressBar:
             _global_last_output_len = 0
         
         # 立即显示"等待响应"
-        self._refresh()
+        self._refresh(force=True)
         
         # 仅在流式模式下启动定时刷新线程（非流式模式采用静态日志，无需跳秒刷新）
         if self._streaming:
@@ -350,10 +351,17 @@ class ProgressBar:
         else:
             return ""
     
-    def _refresh(self) -> None:
+    def _refresh(self, force: bool = False) -> None:
         """内部刷新方法：单行覆盖输出"""
         if self._closed:
             return
+            
+        # 降频处理：如果非强制刷新，则限制最高频率为 0.3 秒一次，避免因环境不支持动态覆盖而疯狂刷屏
+        now = time.perf_counter()
+        if not force and (now - self._last_refresh_time < 0.3):
+            return
+            
+        self._last_refresh_time = now
         
         output = self._render()
         if not output:
@@ -377,15 +385,24 @@ class ProgressBar:
             # 记录本次显示的宽度（包含缓冲空格）
             _global_last_output_len = current_width + len(padding)
 
+    def _stop_timer(self):
+        """停止计时器线程"""
+        self._stop_event.set()
+        # 强制将状态标为已关闭，防止重入
+        self._closed = True
+
     def _timer_loop(self):
         """后台线程：仅在流式模式下定期刷新计时"""
-        while not self._stop_event.is_set() and not self._closed:
-            # 定时刷新当前内容（主要用于更新 WAITING 阶段的时间）
-            self._refresh()
-            
-            # 每 0.1 秒刷新一次
-            if self._stop_event.wait(0.1):
-                break
+        try:
+            while not self._stop_event.is_set() and not self._closed:
+                # 定时刷新当前内容（主要用于更新 WAITING 阶段的时间）
+                self._refresh(force=True)
+                
+                # 降低刷新频率：每 0.3 秒刷新一次，大幅减少不支持动态覆盖时的刷屏
+                if self._stop_event.wait(0.3):
+                    break
+        except Exception:
+            pass # 守护线程异常不应影响主流程
     
     def set_generating(self, char_count: int = 0) -> None:
         """
@@ -399,7 +416,7 @@ class ProgressBar:
         
         self._state = self.STATE_GENERATING
         self._char_count = char_count
-        self._refresh()  # 状态变化时总是刷新
+        self._refresh(force=True)  # 状态变化时总是强制刷新
     
     def update(self, char_count: int) -> None:
         """
@@ -416,9 +433,9 @@ class ProgressBar:
         
         self._char_count = char_count
         
-        # 流式模式：高频刷新
+        # 流式模式：高频刷新 (实际频率受 _refresh 内的降频限制)
         if self._streaming:
-            self._refresh()
+            self._refresh(force=False)
         # 静态模式：不在这里刷新，只有状态变化时才刷新
     
     def done(self, message: str = None, char_count: int = None, elapsed_ms: int = None) -> None:
@@ -433,9 +450,9 @@ class ProgressBar:
         if self._closed:
             return
         
-        self._closed = True
+        self._stop_timer()
         self._state = self.STATE_DONE
-        self._stop_event.set()
+
         
         # 重置全局长度
         with _progress_lock:
@@ -483,8 +500,8 @@ class ProgressBar:
         if self._closed:
             return
         
-        self._closed = True
-        self._stop_event.set()
+        self._stop_timer()
+
         
         # 重置全局长度
         with _progress_lock:
@@ -509,8 +526,8 @@ class ProgressBar:
         if self._closed:
             return
         
-        self._closed = True
-        self._stop_event.set()
+        self._stop_timer()
+
         
         # 重置全局长度
         with _progress_lock:
@@ -532,7 +549,17 @@ class ProgressBar:
     
     def __exit__(self, *args):
         if not self._closed:
+            # 退出上下文时，如果没有显式调用 done/error，则视为成功完成
             self.done()
+
+    def __del__(self):
+        """析构函数：确保对象被回收时停止计时器"""
+        try:
+            # 仅在计时器还在运行时尝试停止
+            if hasattr(self, '_stop_event') and not self._stop_event.is_set():
+                self._stop_timer()
+        except:
+            pass
 
 
 
@@ -614,6 +641,10 @@ def format_api_error(e: Exception, provider_display_name: str) -> str:
     返回:
         str: 格式化后的错误信息
     """
+    # 处理编码异常
+    if isinstance(e, UnicodeEncodeError):
+        return f"{provider_display_name} 网络请求编码异常: 检测到非法字符 (\u2026 或其他非 ASCII 字符)。请检查服务商配置中的 API Key 或 URL 是否包含多余的省略号、引号或空格。"
+
     # 处理httpx的HTTP错误
     try:
         import httpx
@@ -804,38 +835,51 @@ def preprocess_image(
         return image_data
 
 
-def check_multi_image_support(provider: str, model: str) -> tuple:
+def get_model_max_images(model: str) -> int:
     """
-    检查服务商是否支持多图像分析
+    根据模型名称推断最大支持图像数
     
-    参数:
-        provider: 服务商标识
-        model: 模型名称
-        
-    返回:
-        tuple: (支持多图像: bool, 最大图像数: int)
+    策略：乐观默认，已知模型给精确上限，未知模型给安全默认值(10)
     """
     model_lower = (model or "").lower()
     
-    # Gemini系列：支持多图像
+    # Gemini系列：超大上下文支持大量图像
     if "gemini" in model_lower or "google" in model_lower:
-        return (True, 3000)
+        return 3000
     
-    # 智谱GLM-4V系列：支持多图像(最多5张)
-    if "glm" in model_lower and ("4v" in model_lower or "vision" in model_lower):
-        return (True, 5)
-    
-    # Qwen系列：支持多图像
-    if "qwen" in model_lower and ("vl" in model_lower or "vision" in model_lower):
-        return (True, 100)
-    
-    # OpenAI GPT-4V及兼容模型：支持多图像
-    if "gpt-4" in model_lower and ("vision" in model_lower or "v" in model_lower or "turbo" in model_lower):
-        return (True, 100)
-    
-    # 其他OpenAI兼容的视觉模型
+    # Qwen系列：直接给予 100 张上限
+    if "qwen" in model_lower:
+        return 100
+        
+    # 智谱GLM系列
+    if "glm" in model_lower:
+        if "4.6v" in model_lower:
+            return 100
+        return 5
+        
+    # GPT-4 / GPT-5 系列
+    if "gpt-4" in model_lower or "gpt-5" in model_lower:
+        return 100
+        
+    # Claude 系列
+    if "claude" in model_lower:
+        return 20
+        
+    # Grok 系列
+    if "grok" in model_lower:
+        return 20
+        
+    # 含视觉关键词的模型（兜底）
     if any(keyword in model_lower for keyword in ["vision", "visual", "vl", "multimodal"]):
-        return (True, 10)
-    
-    # 默认：不支持多图像
-    return (False, 0)
+        return 100
+        
+    # 默认：乐观允许，给安全上限 10
+    return 10
+
+
+def check_multi_image_support(provider: str, model: str) -> tuple:
+    """
+    兼容保留的旧 API，内部路由到 get_model_max_images。
+    """
+    limit = get_model_max_images(model)
+    return (True, limit)
