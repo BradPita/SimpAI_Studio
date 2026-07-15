@@ -381,6 +381,50 @@ def _image_from_value(value):
     return value
 
 
+def _image_value_size(value):
+    image = _image_from_value(value)
+    if isinstance(image, Image.Image):
+        return _positive_size_pair(image.size)
+    if isinstance(image, np.ndarray) and image.ndim >= 2:
+        return _positive_size_pair((image.shape[1], image.shape[0]))
+    return None
+
+
+def is_original_resolution_selection(value):
+    base = _parse_projected_base(value)
+    return bool(isinstance(base, dict) and base.get("origin"))
+
+
+def resolve_effective_original_input(
+    resolution_original_input,
+    scene_aspect_ratio,
+    target_size,
+    profile,
+    scene_canvas_image=None,
+    scene_input_image1=None,
+    scene_input_image2=None,
+    scene_input_image3=None,
+    scene_input_image4=None,
+):
+    if bool_value(resolution_original_input):
+        return True
+    if not is_original_resolution_selection(scene_aspect_ratio):
+        return False
+
+    source_key = str(profile.get("source") or "scene_input_image1").strip() if isinstance(profile, dict) else "scene_input_image1"
+    source_value = {
+        "scene_canvas": scene_canvas_image,
+        "scene_canvas_image": scene_canvas_image,
+        "scene_input_image1": scene_input_image1,
+        "scene_input_image2": scene_input_image2,
+        "scene_input_image3": scene_input_image3,
+        "scene_input_image4": scene_input_image4,
+    }.get(source_key)
+    source_size = _image_value_size(source_value)
+    target_size = _positive_size_pair(target_size)
+    return bool(source_size and target_size and source_size == target_size)
+
+
 def _pil_from_image(value):
     img = _image_from_value(value)
     if img is None:

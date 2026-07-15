@@ -1,5 +1,8 @@
 import modules.config as config
-from modules.comfy_progress_filter import install_aio_enhance_uov_progress_filter
+from modules.comfy_progress_filter import (
+    install_advanced_sampler_known_total_progress_filter,
+    install_aio_enhance_uov_progress_filter,
+)
 from shared import modelsinfo
 from enhanced.simpleai import ComfyTaskParams, comfyclient_pipeline
 
@@ -20,6 +23,7 @@ def _register_runtime_preview_nodes():
         "SimpAIAIOInpaintAnima",
     })
     install_aio_enhance_uov_progress_filter(comfyclient_pipeline)
+    install_advanced_sampler_known_total_progress_filter(comfyclient_pipeline)
 
 
 _register_runtime_preview_nodes()

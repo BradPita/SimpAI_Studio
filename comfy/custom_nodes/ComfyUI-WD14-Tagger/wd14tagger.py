@@ -31,31 +31,52 @@ defaults = {
 defaults.update(config.get("settings", {}))
 
 if "clip_vision" in folder_paths.folder_names_and_paths:
-    models_dir = os.path.join(folder_paths.models_dir, "clip_vision")
-    if not os.path.exists(models_dir):
-        os.makedirs(models_dir)
+    model_dirs = folder_paths.get_folder_paths("clip_vision")
+    models_dir = model_dirs[0]
+    os.makedirs(models_dir, exist_ok=True)
 else:
     models_dir = get_ext_dir("models", mkdir=True)
+    model_dirs = [models_dir]
 known_models = list(config["models"].keys())
 
 log("Available ORT providers: " + ", ".join(ort.get_available_providers()), "DEBUG", True)
 log("Using ORT providers: " + ", ".join(defaults["ortProviders"]), "DEBUG", True)
 
+def resolve_model_file(filename):
+    if "clip_vision" in folder_paths.folder_names_and_paths:
+        return folder_paths.get_full_path("clip_vision", filename)
+    path = os.path.join(models_dir, filename)
+    return path if os.path.isfile(path) else None
+
+
+def resolve_model_files(model):
+    for model_dir in model_dirs:
+        model_path = os.path.join(model_dir, f"{model}.onnx")
+        csv_path = os.path.join(model_dir, f"{model}.csv")
+        if os.path.isfile(model_path) and os.path.isfile(csv_path):
+            return model_path, csv_path
+    return resolve_model_file(f"{model}.onnx"), resolve_model_file(f"{model}.csv")
+
+
 def get_installed_models():
-    models = filter(lambda x: x.endswith(".onnx"), os.listdir(models_dir))
-    models = [m for m in models if os.path.exists(os.path.join(models_dir, os.path.splitext(m)[0] + ".csv"))]
-    return models
+    models = set()
+    for model_dir in model_dirs:
+        if not os.path.isdir(model_dir):
+            continue
+        for filename in os.listdir(model_dir):
+            if filename.lower().endswith(".onnx") and resolve_model_file(os.path.splitext(filename)[0] + ".csv"):
+                models.add(filename)
+    return sorted(models)
 
 
 async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclude_tags="", replace_underscore=True, trailing_comma=False, client_id=None, node=None):
     if model_name.endswith(".onnx"):
         model_name = model_name[0:-5]
-    installed = list(get_installed_models())
-    if not any(model_name + ".onnx" in s for s in installed):
-        await download_model(model_name, client_id, node)
+    model_path, csv_path = resolve_model_files(model_name)
+    if model_path is None or csv_path is None:
+        model_path, csv_path = await download_model(model_name, client_id, node)
 
-    name = os.path.join(models_dir, model_name + ".onnx")
-    model = InferenceSession(name, providers=defaults["ortProviders"])
+    model = InferenceSession(model_path, providers=defaults["ortProviders"])
 
     input = model.get_inputs()[0]
     height = input.shape[1]
@@ -75,7 +96,7 @@ async def tag(image, model_name, threshold=0.35, character_threshold=0.85, exclu
     tags = []
     general_index = None
     character_index = None
-    with open(os.path.join(models_dir, model_name + ".csv")) as f:
+    with open(csv_path) as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:
@@ -117,6 +138,7 @@ async def download_model(model, client_id, node):
     url = config["models"][model]
     url = url.replace("{HF_ENDPOINT}", hf_endpoint)
     url = f"{url}/resolve/main/"
+    model_path, csv_path = resolve_model_files(model)
     async with aiohttp.ClientSession(loop=asyncio.get_event_loop()) as session:
         async def update_callback(perc):
             nonlocal client_id
@@ -126,17 +148,21 @@ async def download_model(model, client_id, node):
             update_node_status(client_id, node, message, perc)
 
         try:
-            await download_to_file(
-                f"{url}model.onnx", os.path.join(models_dir,f"{model}.onnx"), update_callback, session=session)
-            await download_to_file(
-                f"{url}selected_tags.csv", os.path.join(models_dir,f"{model}.csv"), update_callback, session=session)
+            if model_path is None:
+                model_path = os.path.join(models_dir, f"{model}.onnx")
+                await download_to_file(
+                    f"{url}model.onnx", model_path, update_callback, session=session)
+            if csv_path is None:
+                csv_path = os.path.join(models_dir, f"{model}.csv")
+                await download_to_file(
+                    f"{url}selected_tags.csv", csv_path, update_callback, session=session)
         except aiohttp.client_exceptions.ClientConnectorError as err:
             log("Unable to download model. Download files manually or try using a HF mirror/proxy website by setting the environment variable HF_ENDPOINT=https://.....", "ERROR", True)
             raise
 
         update_node_status(client_id, node, None)
 
-    return web.Response(status=200)
+    return model_path, csv_path
 
 
 @PromptServer.instance.routes.get("/pysssss/wd14tagger/tag")

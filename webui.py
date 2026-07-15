@@ -9681,8 +9681,7 @@ with shared.gradio_root:
             # controls into the shared Models tab.
             return []
 
-        scene_canvas_image.upload(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        scene_canvas_image.clear(lambda: None, queue=False, show_progress=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "clear"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
+        scene_canvas_image.change(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.upload(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         #scene_input_image1.clear(lambda: ['', gr_update(interactive=False)], outputs=[prompt, generate_button], show_progress=False, queue=False)

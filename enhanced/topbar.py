@@ -2107,7 +2107,25 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
         scene_additional_prompt = f'{scene_additional_prompt}{scene_additional_prompt_2}'
         if util.is_chinese(scene_additional_prompt) and not scene_frontend['task_method'][scene_theme].lower().endswith('_cn'):
             scene_additional_prompt = vlm.translate(scene_additional_prompt, 'Slim Model')
-        resolution_original_input = resolution_preprocess.bool_value(resolution_original_input)
+        resolution_profile = resolution_preprocess.get_resolution_profile(state_params, scene_theme)
+        resolution_target_size = resolution_preprocess.resolve_target_size(
+            overwrite_width=overwrite_width,
+            overwrite_height=overwrite_height,
+            scene_aspect_ratio=scene_aspect_ratio,
+            resolution_multiplier=resolution_multiplier,
+            resolution_quantize_step=resolution_quantize_step,
+        )
+        resolution_original_input = resolution_preprocess.resolve_effective_original_input(
+            resolution_original_input=resolution_original_input,
+            scene_aspect_ratio=scene_aspect_ratio,
+            target_size=resolution_target_size,
+            profile=resolution_profile,
+            scene_canvas_image=scene_canvas_image,
+            scene_input_image1=scene_input_image1,
+            scene_input_image2=scene_input_image2,
+            scene_input_image3=scene_input_image3,
+            scene_input_image4=scene_input_image4,
+        )
         resize_image_flag = not resolution_original_input
         mask_color_flag = False
         preprocessor_methods = modules.flags.get_value_by_scene_theme(state_params, scene_theme, 'image_preprocessor_method', [])
