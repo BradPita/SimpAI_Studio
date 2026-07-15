@@ -709,8 +709,14 @@
                 "724",
                 22
             ],
-            "on_true": "replacement",
-            "on_false": "animation"
+            "on_true": [
+                "911",
+                0
+            ],
+            "on_false": [
+                "912",
+                0
+            ]
         },
         "class_type": "easy ifElse",
         "_meta": {
@@ -920,6 +926,24 @@
         "class_type": "easy ifElse",
         "_meta": {
             "title": "SAM3 conditioning only for replacement"
+        }
+    },
+    "911": {
+        "inputs": {
+            "value": "replacement"
+        },
+        "class_type": "easy string",
+        "_meta": {
+            "title": "SCAIL2 Replacement Mode"
+        }
+    },
+    "912": {
+        "inputs": {
+            "value": "animation"
+        },
+        "class_type": "easy string",
+        "_meta": {
+            "title": "SCAIL2 Animation Mode"
         }
     }
 }

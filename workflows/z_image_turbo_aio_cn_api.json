@@ -910,6 +910,10 @@
       "denoise": [
         "728",
         9
+      ],
+      "clip": [
+        "852",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVZImage",

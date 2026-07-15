@@ -932,6 +932,10 @@
       "denoise": [
         "728",
         9
+      ],
+      "clip": [
+        "810",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVQwen",

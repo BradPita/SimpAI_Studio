@@ -903,6 +903,10 @@
       "denoise": [
         "728",
         9
+      ],
+      "clip": [
+        "1016",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVWan",

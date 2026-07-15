@@ -783,6 +783,10 @@
         "aio_reference_4",
         0
       ],
+      "clip": [
+        "73",
+        0
+      ],
       "positive": [
         "aio_reference_4",
         1
@@ -1021,6 +1025,10 @@
         "60",
         0
       ],
+      "clip": [
+        "73",
+        0
+      ],
       "positive": [
         "aio_reference_4",
         1
@@ -1063,10 +1071,6 @@
       ],
       "fallback_image": [
         "aio_route",
-        0
-      ],
-      "clip": [
-        "73",
         0
       ],
       "region_1": [

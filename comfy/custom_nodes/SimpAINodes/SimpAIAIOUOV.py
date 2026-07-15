@@ -2,6 +2,67 @@ from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
 from comfy_execution.graph_utils import GraphBuilder
 
 
+TILED_PROMPT_GUARD_LONG_EDGE = 6000
+
+_TAG_QUALITY_PROMPT = (
+    "masterpiece, best quality, absurdres, very aesthetic, amazing quality, "
+    "highres, ultra detailed"
+)
+_GENERIC_QUALITY_PROMPT = (
+    "masterpiece, best quality, ultra detailed, high resolution, clean fine detail"
+)
+_WAN_QUALITY_PROMPT = (
+    "(masterpiece:1.2), (best quality:1.2), ultra high resolution, "
+    "(ultra-detailed), (beautiful and aesthetic:1.2), high texture, 4K"
+)
+
+QUALITY_PROMPTS = {
+    "anima": _TAG_QUALITY_PROMPT,
+    "flux": _GENERIC_QUALITY_PROMPT,
+    "flux2": _GENERIC_QUALITY_PROMPT,
+    "qwen": _GENERIC_QUALITY_PROMPT,
+    "sdxl": _TAG_QUALITY_PROMPT,
+    "wan": _WAN_QUALITY_PROMPT,
+    "z_image": _GENERIC_QUALITY_PROMPT,
+}
+
+
+class SimpAIAIOTilePromptGuard:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "image": ("IMAGE",),
+            "original": ("CONDITIONING",),
+            "quality": ("CONDITIONING",),
+            "upscale_by": ("FLOAT", {"default": 1.5, "min": 0.01, "max": 16.0, "step": 0.01}),
+            "long_edge_threshold": ("INT", {"default": TILED_PROMPT_GUARD_LONG_EDGE, "min": 1, "max": 16384}),
+        }}
+
+    RETURN_TYPES = ("CONDITIONING",)
+    RETURN_NAMES = ("positive",)
+    FUNCTION = "select"
+    CATEGORY = "SimpAI/AIO/UOV/Internal"
+
+    def select(self, image, original, quality, upscale_by, long_edge_threshold):
+        height = int(image.shape[-3])
+        width = int(image.shape[-2])
+        target_long_edge = max(height, width) * float(upscale_by)
+        return (quality if target_long_edge > int(long_edge_threshold) else original,)
+
+
+def _quality_conditioning(graph, family, clip, guidance):
+    text = QUALITY_PROMPTS.get(family, _GENERIC_QUALITY_PROMPT)
+    if family == "flux":
+        return graph.node(
+            "CLIPTextEncodeFlux",
+            clip=clip,
+            clip_l=text,
+            t5xxl=text,
+            guidance=guidance,
+        ).out(0)
+    return graph.node("CLIPTextEncode", clip=clip, text=text).out(0)
+
+
 class _SimpAIAIOUOVBase:
     FAMILY = "base"
 
@@ -10,6 +71,7 @@ class _SimpAIAIOUOVBase:
         return {
             "required": {
                 "model": ("MODEL", {"lazy": True}),
+                "clip": ("CLIP", {"lazy": True}),
                 "positive": ("CONDITIONING", {"lazy": True}),
                 "negative": ("CONDITIONING", {"lazy": True}),
                 "vae": ("VAE", {"lazy": True}),
@@ -32,7 +94,7 @@ class _SimpAIAIOUOVBase:
     FUNCTION = "expand"
     CATEGORY = "SimpAI/AIO/UOV"
 
-    def check_lazy_status(self, model, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    def check_lazy_status(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
         mode = int(uov.get("mode", 0))
         if mode <= 0:
             return []
@@ -41,9 +103,10 @@ class _SimpAIAIOUOVBase:
         elif mode in (2, 3):
             required = ("model", "positive", "negative", "vae")
         else:
-            required = ("model", "positive", "negative", "vae", "upscale_model")
+            required = ("model", "clip", "positive", "negative", "vae", "upscale_model")
         values = {
             "model": model,
+            "clip": clip,
             "positive": positive,
             "negative": negative,
             "vae": vae,
@@ -51,7 +114,18 @@ class _SimpAIAIOUOVBase:
         }
         return [name for name in required if values[name] is None]
 
-    def expand(self, model, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    def _guard_tiled_positive(self, graph, image, clip, positive, multiple, cfg):
+        quality = _quality_conditioning(graph, self.FAMILY, clip, cfg)
+        return graph.node(
+            "SimpAIAIOTilePromptGuard",
+            image=image,
+            original=positive,
+            quality=quality,
+            upscale_by=multiple,
+            long_edge_threshold=TILED_PROMPT_GUARD_LONG_EDGE,
+        ).out(0)
+
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
         mode = int(uov.get("mode", 0))
         image = uov["image"]
         if mode <= 0:
@@ -85,6 +159,7 @@ class _SimpAIAIOUOVBase:
             decoded = graph.node("VAEDecode", samples=sampled.out(0), vae=vae)
             output = decoded.out(0)
         else:
+            positive = self._guard_tiled_positive(graph, image, clip, positive, multiple, cfg)
             tiled = graph.node(
                 "UltimateSDUpscale",
                 image=image,
@@ -135,10 +210,13 @@ SimpAIAIOUOVFlux2 = _family_node("SimpAIAIOUOVFlux2", "flux2")
 class SimpAIAIOUOVAnima(_SimpAIAIOUOVBase):
     FAMILY = "anima"
 
-    def expand(self, model, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
         if int(uov.get("mode", 0)) != 4:
-            return super().expand(model, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id, denoise)
+            return super().expand(model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id, denoise)
         graph = GraphBuilder()
+        positive = self._guard_tiled_positive(
+            graph, uov["image"], clip, positive, float(uov.get("multiple", 1.5)), cfg
+        )
         patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="animaTileRepair_v20.safetensors",
                              image=uov["image"], strength=1.0, start_percent=0.0, end_percent=1.0, preserve_wrapper=True)
         tiled = graph.node("UltimateSDUpscale", image=uov["image"], model=patched.out(0), positive=positive,
@@ -163,20 +241,23 @@ class SimpAIAIOUOVChenkin(_SimpAIAIOUOVBase):
         types["optional"]["tile_control_net"] = ("CONTROL_NET", {"lazy": True})
         return types
 
-    def check_lazy_status(self, model, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
+    def check_lazy_status(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
                           sampler_name, scheduler, progress_node_id="", denoise=-1.0, tile_control_net=None):
-        missing = super().check_lazy_status(model, positive, negative, vae, upscale_model, uov, seed, steps,
+        missing = super().check_lazy_status(model, clip, positive, negative, vae, upscale_model, uov, seed, steps,
                                             cfg, sampler_name, scheduler, progress_node_id, denoise)
         if int(uov.get("mode", 0)) == 4 and tile_control_net is None:
             missing.append("tile_control_net")
         return missing
 
-    def expand(self, model, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name,
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name,
                scheduler, progress_node_id="", denoise=-1.0, tile_control_net=None):
         if int(uov.get("mode", 0)) != 4:
-            return super().expand(model, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
+            return super().expand(model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
                                   sampler_name, scheduler, progress_node_id, denoise)
         graph = GraphBuilder()
+        positive = self._guard_tiled_positive(
+            graph, uov["image"], clip, positive, float(uov.get("multiple", 1.5)), cfg
+        )
         applied = graph.node("ControlNetApplyAdvanced", positive=positive, negative=negative,
                              control_net=tile_control_net, image=uov["image"], vae=vae, strength=0.3,
                              start_percent=0.0, end_percent=1.0)
@@ -197,6 +278,7 @@ class SimpAIAIOUOVChenkin(_SimpAIAIOUOVBase):
 
 NODE_CLASS_MAPPINGS = {
     cls.__name__: cls for cls in (
+        SimpAIAIOTilePromptGuard,
         SimpAIAIOUOVFlux,
         SimpAIAIOUOVSDXL,
         SimpAIAIOUOVQwen,

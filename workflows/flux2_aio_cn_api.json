@@ -885,6 +885,10 @@
       "denoise": [
         "728",
         9
+      ],
+      "clip": [
+        "807",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVFlux2",

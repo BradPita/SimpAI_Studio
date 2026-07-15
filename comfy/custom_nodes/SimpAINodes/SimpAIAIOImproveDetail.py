@@ -259,7 +259,7 @@ class _SimpAIAIOImproveDetailBase:
             "anima": "SimpAIAIOInpaintFlux",
         }[self.FAMILY]
 
-    def _apply_uov(self, graph, image, model, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler):
+    def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler):
         methods = {
             "disabled": 0,
             "upscale (fast 2x)": 1,
@@ -294,6 +294,7 @@ class _SimpAIAIOImproveDetailBase:
         applied = graph.node(
             self._uov_node(),
             model=model,
+            clip=clip,
             positive=positive,
             negative=negative,
             vae=vae,
@@ -333,7 +334,7 @@ class _SimpAIAIOImproveDetailBase:
         active = enhance_uov["method"] != "disabled" or any(region["detection_prompt"] for region in regions)
         uov_positive, uov_negative = self._uov_conditioning(graph, clip, positive, negative, regions, enhance_uov, cfg)
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "Before First Enhancement":
-            current = self._apply_uov(graph, current, model, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
 
         for index, region in enumerate(regions):
             if not region["detection_prompt"]:
@@ -362,7 +363,7 @@ class _SimpAIAIOImproveDetailBase:
             current = graph.node("SimpAIAIOApplyRegion", **inputs).out(0)
 
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "After Last Enhancement":
-            current = self._apply_uov(graph, current, model, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
 
         return {"result": (current, active, source_image), "expand": graph.finalize()}
 
