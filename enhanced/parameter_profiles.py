@@ -26,6 +26,29 @@ _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 _MISSING_MODEL_MARKER = "\u2B07"
 _PROFILE_WARNING_LIMIT = 6
 
+_SCENE_PROFILE_CONTROL_KEYS = (
+    "scene_theme",
+    "scene_additional_prompt",
+    "scene_additional_prompt_2",
+    "scene_video_duration",
+    "scene_var_number",
+    "scene_var_number2",
+    "scene_var_number3",
+    "scene_var_number4",
+    "scene_var_number5",
+    "scene_var_number6",
+    "scene_var_number7",
+    "scene_var_number8",
+    "scene_var_number9",
+    "scene_var_number10",
+    "scene_switch_option1",
+    "scene_switch_option2",
+    "scene_switch_option3",
+    "scene_switch_option4",
+    "scene_aspect_ratio",
+    "scene_image_number",
+)
+
 
 def _clean_name(value: Any) -> str:
     return str(value or "").replace(_MISSING_MODEL_MARKER, "").strip()
@@ -154,14 +177,17 @@ def _state_preset_json(state_params: dict[str, Any], user_did: str, preset_name:
 
 
 def _state_preset_prepared(state_params: dict[str, Any], preset_json: dict[str, Any]) -> dict[str, Any]:
-    prepared = state_params.get("__preset_prepared") if isinstance(state_params, dict) else None
-    if isinstance(prepared, dict) and prepared:
-        return copy.deepcopy(prepared)
+    state_prepared = state_params.get("__preset_prepared") if isinstance(state_params, dict) else None
     if isinstance(preset_json, dict) and preset_json:
         try:
-            return meta_parser.parse_meta_from_preset(copy.deepcopy(preset_json))
+            preset_prepared = meta_parser.parse_meta_from_preset(copy.deepcopy(preset_json))
+            preset_engine = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
+            if isinstance(preset_engine.get("scene_frontend"), dict) or not state_prepared:
+                return preset_prepared
         except Exception:
             logger.exception("Failed to prepare preset metadata for parameter profile.")
+    if isinstance(state_prepared, dict) and state_prepared:
+        return copy.deepcopy(state_prepared)
     return {}
 
 
@@ -294,37 +320,45 @@ def _lora_entries(values: dict[str, Any]) -> list[str]:
     return entries
 
 
-def _scene_ui_values(values: dict[str, Any]) -> dict[str, Any]:
+def _scene_hidden_controls(preset_prepared: dict[str, Any]) -> set[str]:
+    engine = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
+    scene_frontend = engine.get("scene_frontend", {}) if isinstance(engine, dict) else {}
+    if not isinstance(scene_frontend, dict):
+        return set()
+    try:
+        return set(meta_parser.scene_disvisible_with_optional_inputs(scene_frontend))
+    except Exception:
+        raw_hidden = scene_frontend.get("disvisible", [])
+        if isinstance(raw_hidden, list):
+            return {str(item) for item in raw_hidden}
+        if isinstance(raw_hidden, str):
+            return {item.strip() for item in raw_hidden.split(",") if item.strip()}
+        return set()
+
+
+def _remove_hidden_scene_values(
+    ui_values: dict[str, Any],
+    preset_prepared: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    visible_values = dict(ui_values or {})
+    for control_name in _scene_hidden_controls(preset_prepared):
+        visible_values.pop(control_name, None)
+        if isinstance(metadata, dict):
+            metadata.pop(control_name, None)
+    return visible_values
+
+
+def _scene_ui_values(values: dict[str, Any], preset_prepared: dict[str, Any] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for key in (
-        "scene_theme",
-        "scene_additional_prompt",
-        "scene_additional_prompt_2",
-        "scene_video_duration",
-        "scene_var_number",
-        "scene_var_number2",
-        "scene_var_number3",
-        "scene_var_number4",
-        "scene_var_number5",
-        "scene_var_number6",
-        "scene_var_number7",
-        "scene_var_number8",
-        "scene_var_number9",
-        "scene_var_number10",
-        "scene_switch_option1",
-        "scene_switch_option2",
-        "scene_switch_option3",
-        "scene_switch_option4",
-        "scene_aspect_ratio",
-        "scene_image_number",
-    ):
+    for key in _SCENE_PROFILE_CONTROL_KEYS:
         if key in values:
             result[key] = values.get(key)
     if "overwrite_step" in values:
         result["overwrite_step"] = values.get("overwrite_step")
     elif "scene_steps" in values:
         result["overwrite_step"] = values.get("scene_steps")
-    return result
+    return _remove_hidden_scene_values(result, preset_prepared or {})
 
 
 def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
@@ -338,7 +372,7 @@ def build_profile_payload(name: str, values: dict[str, Any]) -> dict[str, Any]:
     preset_json = _state_preset_json(state_params, user_did, preset_name)
     preset_prepared = _state_preset_prepared(state_params, preset_json)
     engine = copy.deepcopy(preset_prepared.get("engine", {})) if isinstance(preset_prepared.get("engine"), dict) else {}
-    scene_values = _scene_ui_values(values)
+    scene_values = _scene_ui_values(values, preset_prepared)
 
     backend_engine = (
         backend_params.get("backend_engine")
@@ -484,27 +518,8 @@ def _current_scene_ui_values(metadata: dict[str, Any], manifest: dict[str, Any] 
     if isinstance(manifest, dict) and isinstance(manifest.get("ui_values"), dict):
         ui_values.update(copy.deepcopy(manifest.get("ui_values") or {}))
     for key in (
-        "scene_theme",
-        "scene_additional_prompt",
-        "scene_additional_prompt_2",
-        "scene_video_duration",
-        "scene_var_number",
-        "scene_var_number2",
-        "scene_var_number3",
-        "scene_var_number4",
-        "scene_var_number5",
-        "scene_var_number6",
-        "scene_var_number7",
-        "scene_var_number8",
-        "scene_var_number9",
-        "scene_var_number10",
+        *_SCENE_PROFILE_CONTROL_KEYS,
         "overwrite_step",
-        "scene_switch_option1",
-        "scene_switch_option2",
-        "scene_switch_option3",
-        "scene_switch_option4",
-        "scene_aspect_ratio",
-        "scene_image_number",
     ):
         if key in metadata:
             ui_values[key] = metadata.get(key)
@@ -549,6 +564,7 @@ def _apply_current_preset_manifest(metadata: dict[str, Any], state_params: dict[
 
     old_manifest = regen_manifest.extract(metadata)
     ui_values = _current_scene_ui_values(metadata, old_manifest)
+    ui_values = _remove_hidden_scene_values(ui_values, preset_prepared, metadata)
     engine = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
     if isinstance(engine, dict):
         if engine.get("backend_engine"):
