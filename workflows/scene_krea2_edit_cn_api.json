@@ -856,7 +856,7 @@
         7
       ],
       "upscale_method": "lanczos",
-      "keep_proportion": "pad_edge_pixel",
+      "keep_proportion": "pillarbox_blur",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
       "divisible_by": 16,
@@ -1089,7 +1089,7 @@
         7
       ],
       "upscale_method": "lanczos",
-      "keep_proportion": "pad_edge_pixel",
+      "keep_proportion": "pillarbox_blur",
       "pad_color": "0, 0, 0",
       "crop_position": "center",
       "divisible_by": 16,

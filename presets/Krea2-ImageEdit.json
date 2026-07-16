@@ -42,7 +42,7 @@
                 "Krea2 Image Edit": 1.0
             },
             "var_number4_title": "Match original colors",
-            "var_number4_min": 0,
+            "var_number4_min": 0.5,
             "var_number4_max": 1.0,
             "var_number4": {
                 "Krea2 Image Edit": 0
