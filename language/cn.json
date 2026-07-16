@@ -1089,7 +1089,7 @@
   "Match original colors": "颜色匹配原图",
   "Krea2 Image Edit": "Krea2图像编辑",
   "Krea 2 Conditioning Control": "Krea2条件控制",
-  "Krea2 Image Edit: Upload Canvas, Optional Input Image [Disable Mask]": "Krea2 图像编辑：输入主图，参考图可选 [禁用蒙版]",
+  "Krea2 Image Edit: Upload Canvas, Optional Input Image [Optional Mask]": "Krea2 图像编辑：输入主图，参考图可选 [可选蒙版]",
   "Max people (SDPose only)": "最大人数（仅SDPose生效）",
   "Metal": "金属",
   "Moe": "萌系",

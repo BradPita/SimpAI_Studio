@@ -109,7 +109,7 @@
   "28": {
     "inputs": {
       "anything": [
-        "214",
+        "215",
         0
       ]
     },
@@ -376,7 +376,7 @@
         0
       ],
       "on_false": [
-        "216",
+        "3",
         0
       ]
     },
@@ -396,7 +396,7 @@
         0
       ],
       "on_false": [
-        "217",
+        "234",
         0
       ]
     },
@@ -517,12 +517,12 @@
   "194": {
     "inputs": {
       "width": [
-        "221",
+        "229",
         0
       ],
       "height": [
-        "221",
-        1
+        "230",
+        0
       ],
       "upscale_method": "lanczos",
       "keep_proportion": "stretch",
@@ -605,32 +605,6 @@
       "title": "Compare"
     }
   },
-  "200": {
-    "inputs": {
-      "expression": "ceil(a/16)*16",
-      "values.a": [
-        "2",
-        6
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
-  "201": {
-    "inputs": {
-      "expression": "ceil(a/16)*16",
-      "values.a": [
-        "2",
-        7
-      ]
-    },
-    "class_type": "ComfyMathExpression",
-    "_meta": {
-      "title": "Math Expression"
-    }
-  },
   "202": {
     "inputs": {
       "prompt": [
@@ -684,7 +658,7 @@
   "204": {
     "inputs": {
       "pixels": [
-        "180",
+        "231",
         0
       ],
       "vae": [
@@ -756,12 +730,12 @@
   "209": {
     "inputs": {
       "width": [
-        "220",
-        0
+        "222",
+        1
       ],
       "height": [
-        "220",
-        1
+        "222",
+        2
       ],
       "batch_size": 1
     },
@@ -808,57 +782,6 @@
       "title": "🎛️ Krea 2 Conditioning Control"
     }
   },
-  "214": {
-    "inputs": {
-      "add_noise": "enable",
-      "noise_seed": [
-        "1",
-        0
-      ],
-      "steps": [
-        "2",
-        9
-      ],
-      "cfg": [
-        "2",
-        8
-      ],
-      "sampler_name": [
-        "2",
-        30
-      ],
-      "scheduler": [
-        "2",
-        31
-      ],
-      "start_at_step": 8,
-      "end_at_step": [
-        "2",
-        9
-      ],
-      "return_with_leftover_noise": "disable",
-      "model": [
-        "205",
-        0
-      ],
-      "positive": [
-        "212",
-        0
-      ],
-      "negative": [
-        "213",
-        0
-      ],
-      "latent_image": [
-        "215",
-        0
-      ]
-    },
-    "class_type": "KSamplerAdvanced",
-    "_meta": {
-      "title": "KSampler (Advanced)"
-    }
-  },
   "215": {
     "inputs": {
       "add_noise": "enable",
@@ -883,58 +806,31 @@
         31
       ],
       "start_at_step": 0,
-      "end_at_step": 8,
+      "end_at_step": [
+        "2",
+        9
+      ],
       "return_with_leftover_noise": "disable",
       "model": [
-        "205",
+        "232",
         0
       ],
       "positive": [
-        "212",
+        "226",
         0
       ],
       "negative": [
-        "213",
+        "227",
         0
       ],
       "latent_image": [
-        "209",
+        "228",
         0
       ]
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
       "title": "KSampler (Advanced)"
-    }
-  },
-  "216": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1,
-      "resolution_steps": 16,
-      "image": [
-        "3",
-        0
-      ]
-    },
-    "class_type": "ImageScaleToTotalPixels",
-    "_meta": {
-      "title": "Scale Image to Total Pixels"
-    }
-  },
-  "217": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1,
-      "resolution_steps": 16,
-      "image": [
-        "43",
-        0
-      ]
-    },
-    "class_type": "ImageScaleToTotalPixels",
-    "_meta": {
-      "title": "Scale Image to Total Pixels"
     }
   },
   "220": {
@@ -949,16 +845,263 @@
       "title": "Get Image Size"
     }
   },
-  "221": {
+  "222": {
     "inputs": {
+      "width": [
+        "2",
+        6
+      ],
+      "height": [
+        "2",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "pad_edge_pixel",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
       "image": [
-        "3",
+        "180",
         0
       ]
     },
-    "class_type": "GetImageSize",
+    "class_type": "ImageResizeKJv2",
     "_meta": {
-      "title": "Get Image Size"
+      "title": "Resize Image v2"
+    }
+  },
+  "223": {
+    "inputs": {
+      "noise_mask": true,
+      "positive": [
+        "212",
+        0
+      ],
+      "negative": [
+        "213",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "pixels": [
+        "180",
+        0
+      ],
+      "mask": [
+        "233",
+        0
+      ]
+    },
+    "class_type": "InpaintModelConditioning",
+    "_meta": {
+      "title": "InpaintModelConditioning"
+    }
+  },
+  "224": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "104",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "Convert Image to Mask"
+    }
+  },
+  "225": {
+    "inputs": {
+      "mask": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "226": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "212",
+        0
+      ],
+      "on_false": [
+        "223",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "227": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "213",
+        0
+      ],
+      "on_false": [
+        "223",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "228": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "209",
+        0
+      ],
+      "on_false": [
+        "223",
+        2
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "229": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "222",
+        1
+      ],
+      "on_false": [
+        "220",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "230": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "222",
+        2
+      ],
+      "on_false": [
+        "220",
+        1
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "231": {
+    "inputs": {
+      "boolean": [
+        "225",
+        0
+      ],
+      "on_true": [
+        "222",
+        0
+      ],
+      "on_false": [
+        "180",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "232": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "205",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "Differential Diffusion"
+    }
+  },
+  "233": {
+    "inputs": {
+      "expand": 20,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 5,
+      "lerp_alpha": 1,
+      "decay_factor": 1,
+      "fill_holes": false,
+      "mask": [
+        "224",
+        0
+      ]
+    },
+    "class_type": "GrowMaskWithBlur",
+    "_meta": {
+      "title": "Grow Mask With Blur"
+    }
+  },
+  "234": {
+    "inputs": {
+      "width": [
+        "2",
+        6
+      ],
+      "height": [
+        "2",
+        7
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "pad_edge_pixel",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
+      "image": [
+        "43",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
     }
   }
 }

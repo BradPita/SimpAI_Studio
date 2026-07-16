@@ -9646,30 +9646,14 @@ with shared.gradio_root:
             ready_to_gen = True 
             canvas_img = extract_scene_image(canvas_image) if is_canvas_image else None
             input_img = extract_scene_image(img)
-            use_img = canvas_img if canvas_img is not None else input_img
-            if use_img is None and is_canvas_image:
+            use_img = canvas_img if is_canvas_image else input_img
+            if is_canvas_image and canvas_img is None:
                 ready_to_gen = False
             describe_prompt, img_is_ok = describe_prompt_for_scene(state, use_img, scene_theme, f'{additional_prompt}{additional_prompt_2}')
             styles = set()
             styles.update([])
             prompt_update = describe_prompt if describe_prompt else skip_component_update()
             return prompt_update, list(styles), gr_update(interactive=ready_to_gen and img_is_ok)
-
-        def scene_input_image1_clear(state, input_image1, video=None, audio=None):
-            if input_image1 is None and isinstance(state, dict) and 'scene_frontend' in state:
-                scene_input_image1_visible = 'scene_input_image1' not in state["scene_frontend"].get('disvisible', [])
-                scene_input_image2_visible = 'scene_input_image2' not in state["scene_frontend"].get('disvisible', [])
-                need_canvas_image = 'scene_canvas_image' not in state["scene_frontend"].get('disvisible', [])
-                should_disable_generate = scene_input_image1_visible and not (scene_input_image2_visible and need_canvas_image)
-
-                video_visible = 'scene_video' not in state["scene_frontend"].get('disvisible', [])
-                audio_visible = 'scene_audio' not in state["scene_frontend"].get('disvisible', [])
-                if (video_visible and video is not None) or (audio_visible and audio is not None):
-                     should_disable_generate = False
-
-                if should_disable_generate:
-                    return '', gr_update(interactive=True, visible=True), gr_update(visible=False)
-            return [skip_component_update()] * 3
 
         def update_describe_output_tags(engine_class_display):
             if engine_class_display in ['SDXL', 'SD15', 'Illustrious', 'Anima']:
@@ -9681,13 +9665,11 @@ with shared.gradio_root:
             # controls into the shared Models tab.
             return []
 
+        scene_canvas_image.input(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False)
         scene_canvas_image.change(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_canvas", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        scene_input_image1.upload(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
-                        .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        #scene_input_image1.clear(lambda: ['', gr_update(interactive=False)], outputs=[prompt, generate_button], show_progress=False, queue=False)
+        scene_input_image1.upload(fn=None, show_progress=False, queue=False, js='()=>{refresh_scene_localization(); if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "upload"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         scene_input_image1.clear(lambda: None, queue=False, show_progress=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "clear"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
-        scene_input_image1.change(scene_input_image1_clear, inputs=[state_topbar, scene_input_image1, scene_video, scene_audio], outputs=[prompt, generate_button, load_parameter_button], show_progress=False, queue=False) \
-                         .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
+        scene_input_image1.change(fn=None, show_progress=False, queue=False, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_input_image1", "change"); else if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
         load_parameter_button.click(trigger_auto_describe_for_scene, inputs=[state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2, state_is_generating], outputs=[prompt, style_selections, generate_button], show_progress=True, queue=False) \
                         .then(lambda: None, js='()=>{refresh_scene_localization(); if (typeof syncResolutionControlWidgets === "function") syncResolutionControlWidgets();}')
 

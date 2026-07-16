@@ -5141,6 +5141,20 @@ function _rc_markResolutionSourceDirty(widget) {
     widget.__rc_cached_image_source_value = null;
 }
 
+function _rc_clearResolutionPreviewCanvas(canvas) {
+    if (!canvas || typeof canvas.getContext !== 'function') return false;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    ctx.save();
+    try {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, Math.max(1, canvas.width || 1), Math.max(1, canvas.height || 1));
+    } finally {
+        ctx.restore();
+    }
+    return true;
+}
+
 function _rc_runResolutionWidgetSync(widget, syncFn) {
     if (!widget || typeof syncFn !== 'function') return false;
     window.clearTimeout(widget.__rc_widget_sync_timer);
@@ -6115,6 +6129,7 @@ function initResolutionControlWidget(widget, options = {}) {
             }
         }
         if (waitingOriginal) {
+            _rc_clearResolutionPreviewCanvas(canvas);
             rect.style.display = 'none';
             return;
         }
@@ -6143,7 +6158,7 @@ function initResolutionControlWidget(widget, options = {}) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                ctx.clearRect(0, 0, padW, padH);
+                _rc_clearResolutionPreviewCanvas(canvas);
                 const source = readImageSource(getSourceIds());
                 if (source) {
                     const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional');

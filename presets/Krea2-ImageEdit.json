@@ -7,8 +7,7 @@
         "scene_frontend": {
             "version": "m1.1",
             "theme": ["Krea2 Image Edit"],
-            "theme_title": "Krea2 Image Edit: Upload Canvas, Optional Input Image [Disable Mask]",
-            "disable_canvas_mask": true,
+            "theme_title": "Krea2 Image Edit: Upload Canvas, Optional Input Image [Optional Mask]",
             "disvisible": [
                 "scene_additional_prompt",
                 "scene_additional_prompt_2",
@@ -80,7 +79,7 @@
         ],
         [
             "krea2filterbypass3.safetensors",
-            1.0
+            0.3
         ],
         [
             "None",
