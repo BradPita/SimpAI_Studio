@@ -14677,7 +14677,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 
 #sam3_input_video .edit-buttons,
 #sam3_output_mask_video .edit-buttons,
-#scene_video .edit-buttons {
+#scene_video .edit-buttons,
+#scene_reference_video .edit-buttons {
     display: flex !important;
     align-items: center !important;
     justify-content: flex-end !important;
@@ -14686,13 +14687,15 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 
 #sam3_input_video .timeline-wrapper,
 #sam3_output_mask_video .timeline-wrapper,
-#scene_video .timeline-wrapper {
+#scene_video .timeline-wrapper,
+#scene_reference_video .timeline-wrapper {
     margin-bottom: 28px !important;
 }
 
 #sam3_input_video [data-testid="waveform-controls"],
 #sam3_output_mask_video [data-testid="waveform-controls"],
-#scene_video [data-testid="waveform-controls"] {
+#scene_video [data-testid="waveform-controls"],
+#scene_reference_video [data-testid="waveform-controls"] {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -14706,7 +14709,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 
 #sam3_input_video [data-testid="waveform-controls"] time,
 #sam3_output_mask_video [data-testid="waveform-controls"] time,
-#scene_video [data-testid="waveform-controls"] time {
+#scene_video [data-testid="waveform-controls"] time,
+#scene_reference_video [data-testid="waveform-controls"] time {
     min-width: 0 !important;
     padding-left: 0 !important;
     font-size: 20px !important;
@@ -14715,7 +14719,8 @@ body[data-theme="dark"] .line-overlay-textbox .line-overlay-line:nth-child(odd) 
 
 #sam3_input_video .edit-buttons button,
 #sam3_output_mask_video .edit-buttons button,
-#scene_video .edit-buttons button {
+#scene_video .edit-buttons button,
+#scene_reference_video .edit-buttons button {
     min-width: 64px !important;
     max-width: 86px !important;
     height: 30px !important;

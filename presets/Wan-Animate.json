@@ -123,7 +123,7 @@
                 "preprocess_fit": "proportional",
                 "preserve_audio": true
             },
-            "overwrite_step_min": 4,
+            "overwrite_step_min": 3,
             "overwrite_step_max": 8,
             "video_duration_title": "Duration limit (seconds) [0 = no limit]",
             "video_duration_min": 0,

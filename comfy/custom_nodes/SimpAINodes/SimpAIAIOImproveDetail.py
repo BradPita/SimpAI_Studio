@@ -43,6 +43,12 @@ def _tiled_guard_needs_quality_prompt(image, multiple):
     return max(height, width) * float(multiple) > TILED_PROMPT_GUARD_LONG_EDGE
 
 
+def _upscale_target_size(image, multiple):
+    height = int(image.shape[-3])
+    width = int(image.shape[-2])
+    return max(1, int(width * float(multiple))), max(1, int(height * float(multiple)))
+
+
 def _enhance_uses_region_prompt(regions, enhance_uov):
     if enhance_uov["prompt_type"] != "Last Filled Enhancement Prompts":
         return False
@@ -295,11 +301,14 @@ class _SimpAIAIOImproveDetailBase:
         mode = methods.get(enhance_uov["method"], 0)
         if mode == 1:
             upscaled = graph.node("ImageUpscaleWithModel", upscale_model=upscale_model, image=image)
+            target_width, target_height = _upscale_target_size(image, enhance_uov["multiple"])
             return graph.node(
-                "ImageScaleBy",
+                "ImageScale",
                 image=upscaled.out(0),
                 upscale_method="lanczos",
-                scale_by=enhance_uov["multiple"],
+                width=target_width,
+                height=target_height,
+                crop="disabled",
             ).out(0)
 
         uov = graph.node(

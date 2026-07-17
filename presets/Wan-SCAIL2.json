@@ -119,7 +119,7 @@
                 "source": "scene_video",
                 "base_width": 640,
                 "base_height": 640,
-                "quantize": 16,
+                "quantize": 32,
                 "interactive": true,
                 "frontend_preprocess": true,
                 "preprocess_target": "video",

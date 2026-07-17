@@ -1,0 +1,124 @@
+ComfyUI-WanAnimatePlus
+Copyright (c) 2026 wuwukasi/wuwukaka
+
+This project is an independently maintained fork / derivative project based on
+kijai/ComfyUI-WanVideoWrapper:
+https://github.com/kijai/ComfyUI-WanVideoWrapper
+
+The original ComfyUI-WanVideoWrapper project and its original portions remain
+copyrighted by kijai and its contributors. Other upstream or third-party
+portions, including Alibaba Wan, ComfyUI, ComfyUI native quantization support,
+and bundled model/feature implementations, remain copyrighted by their
+respective authors. Deep thanks to those projects and contributors.
+
+Additional SCAIL-2 two-phase sampling acknowledgement: the WanAnimatePlus
+implementation was independently written, with thanks to
+checknickname/ComfyUI-Scail2-Sampler-Helper for the two-phase sampling idea and
+to user2318/ComfyUI-CustomNodeKit as an MIT-licensed reference project. This is
+idea/reference credit and does not indicate incorporated source code from those
+projects.
+
+This project is distributed under the Apache License, Version 2.0. See LICENSE.
+
+Modified portions and newly added source expression by wuwukasi/wuwukaka in
+this repository are Copyright (c) 2026 wuwukasi/wuwukaka. Redistribution of this
+project, derivative works, or modifications that include or are based on these
+modified portions must retain this NOTICE and the copyright/modification notices
+in the relevant source files.
+
+Projects that use, copy, adapt, or modify the wuwukasi/wuwukaka portions must
+include a detailed modification notice in accompanying documentation, such as a
+README, NOTICE file, or equivalent attribution document. The notice should, at
+minimum:
+
+- Identify that the work includes code derived from ComfyUI-WanAnimatePlus by
+  wuwukasi/wuwukaka.
+- Identify the affected modules, files, or feature areas derived from
+  wuwukasi/wuwukaka additions/modifications.
+- Describe the downstream modifications made to those portions, if any.
+- Retain existing copyright headers and modification notices in modified source
+  files, and add new prominent notices for downstream changes.
+- Avoid implying endorsement by kijai, wuwukasi/wuwukaka, or other contributors.
+
+Omission, incomplete attribution, or inaccurate attribution by downstream
+projects does not waive or transfer wuwukasi/wuwukaka rights in the
+WanAnimatePlus-derived portions, including adapted, refactored, relocated,
+split, merged, or otherwise derivative source expression based on those
+portions.
+This applies to all downstream projects and derivative works, whether or not
+they are specifically identified by name.
+Downstream copyright or modification notices apply only to the downstream
+project's own changes and do not supersede, replace, or transfer the
+wuwukasi/wuwukaka notices and rights in WanAnimatePlus-derived portions or in
+adapted, refactored, relocated, split, merged, or otherwise derivative source
+expression based on those portions.
+
+When using the WanAnimatePlus-specific nodes and wuwukasi/wuwukaka additions in
+published workflows, demos, introduction videos, or tutorial videos, attribution
+is requested: please clearly state that those nodes come from
+ComfyUI-WanAnimatePlus and provide the project link:
+
+https://github.com/wuwukaka/ComfyUI-WanAnimatePlus
+
+This attribution request applies to the WanAnimatePlus-specific additions and
+does not modify the Apache License 2.0 terms for the upstream Apache-licensed
+portions.
+
+The wuwukasi/wuwukaka additions/modifications include, without limitation:
+
+- WanAnimatePlus-specific node registration, node renaming, category isolation,
+  and integration glue for added workflow features.
+- Prefix frame conditioning, transition video conditioning, transition/outfit
+  layouts, canvas expansion trimming, sampler-side continuation metadata, and
+  related context-window/loop integration.
+- Bernini node and sampler integration, including source/reference media
+  preprocessing, context_latents/context_roles metadata threading, ComfyUI /
+  WanVideoWrapper-side context RoPE adapters for added context streams,
+  context token shape tracking, local context-window strategy changes,
+  guidance-mode routing, native-aspect reference preprocessing, source-id
+  rotation application for the added streams, and cache-key correctness fixes
+  for the added context paths.
+- SCAIL-2 embeds support, including wrapper-native ref/pose/mask conditioning,
+  single-frame prefix reference handling, legacy prefix-mask pixel-frame
+  handling, prefix/transition freeze handling, decode-side canvas trimming,
+  context-window prepend/fusion integration, loop tensor caching/background
+  saves, and subprocess-isolated color matching.
+- EverAnimate embeds and sampler support, including anchor selection and
+  padding, pose/face/bg/mask conditioning, ping-pong sequence handling, segment
+  sampling, and related safeguards.
+- Sampler/model safeguards and optimizations added for WanAnimatePlus paths,
+  including graph-detach/inference tensor safeguards, T2V/Bernini/SCAIL fast
+  paths, fast-path/cache helper logic, and attention-mode propagation.
+- Custom operation namespace changes, duplicate-registration safeguards, and
+  WanAnimatePlus-specific custom op handling.
+- CustomLinear MXFP8/block-wise scale_weight handling and related
+  WanAnimatePlus fallback/integration paths.
+
+Authorship scope exclusions:
+
+- Wan, WanVideo, ComfyUI-WanVideoWrapper, ComfyUI, model architecture code,
+  schedulers, attention implementations, and other upstream/third-party code are
+  not claimed as original wuwukasi/wuwukaka code merely because they are present
+  in this repository.
+- RoPE mathematics, ComfyUI/Comfy RoPE implementations, upstream Wan RoPE
+  helpers, and upstream source-id / in-context RoPE mechanisms are not claimed
+  as original wuwukasi/wuwukaka code. WanAnimatePlus claims only its own
+  ComfyUI / WanVideoWrapper-side source expression for Bernini/SCAIL/context
+  paths, including context token shape tracking, context_frame_shapes /
+  context_window_start parameter threading, cache identity fixes, local
+  context-window strategy changes, and source-id rotation application for the
+  added context streams.
+- ComfyUI native quantized linear loading combines WanAnimatePlus work that
+  predates PR #2029, including MXFP8/block-wise scale_weight support, with code
+  later imported or adapted from PR #2029 in this fork's upstream/original
+  project, kijai/ComfyUI-WanVideoWrapper
+  (https://github.com/kijai/ComfyUI-WanVideoWrapper/pull/2029), for ComfyUI
+  native-quant compatibility. Copyright in the adapted upstream PR code remains
+  with its author(s) and the upstream ComfyUI-WanVideoWrapper contributors.
+  WanAnimatePlus also substantially modified, completed, and hardened that
+  incomplete upstream PR implementation for this fork. WanAnimatePlus
+  modifications include the earlier MXFP8 path, package integration,
+  prefix/device/materialization fixes, loader safeguards, fallback/dequantization
+  paths, and CustomLinear dispatch/LoRA adaptation. WanAnimatePlus claims only
+  those modifications and newly written source expression, not the original
+  upstream PR code.

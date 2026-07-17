@@ -73,6 +73,12 @@ def _tiled_guard_needs_quality_prompt(image, multiple):
     return _tiled_target_long_edge(image, multiple) > TILED_PROMPT_GUARD_LONG_EDGE
 
 
+def _upscale_target_size(image, multiple):
+    height = int(image.shape[-3])
+    width = int(image.shape[-2])
+    return max(1, int(width * float(multiple))), max(1, int(height * float(multiple)))
+
+
 class _SimpAIAIOUOVBase:
     FAMILY = "base"
 
@@ -151,7 +157,15 @@ class _SimpAIAIOUOVBase:
         sampler_cfg = 1.0 if self.FAMILY == "flux" else float(cfg)
         if mode == 1:
             upscaled = graph.node("ImageUpscaleWithModel", upscale_model=upscale_model, image=image)
-            scaled = graph.node("ImageScaleBy", image=upscaled.out(0), upscale_method="lanczos", scale_by=multiple)
+            target_width, target_height = _upscale_target_size(image, multiple)
+            scaled = graph.node(
+                "ImageScale",
+                image=upscaled.out(0),
+                upscale_method="lanczos",
+                width=target_width,
+                height=target_height,
+                crop="disabled",
+            )
             output = scaled.out(0)
         elif mode in (2, 3):
             effective_denoise = denoise_override if denoise_override >= 0.0 else (0.5 if mode == 2 else 0.85)
