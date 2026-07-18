@@ -92,7 +92,9 @@ def toggle_prompt_info(state_params):
             prompt_info_data = [None, 0]
 
     [choice, selected] = prompt_info_data
-    prompt_info = gallery.get_main_gallery_browser_selected_metadata(state_params, selected)
+    prompt_info = gallery.get_selected_gallery_media_metadata(state_params)
+    if prompt_info is None:
+        prompt_info = gallery.get_main_gallery_browser_selected_metadata(state_params, selected)
     if prompt_info is None:
         prompt_info = gallery.get_images_prompt(choice, selected, state_params["__max_per_page"], user_did=state_params["user"].get_did(), media_type=gallery.get_gallery_engine_type(state_params))
     info_len = len(str(prompt_info)) if prompt_info is not None else 0

@@ -872,6 +872,11 @@ def apply_scene_resolution_preprocess(
     target = str(profile.get("preprocess_target") or "").strip().lower()
     source = str(profile.get("source") or "").strip()
     profile_mode = str(profile.get("mode") or "")
+    duration_limit = (
+        scene_video_duration
+        if bool_value(profile.get("preprocess_duration_limit"), True)
+        else None
+    )
     changed = False
 
     if target == "video" or profile_mode.startswith("video_") or source in ("video_first_frame", "scene_video_first_frame", "scene_video", "sam3_input_video"):
@@ -882,7 +887,7 @@ def apply_scene_resolution_preprocess(
                 target_size,
                 mode,
                 preserve_audio=bool(profile.get("preserve_audio", True)),
-                duration_limit=scene_video_duration,
+                duration_limit=duration_limit,
             )
             if did:
                 scene_original_video_path = out
@@ -905,7 +910,7 @@ def apply_scene_resolution_preprocess(
                 target_size,
                 mode,
                 preserve_audio=bool(profile.get("preserve_audio", True)),
-                duration_limit=scene_video_duration,
+                duration_limit=duration_limit,
             )
             if did:
                 sam3_original_video_path = out
@@ -920,7 +925,7 @@ def apply_scene_resolution_preprocess(
                 mode,
                 preserve_audio=False,
                 is_mask=True,
-                duration_limit=scene_video_duration,
+                duration_limit=duration_limit,
             )
             if mask_did:
                 sam3_mask_video = mask_out

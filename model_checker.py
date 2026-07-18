@@ -2930,9 +2930,9 @@ packages = {'base_package': {'id': 1,
                        'preset_sample': []},
  'krea2_package': {'id': 44,
                    'name': '[44]Krea2文生图/图像编辑模型包',
-                   'note': 'Krea2 Turbo文生图与Identity Edit图像编辑共用模型包，包含Krea2 Turbo模型、Identity Edit v1.1 LoRA、Qwen3VL 4B文本编码器|显存需求：★★★ 速度：★★★',
+                   'note': 'Krea2 Turbo文生图与Identity Edit图像编辑共用模型包，包含Krea2 Turbo模型、Identity Edit v1.2 LoRA、Qwen3VL 4B文本编码器|显存需求：★★★ 速度：★★★',
                    'files': ['diffusion_models,krea2_turbo_int8_convrot.safetensors,13492686496,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/diffusion_models/krea2_turbo_int8_convrot.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_int8_convrot.safetensors',
-                             'loras,krea2_identity_edit_v1_1.safetensors,1828256432,0,https://www.modelscope.cn/models/hf/conradlocke-krea2-identity-edit/resolve/master/krea2_identity_edit_v1_1.safetensors,https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors',
+                             'loras,krea2_identity_edit_v1_2.safetensors,1828256432,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/loras/krea2_identity_edit_v1_2.safetensorshttps://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_2.safetensors',
                              'loras,krea2filterbypass3.safetensors,160,0,https://hf-mirror.com/uzumix/krea2filterbypass3.safetensors/resolve/main/krea2filterbypass3.safetensors,https://huggingface.co/uzumix/krea2filterbypass3.safetensors/resolve/main/krea2filterbypass3.safetensors',
                              'text_encoders,qwen3vl_4b_fp8_scaled.safetensors,5242467968,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/text_encoders/qwen3vl_4b_fp8_scaled.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors',
                              'vae,qwen_image_vae.safetensors,253806246,0,https://modelscope.cn/models/Comfy-Org/Krea-2/resolve/master/vae/qwen_image_vae.safetensors,https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors',
@@ -2971,6 +2971,7 @@ OBSOLETE_MODELS = [
     'wan2.2_bernini_r_high_noise_fp8_scaled.safetensors',
     'wan2.2_bernini_r_low_noise_fp8_scaled.safetensors',
     'z_image_turbo_bf16.safetensors',
+    'krea2_identity_edit_v1_1.safetensors'
 ]
 
 MODELSCOPE_FILE_CACHE = {}

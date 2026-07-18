@@ -1027,7 +1027,7 @@
   "Face weight: default 0 disables. Enter 0.0–2.0; errors if no face.": "面部权重，默认0为关闭，可以输入0.0~2.0之间的数字,无脸会报错",
   "Final megapixels": "最终像素数量（百万）",
   "FlashAttention [Disable on RTX 20 series and below]": "FlashAttention[20系以下禁用]",
-  "Flux.1 One-Key Outpaint [Flux.1 One-Key Outpaint [Click the brush at bottom-right, hold Shift + Left-click to set the area]": "Flux.1一键扩图【点击右下角画笔，按住Shift键+左键框选确定范围】",
+  "Flux.1 One-Key Outpaint [Click the brush at bottom-right, hold Shift + Left-click to set the area]": "Flux.1一键扩图【点击右下角画笔，按住Shift键+左键框选确定范围】",
   "Flux2 Multi-Angle Lighting": "Flux2-多角度打光",
   "Flux2 Style Transfer": "Flux2风格转绘",
   "Flux2-9B Image Editing [Optional mask]": "Flux2-9B指令修图[蒙版可选]",

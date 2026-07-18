@@ -607,6 +607,16 @@ def set_selected_gallery_media_path(state_params, media_path):
     return None
 
 
+def get_selected_gallery_media_metadata(state_params):
+    if not isinstance(state_params, dict):
+        return None
+    media_path = state_params.get("__selected_gallery_media_path")
+    user_did = _user_did_from_state(state_params)
+    if not _gallery_display_preview_is_under_outputs(media_path, user_did):
+        return None
+    return read_embedded_metadata_from_file(media_path, get_gallery_engine_type(state_params))
+
+
 def remember_selected_gallery_media_path(choice, selected, state_params):
     if not isinstance(state_params, dict):
         return normalize_gallery_selected_index(selected), None

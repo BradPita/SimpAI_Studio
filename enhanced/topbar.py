@@ -2511,6 +2511,16 @@ def process_after_generation(state_params, generation_task=None, gallery_output=
         state_params["gallery_state"] = 'preview'
     else:
         state_params["gallery_state"] = 'finished_index'
+        choice = output_list[0] if output_list else None
+        state_params["prompt_info"] = [choice, 0]
+        task_results = getattr(generation_task, "results", None)
+        if not isinstance(task_results, (list, tuple)):
+            task_results = [task_results] if task_results is not None else []
+        selected_path = next((os.fspath(path) for path in task_results if isinstance(path, (str, os.PathLike))), None)
+        if selected_path:
+            gallery_util.set_selected_gallery_media_path(state_params, selected_path)
+        else:
+            gallery_util.remember_selected_gallery_media_path(choice, 0, state_params)
     state_params["__skip_gallery_browser_refresh_once"] = bool(no_current_output)
     # generate_button, stop_button, skip_button, state_is_generating
     results = [gr.update(visible=True, interactive=True)] + [gr.update(visible=False, interactive=False), gr.update(visible=False, interactive=False), False]

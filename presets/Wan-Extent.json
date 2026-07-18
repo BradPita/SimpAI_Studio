@@ -61,9 +61,10 @@
                 "frontend_preprocess": true,
                 "preprocess_target": "video",
                 "preprocess_fit": "proportional",
+                "preprocess_duration_limit": false,
                 "preserve_audio": true
             },
-            "overwrite_step_min": 6,
+            "overwrite_step_min": 4,
             "overwrite_step_max": 10
         }
     },
@@ -99,7 +100,7 @@
             1.0
         ]
     ],
-    "default_cfg_scale": 2,
+    "default_cfg_scale": 1,
     "default_sample_sharpness": 2,
     "default_sampler": "euler",
     "default_scheduler": "simple",

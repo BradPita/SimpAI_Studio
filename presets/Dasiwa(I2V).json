@@ -64,7 +64,7 @@
             },
             "switch_option2_title": "High-noise stage acceleration [single-image only]",
             "switch_option2": {
-                "Basic": true
+                "Basic": false
             },
             "resolution_control": {
                 "mode": "image_keep_input_area",
@@ -79,7 +79,7 @@
             },
             "aspect_ratio" : ["640|1:1", "720|1:1", "832|1:1", "960|1:1", "1024|1:1", "1280|1:1", "origin|Original"],
             "var_number_max": 10,
-            "overwrite_step_min": 6,
+            "overwrite_step_min": 4,
             "overwrite_step_max": 10
         }
     },

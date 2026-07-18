@@ -625,7 +625,7 @@
   },
   "143": {
     "inputs": {
-      "expression": "ceil(a/2-1)",
+      "expression": "int(a/2)",
       "a": [
         "150",
         9
@@ -1056,7 +1056,7 @@
   },
   "219": {
     "inputs": {
-      "clip_name": "nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
+      "clip_name": "placeholder.safetensors", 
       "type": "wan",
       "device": "default"
     },

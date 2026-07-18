@@ -635,7 +635,7 @@
   },
   "143": {
     "inputs": {
-      "expression": "ceil(a/2-1)",
+      "expression": "int(a/2)",
       "a": [
         "150",
         9
