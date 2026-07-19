@@ -78,14 +78,14 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "a",
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 818
         },
         {
-          "label": "b",
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
@@ -97,11 +97,20 @@
           "shape": 7,
           "type": "*",
           "link": null
+        },
+        {
+          "label": "值",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "INT",
+          "label": "整数",
           "name": "INT",
           "type": "INT",
           "slot_index": 0,
@@ -111,7 +120,7 @@
           ]
         },
         {
-          "label": "FLOAT",
+          "label": "浮点",
           "name": "FLOAT",
           "type": "FLOAT",
           "links": null
@@ -153,7 +162,7 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 782
@@ -163,11 +172,20 @@
           "name": "latent",
           "type": "LATENT",
           "link": 815
+        },
+        {
+          "label": "权重",
+          "name": "weight",
+          "type": "FLOAT",
+          "widget": {
+            "name": "weight"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "links": [
@@ -207,15 +225,24 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 379
+        },
+        {
+          "label": "启用FP16累加",
+          "name": "enable_fp16_accumulation",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_fp16_accumulation"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "MODEL",
+          "label": "模型",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -255,10 +282,19 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 531
+        },
+        {
+          "label": "SAGE注意力",
+          "name": "sage_attention",
+          "type": "COMBO",
+          "widget": {
+            "name": "sage_attention"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -617,6 +653,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入任何",
           "name": "anything",
           "type": "*",
           "link": 810
@@ -624,6 +661,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "output",
           "type": "*",
           "links": [
@@ -661,6 +699,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入任何",
           "name": "anything",
           "type": "*",
           "link": 1330
@@ -668,6 +707,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "output",
           "type": "*",
           "links": [
@@ -804,10 +844,19 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 575
+        },
+        {
+          "label": "SAGE注意力",
+          "name": "sage_attention",
+          "type": "COMBO",
+          "widget": {
+            "name": "sage_attention"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -853,15 +902,24 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 577
+        },
+        {
+          "label": "启用FP16累加",
+          "name": "enable_fp16_accumulation",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_fp16_accumulation"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "MODEL",
+          "label": "模型",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -1003,18 +1061,30 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "真",
           "name": "on_true",
           "type": "*",
           "link": 1319
         },
         {
+          "label": "假",
           "name": "on_false",
           "type": "*",
           "link": 695
+        },
+        {
+          "label": "布尔",
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "boolean"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -1057,11 +1127,13 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "图像",
           "name": "image",
           "type": "IMAGE",
           "link": 798
         },
         {
+          "label": "生成宽度",
           "name": "generation_width",
           "type": "INT",
           "widget": {
@@ -1070,21 +1142,33 @@
           "link": 824
         },
         {
+          "label": "生成高度",
           "name": "generation_height",
           "type": "INT",
           "widget": {
             "name": "generation_height"
           },
           "link": 825
+        },
+        {
+          "label": "保持宽高比",
+          "name": "aspect_ratio_preservation",
+          "type": "COMBO",
+          "widget": {
+            "name": "aspect_ratio_preservation"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "图像",
           "name": "image",
           "type": "IMAGE",
           "links": null
         },
         {
+          "label": "宽",
           "name": "width",
           "type": "INT",
           "links": [
@@ -1092,6 +1176,7 @@
           ]
         },
         {
+          "label": "高",
           "name": "height",
           "type": "INT",
           "links": [
@@ -1137,11 +1222,13 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "图像",
           "name": "image",
           "type": "IMAGE",
           "link": 799
         },
         {
+          "label": "生成宽度",
           "name": "generation_width",
           "type": "INT",
           "widget": {
@@ -1150,16 +1237,27 @@
           "link": 827
         },
         {
+          "label": "生成高度",
           "name": "generation_height",
           "type": "INT",
           "widget": {
             "name": "generation_height"
           },
           "link": 828
+        },
+        {
+          "label": "保持宽高比",
+          "name": "aspect_ratio_preservation",
+          "type": "COMBO",
+          "widget": {
+            "name": "aspect_ratio_preservation"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "图像",
           "name": "image",
           "type": "IMAGE",
           "links": [
@@ -1168,6 +1266,7 @@
           ]
         },
         {
+          "label": "宽",
           "name": "width",
           "type": "INT",
           "links": [
@@ -1176,6 +1275,7 @@
           ]
         },
         {
+          "label": "高",
           "name": "height",
           "type": "INT",
           "links": [
@@ -1329,6 +1429,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "负面提示词",
           "name": "negative",
           "type": "STRING",
           "links": [
@@ -1446,7 +1547,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": " 此工作流于SimpAI_comfyd后端发布ver1.6 Design by 冰華",
+      "title": " 此工作流于SimpAI_comfyd后端发布ver1.7 Design by 冰華",
       "properties": {
         "fontSize": 20,
         "fontFamily": "Arial",
@@ -1555,6 +1656,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -1597,6 +1699,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -1975,9 +2078,20 @@
       },
       "order": 11,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "label": "Unet模型名称",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "label": "模型",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -2019,9 +2133,20 @@
       },
       "order": 12,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "label": "Unet模型名称",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "label": "模型",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -2111,30 +2236,35 @@
       "inputs": [
         {
           "dir": 3,
+          "label": "输入_01",
           "name": "any_01",
           "type": "MODEL",
           "link": 737
         },
         {
           "dir": 3,
+          "label": "输入_02",
           "name": "any_02",
           "type": "MODEL",
           "link": 736
         },
         {
           "dir": 3,
+          "label": "输入_03",
           "name": "any_03",
           "type": "MODEL",
           "link": null
         },
         {
           "dir": 3,
+          "label": "输入_04",
           "name": "any_04",
           "type": "MODEL",
           "link": null
         },
         {
           "dir": 3,
+          "label": "输入_05",
           "name": "any_05",
           "type": "MODEL",
           "link": null
@@ -2181,30 +2311,35 @@
       "inputs": [
         {
           "dir": 3,
+          "label": "输入_01",
           "name": "any_01",
           "type": "MODEL",
           "link": 739
         },
         {
           "dir": 3,
+          "label": "输入_02",
           "name": "any_02",
           "type": "MODEL",
           "link": 738
         },
         {
           "dir": 3,
+          "label": "输入_03",
           "name": "any_03",
           "type": "MODEL",
           "link": null
         },
         {
           "dir": 3,
+          "label": "输入_04",
           "name": "any_04",
           "type": "MODEL",
           "link": null
         },
         {
           "dir": 3,
+          "label": "输入_05",
           "name": "any_05",
           "type": "MODEL",
           "link": null
@@ -2251,7 +2386,7 @@
       "inputs": [
         {
           "dir": 3,
-          "name": "Fast Bypasser (rgthree)",
+          "name": "忽略节点",
           "type": "*",
           "link": 746
         },
@@ -2321,6 +2456,7 @@
       "outputs": [
         {
           "dir": 4,
+          "label": "可选连接",
           "name": "OPT_CONNECTION",
           "type": "*",
           "links": [
@@ -2378,6 +2514,7 @@
       "outputs": [
         {
           "dir": 4,
+          "label": "可选连接",
           "name": "OPT_CONNECTION",
           "type": "*",
           "links": [
@@ -2414,7 +2551,7 @@
         {
           "dir": 3,
           "label": "",
-          "name": "Fast Bypasser (rgthree)",
+          "name": "忽略节点",
           "type": "*",
           "link": 751
         },
@@ -2515,6 +2652,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1310
@@ -2522,6 +2660,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -2562,6 +2701,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -2602,6 +2742,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "STRING",
           "type": "STRING",
           "link": 768
@@ -2609,6 +2750,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -2649,6 +2791,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "STRING",
           "type": "STRING",
           "links": [
@@ -2689,6 +2832,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "MODEL",
           "type": "MODEL",
           "link": 781
@@ -2696,6 +2840,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -2737,6 +2882,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "MODEL",
           "type": "MODEL",
           "link": 780
@@ -2744,6 +2890,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -2786,6 +2933,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -2829,6 +2977,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "MODEL",
           "type": "MODEL",
           "links": [
@@ -2919,9 +3068,29 @@
       },
       "order": 18,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "label": "CLIP模型名称",
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "label": "类型",
+          "name": "type",
+          "type": "COMBO",
+          "widget": {
+            "name": "type"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "label": "CLIP模型",
           "name": "CLIP",
           "type": "CLIP",
           "links": [
@@ -3017,6 +3186,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "STRING",
           "type": "STRING",
           "link": 784
@@ -3024,6 +3194,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -3064,6 +3235,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "STRING",
           "type": "STRING",
           "links": [
@@ -3104,6 +3276,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "LATENT",
           "type": "LATENT",
           "link": 787
@@ -3111,6 +3284,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -3153,6 +3327,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "LATENT",
           "type": "LATENT",
           "links": [
@@ -3197,6 +3372,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3238,6 +3414,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "LATENT",
           "type": "LATENT",
           "links": [
@@ -3280,6 +3457,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "LATENT",
           "type": "LATENT",
           "link": 1374
@@ -3287,6 +3465,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -3328,6 +3507,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "IMAGE",
           "type": "IMAGE",
           "link": 797
@@ -3335,6 +3515,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -3377,6 +3558,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
@@ -3421,6 +3603,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
@@ -3464,6 +3647,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
@@ -3507,6 +3691,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
@@ -3550,6 +3735,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
@@ -3593,6 +3779,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3635,6 +3822,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3676,6 +3864,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3717,6 +3906,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3757,6 +3947,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "INT",
           "type": "INT",
           "link": 821
@@ -3764,6 +3955,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -3806,6 +3998,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -3850,6 +4043,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -3892,6 +4086,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
@@ -3932,9 +4127,20 @@
       },
       "order": 35,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "label": "值",
+          "name": "value",
+          "type": "FLOAT",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "label": "浮点",
           "name": "float",
           "type": "FLOAT",
           "links": [
@@ -3975,20 +4181,33 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 905
         },
         {
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
           "link": 906
+        },
+        {
+          "label": "比较方式",
+          "name": "comparison",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "comparison"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "布尔",
           "name": "boolean",
           "type": "BOOLEAN",
           "links": [
@@ -4026,16 +4245,19 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "真",
           "name": "on_true",
           "type": "*",
           "link": 907
         },
         {
+          "label": "假",
           "name": "on_false",
           "type": "*",
           "link": 908
         },
         {
+          "label": "布尔",
           "name": "boolean",
           "type": "BOOLEAN",
           "widget": {
@@ -4046,6 +4268,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -4151,6 +4374,7 @@
       "outputs": [
         {
           "dir": 4,
+          "label": "可选连接",
           "name": "OPT_CONNECTION",
           "type": "*",
           "links": [
@@ -4187,7 +4411,7 @@
         {
           "dir": 3,
           "label": "",
-          "name": "Fast Bypasser (rgthree)",
+          "name": "忽略节点",
           "type": "*",
           "link": 1080
         },
@@ -4236,29 +4460,35 @@
       "inputs": [
         {
           "dir": 3,
+          "label": "输入_01",
           "name": "any_01",
           "type": "CLIP",
           "link": 1087
         },
         {
           "dir": 3,
+          "label": "输入_02",
           "name": "any_02",
           "type": "CLIP",
           "link": 1088
         },
         {
           "dir": 3,
+          "label": "输入_03",
           "name": "any_03",
           "type": "CLIP",
           "link": null
         },
         {
           "dir": 3,
+          "label": "输入_04",
           "name": "any_04",
           "type": "CLIP",
           "link": null
         },
         {
+          "dir": 3,
+          "label": "输入_05",
           "name": "any_05",
           "type": "CLIP",
           "link": null
@@ -4295,7 +4525,7 @@
       ],
       "size": [
         620,
-        340
+        334
       ],
       "flags": {
         "pinned": true
@@ -4304,20 +4534,20 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "images",
+          "label": "图像",
           "name": "images",
           "type": "IMAGE",
           "link": 1299
         },
         {
-          "label": "audio",
+          "label": "音频",
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
           "link": null
         },
         {
-          "label": "meta_batch",
+          "label": "批次管理",
           "name": "meta_batch",
           "shape": 7,
           "type": "VHS_BatchManager",
@@ -4331,17 +4561,81 @@
           "link": null
         },
         {
+          "label": "帧率",
           "name": "frame_rate",
           "type": "FLOAT",
           "widget": {
             "name": "frame_rate"
           },
           "link": 1300
+        },
+        {
+          "label": "循环次数",
+          "name": "loop_count",
+          "type": "INT",
+          "widget": {
+            "name": "loop_count"
+          },
+          "link": null
+        },
+        {
+          "label": "文件名前缀",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "label": "格式",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "label": "Ping-Pong",
+          "name": "pingpong",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "pingpong"
+          },
+          "link": null
+        },
+        {
+          "label": "保存到输出文件夹",
+          "name": "save_output",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "save_output"
+          },
+          "link": null
+        },
+        {
+          "label": "保存元数据",
+          "name": "save_metadata",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "save_metadata"
+          },
+          "link": null
+        },
+        {
+          "label": "修剪音频",
+          "name": "trim_to_audio",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "trim_to_audio"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "Filenames",
+          "label": "文件名",
           "name": "Filenames",
           "type": "VHS_FILENAMES",
           "links": null
@@ -4394,6 +4688,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -4434,6 +4729,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "可选连接",
           "name": "OPT_CONNECTION",
           "type": "*",
           "links": null
@@ -4515,6 +4811,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -4557,6 +4854,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "STRING",
           "type": "STRING",
           "link": 1400
@@ -4564,6 +4862,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -4604,6 +4903,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "STRING",
           "type": "STRING",
           "links": [
@@ -4644,6 +4944,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "文本",
           "name": "text",
           "type": "STRING",
           "link": 1320
@@ -4651,6 +4952,7 @@
       ],
       "outputs": [
         {
+          "label": "字符串",
           "name": "STRING",
           "shape": 6,
           "type": "STRING",
@@ -4737,6 +5039,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入任何",
           "name": "anything",
           "type": "*",
           "link": 1321
@@ -4744,6 +5047,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "output",
           "type": "*",
           "links": [
@@ -4781,6 +5085,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -4822,6 +5127,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1350
@@ -4829,6 +5135,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -4868,6 +5175,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1351
@@ -4875,6 +5183,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -4914,12 +5223,14 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 1354
         },
         {
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
@@ -4930,10 +5241,20 @@
           "shape": 7,
           "type": "*",
           "link": null
+        },
+        {
+          "label": "值",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "整数",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -4941,6 +5262,7 @@
           ]
         },
         {
+          "label": "浮点",
           "name": "FLOAT",
           "type": "FLOAT",
           "links": null
@@ -4977,6 +5299,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1352
@@ -4984,6 +5307,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5023,6 +5347,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "DICT",
           "type": "DICT",
           "link": 1357
@@ -5030,6 +5355,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5069,6 +5395,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 793
@@ -5076,6 +5403,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5147,6 +5475,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1349
@@ -5154,6 +5483,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5193,6 +5523,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1356
@@ -5200,6 +5531,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5481,6 +5813,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 814
@@ -5488,6 +5821,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5527,6 +5861,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "link": 1328
@@ -5534,6 +5869,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5575,6 +5911,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "link": 1329
@@ -5582,6 +5919,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5623,6 +5961,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "link": 1343
@@ -5630,6 +5969,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5671,6 +6011,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "link": 1344
@@ -5678,6 +6019,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -5719,6 +6061,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "LATENT",
           "type": "LATENT",
           "links": [
@@ -6068,6 +6411,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1348
@@ -6075,6 +6419,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -6115,6 +6460,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "DICT",
           "type": "DICT",
           "links": [
@@ -6362,6 +6708,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -6404,6 +6751,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -6448,6 +6796,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -6488,12 +6837,14 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 820
         },
         {
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
@@ -6504,10 +6855,20 @@
           "shape": 7,
           "type": "*",
           "link": null
+        },
+        {
+          "label": "值",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "整数",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -6515,6 +6876,7 @@
           ]
         },
         {
+          "label": "浮点",
           "name": "FLOAT",
           "type": "FLOAT",
           "links": null
@@ -6555,6 +6917,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1353
@@ -6562,6 +6925,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -6695,7 +7059,7 @@
       "mode": 0,
       "inputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "link": 783
@@ -6705,11 +7069,20 @@
           "name": "latent",
           "type": "LATENT",
           "link": 789
+        },
+        {
+          "label": "权重",
+          "name": "weight",
+          "type": "FLOAT",
+          "widget": {
+            "name": "weight"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "label": "model",
+          "label": "模型",
           "name": "model",
           "type": "MODEL",
           "links": [
@@ -6812,10 +7185,20 @@
       },
       "order": 51,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "label": "随机种子",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
-          "label": "seed",
+          "label": "随机种子",
           "name": "seed",
           "type": "INT",
           "links": [
@@ -7018,6 +7401,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "LATENT",
           "type": "LATENT",
           "link": 1327
@@ -7025,6 +7409,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -7130,6 +7515,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入任何",
           "name": "anything",
           "type": "*",
           "link": 728
@@ -7137,6 +7523,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "output",
           "type": "*",
           "links": [
@@ -7220,6 +7607,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1379
@@ -7227,6 +7615,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -7266,6 +7655,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "*",
           "type": "*",
           "link": 1384
@@ -7273,6 +7663,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -7313,6 +7704,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -7352,16 +7744,19 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "真",
           "name": "on_true",
           "type": "*",
           "link": 1381
         },
         {
+          "label": "假",
           "name": "on_false",
           "type": "*",
           "link": 1382
         },
         {
+          "label": "布尔",
           "name": "boolean",
           "type": "BOOLEAN",
           "widget": {
@@ -7372,6 +7767,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -7410,6 +7806,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "正面提示词",
           "name": "positive",
           "type": "STRING",
           "links": [
@@ -7450,6 +7847,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "正面提示词",
           "name": "positive",
           "type": "STRING",
           "links": [
@@ -7493,6 +7891,7 @@
       "inputs": [],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": [
@@ -7533,6 +7932,7 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "输入",
           "name": "INT",
           "type": "INT",
           "link": 1390
@@ -7540,6 +7940,7 @@
       ],
       "outputs": [
         {
+          "label": "输出",
           "name": "*",
           "type": "*",
           "links": null
@@ -7581,12 +7982,14 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 1391
         },
         {
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
@@ -7597,10 +8000,20 @@
           "shape": 7,
           "type": "*",
           "link": null
+        },
+        {
+          "label": "值",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "整数",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -7608,6 +8021,7 @@
           ]
         },
         {
+          "label": "浮点",
           "name": "FLOAT",
           "type": "FLOAT",
           "links": null
@@ -7644,12 +8058,14 @@
       "mode": 0,
       "inputs": [
         {
+          "label": "A",
           "name": "a",
           "shape": 7,
           "type": "*",
           "link": 1393
         },
         {
+          "label": "B",
           "name": "b",
           "shape": 7,
           "type": "*",
@@ -7660,10 +8076,20 @@
           "shape": 7,
           "type": "*",
           "link": null
+        },
+        {
+          "label": "值",
+          "name": "value",
+          "type": "STRING",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "label": "整数",
           "name": "INT",
           "type": "INT",
           "links": [
@@ -7671,6 +8097,7 @@
           ]
         },
         {
+          "label": "浮点",
           "name": "FLOAT",
           "type": "FLOAT",
           "links": null
@@ -7689,6 +8116,169 @@
       ]
     },
     {
+      "id": 480,
+      "type": "llama_cpp_instruct_adv",
+      "pos": [
+        1810,
+        -1440
+      ],
+      "size": [
+        440,
+        420
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 85,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "llama_model",
+          "type": "LLAMACPPMODEL",
+          "link": 1401
+        },
+        {
+          "name": "parameters",
+          "shape": 7,
+          "type": "LLAMACPPARAMS",
+          "link": 1395
+        },
+        {
+          "name": "images",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 1396
+        },
+        {
+          "name": "queue_handler",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        },
+        {
+          "name": "custom_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "custom_prompt"
+          },
+          "link": 1397
+        },
+        {
+          "name": "system_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "system_prompt"
+          },
+          "link": 1398
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 1399
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "STRING",
+          "links": [
+            1400
+          ]
+        },
+        {
+          "name": "output_list",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "state_uid",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "llama_cpp_instruct_adv",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.3"
+        }
+      },
+      "widgets_values": [
+        "Normal - Describe",
+        "",
+        "",
+        "images",
+        24,
+        256,
+        0,
+        "randomize",
+        true,
+        false
+      ]
+    },
+    {
+      "id": 481,
+      "type": "GeneralModelDownloader",
+      "pos": [
+        -3250,
+        -1310
+      ],
+      "size": [
+        440,
+        1290
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 56,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "anything",
+          "shape": 7,
+          "type": "*",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "*",
+          "links": null
+        },
+        {
+          "name": "downloaded_files",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "status_report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GeneralModelDownloader",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.3"
+        }
+      },
+      "widgets_values": [
+        "[\n  {\n    \"name\": \"umt5-xxl-encoder-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"umt5-xxl-encoder-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"6043068256\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"url\": \"https://modelscope.cn/models/rzgar/Wan2.2_I2V_LightX2V_2Step/resolve/master/Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"1244141856\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"url\": \"https://modelscope.cn/models/rzgar/Wan2.2_I2V_LightX2V_2Step/resolve/master/Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"1244141856\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LoRAs/Wan22_FunReward/Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"140945036\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LoRAs/Wan22_FunReward/Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"101752852\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"wan_2.1_vae.safetensors\",\n    \"url\": \"https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"wan_2.1_vae.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"253815318\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/master/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"9651728896\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/master/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"9651728896\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"624229760\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"5627045248\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"flownet.pkl\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl\",\n    \"download_directory\": \"controlnet\\\\rife\",\n    \"file_name\": \"flownet.pkl\",\n    \"overwrite_existing\": false,\n    \"size\": \"24636301\",\n    \"description\": \"\"\n  }\n]\n",
+        true,
+        false,
+        true,
+        ""
+      ]
+    },
+    {
       "id": 461,
       "type": "ParameterControlPanel",
       "pos": [
@@ -7702,7 +8292,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 56,
+      "order": 57,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7818,7 +8408,7 @@
               "step": 0.05,
               "default": 1.1
             },
-            "value": 1.1
+            "value": 1
           },
           {
             "id": "param_1764811244778",
@@ -7951,7 +8541,7 @@
             "step": 0.05,
             "default": 1.1
           },
-          "value": 1.1
+          "value": 1
         },
         {
           "id": "param_1764811244778",
@@ -7969,168 +8559,6 @@
         }
       ],
       "currentPreset": null
-    },
-    {
-      "id": 480,
-      "type": "llama_cpp_instruct_adv",
-      "pos": [
-        1810,
-        -1440
-      ],
-      "size": [
-        440,
-        420
-      ],
-      "flags": {
-        "pinned": true
-      },
-      "order": 85,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "llama_model",
-          "type": "LLAMACPPMODEL",
-          "link": 1401
-        },
-        {
-          "name": "parameters",
-          "shape": 7,
-          "type": "LLAMACPPARAMS",
-          "link": 1395
-        },
-        {
-          "name": "images",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 1396
-        },
-        {
-          "name": "queue_handler",
-          "shape": 7,
-          "type": "*",
-          "link": null
-        },
-        {
-          "name": "custom_prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "custom_prompt"
-          },
-          "link": 1397
-        },
-        {
-          "name": "system_prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "system_prompt"
-          },
-          "link": 1398
-        },
-        {
-          "name": "seed",
-          "type": "INT",
-          "widget": {
-            "name": "seed"
-          },
-          "link": 1399
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "STRING",
-          "links": [
-            1400
-          ]
-        },
-        {
-          "name": "output_list",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "state_uid",
-          "type": "INT",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "llama_cpp_instruct_adv",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.3"
-        }
-      },
-      "widgets_values": [
-        "Normal - Describe",
-        "",
-        "",
-        "images",
-        24,
-        256,
-        0,
-        "randomize",
-        true,
-        false
-      ]
-    },
-    {
-      "id": 481,
-      "type": "GeneralModelDownloader",
-      "pos": [
-        -3250,
-        -1310
-      ],
-      "size": [
-        440,
-        1290
-      ],
-      "flags": {
-        "pinned": true
-      },
-      "order": 57,
-      "mode": 4,
-      "inputs": [
-        {
-          "name": "anything",
-          "shape": 7,
-          "type": "*",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "*",
-          "links": null
-        },
-        {
-          "name": "downloaded_files",
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "status_report",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
-        "Node name for S&R": "GeneralModelDownloader"
-      },
-      "widgets_values": [
-        "[\n  {\n    \"name\": \"umt5-xxl-encoder-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"umt5-xxl-encoder-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"6043068256\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"url\": \"https://modelscope.cn/models/rzgar/Wan2.2_I2V_LightX2V_2Step/resolve/master/Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2_I2V_LightX2V_2step_high_noise.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"634645944\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"url\": \"https://modelscope.cn/models/rzgar/Wan2.2_I2V_LightX2V_2Step/resolve/master/Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2_I2V_LightX2V_2step_low_noise.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"739472104\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LoRAs/Wan22_FunReward/Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2-Fun-A14B-InP-HIGH-MPS_resized_dynamic_avg_rank_21_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"140945036\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LoRAs/Wan22_FunReward/Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"download_directory\": \"loras\",\n    \"file_name\": \"Wan2.2-Fun-A14B-InP-LOW-HPS2.1_resized_dynamic_avg_rank_15_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"101752852\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"wan_2.1_vae.safetensors\",\n    \"url\": \"https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"wan_2.1_vae.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"253815318\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/master/HighNoise/Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"9651728896\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/QuantStack/Wan2.2-I2V-A14B-GGUF/resolve/master/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"9651728896\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"624229760\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"5627045248\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"flownet.pkl\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl\",\n    \"download_directory\": \"controlnet\\\\rife\",\n    \"file_name\": \"flownet.pkl\",\n    \"overwrite_existing\": false,\n    \"size\": \"24636301\",\n    \"description\": \"\"\n  }\n]\n",
-        true,
-        false,
-        true,
-        ""
-      ]
     }
   ],
   "links": [
@@ -9480,13 +9908,13 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8954302432553088,
+      "scale": 0.6115909044841942,
       "offset": [
-        2189.9723171703754,
-        1898.6087421363206
+        3521.873492931852,
+        1227.3045555812773
       ]
     },
-    "frontendVersion": "1.45.15",
+    "frontendVersion": "1.45.20",
     "node_versions": {
       "ComfyUI-WanVideoWrapper": "5a2383621a05825d0d0437781afcb8552d9590fd",
       "comfy-core": "0.3.26",
