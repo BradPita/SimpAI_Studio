@@ -29978,7 +29978,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'Wan2.2_T2V_High_Noise_14B_VACE-Q4_K_M.gguf',
                         'Wan2.2_T2V_Low_Noise_14B_VACE-Q4_K_M.gguf',
-                        'umt5-xxl-encoder-Q8_0.gguf',
+                        'nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors',
                         'wan_2.1_vae.safetensors',
                         'Bernini-R_LightX2V_low_noise.safetensors',
                         'flownet.pkl'
@@ -30001,7 +30001,7 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors',
                         'wan2.2_bernini_r_low_noise_fp8_scaled.safetensors',
-                        'nsfw_wan_umt5-xxl_bf16_fixed.safetensors',
+                        'nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors',
                         'wan_2.1_vae.safetensors',
                         'Bernini-R_LightX2V_low_noise.safetensors',
                         'flownet.pkl'
@@ -30039,10 +30039,10 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf',
                         'Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf',
-                        'umt5-xxl-encoder-Q8_0.gguf',
+                        'nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors',
                         'wan_2.1_vae.safetensors',
-                        'wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors',
-                        'wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors',
+                        'Wan2.2_I2V_LightX2V_2step_high_noise.safetensors',
+                        'Wan2.2_I2V_LightX2V_2step_low_noise.safetensors',
                         'flownet.pkl'
                     ]
                 },
@@ -30063,10 +30063,10 @@ ${children ? `<div class="sai-canvas-context-submenu" role="menu">${renderContex
                     models: [
                         'Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf',
                         'Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf',
-                        'umt5-xxl-encoder-Q8_0.gguf',
+                        'nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors',
                         'wan_2.1_vae.safetensors',
-                        'wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors',
-                        'wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors',
+                        'Wan2.2_I2V_LightX2V_2step_high_noise.safetensors',
+                        'Wan2.2_I2V_LightX2V_2step_low_noise.safetensors',
                         'SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors',
                         'SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors',
                         'flownet.pkl'

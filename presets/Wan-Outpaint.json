@@ -137,7 +137,7 @@
     "default_refiner": "wan2.2_animate_14B_int8_convrot.safetensors",
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
-    "default_clip_model": "umt5-xxl-encoder-Q8_0.gguf",
+    "default_clip_model": "nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
     "default_loras": [
         [
             "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
@@ -178,7 +178,7 @@
     "model_list": [
         "diffusion_models,wan2.2_animate_14B_int8_convrot.safetensors,18413068672,0,https://modelscope.cn/models/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/master/split_files/diffusion_models/wan2.2_animate_14B_int8_convrot.safetensors",
         "clip_vision,clip_vision_h.safetensors,1264219396,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/clip_vision/clip_vision_h.safetensors",
-        "text_encoders,umt5-xxl-encoder-Q8_0.gguf,6043068256,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/clip/umt5-xxl-encoder-Q8_0.gguf",
+        "text_encoders,nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors,6749480621,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5_xxl_v2_int8-convrot.safetensors,https://huggingface.co/rzgar/NSFW-Wan-UMT5-XXL-V2/resolve/main/encoders/nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",
         "loras,lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors,738005744,0,https://www.modelscope.cn/models/metercai/SimpleSDXL2/resolve/master/SimpleModels/loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
         "loras,WanAnimate_relight_lora_fp16.safetensors,1436672440,0,https://modelscope.cn/models/Kijai/WanVideo_comfy/resolve/master/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors",

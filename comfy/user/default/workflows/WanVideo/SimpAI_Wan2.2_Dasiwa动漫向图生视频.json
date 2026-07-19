@@ -544,7 +544,7 @@
         }
       },
       "widgets_values": [
-        "wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors",
+        "Wan2.2_I2V_LightX2V_2step_high_noise.safetensors",
         0
       ],
       "color": "#223",
@@ -930,7 +930,7 @@
         }
       },
       "widgets_values": [
-        "wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors",
+        "Wan2.2_I2V_LightX2V_2step_low_noise.safetensors",
         0
       ],
       "color": "#223",

@@ -19,7 +19,7 @@
         0
       ],
       "clip": [
-        "7",
+        "154",
         0
       ]
     },
@@ -35,7 +35,7 @@
         29
       ],
       "clip": [
-        "7",
+        "154",
         0
       ]
     },
@@ -175,10 +175,10 @@
       "steps": 6,
       "var_number": 0,
       "var_number2": 0,
-      "var_number3": 0.0,
-      "var_number4": 0.0,
-      "var_number5": 0.0,
-      "var_number6": 0.0,
+      "var_number3": 0,
+      "var_number4": 0,
+      "var_number5": 0,
+      "var_number6": 0,
       "var_number7": 0,
       "var_number8": 0,
       "var_number9": 0,
@@ -193,7 +193,7 @@
       "negative_prompt": "",
       "sampler": "euler",
       "scheduler": "simple",
-      "video_duration": 5.0
+      "video_duration": 5
     },
     "class_type": "SceneInput",
     "_meta": {
@@ -313,6 +313,7 @@
   "34": {
     "inputs": {
       "strength": 1,
+      "pre_cfg": false,
       "model": [
         "149",
         0
@@ -803,6 +804,7 @@
   "91": {
     "inputs": {
       "strength": 1,
+      "pre_cfg": false,
       "model": [
         "16",
         0
@@ -1374,6 +1376,7 @@
   "133": {
     "inputs": {
       "strength": 1,
+      "pre_cfg": false,
       "model": [
         "132",
         0
@@ -1617,6 +1620,63 @@
     "class_type": "LoraLoaderModelOnly",
     "_meta": {
       "title": "lora_10"
+    }
+  },
+  "151": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "152": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "153": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "21",
+        26
+      ],
+      "b": [
+        "152",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "154": {
+    "inputs": {
+      "boolean": [
+        "153",
+        0
+      ],
+      "on_true": [
+        "151",
+        0
+      ],
+      "on_false": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
     }
   }
 }

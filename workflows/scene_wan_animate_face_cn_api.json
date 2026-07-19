@@ -1270,6 +1270,8 @@
         0
       ],
       "overlap_frames": 5,
+      "segment_contrast": 1.0,
+      "segment_saturation": 1.0,
       "model": [
         "901",
         0

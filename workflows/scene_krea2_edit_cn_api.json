@@ -26,8 +26,8 @@
       "var_number2": 0,
       "var_number3": 1,
       "var_number4": 0,
-      "var_number5": 0,
-      "var_number6": 0,
+      "var_number5": 1,
+      "var_number6": 1,
       "var_number7": 0,
       "var_number8": 0,
       "var_number9": 0,
@@ -673,6 +673,15 @@
   },
   "205": {
     "inputs": {
+      "ref_boost": [
+        "2",
+        14
+      ],
+      "ref_boost_a": [
+        "2",
+        15
+      ],
+      "fit_mode": "fit",
       "model": [
         "165",
         0
@@ -683,6 +692,18 @@
       ],
       "source_latent_b": [
         "207",
+        0
+      ],
+      "vae": [
+        "5",
+        0
+      ],
+      "source_image": [
+        "231",
+        0
+      ],
+      "source_image_b": [
+        "181",
         0
       ]
     },

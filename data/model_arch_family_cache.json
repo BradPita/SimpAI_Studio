@@ -63,6 +63,8 @@
     "loras/WAN2.1_SmartphoneSnapshotPhotoReality_v1_by-AI_Characters.safetensors": {"arch_family": "wan"},
     "loras/wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors": {"arch_family": "wan"},
     "loras/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors": {"arch_family": "wan"},
+    "loras/Wan2.2_I2V_LightX2V_2step_high_noise.safetensors": {"arch_family": "wan"},
+    "loras/Wan2.2_I2V_LightX2V_2step_low_noise.safetensors": {"arch_family": "wan"},
     "loras/WanAnimate_relight_lora_fp16.safetensors": {"arch_family": "wan"}
   }
 }

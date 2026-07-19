@@ -310,7 +310,7 @@
         0
       ],
       "on_true": [
-        "715",
+        "926",
         0
       ],
       "on_false": [
@@ -325,17 +325,7 @@
   },
   "714": {
     "inputs": {
-      "clip_name": "umt5-xxl-encoder-Q8_0.gguf",
-      "type": "wan"
-    },
-    "class_type": "CLIPLoaderGGUF",
-    "_meta": {
-      "title": "clip_model"
-    }
-  },
-  "715": {
-    "inputs": {
-      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "clip_name": "placeholder.safetensors",
       "type": "wan",
       "device": "default"
     },
@@ -346,7 +336,7 @@
   },
   "716": {
     "inputs": {
-      "unet_name": "wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
+      "unet_name": "placeholder.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -896,6 +886,9 @@
   },
   "918": {
     "inputs": {
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
       "destination": [
         "923",
         0
@@ -904,9 +897,6 @@
         "924",
         0
       ],
-      "x": 0,
-      "y": 0,
-      "resize_source": false,
       "mask": [
         "925",
         0
@@ -974,6 +964,9 @@
   },
   "922": {
     "inputs": {
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
       "destination": [
         "920",
         0
@@ -982,9 +975,6 @@
         "921",
         0
       ],
-      "x": 0,
-      "y": 0,
-      "resize_source": false,
       "mask": [
         "919",
         0
@@ -1052,6 +1042,16 @@
     "class_type": "SAM3_Detect",
     "_meta": {
       "title": "sam3_reference_human_mask"
+    }
+  },
+  "926": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
     }
   }
 }

@@ -79,7 +79,7 @@
     ],
     "default_refiner_switch": 0.5,
     "default_upscale_model": "default",
-    "default_clip_model": "nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
+    "default_clip_model": "nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
     "default_loras": [
         [
             "None",
@@ -123,7 +123,7 @@
         "diffusion_models,Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors,14289633352,0,https://www.modelscope.cn/models/huyuefeitool/wan2.2-Remix/resolve/master/Wan2.2_Remix_SFW_t2v_14b_high_lighting_v1.0_dyno.safetensors ",
         "diffusion_models,wan2.2_bernini_r_low_noise_int8_convrot.safetensors,14535868680,0,https://www.modelscope.cn/models/Comfy-Org/Bernini-R/resolve/master/diffusion_models/wan2.2_bernini_r_low_noise_int8_convrot.safetensors",
         "loras,Bernini-R_LightX2V_low_noise.safetensors,1244141856,0,https://modelscope.cn/models/rzgar/Bernini-R-LightX2V-4step-loras/resolve/master/Bernini-R_LightX2V_low_noise.safetensors",
-        "text_encoders,nsfw_wan_umt5-xxl_bf16_fixed.safetensors,11366399625,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5-xxl_bf16_fixed.safetensors",
+        "text_encoders,nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors,6749480621,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/text_encoders/wan_umt5_xxl_v2_int8-convrot.safetensors,https://huggingface.co/rzgar/NSFW-Wan-UMT5-XXL-V2/resolve/main/encoders/nsfw_wan_umt5_xxl_v2_int8-convrot.safetensors",
         "vae,wan_2.1_vae.safetensors,253815318,0,https://modelscope.cn/models/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/master/split_files/vae/wan_2.1_vae.safetensors",
         "controlnet,rife/flownet.pkl,24636301,0,https://www.modelscope.cn/models/windecay/rife/resolve/master/flownet.pkl"
     ]

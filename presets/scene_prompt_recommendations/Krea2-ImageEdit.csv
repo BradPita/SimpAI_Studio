@@ -1,0 +1,15 @@
+id,scene_theme,target,mode,title_en,title_cn,prompt,seed_terms,weight
+krea2_identity_restaging,*,positive_prompt,replace,Identity-preserving restaging,保持身份的换场景,"将参考图中的人物自然置于用户描述的新场景中，保持人物身份、脸部特征、发型、服装、年龄感和身体比例一致，同时匹配新场景的透视、光线、色温、景深和接触阴影。","换场景|身份保持|脸部特征|光照匹配",140
+krea2_character_reference_sheet,*,positive_prompt,replace,Character reference sheet,角色参考设定图,"根据参考人物生成角色参考设定图，展示正面、侧面、背面和具有代表性的细节视图，保持同一角色的脸部特征、发型、服装、体型比例、配饰和色彩一致，使用整洁统一的背景。","角色设定|参考图|多视图|身份一致",138
+krea2_reference_sheet_edit,*,positive_prompt,replace,Use character reference sheet,使用角色参考图,"使用角色参考设定图作为身份和外观依据，将角色放入用户描述的场景或动作中，保持脸部、发型、服装、配饰和色彩设计一致，并让姿态、透视和光照自然可信。","角色参考|外观一致|动作|场景融合",136
+krea2_face_swap,*,positive_prompt,replace,Face replacement,人脸替换,"将目标人物的人脸替换为参考图中的人脸，保持目标图的头部角度、表情、姿态、发型、服装、背景、镜头和光照不变，使五官融合自然并保持参考人物的身份特征。","换脸|身份替换|角度保持|自然融合",136
+krea2_head_swap,*,positive_prompt,replace,Head replacement,头部替换,"将目标人物的头部替换为参考图中的头部，保持身体姿态、服装、背景、构图和光照关系不变，使头颈连接、发丝边缘、肤色和阴影自然一致。","换头|头颈融合|姿态保持|边缘自然",134
+krea2_eye_replacement,*,positive_prompt,replace,Eye replacement,眼睛替换,"仅替换人物眼睛为参考图中的眼睛，保持脸型、五官结构、表情、视线、皮肤纹理和其他画面内容不变，使眼睛大小、方向、光泽和光照自然匹配。","眼睛替换|局部编辑|视线|细节保持",132
+krea2_person_replacement,*,positive_prompt,replace,Person replacement,人物替换,"将画面中指定人物替换为用户描述或参考图中的人物，保留原人物所在位置、姿态关系、使新人物与画面自然融合。","人物替换|位置保持|透视匹配|环境融合",130
+krea2_outpainting,*,positive_prompt,replace,Outpainting,扩图,"向用户指定的方向扩展画布，延续原图的场景、纹理、透视、光照、景深和色彩，保持原有主体和边缘内容稳定，生成与原图自然衔接的扩展区域。","扩图|画布扩展|边缘衔接|构图延续",128
+krea2_inpainting,*,positive_prompt,replace,Inpainting,局部重绘,"只重绘蒙版或用户指定的区域，将用户描述的内容自然融入原图，保持未遮罩区域、主体身份、构图、透视、光照、材质和背景纹理不变。","局部重绘|蒙版|未编辑区域|自然融合",128
+krea2_virtual_try_on,*,positive_prompt,replace,Virtual try-on,虚拟试穿,"让目标人物穿上参考图中的服装，保持人物身份、脸部特征、发型、姿态和身体比例，准确保留服装的版型、颜色、材质、纹理、图案、褶皱、装饰和层次，并使服装受光自然。","虚拟试衣|服装参考|人物保持|材质细节",126
+krea2_person_removal,*,positive_prompt,replace,Person removal,人物移除,"移除用户指定的人物，用符合原场景透视、纹理、光照、遮挡关系和景深的内容自然修复空缺，保持其他人物、物体和背景不变。","人物移除|背景修复|遮挡关系|主体保持",124
+krea2_object_removal,*,positive_prompt,replace,Object removal,物体移除,"移除用户指定的物体，用原场景中合理的背景内容自然填补空缺，匹配周围的纹理、透视、光照、阴影和景深，不改变其他主体。","物体移除|背景修复|光照一致|构图保持",122
+krea2_two_reference_identity_edit,*,positive_prompt,replace,Two-reference identity edit,双参考身份编辑,"将第一张参考图作为场景和构图依据，将第二张参考图作为人物身份依据，保持场景结构、人物脸部特征、服装和关键细节一致，并统一透视、光照和色彩。","双参考|场景参考|身份参考|细节保持",120
+krea2_reference_product_edit,*,positive_prompt,replace,Reference product edit,参考商品编辑,"使用参考商品的外观、形状、标识、材质和颜色完成用户描述的编辑，保持商品身份和比例一致，使商品与目标场景的透视、接触关系、反光和环境光自然匹配。","商品参考|商品一致|材质|环境融合",118

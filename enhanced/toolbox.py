@@ -961,6 +961,29 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         for key, value in parsed_parameters.items()
         if key not in (regen_manifest.KEY, regen_manifest.LABEL, "SimpleAI Regen Manifest")
     })
+
+    def _metadata_prompt_value(*keys):
+        empty_value = None
+        for key in keys:
+            if key not in parsed_parameters:
+                continue
+            value = parsed_parameters.get(key)
+            if not isinstance(value, str):
+                continue
+            if value.strip():
+                return value
+            if empty_value is None:
+                empty_value = value
+        return empty_value
+
+    for canonical_key, metadata_keys in (
+        ("prompt", ("prompt", "Prompt")),
+        ("negative_prompt", ("negative_prompt", "Negative Prompt")),
+    ):
+        metadata_value = _metadata_prompt_value(*metadata_keys)
+        if metadata_value is not None:
+            restored[canonical_key] = metadata_value
+
     if state_params.get("task_method"):
         restored["task_method"] = state_params.get("task_method")
     explicit_resolution = meta_parser.parse_resolution_pair_value(
@@ -1029,7 +1052,9 @@ def reset_params_by_image_meta_with_state(metadata, state_params, is_generating,
 
 def reset_image_params(state_params, is_generating, inpaint_mode):
     [choice, selected] = state_params["prompt_info"]
-    metainfo = gallery.get_main_gallery_browser_selected_metadata(state_params, selected)
+    metainfo = gallery.get_selected_gallery_media_metadata(state_params)
+    if metainfo is None:
+        metainfo = gallery.get_main_gallery_browser_selected_metadata(state_params, selected)
     if metainfo is None:
         metainfo = gallery.get_embedded_media_metadata(
             choice,
