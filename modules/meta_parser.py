@@ -2,6 +2,7 @@ import os
 import ast
 import copy
 import json
+import mimetypes
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -2514,6 +2515,94 @@ def read_info_from_image(file) -> tuple[str | None, MetadataScheme | None]:
         if isinstance(parameters, str):
             metadata_scheme = MetadataScheme.A1111
     return parameters, metadata_scheme
+
+
+def _metadata_file_path(file):
+    if isinstance(file, (str, os.PathLike)):
+        return os.path.abspath(os.fspath(file))
+    if isinstance(file, dict):
+        for key in ("path", "name"):
+            value = file.get(key)
+            if isinstance(value, (str, os.PathLike)):
+                return os.path.abspath(os.fspath(value))
+    for attr in ("path", "name"):
+        value = getattr(file, attr, None)
+        if isinstance(value, (str, os.PathLike)):
+            return os.path.abspath(os.fspath(value))
+    return ""
+
+
+def metadata_media_type(file):
+    if isinstance(file, Image.Image):
+        return "image"
+    path = _metadata_file_path(file)
+    mime = str(mimetypes.guess_type(path)[0] or "").lower()
+    if mime.startswith("image/"):
+        return "image"
+    if mime.startswith("video/"):
+        return "video"
+    return ""
+
+
+def read_info_from_video(file) -> tuple[str | dict | None, MetadataScheme | None]:
+    path = _metadata_file_path(file)
+    if not path or not os.path.isfile(path):
+        return None, None
+
+    from modules.canvas_media_metadata import read_video_metadata_tags
+
+    tags = read_video_metadata_tags(path)
+    if not isinstance(tags, dict) or not tags:
+        return None, None
+    lower_tags = {str(key).lower(): value for key, value in tags.items()}
+    metadata_scheme = lower_tags.get("metadata_scheme") or lower_tags.get("fooocus_scheme")
+
+    parameters = None
+    for key in ("simpleai_metadata", "parameters", "comment"):
+        candidate = lower_tags.get(key)
+        if candidate in (None, ""):
+            continue
+        if isinstance(candidate, str) and is_json(candidate):
+            candidate = json.loads(candidate)
+        if isinstance(candidate, dict) and isinstance(candidate.get("prompt"), dict):
+            candidate = candidate.get("prompt")
+        parameters = candidate
+        break
+
+    if parameters is None:
+        return None, None
+    if isinstance(parameters, dict):
+        parameters = params_lora_fixed(parameters)
+
+    if metadata_scheme == "fooocus":
+        metadata_scheme = "simple"
+        if isinstance(parameters, dict):
+            parameters.setdefault("metadata_scheme", "simple")
+    try:
+        metadata_scheme = MetadataScheme(metadata_scheme)
+    except (TypeError, ValueError):
+        metadata_scheme = MetadataScheme.A1111 if isinstance(parameters, str) else MetadataScheme.SIMPLE
+    return parameters, metadata_scheme
+
+
+def read_info_from_media(file) -> tuple[str | dict | None, MetadataScheme | None]:
+    if file is None:
+        return None, None
+    if isinstance(file, Image.Image):
+        return read_info_from_image(file)
+
+    path = _metadata_file_path(file)
+    media_type = metadata_media_type(path)
+    if media_type == "video":
+        return read_info_from_video(path)
+    if media_type == "image":
+        try:
+            with Image.open(path) as image:
+                return read_info_from_image(image)
+        except Exception:
+            logger.exception("Failed to read image metadata from %s", path)
+            return None, None
+    return None, None
 
 def params_lora_fixed(parameters):
     loras_p = {k: v for k, v in parameters.items() if k.startswith("LoRA [")}

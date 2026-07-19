@@ -299,25 +299,106 @@ def _ffprobe_exe():
     return ""
 
 
+def _ffmpeg_exe():
+    try:
+        import imageio_ffmpeg
+
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and os.path.exists(exe):
+            return exe
+    except Exception:
+        pass
+    return shutil.which("ffmpeg") or ""
+
+
+def _unescape_ffmetadata(value):
+    result = []
+    escaped = False
+    for char in str(value or ""):
+        if escaped:
+            result.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        else:
+            result.append(char)
+    if escaped:
+        result.append("\\")
+    return "".join(result)
+
+
+def _ffmetadata_logical_lines(text):
+    lines = []
+    current = ""
+    for raw_line in str(text or "").splitlines():
+        current += raw_line
+        trailing_slashes = len(current) - len(current.rstrip("\\"))
+        if trailing_slashes % 2 == 1:
+            current = current[:-1] + "\n"
+            continue
+        lines.append(current)
+        current = ""
+    if current:
+        lines.append(current)
+    return lines
+
+
+def read_video_metadata_tags(path):
+    """Return container-level video tags without decoding any video frames."""
+    if not path or not os.path.exists(path):
+        return {}
+
+    ffprobe = _ffprobe_exe()
+    if ffprobe:
+        try:
+            completed = subprocess.run(
+                [ffprobe, "-v", "error", "-show_entries", "format_tags", "-of", "json", path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=8,
+            )
+            data = json.loads(completed.stdout or "{}") if completed.returncode == 0 else {}
+            tags = ((data.get("format") or {}).get("tags") or {}) if isinstance(data, dict) else {}
+            if isinstance(tags, dict) and tags:
+                return tags
+        except Exception:
+            pass
+
+    ffmpeg = _ffmpeg_exe()
+    if not ffmpeg:
+        return {}
+    try:
+        completed = subprocess.run(
+            [ffmpeg, "-v", "error", "-i", path, "-f", "ffmetadata", "-"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        if completed.returncode != 0 and not completed.stdout:
+            return {}
+        tags = {}
+        for raw_line in _ffmetadata_logical_lines(completed.stdout):
+            line = raw_line.strip()
+            if not line or line.startswith(";") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            tags[_unescape_ffmetadata(key)] = _unescape_ffmetadata(value)
+        return tags
+    except Exception:
+        return {}
+
+
 def extract_video_metadata(path, max_raw_chars=4000):
     if not path or not os.path.exists(path):
         return {}
-    ffprobe = _ffprobe_exe()
-    if not ffprobe:
-        return {}
     try:
-        cmd = [
-            ffprobe,
-            "-v", "error",
-            "-show_entries", "format_tags",
-            "-of", "json",
-            path,
-        ]
-        completed = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=8)
-        if completed.returncode != 0:
-            return {}
-        data = json.loads(completed.stdout or "{}")
-        tags = ((data.get("format") or {}).get("tags") or {}) if isinstance(data, dict) else {}
+        tags = read_video_metadata_tags(path)
         if not isinstance(tags, dict):
             return {}
         lower_tags = {str(key).lower(): value for key, value in tags.items()}

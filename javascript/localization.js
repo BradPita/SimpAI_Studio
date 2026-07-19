@@ -1349,6 +1349,7 @@ function syncGradioUploadPromptLanguage(root) {
         if (!isEnglish) return;
         const replacements = {
             '将图像拖放到此处': 'Drop image here',
+            '将文件拖放到此处': 'Drop file here',
             '- 或 -': '- or -',
             '点击上传': 'Click to upload'
         };

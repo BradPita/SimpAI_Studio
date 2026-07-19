@@ -1,4 +1,5 @@
 import modules.config as config
+from modules.comfy_progress_profile import build_progress_profile
 from modules.comfy_progress_filter import (
     install_advanced_sampler_known_total_progress_filter,
     install_aio_enhance_uov_progress_filter,
@@ -31,11 +32,12 @@ _register_runtime_preview_nodes()
 
 class ComfyTask:
 
-    def __init__(self, name, params, images=None, steps=None):
+    def __init__(self, name, params, images=None, steps=None, progress_profile=None):
         self.name = name
         self.params = params
         self.images = images
         self.steps = steps
+        self.progress_profile = progress_profile
 
 
 def _is_custom_model_choice(model_name):
@@ -53,6 +55,9 @@ def _model_type_from_name(model_name):
 def get_comfy_task(user_did, task_class, task_name, task_method, default_params, input_images, options=None):
     #print(f'task_class:{task_class}, task_name:{task_name}, task_method:{task_method}')
     total_steps = default_params.pop("display_steps", default_params['steps'])
+    progress_profile = build_progress_profile(task_method, default_params, total_steps)
+    if progress_profile is not None:
+        total_steps = progress_profile.total_steps
     task_method_l = (task_method or "").lower()
     if "infinitetalk" in task_method_l:
         audio = default_params.get("audio")
@@ -111,22 +116,22 @@ def get_comfy_task(user_did, task_class, task_name, task_method, default_params,
     if task_class in ['Flux', 'HyDiT', 'SD3x', 'Wan', 'Qwen','Z-image'] and task_name not in ['Flux', 'HyDiT', 'SD3x', 'Wan', 'Qwen', 'Z-image']:
         task_name = task_class
     if task_name == 'default':
-        return ComfyTask(task_method, comfy_params, input_images, total_steps)
+        return ComfyTask(task_method, comfy_params, input_images, total_steps, progress_profile)
     
     elif task_name == 'SD3x':
-        return ComfyTask(task_method, comfy_params, steps=total_steps)
+        return ComfyTask(task_method, comfy_params, steps=total_steps, progress_profile=progress_profile)
 
     elif task_name in ['HyDiT']:
         if not modelsinfo.exists_model(catalog="checkpoints", model_path=default_params["base_model"]):
             config.downloading_hydit_model()
-        return ComfyTask(task_method, comfy_params, steps=total_steps)
+        return ComfyTask(task_method, comfy_params, steps=total_steps, progress_profile=progress_profile)
     
     elif task_name == 'Flux':
-        return ComfyTask(task_method, comfy_params, input_images, total_steps)
+        return ComfyTask(task_method, comfy_params, input_images, total_steps, progress_profile)
     elif task_name == 'SD1.5' and '_aio' in task_method:
-        return ComfyTask(task_method, comfy_params, input_images, total_steps)
+        return ComfyTask(task_method, comfy_params, input_images, total_steps, progress_profile)
     else:  # SeamlessTiled
-        return ComfyTask(task_method, comfy_params, input_images, total_steps)
+        return ComfyTask(task_method, comfy_params, input_images, total_steps, progress_profile)
 
 def check_task_model():
     #check_model_files_from_download_of_preset_file

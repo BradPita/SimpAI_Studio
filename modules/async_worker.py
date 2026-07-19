@@ -8,6 +8,7 @@ import sys
 import args_manager
 from extras.inpaint_mask import generate_mask_from_image, SAMOptions
 from modules.patch import PatchSettings, patch_settings, patch_all
+from modules.comfy_progress_profile import format_profile_progress, format_sampling_progress
 import modules.config
 
 patch_all()
@@ -800,6 +801,14 @@ def worker():
                         default_params, input_images)
                 if async_task.disable_preview:
                     callback = None
+                elif callback is not None and comfy_task.progress_profile is not None:
+                    raw_callback = callback
+                    profile_accumulator = comfy_task.progress_profile.accumulator()
+
+                    def callback(step, total_steps, preview):
+                        snapshot = profile_accumulator.update(step, total_steps)
+                        async_task.simpleai_progress_snapshot = snapshot
+                        return raw_callback(snapshot.current_step, snapshot.total_steps, preview)
                 client_id = async_task.user_did
                 if async_task.remote_task is not None:
                     client_id = async_task.remote_task
@@ -2121,7 +2130,25 @@ def worker():
 
             percentage = int(current_progress + async_task.callback_steps)
             display_total_steps = clamp_progress_total(step, total_steps)
-            progressbar(async_task, percentage, f'采样步数 {step}/{display_total_steps}, 图片 {current_task_id + 1}/{total_count} ...', y)
+            progress_snapshot = getattr(async_task, "simpleai_progress_snapshot", None)
+            if progress_snapshot is not None and progress_snapshot.current_step == step:
+                progress_title = format_profile_progress(
+                    progress_snapshot,
+                    current_task_id + 1,
+                    total_count,
+                    getattr(async_task, "simpleai_lang", None),
+                    getattr(async_task, "content_type", "image"),
+                )
+            else:
+                progress_title = format_sampling_progress(
+                    step,
+                    display_total_steps,
+                    current_task_id + 1,
+                    total_count,
+                    getattr(async_task, "simpleai_lang", None),
+                    getattr(async_task, "content_type", "image"),
+                )
+            progressbar(async_task, percentage, progress_title, y)
             async_task._last_percentage = percentage
 
         callback_function = callback

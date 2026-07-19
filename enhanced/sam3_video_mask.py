@@ -2677,6 +2677,11 @@ def get_viewer_html() -> str:
   };
 
   const uploadFileToComponent = (componentId, file) => {
+    const replacementBridge = window.SimpAIGradioMediaReplacement;
+    if (replacementBridge?.supports?.(componentId)) {
+      void replacementBridge.replaceFile(componentId, file);
+      return true;
+    }
     const input = componentFileInput(componentId);
     if (!input || !file) return false;
     try {
