@@ -19,7 +19,7 @@
         0
       ],
       "clip": [
-        "7",
+        "220",
         0
       ]
     },
@@ -35,7 +35,7 @@
         29
       ],
       "clip": [
-        "7",
+        "220",
         0
       ]
     },
@@ -1062,6 +1062,54 @@
     "class_type": "VAEEncode",
     "_meta": {
       "title": "VAE Encode"
+    }
+  },
+  "220": {
+    "inputs": {
+      "boolean": [
+        "222",
+        0
+      ],
+      "on_true": [
+        "221",
+        0
+      ],
+      "on_false": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "221": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "222": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "150",
+        26
+      ],
+      "b": [
+        "138",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
     }
   }
 }

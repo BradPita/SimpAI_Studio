@@ -19,7 +19,7 @@
         0
       ],
       "clip": [
-        "219",
+        "222",
         0
       ]
     },
@@ -35,7 +35,7 @@
         29
       ],
       "clip": [
-        "219",
+        "222",
         0
       ]
     },
@@ -1056,13 +1056,69 @@
   },
   "219": {
     "inputs": {
-      "clip_name": "placeholder.safetensors", 
+      "clip_name": "placeholder.safetensors",
       "type": "wan",
       "device": "default"
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Load CLIP"
+      "title": "clip_model"
+    }
+  },
+  "220": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "221": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "222": {
+    "inputs": {
+      "boolean": [
+        "223",
+        0
+      ],
+      "on_true": [
+        "219",
+        0
+      ],
+      "on_false": [
+        "220",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "223": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "150",
+        26
+      ],
+      "b": [
+        "221",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
     }
   }
 }

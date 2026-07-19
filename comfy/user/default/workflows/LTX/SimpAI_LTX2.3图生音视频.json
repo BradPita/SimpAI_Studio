@@ -1,8 +1,8 @@
 {
   "id": "fb54d36b-bb64-462b-9e7b-a4380fa162fb",
   "revision": 0,
-  "last_node_id": 671,
-  "last_link_id": 1641,
+  "last_node_id": 672,
+  "last_link_id": 1644,
   "nodes": [
     {
       "id": 58,
@@ -73,7 +73,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 138,
+      "order": 137,
       "mode": 0,
       "inputs": [
         {
@@ -274,7 +274,7 @@
         }
       },
       "widgets_values": [
-        "ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors",
+        "ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
         "fp8_e4m3fn_fast"
       ],
       "color": "#223",
@@ -438,7 +438,7 @@
       },
       "widgets_values": [
         "",
-        "Toggle all"
+        "None"
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
@@ -514,7 +514,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 170,
+      "order": 169,
       "mode": 0,
       "inputs": [
         {
@@ -1303,7 +1303,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 198,
+      "order": 199,
       "mode": 0,
       "inputs": [
         {
@@ -1351,7 +1351,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 189,
+      "order": 190,
       "mode": 0,
       "inputs": [
         {
@@ -1478,7 +1478,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": " 此工作流于SimpAI_comfyd后端发布ver1.2 Design by DN&冰華",
+      "title": " 此工作流于SimpAI_comfyd后端发布ver1.3 Design by DN&冰華",
       "properties": {
         "fontSize": 20,
         "fontFamily": "Arial",
@@ -1554,7 +1554,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 174,
+      "order": 188,
       "mode": 0,
       "inputs": [
         {
@@ -2190,7 +2190,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 209,
+      "order": 210,
       "mode": 0,
       "inputs": [
         {
@@ -2296,7 +2296,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 213,
+      "order": 214,
       "mode": 0,
       "inputs": [
         {
@@ -2488,7 +2488,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 135,
+      "order": 134,
       "mode": 0,
       "inputs": [
         {
@@ -2536,7 +2536,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 136,
+      "order": 135,
       "mode": 0,
       "inputs": [
         {
@@ -2757,7 +2757,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 188,
+      "order": 189,
       "mode": 0,
       "inputs": [
         {
@@ -2838,7 +2838,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 196,
+      "order": 197,
       "mode": 0,
       "inputs": [
         {
@@ -2886,7 +2886,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 197,
+      "order": 198,
       "mode": 0,
       "inputs": [
         {
@@ -3198,7 +3198,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 191,
+      "order": 192,
       "mode": 0,
       "inputs": [
         {
@@ -3291,7 +3291,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 200,
+      "order": 201,
       "mode": 0,
       "inputs": [
         {
@@ -3714,7 +3714,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 206,
+      "order": 207,
       "mode": 0,
       "inputs": [
         {
@@ -3776,7 +3776,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 210,
+      "order": 211,
       "mode": 0,
       "inputs": [
         {
@@ -4051,7 +4051,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 202,
+      "order": 203,
       "mode": 0,
       "inputs": [
         {
@@ -4288,7 +4288,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 193,
+      "order": 194,
       "mode": 0,
       "inputs": [
         {
@@ -4354,7 +4354,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 194,
+      "order": 195,
       "mode": 0,
       "inputs": [
         {
@@ -4421,7 +4421,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 211,
+      "order": 212,
       "mode": 0,
       "inputs": [
         {
@@ -4931,7 +4931,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 212,
+      "order": 213,
       "mode": 0,
       "inputs": [
         {
@@ -4979,7 +4979,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 208,
+      "order": 209,
       "mode": 0,
       "inputs": [
         {
@@ -5166,7 +5166,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 204,
+      "order": 205,
       "mode": 0,
       "inputs": [
         {
@@ -5578,7 +5578,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 203,
+      "order": 204,
       "mode": 0,
       "inputs": [
         {
@@ -6019,7 +6019,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 177,
+      "order": 176,
       "mode": 0,
       "inputs": [
         {
@@ -6118,7 +6118,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 176,
+      "order": 175,
       "mode": 0,
       "inputs": [
         {
@@ -6296,7 +6296,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 195,
+      "order": 196,
       "mode": 0,
       "inputs": [
         {
@@ -6615,7 +6615,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 192,
+      "order": 193,
       "mode": 0,
       "inputs": [
         {
@@ -6746,7 +6746,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 201,
+      "order": 202,
       "mode": 0,
       "inputs": [
         {
@@ -6834,7 +6834,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 207,
+      "order": 208,
       "mode": 0,
       "inputs": [
         {
@@ -6882,7 +6882,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 172,
+      "order": 171,
       "mode": 0,
       "inputs": [
         {
@@ -7284,7 +7284,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 171,
+      "order": 170,
       "mode": 0,
       "inputs": [
         {
@@ -7338,7 +7338,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 140,
+      "order": 139,
       "mode": 0,
       "inputs": [
         {
@@ -7392,7 +7392,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 215,
+      "order": 216,
       "mode": 0,
       "inputs": [
         {
@@ -7479,7 +7479,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 175,
+      "order": 174,
       "mode": 0,
       "inputs": [
         {
@@ -7570,7 +7570,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 205,
+      "order": 206,
       "mode": 0,
       "inputs": [
         {
@@ -8561,7 +8561,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 137,
+      "order": 136,
       "mode": 0,
       "inputs": [
         {
@@ -8606,14 +8606,14 @@
       "flags": {
         "pinned": true
       },
-      "order": 134,
+      "order": 148,
       "mode": 0,
       "inputs": [
         {
           "name": "anything",
           "shape": 7,
           "type": "*",
-          "link": 1467
+          "link": 1642
         }
       ],
       "outputs": [
@@ -8660,50 +8660,6 @@
       "bgcolor": "#535"
     },
     {
-      "id": 509,
-      "type": "RandomNoise",
-      "pos": [
-        -2390,
-        -460
-      ],
-      "size": [
-        270,
-        90
-      ],
-      "flags": {
-        "pinned": true
-      },
-      "order": 82,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "NOISE",
-          "type": "NOISE",
-          "links": [
-            1467
-          ]
-        }
-      ],
-      "title": "随机种子",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.17.0",
-        "Node name for S&R": "RandomNoise",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.3"
-        }
-      },
-      "widgets_values": [
-        0,
-        "randomize"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 620,
       "type": "mxSliderFloatSmall",
       "pos": [
@@ -8717,7 +8673,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 83,
+      "order": 82,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8766,7 +8722,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 84,
+      "order": 83,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8815,7 +8771,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 85,
+      "order": 84,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8857,7 +8813,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 169,
+      "order": 177,
       "mode": 0,
       "inputs": [
         {
@@ -8911,7 +8867,13 @@
           "link": 1615
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        }
+      ],
       "title": "裁剪预览",
       "properties": {
         "cnr_id": "comfy-core",
@@ -8941,7 +8903,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 86,
+      "order": 85,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9168,7 +9130,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 87,
+      "order": 86,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9209,7 +9171,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 199,
+      "order": 200,
       "mode": 0,
       "inputs": [
         {
@@ -9257,7 +9219,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 190,
+      "order": 191,
       "mode": 0,
       "inputs": [
         {
@@ -9318,7 +9280,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 88,
+      "order": 87,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9360,7 +9322,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 89,
+      "order": 88,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9403,7 +9365,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 90,
+      "order": 89,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9447,7 +9409,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 91,
+      "order": 90,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9492,7 +9454,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 92,
+      "order": 91,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9535,7 +9497,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 141,
+      "order": 140,
       "mode": 0,
       "inputs": [
         {
@@ -9607,7 +9569,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 93,
+      "order": 92,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9651,7 +9613,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 216,
+      "order": 217,
       "mode": 0,
       "inputs": [
         {
@@ -9699,7 +9661,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 94,
+      "order": 93,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9707,7 +9669,7 @@
           "name": "*",
           "type": "*",
           "links": [
-            1562
+            1643
           ]
         }
       ],
@@ -9739,7 +9701,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 95,
+      "order": 94,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9811,7 +9773,7 @@
       },
       "widgets_values": [
         "",
-        "Toggle all"
+        "None"
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
@@ -9831,7 +9793,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 96,
+      "order": 95,
       "mode": 0,
       "inputs": [
         {
@@ -9952,7 +9914,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 97,
+      "order": 96,
       "mode": 0,
       "inputs": [
         {
@@ -10135,7 +10097,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 98,
+      "order": 97,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10225,7 +10187,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 139,
+      "order": 138,
       "mode": 0,
       "inputs": [
         {
@@ -10271,7 +10233,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 147,
+      "order": 146,
       "mode": 0,
       "inputs": [
         {
@@ -10361,7 +10323,7 @@
       "flags": {
         "pinned": true
       },
-      "order": 99,
+      "order": 98,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10402,7 +10364,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 214,
+      "order": 215,
       "mode": 0,
       "inputs": [
         {
@@ -10461,14 +10423,14 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 145,
+      "order": 172,
       "mode": 0,
       "inputs": [
         {
           "label": "noise",
           "name": "noise",
           "type": "NOISE",
-          "link": 1562
+          "link": 1644
         },
         {
           "label": "guider",
@@ -10548,7 +10510,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 100,
+      "order": 99,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10591,7 +10553,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 101,
+      "order": 100,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10635,7 +10597,7 @@
         "collapsed": false,
         "pinned": true
       },
-      "order": 146,
+      "order": 145,
       "mode": 0,
       "inputs": [
         {
@@ -10878,7 +10840,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 102,
+      "order": 101,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10992,7 +10954,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 103,
+      "order": 102,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11033,7 +10995,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 148,
+      "order": 147,
       "mode": 0,
       "inputs": [
         {
@@ -11074,6 +11036,38 @@
         }
       },
       "widgets_values": []
+    },
+    {
+      "id": 351,
+      "type": "MarkdownNote",
+      "pos": [
+        -2790,
+        -1520
+      ],
+      "size": [
+        690,
+        120
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 103,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "模型下载",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.3",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "若第一次使用提示缺失模型时，请开启开关。 关闭开关跳过整组可以完全关闭模型下载功能。不含切换加载器所需模型。\n\n不想下载某些模型可以手动设置run_download为False，如有下载地址变动导致的下载失败请自行搜索补全\n\n模型下载节点：https://github.com/Windecay/ComfyUI-Model-Downloader-plus"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
     },
     {
       "id": 671,
@@ -11125,7 +11119,7 @@
         }
       },
       "widgets_values": [
-        "[\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"5627045248\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"624229760\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"LTX23_audio_vae_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"LTX23_audio_vae_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"364855188\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"LTX23_video_vae_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"LTX23_video_vae_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"1452258578\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"taeltx2_3.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"taeltx2_3.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"23531296\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"gemma_3_12B_it_fpmixed.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"gemma_3_12B_it_fpmixed.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"13708659515\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Lightricks/LTX-2.3/resolve/master/ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"download_directory\": \"latent_upscale_models\",\n    \"file_name\": \"ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"995743560\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"ltx-2-3-22b-dev_transformer_only_fp8_input_scaled.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"25016398608\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\",\n    \"urls\": [\n      \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\",\n      \"https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\"\n    ],\n    \"download_directory\": \"loras\\\\ltx\",\n    \"file_name\": \"ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"2741024390\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"download_directory\": \"loras\\\\ltx\",\n    \"file_name\": \"gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"628203616\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3_text_projection_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"ltx-2.3_text_projection_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"2312149072\",\n    \"description\": \"\"\n  }\n]\n",
+        "[\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.Q4_K_M.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"5627045248\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"url\": \"https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/LLM/Huihui-Qwen3.5-9B-abliterated/Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"download_directory\": \"LLM\\\\Huihui-Qwen3.5-9B-abliterated\",\n    \"file_name\": \"Huihui-Qwen3.5-9B-abliterated.mmproj-Q8_0.gguf\",\n    \"overwrite_existing\": false,\n    \"size\": \"624229760\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"LTX23_audio_vae_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_audio_vae_bf16.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"LTX23_audio_vae_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"364855188\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"LTX23_video_vae_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/LTX23_video_vae_bf16.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"LTX23_video_vae_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"1452258578\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"taeltx2_3.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/vae/taeltx2_3.safetensors\",\n    \"download_directory\": \"vae\",\n    \"file_name\": \"taeltx2_3.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"23531296\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"gemma_3_12B_it_fpmixed.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/text_encoders/gemma_3_12B_it_fpmixed.safetensors\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"gemma_3_12B_it_fpmixed.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"13708659515\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Lightricks/LTX-2.3/resolve/master/ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"download_directory\": \"latent_upscale_models\",\n    \"file_name\": \"ltx-2.3-spatial-upscaler-x2-1.1.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"995743560\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/diffusion_models/ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors\",\n    \"download_directory\": \"diffusion_models\",\n    \"file_name\": \"ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"21505993064\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\",\n    \"urls\": [\n      \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/loras/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\"],\n    \"download_directory\": \"loras\\\\ltx\",\n    \"file_name\": \"ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"2741024390\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Comfy-Org/ltx-2/resolve/master/split_files/loras/gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"download_directory\": \"loras\\\\ltx\",\n    \"file_name\": \"gemma-3-12b-it-abliterated_heretic_lora_rank64_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"628203616\",\n    \"description\": \"\"\n  },\n  {\n    \"name\": \"ltx-2.3_text_projection_bf16.safetensors\",\n    \"url\": \"https://www.modelscope.cn/models/Kijai/LTX2.3_comfy/resolve/master/text_encoders/ltx-2.3_text_projection_bf16.safetensors\",\n    \"download_directory\": \"text_encoders\",\n    \"file_name\": \"ltx-2.3_text_projection_bf16.safetensors\",\n    \"overwrite_existing\": false,\n    \"size\": \"2312149072\",\n    \"description\": \"\"\n  }\n]\n",
         true,
         false,
         true,
@@ -11133,15 +11127,15 @@
       ]
     },
     {
-      "id": 351,
-      "type": "MarkdownNote",
+      "id": 672,
+      "type": "easy seed",
       "pos": [
-        -2790,
-        -1520
+        -2390,
+        -480
       ],
       "size": [
-        690,
-        120
+        270,
+        110
       ],
       "flags": {
         "pinned": true
@@ -11149,17 +11143,82 @@
       "order": 105,
       "mode": 0,
       "inputs": [],
-      "outputs": [],
-      "title": "模型下载",
+      "outputs": [
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            1642
+          ]
+        }
+      ],
+      "title": "随机种子",
       "properties": {
         "ue_properties": {
           "widget_ue_connectable": {},
-          "version": "7.3",
-          "input_ue_unconnectable": {}
+          "input_ue_unconnectable": {},
+          "version": "7.3"
+        },
+        "Node name for S&R": "easy seed"
+      },
+      "widgets_values": [
+        0,
+        "randomize",
+        null
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 509,
+      "type": "RandomNoise",
+      "pos": [
+        380,
+        -1480
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {
+        "collapsed": true,
+        "pinned": true
+      },
+      "order": 141,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise_seed",
+          "type": "INT",
+          "widget": {
+            "name": "noise_seed"
+          },
+          "link": 1643
+        }
+      ],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            1644
+          ]
+        }
+      ],
+      "title": "随机种子",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.17.0",
+        "Node name for S&R": "RandomNoise",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.3"
         }
       },
       "widgets_values": [
-        "若第一次使用提示缺失模型时，请开启开关。 关闭开关跳过整组可以完全关闭模型下载功能。不含切换加载器所需模型。\n\n不想下载某些模型可以手动设置run_download为False，如有下载地址变动导致的下载失败请自行搜索补全\n\n模型下载节点：https://github.com/Windecay/ComfyUI-Model-Downloader-plus"
+        0,
+        "randomize"
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -11629,14 +11688,6 @@
       507,
       2,
       "INT"
-    ],
-    [
-      1467,
-      509,
-      0,
-      231,
-      0,
-      "NOISE"
     ],
     [
       1468,
@@ -12159,14 +12210,6 @@
       "IMAGE"
     ],
     [
-      1562,
-      389,
-      0,
-      574,
-      0,
-      "NOISE"
-    ],
-    [
       1564,
       507,
       0,
@@ -12637,6 +12680,30 @@
       219,
       1,
       "STRING"
+    ],
+    [
+      1642,
+      672,
+      0,
+      231,
+      0,
+      "INT"
+    ],
+    [
+      1643,
+      389,
+      0,
+      509,
+      0,
+      "INT"
+    ],
+    [
+      1644,
+      509,
+      0,
+      574,
+      0,
+      "NOISE"
     ]
   ],
   "groups": [
@@ -12854,13 +12921,13 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.318630817710357,
+      "scale": 0.8264462809917354,
       "offset": [
-        3894.988161324201,
-        2276.443925816
+        -139.3699679930708,
+        1763.324433520205
       ]
     },
-    "frontendVersion": "1.45.15",
+    "frontendVersion": "1.45.20",
     "node_versions": {
       "ComfyUI-WanVideoWrapper": "5a2383621a05825d0d0437781afcb8552d9590fd",
       "comfy-core": "0.3.26",

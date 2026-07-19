@@ -38,9 +38,7 @@ _CHARACTER_COLOR_MIN_LUMA_SPREAD = 0.02
 _CHARACTER_COLOR_MIN_CHROMA_SPREAD = 0.005
 _CHARACTER_COLOR_DETAIL_RADIUS = 12
 _CHARACTER_COLOR_MIN_SAMPLES = 32
-_CHARACTER_SATURATION_CURVE_START = 0.08
-_CHARACTER_SATURATION_CURVE_END = 0.18
-_CHARACTER_SATURATION_CURVE_HIGH_SCALE = 0.70
+_MANUAL_SATURATION_CURVE_END = 0.18
 _CHARACTER_TONE_REFERENCE_FRAMES = 5
 _CHARACTER_TONE_FINE_RADIUS = 2
 _CHARACTER_TONE_MID_RADIUS = 8
@@ -313,6 +311,8 @@ def _apply_manual_segment_output_color(
         "saturation": saturation,
         "contrast_pivot": 0.5,
         "color_space": "ycbcr",
+        "saturation_transform": "smoothstep_chroma_radius_weighted_gain",
+        "saturation_curve_end": _MANUAL_SATURATION_CURVE_END,
         "visible_output_applied": True,
         "passed_to_continue_motion": True,
     }
@@ -330,8 +330,12 @@ def _apply_manual_segment_output_color(
     rgb = frames[..., :3].to(torch.float32)
     luma, cb, cr = _rgb_to_ycbcr(rgb)
     adjusted_luma = (0.5 + (luma - 0.5) * contrast).clamp(0, 1)
-    adjusted_cb = cb * saturation
-    adjusted_cr = cr * saturation
+    chroma_radius = torch.sqrt(cb * cb + cr * cr)
+    curve_position = (chroma_radius / _MANUAL_SATURATION_CURVE_END).clamp(0, 1)
+    curve_weight = curve_position * curve_position * (3.0 - 2.0 * curve_position)
+    chroma_gain = 1.0 + (saturation - 1.0) * curve_weight
+    adjusted_cb = cb * chroma_gain
+    adjusted_cr = cr * chroma_gain
     adjusted_rgb = torch.stack(
         (
             adjusted_luma + 1.402 * adjusted_cr,
@@ -1035,95 +1039,6 @@ def _calibrate_character_sequence_to_previous(
         "preserves_high_frequency_chroma_structure": True,
         "high_frequency_chroma_scale": "same_as_low_frequency_chroma",
         "color_feedback": "controlled_by_caller_reference",
-    }
-
-
-def _apply_character_saturation_curve(frames, edit_mask, enabled=True):
-    info = {
-        "enabled": True,
-        "scope": "existing_character_mask",
-        "curve_start": _CHARACTER_SATURATION_CURVE_START,
-        "curve_end": _CHARACTER_SATURATION_CURVE_END,
-        "high_saturation_scale": _CHARACTER_SATURATION_CURVE_HIGH_SCALE,
-        "preserves_luma": True,
-        "transform": "smoothstep_ycbcr_chroma_compression",
-    }
-    if not isinstance(frames, torch.Tensor) or frames.ndim != 4 or int(frames.shape[-1]) < 3:
-        return frames, {**info, "applied": False, "reason": "missing_frames"}
-    if (
-        not isinstance(edit_mask, torch.Tensor)
-        or edit_mask.ndim != 4
-        or edit_mask.shape[:3] != frames.shape[:3]
-    ):
-        return frames, {**info, "applied": False, "reason": "missing_character_mask"}
-    if not enabled:
-        return frames, {**info, "applied": False, "reason": "first_segment_identity"}
-
-    import torch.nn.functional as F
-
-    rgb = frames[..., :3].to(torch.float32)
-    luma, cb, cr = _rgb_to_ycbcr(rgb)
-    chroma_radius = torch.sqrt(cb * cb + cr * cr)
-    curve_position = (
-        (chroma_radius - _CHARACTER_SATURATION_CURVE_START)
-        / (_CHARACTER_SATURATION_CURVE_END - _CHARACTER_SATURATION_CURVE_START)
-    ).clamp(0, 1)
-    smooth_position = curve_position * curve_position * (3.0 - 2.0 * curve_position)
-    chroma_gain = 1.0 - (
-        1.0 - _CHARACTER_SATURATION_CURVE_HIGH_SCALE
-    ) * smooth_position
-    corrected_cb = cb * chroma_gain
-    corrected_cr = cr * chroma_gain
-    compressed_rgb = torch.stack(
-        (
-            luma + 1.402 * corrected_cr,
-            luma - 0.344136 * corrected_cb - 0.714136 * corrected_cr,
-            luma + 1.772 * corrected_cb,
-        ),
-        dim=-1,
-    ).clamp(0, 1)
-    corrected_rgb = torch.where(
-        (curve_position > 0).unsqueeze(-1),
-        compressed_rgb,
-        rgb,
-    )
-    feather_radius = max(
-        1,
-        min(8, int(round(min(frames.shape[1:3]) * 0.01))),
-    )
-    mask = F.avg_pool2d(
-        F.pad(
-            edit_mask.movedim(-1, 1).to(
-                device=frames.device,
-                dtype=torch.float32,
-            ),
-            (feather_radius, feather_radius, feather_radius, feather_radius),
-            mode="replicate",
-        ),
-        kernel_size=feather_radius * 2 + 1,
-        stride=1,
-    ).movedim(1, -1).clamp(0, 1)
-    corrected = frames.clone()
-    corrected[..., :3] = torch.lerp(rgb, corrected_rgb, mask).to(frames.dtype)
-    valid = edit_mask[..., 0].to(device=frames.device) >= 0.50
-    affected_pixels = int(
-        ((chroma_radius > _CHARACTER_SATURATION_CURVE_START) & valid).sum()
-    )
-    maximum_compression_pixels = int(
-        ((chroma_radius >= _CHARACTER_SATURATION_CURVE_END) & valid).sum()
-    )
-    mean_chroma_gain = (
-        float(chroma_gain[valid].mean().detach().cpu())
-        if bool(valid.any())
-        else 1.0
-    )
-    return corrected.contiguous(), {
-        **info,
-        "applied": True,
-        "mask_feather_radius": feather_radius,
-        "affected_pixels": affected_pixels,
-        "maximum_compression_pixels": maximum_compression_pixels,
-        "mean_chroma_gain": mean_chroma_gain,
     }
 
 
@@ -2826,6 +2741,7 @@ class SimpAIWanAnimateLoop:
                 "segment_saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01}),
             },
             "optional": {
+                "clip_vision_output": ("CLIP_VISION_OUTPUT",),
                 "face_video": ("IMAGE",),
                 "pose_video": ("IMAGE",),
                 "background_video": ("IMAGE",),
@@ -2858,6 +2774,7 @@ class SimpAIWanAnimateLoop:
         overlap_frames,
         segment_contrast=1.0,
         segment_saturation=1.0,
+        clip_vision_output=None,
         face_video=None,
         pose_video=None,
         background_video=None,
@@ -2906,12 +2823,10 @@ class SimpAIWanAnimateLoop:
         character_tone_gains = {}
         character_low_frequency_reference = None
         character_low_frequency_controls = {}
-        previous_raw_chroma_ratio = None
         output = []
         chunks = []
 
         while produced < total_frames:
-            apply_character_saturation_curve = chunk_index > 0
             has_previous = previous_frames is not None
             discard_head = overlap if has_previous else 0
             max_keep = chunk_limit - discard_head - _TAIL_GUARD_FRAMES
@@ -2968,11 +2883,9 @@ class SimpAIWanAnimateLoop:
             continuation_rgb_summary = {
                 "used": continuation is not None,
                 "source": "previous_segment_manual_color_adjusted_output",
-                "source_stage": "after_saturation_and_manual_segment_adjustment_before_overlap",
+                "source_stage": "after_manual_segment_adjustment_before_overlap",
                 "source_start": int(source_start) if continuation is not None else None,
-                "source_saturation_curve_applied": (
-                    bool(chunk_index > 1) if continuation is not None else None
-                ),
+                "source_saturation_curve_applied": False,
                 "pixel_transform": bool(continuation_detail_summary.get("applied")),
                 "conditioning_normalization": continuation_detail_summary,
             }
@@ -3015,6 +2928,7 @@ class SimpAIWanAnimateLoop:
                     continue_motion_max_frames=int(_WEAK_CONTINUE_MOTION_FRAMES),
                     video_frame_offset=int(conditioning_offset),
                     reference_image=reference_image[:1],
+                    clip_vision_output=clip_vision_output,
                     face_video=chunk_face_video,
                     pose_video=chunk_pose_video,
                     background_video=chunk_background_video,
@@ -3217,33 +3131,45 @@ class SimpAIWanAnimateLoop:
                 source_start,
                 discard_head,
             )
-            usable, character_saturation_summary = _apply_character_saturation_curve(
-                usable,
-                edit_mask,
-                enabled=apply_character_saturation_curve,
-            )
-            character_saturation_summary.update(
-                {
-                    "control": "fixed_high_saturation_curve_after_first_segment",
-                    "input_previous_raw_chroma_ratio": previous_raw_chroma_ratio,
-                    "passed_to_continue_motion": True,
+            character_saturation_summary = {
+                "enabled": False,
+                "applied": False,
+                "reason": "disabled_after_usertest_purple_lip_regression",
+                "scope": "existing_character_mask",
+                "passed_to_continue_motion": False,
+            }
+            if chunk_index == 0:
+                manual_segment_color_summary = {
+                    "enabled": True,
+                    "scope": "existing_character_mask",
+                    "contrast": float(segment_contrast),
+                    "saturation": float(segment_saturation),
+                    "contrast_pivot": 0.5,
+                    "color_space": "ycbcr",
+                    "saturation_transform": "smoothstep_chroma_radius_weighted_gain",
+                    "saturation_curve_end": _MANUAL_SATURATION_CURVE_END,
+                    "visible_output_applied": False,
+                    "passed_to_continue_motion": False,
+                    "applied": False,
+                    "reason": "first_segment_identity",
+                    "first_segment_enabled": False,
+                    "later_segments_enabled": True,
                 }
-            )
-            _calibration_debug_record_stage(
-                calibration_debug_state,
-                chunk_index,
-                "saturation_curve",
-                usable,
-                edit_mask,
-                source_start,
-                discard_head,
-            )
-            usable, manual_segment_color_summary = _apply_manual_segment_output_color(
-                usable,
-                edit_mask,
-                segment_contrast,
-                segment_saturation,
-            )
+            else:
+                usable, manual_segment_color_summary = (
+                    _apply_manual_segment_output_color(
+                        usable,
+                        edit_mask,
+                        segment_contrast,
+                        segment_saturation,
+                    )
+                )
+                manual_segment_color_summary.update(
+                    {
+                        "first_segment_enabled": False,
+                        "later_segments_enabled": True,
+                    }
+                )
             continuation_source_usable = usable.clone().contiguous()
             continuation_rgb_summary["segment_output_manual_color_adjustment"] = (
                 manual_segment_color_summary
@@ -3308,10 +3234,8 @@ class SimpAIWanAnimateLoop:
                 and raw_tail_change.get("chroma_spread_ratio") is not None
                 else None
             )
-            character_saturation_summary.update(
-                {
-                    "measured_current_raw_tail_chroma_ratio": measured_raw_chroma_ratio,
-                }
+            character_saturation_summary["observed_raw_tail_chroma_ratio"] = (
+                measured_raw_chroma_ratio
             )
             kept = usable[discard_head:kept_end].contiguous()
             continuation_source_kept = continuation_source_usable[
@@ -3355,7 +3279,6 @@ class SimpAIWanAnimateLoop:
                     continuation_detail_reference_summary
                 )
             previous_frames = continuation_source_kept[-overlap:].contiguous()
-            previous_raw_chroma_ratio = measured_raw_chroma_ratio
             chunks.append(
                 {
                     "chunk": chunk_index,
@@ -3418,7 +3341,7 @@ class SimpAIWanAnimateLoop:
                 "continuation_rgb": {
                     "enabled": True,
                     "source": "previous_segment_manual_color_adjusted_output",
-                    "source_stage": "after_saturation_and_manual_segment_adjustment_before_overlap",
+                    "source_stage": "after_manual_segment_adjustment_before_overlap",
                     "applies_to": "time_aligned_generated_overlap_after_conditioning_normalization",
                     "conditioning_only": True,
                     "detail_reference": "first_segment_head",
@@ -3444,8 +3367,12 @@ class SimpAIWanAnimateLoop:
                         "saturation": float(segment_saturation),
                         "contrast_pivot": 0.5,
                         "color_space": "ycbcr",
+                        "saturation_transform": "smoothstep_chroma_radius_weighted_gain",
+                        "saturation_curve_end": _MANUAL_SATURATION_CURVE_END,
                         "visible_output_applied": True,
                         "passed_to_continue_motion": True,
+                        "first_segment_enabled": False,
+                        "later_segments_enabled": True,
                     },
                 },
                 "character_tone_inverse": {
@@ -3499,20 +3426,13 @@ class SimpAIWanAnimateLoop:
                     "passed_to_continue_motion": True,
                 },
                 "character_saturation_control": {
-                    "enabled": True,
-                    "timing": "after_character_color_calibration_before_overlap",
-                    "mode": "fixed_high_saturation_curve_after_first_segment",
-                    "first_segment_curve_enabled": False,
-                    "later_segment_curve_enabled": True,
-                    "curve_start": _CHARACTER_SATURATION_CURVE_START,
-                    "curve_end": _CHARACTER_SATURATION_CURVE_END,
-                    "high_saturation_scale": _CHARACTER_SATURATION_CURVE_HIGH_SCALE,
+                    "enabled": False,
+                    "mode": "disabled",
+                    "reason": "usertest_purple_lip_regression",
                     "measurement": "raw_decoded_tail_chroma_p75_vs_first_segment_head_for_report_only",
-                    "only_reduces_saturation": True,
-                    "transform": "smoothstep_ycbcr_chroma_compression",
                     "scope": "existing_character_mask",
-                    "passed_to_continue_motion": True,
-                    "p99_pixel_processing": False,
+                    "passed_to_continue_motion": False,
+                    "manual_segment_controls_preserved": True,
                 },
                 "appearance_drift": {
                     "enabled": True,

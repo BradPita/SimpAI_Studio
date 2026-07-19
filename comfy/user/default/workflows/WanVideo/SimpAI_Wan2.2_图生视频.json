@@ -581,7 +581,7 @@
       },
       "widgets_values": [
         "Wan2.2_I2V_LightX2V_2step_high_noise.safetensors",
-        0.5
+        1.0
       ],
       "color": "#223",
       "bgcolor": "#335"

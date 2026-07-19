@@ -7947,6 +7947,31 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     margin-top: 10px !important;
 }
 
+/* Gradio 6 remounts a hidden Group without its elem_id, but keeps its outer
+   layout shell. Remove those orphan shells so the panel spacing rule above
+   cannot turn zero-height bridge components into visible blank rows. */
+#scene_panel > .gr-group:has(> .styler > button.sai-gradio-hidden-bridge[id$="_scene_apply_btn"]):not(:has(> .styler > .block:not(.sai-gradio-hidden-bridge))),
+#scene_panel > .gr-group:not(:has(> .styler > *)),
+#scene_panel > .form:has(> #scene_video_first_frame_path) {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+#scene_panel > [data-simpleai-aux-hidden="1"],
+#scene_panel > [data-simpleai-scene-hidden="1"],
+#scene_panel > .simpai-force-hidden {
+    display: none !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
 #scene_panel_bottom_fill {
     display: block !important;
     width: 100% !important;

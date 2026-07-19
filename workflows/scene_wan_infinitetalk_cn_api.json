@@ -292,7 +292,7 @@
         0
       ],
       "clip": [
-        "118",
+        "150",
         0
       ]
     },
@@ -946,6 +946,63 @@
     "class_type": "RepeatImageBatch",
     "_meta": {
       "title": "Repeat Start Frame 5 Times"
+    }
+  },
+  "148": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "149": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "150": {
+    "inputs": {
+      "boolean": [
+        "151",
+        0
+      ],
+      "on_true": [
+        "149",
+        0
+      ],
+      "on_false": [
+        "118",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "151": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "121",
+        26
+      ],
+      "b": [
+        "148",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
     }
   }
 }

@@ -92,7 +92,7 @@
         0
       ],
       "clip": [
-        "493",
+        "915",
         0
       ]
     },
@@ -108,7 +108,7 @@
         29
       ],
       "clip": [
-        "493",
+        "915",
         0
       ]
     },
@@ -849,8 +849,13 @@
         0
       ],
       "overlap_frames": 5,
-      "segment_contrast": 1.0,
-      "segment_saturation": 1.0,
+      "segment_contrast": 1,
+      "segment_saturation": 1,
+      "calibration_debug": false,
+      "clip_vision_output": [
+        "913",
+        0
+      ],
       "model": [
         "901",
         0
@@ -960,6 +965,89 @@
     "class_type": "easy int",
     "_meta": {
       "title": "Int"
+    }
+  },
+  "912": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "913": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "912",
+        0
+      ],
+      "image": [
+        "790",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "Encode Animate Reference"
+    }
+  },
+  "914": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "748",
+        26
+      ],
+      "b": [
+        "917",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
+    }
+  },
+  "915": {
+    "inputs": {
+      "boolean": [
+        "914",
+        0
+      ],
+      "on_true": [
+        "916",
+        0
+      ],
+      "on_false": [
+        "493",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "916": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "917": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
     }
   }
 }

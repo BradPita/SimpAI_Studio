@@ -302,7 +302,7 @@
         0
       ],
       "clip": [
-        "118",
+        "165",
         0
       ]
     },
@@ -1152,6 +1152,63 @@
     "class_type": "KSampler",
     "_meta": {
       "title": "KSampler"
+    }
+  },
+  "163": {
+    "inputs": {
+      "clip_name": "placeholder.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_model"
+    }
+  },
+  "164": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "easy int",
+    "_meta": {
+      "title": "int"
+    }
+  },
+  "165": {
+    "inputs": {
+      "boolean": [
+        "166",
+        0
+      ],
+      "on_true": [
+        "163",
+        0
+      ],
+      "on_false": [
+        "118",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "If else"
+    }
+  },
+  "166": {
+    "inputs": {
+      "comparison": "a == b",
+      "a": [
+        "121",
+        26
+      ],
+      "b": [
+        "164",
+        0
+      ]
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "Compare"
     }
   }
 }

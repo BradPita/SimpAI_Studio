@@ -1536,7 +1536,7 @@
     },
     "class_type": "CLIPLoader",
     "_meta": {
-      "title": "Load CLIP"
+      "title": "clip_model"
     }
   },
   "146": {

@@ -92,7 +92,7 @@
         0
       ],
       "clip": [
-        "859",
+        "861",
         0
       ]
     },
@@ -108,7 +108,7 @@
         29
       ],
       "clip": [
-        "859",
+        "861",
         0
       ]
     },
@@ -1056,72 +1056,6 @@
       "title": "LayerUtility: Purge VRAM V2"
     }
   },
-  "855": {
-    "inputs": {
-      "clip_name": "placeholder.safetensors",
-      "type": "wan",
-      "device": "default"
-    },
-    "class_type": "CLIPLoader",
-    "_meta": {
-      "title": "clip_model"
-    }
-  },
-  "856": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "i2i_clip_type"
-    }
-  },
-  "857": {
-    "inputs": {
-      "value": 1
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "int"
-    }
-  },
-  "858": {
-    "inputs": {
-      "comparison": "a == b",
-      "a": [
-        "856",
-        0
-      ],
-      "b": [
-        "857",
-        0
-      ]
-    },
-    "class_type": "easy compare",
-    "_meta": {
-      "title": "Compare"
-    }
-  },
-  "859": {
-    "inputs": {
-      "boolean": [
-        "858",
-        0
-      ],
-      "on_true": [
-        "855",
-        0
-      ],
-      "on_false": [
-        "861",
-        0
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
   "860": {
     "inputs": {
       "comparison": "a == b",
@@ -1270,8 +1204,9 @@
         0
       ],
       "overlap_frames": 5,
-      "segment_contrast": 1.0,
-      "segment_saturation": 1.0,
+      "segment_contrast": 1,
+      "segment_saturation": 1,
+      "calibration_debug": false,
       "model": [
         "901",
         0
@@ -1302,6 +1237,10 @@
       ],
       "driving_video": [
         "535",
+        0
+      ],
+      "clip_vision_output": [
+        "913",
         0
       ],
       "face_video": [
@@ -1389,6 +1328,32 @@
     "class_type": "easy int",
     "_meta": {
       "title": "Int"
+    }
+  },
+  "912": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "913": {
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "912",
+        0
+      ],
+      "image": [
+        "853",
+        0
+      ]
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "Encode Animate Reference"
     }
   }
 }

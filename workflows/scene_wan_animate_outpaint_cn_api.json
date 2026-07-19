@@ -66,6 +66,10 @@
         "647",
         0
       ],
+      "clip_vision_output": [
+        "913",
+        0
+      ],
       "driving_video": [
         "730",
         0
@@ -1298,6 +1302,32 @@
     "class_type": "EmptyImage",
     "_meta": {
       "title": "Empty Image"
+    }
+  },
+  "912": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "913": {
+    "inputs": {
+      "clip_vision": [
+        "912",
+        0
+      ],
+      "image": [
+        "647",
+        0
+      ],
+      "crop": "none"
+    },
+    "class_type": "CLIPVisionEncode",
+    "_meta": {
+      "title": "Encode Animate Reference"
     }
   }
 }

@@ -5066,23 +5066,32 @@ function setSceneAuxControlVisible(id, visible) {
         try { window.closeSam3FramesEditor(); } catch (e) {}
     }
     if (!el) return false;
-    if (visible) {
-        if (el.dataset.simpleaiAuxHidden === "1") {
-            delete el.dataset.simpleaiAuxHidden;
-            clearHiddenFlags(el);
+    const scenePanel = gradioApp().getElementById("scene_panel") || document.getElementById("scene_panel");
+    let layoutShell = el;
+    if (scenePanel?.contains(el)) {
+        while (layoutShell.parentElement && layoutShell.parentElement !== scenePanel) {
+            layoutShell = layoutShell.parentElement;
         }
-        clearHiddenFlags(el);
-    } else {
-        el.dataset.simpleaiAuxHidden = "1";
-        el.classList.add("simpai-force-hidden");
-        el.setAttribute("aria-hidden", "true");
-        el.hidden = true;
-        el.style.setProperty("display", "none", "important");
-        el.style.setProperty("min-height", "0", "important");
-        el.style.setProperty("height", "0", "important");
-        el.style.setProperty("margin", "0", "important");
-        el.style.setProperty("padding", "0", "important");
-        el.style.setProperty("overflow", "hidden", "important");
+    }
+    const targets = layoutShell === el ? [el] : [el, layoutShell];
+    for (const target of targets) {
+        if (visible) {
+            if (target.dataset.simpleaiAuxHidden === "1") {
+                delete target.dataset.simpleaiAuxHidden;
+            }
+            clearHiddenFlags(target);
+        } else {
+            target.dataset.simpleaiAuxHidden = "1";
+            target.classList.add("simpai-force-hidden");
+            target.setAttribute("aria-hidden", "true");
+            target.hidden = true;
+            target.style.setProperty("display", "none", "important");
+            target.style.setProperty("min-height", "0", "important");
+            target.style.setProperty("height", "0", "important");
+            target.style.setProperty("margin", "0", "important");
+            target.style.setProperty("padding", "0", "important");
+            target.style.setProperty("overflow", "hidden", "important");
+        }
     }
     return true;
 }
