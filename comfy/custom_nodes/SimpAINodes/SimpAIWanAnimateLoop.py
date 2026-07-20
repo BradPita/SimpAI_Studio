@@ -9,6 +9,7 @@ import torch
 
 
 _TAIL_GUARD_FRAMES = 4
+_MIN_CHUNK_SAMPLE_FRAMES = 33
 _BACKGROUND_CALIBRATION_STRENGTH = 1.0
 _BACKGROUND_CALIBRATION_MAX_LUMA_SCALE = 0.10
 _BACKGROUND_CALIBRATION_MAX_LUMA_SHIFT = 0.08
@@ -99,6 +100,54 @@ def _node_result(value):
 def _align_4n1(value):
     value = max(1, int(value))
     return value + ((1 - value) % 4)
+
+
+def _plan_chunk_keep_targets(total_frames, chunk_limit, overlap):
+    total_frames = max(1, int(total_frames))
+    chunk_limit = max(1, int(chunk_limit))
+    overlap = max(0, int(overlap))
+    first_capacity = chunk_limit - _TAIL_GUARD_FRAMES
+    repeat_capacity = chunk_limit - overlap - _TAIL_GUARD_FRAMES
+    if first_capacity <= 0 or repeat_capacity <= 0:
+        raise RuntimeError("Wan Animate chunk has no room for output frames.")
+    if total_frames <= first_capacity:
+        return [total_frames]
+
+    remaining = total_frames - first_capacity
+    repeat_count = (remaining + repeat_capacity - 1) // repeat_capacity
+    targets = [first_capacity]
+    if repeat_count > 1:
+        targets.extend([repeat_capacity] * (repeat_count - 1))
+    targets.append(remaining - (repeat_count - 1) * repeat_capacity)
+
+    minimum_sample = min(_MIN_CHUNK_SAMPLE_FRAMES, chunk_limit)
+    last_sample = _align_4n1(overlap + targets[-1] + _TAIL_GUARD_FRAMES)
+    if last_sample >= minimum_sample:
+        return targets
+
+    minimum_last_keep = 1
+    while (
+        _align_4n1(overlap + minimum_last_keep + _TAIL_GUARD_FRAMES)
+        < minimum_sample
+    ):
+        minimum_last_keep += 1
+
+    donor_discard = 0 if len(targets) == 2 else overlap
+    minimum_donor_keep = 1
+    while (
+        _align_4n1(donor_discard + minimum_donor_keep + _TAIL_GUARD_FRAMES)
+        < minimum_sample
+    ):
+        minimum_donor_keep += 1
+
+    needed = max(0, minimum_last_keep - targets[-1])
+    transfer = ((needed + 3) // 4) * 4
+    available = max(0, targets[-2] - minimum_donor_keep)
+    transfer = min(transfer, (available // 4) * 4)
+    if transfer > 0:
+        targets[-2] -= transfer
+        targets[-1] += transfer
+    return targets
 
 
 def _sample(model, positive, negative, sampler, sigmas, latent, seed, cfg, noise=None):
@@ -2647,6 +2696,10 @@ def _finish_calibration_debug(state, summary_payload):
         )
         chunk_controls = {
             "schema_version": 1,
+            "color_correction_switches": summary_payload.get(
+                "color_correction_switches",
+                {},
+            ),
             "chunks": [
                 {key: chunk.get(key) for key in control_keys}
                 for chunk in summary_payload.get("chunks", [])
@@ -2746,6 +2799,13 @@ class SimpAIWanAnimateLoop:
                 "pose_video": ("IMAGE",),
                 "background_video": ("IMAGE",),
                 "character_mask": ("MASK",),
+                "enable_continuation_normalization": ("BOOLEAN", {"default": False}),
+                "enable_background_calibration": ("BOOLEAN", {"default": False}),
+                "enable_character_color_calibration": ("BOOLEAN", {"default": False}),
+                "enable_character_tone_inverse": ("BOOLEAN", {"default": False}),
+                "enable_character_low_frequency_residual": ("BOOLEAN", {"default": False}),
+                "enable_manual_segment_color": ("BOOLEAN", {"default": False}),
+                "enable_overlap_color_calibration": ("BOOLEAN", {"default": False}),
                 "calibration_debug": ("BOOLEAN", {"default": False}),
             },
         }
@@ -2779,6 +2839,13 @@ class SimpAIWanAnimateLoop:
         pose_video=None,
         background_video=None,
         character_mask=None,
+        enable_continuation_normalization=False,
+        enable_background_calibration=False,
+        enable_character_color_calibration=False,
+        enable_character_tone_inverse=False,
+        enable_character_low_frequency_residual=False,
+        enable_manual_segment_color=False,
+        enable_overlap_color_calibration=False,
         calibration_debug=False,
     ):
         if not isinstance(driving_video, torch.Tensor) or driving_video.ndim != 4:
@@ -2808,6 +2875,7 @@ class SimpAIWanAnimateLoop:
             33,
             chunk_limit - _TAIL_GUARD_FRAMES - 4,
         )
+        keep_targets = _plan_chunk_keep_targets(total_frames, chunk_limit, overlap)
         produced = 0
         chunk_index = 0
         previous_frames = None
@@ -2832,9 +2900,17 @@ class SimpAIWanAnimateLoop:
             max_keep = chunk_limit - discard_head - _TAIL_GUARD_FRAMES
             if max_keep <= 0:
                 raise RuntimeError("Wan Animate chunk has no room for output frames.")
-            keep_target = min(total_frames - produced, max_keep)
+            if chunk_index >= len(keep_targets):
+                raise RuntimeError("Wan Animate chunk plan ended before the video.")
+            keep_target = keep_targets[chunk_index]
+            if keep_target <= 0 or keep_target > max_keep:
+                raise RuntimeError("Wan Animate chunk plan contains an invalid frame count.")
             generate_length = _align_4n1(
                 discard_head + keep_target + _TAIL_GUARD_FRAMES
+            )
+            generate_length = max(
+                generate_length,
+                min(_MIN_CHUNK_SAMPLE_FRAMES, chunk_limit),
             )
             generate_length = min(generate_length, chunk_limit)
             source_start = max(0, produced - discard_head)
@@ -2842,6 +2918,7 @@ class SimpAIWanAnimateLoop:
                 min(_WEAK_CONTINUE_MOTION_FRAMES, overlap) if has_previous else 0
             )
             continuation_detail_summary = {
+                "enabled": bool(enable_continuation_normalization),
                 "applied": False,
                 "reason": "first_chunk",
             }
@@ -2853,15 +2930,24 @@ class SimpAIWanAnimateLoop:
                     continuation_frames,
                     raw_continuation,
                 )
-                continuation, continuation_detail_summary = (
-                    _limit_continuation_detail_energy(
-                        raw_continuation,
-                        continuation_detail_reference_level,
-                        continuation_mask,
-                        continuation_detail_reference_summary.get("luma_center"),
-                        continuation_detail_reference_summary.get("luma_spread"),
+                if enable_continuation_normalization:
+                    continuation, continuation_detail_summary = (
+                        _limit_continuation_detail_energy(
+                            raw_continuation,
+                            continuation_detail_reference_level,
+                            continuation_mask,
+                            continuation_detail_reference_summary.get("luma_center"),
+                            continuation_detail_reference_summary.get("luma_spread"),
+                        )
                     )
-                )
+                    continuation_detail_summary["enabled"] = True
+                else:
+                    continuation = raw_continuation
+                    continuation_detail_summary = {
+                        "enabled": False,
+                        "applied": False,
+                        "reason": "disabled_by_node_switch",
+                    }
                 _calibration_debug_record_stage(
                     calibration_debug_state,
                     chunk_index,
@@ -2882,8 +2968,16 @@ class SimpAIWanAnimateLoop:
                 continuation = None
             continuation_rgb_summary = {
                 "used": continuation is not None,
-                "source": "previous_segment_manual_color_adjusted_output",
-                "source_stage": "after_manual_segment_adjustment_before_overlap",
+                "source": (
+                    "previous_segment_manual_color_adjusted_output"
+                    if enable_manual_segment_color
+                    else "previous_segment_pre_overlap_output"
+                ),
+                "source_stage": (
+                    "after_manual_segment_adjustment_before_overlap"
+                    if enable_manual_segment_color
+                    else "segment_output_before_overlap"
+                ),
                 "source_start": int(source_start) if continuation is not None else None,
                 "source_saturation_curve_applied": False,
                 "pixel_transform": bool(continuation_detail_summary.get("applied")),
@@ -2997,11 +3091,19 @@ class SimpAIWanAnimateLoop:
                 int(usable.shape[0]),
                 usable,
             )
-            usable, calibration_summary = _calibrate_to_original_background(
-                usable,
-                original_frames,
-                edit_mask,
-            )
+            if enable_background_calibration:
+                usable, calibration_summary = _calibrate_to_original_background(
+                    usable,
+                    original_frames,
+                    edit_mask,
+                )
+                calibration_summary["enabled"] = True
+            else:
+                calibration_summary = {
+                    "enabled": False,
+                    "applied": False,
+                    "reason": "disabled_by_node_switch",
+                }
             _calibration_debug_record_stage(
                 calibration_debug_state,
                 chunk_index,
@@ -3015,25 +3117,34 @@ class SimpAIWanAnimateLoop:
                 _CHARACTER_COLOR_REFERENCE_FRAMES,
                 int(usable.shape[0]),
             )
-            if discard_head > 0:
-                previous_color_reference = fixed_character_color_reference
-                previous_color_reference_mask = fixed_character_color_reference_mask
-                color_reference_source = "first_segment_head_fixed"
+            if not enable_character_color_calibration:
+                character_color_summary = {
+                    "enabled": False,
+                    "applied": False,
+                    "reason": "disabled_by_node_switch",
+                    "reference_source": None,
+                }
             else:
-                previous_color_reference = usable[:color_reference_frames].contiguous()
-                previous_color_reference_mask = (
-                    edit_mask[:color_reference_frames].contiguous()
-                    if isinstance(edit_mask, torch.Tensor)
-                    else None
+                if discard_head > 0:
+                    previous_color_reference = fixed_character_color_reference
+                    previous_color_reference_mask = fixed_character_color_reference_mask
+                    color_reference_source = "first_segment_head_fixed"
+                else:
+                    previous_color_reference = usable[:color_reference_frames].contiguous()
+                    previous_color_reference_mask = (
+                        edit_mask[:color_reference_frames].contiguous()
+                        if isinstance(edit_mask, torch.Tensor)
+                        else None
+                    )
+                    color_reference_source = "first_segment_head_initial"
+                usable, character_color_summary = _calibrate_character_sequence_to_previous(
+                    usable,
+                    previous_color_reference,
+                    edit_mask,
+                    previous_color_reference_mask,
                 )
-                color_reference_source = "first_segment_head_initial"
-            usable, character_color_summary = _calibrate_character_sequence_to_previous(
-                usable,
-                previous_color_reference,
-                edit_mask,
-                previous_color_reference_mask,
-            )
-            character_color_summary["reference_source"] = color_reference_source
+                character_color_summary["enabled"] = True
+                character_color_summary["reference_source"] = color_reference_source
             _calibration_debug_record_stage(
                 calibration_debug_state,
                 chunk_index,
@@ -3043,7 +3154,15 @@ class SimpAIWanAnimateLoop:
                 source_start,
                 discard_head,
             )
-            if character_tone_reference is None:
+            if not enable_character_tone_inverse:
+                character_tone_summary = {
+                    "enabled": False,
+                    "applied": False,
+                    "reason": "disabled_by_node_switch",
+                    "reference_created": False,
+                    "passed_to_continue_motion": False,
+                }
+            elif character_tone_reference is None:
                 tone_reference_frames = min(
                     _CHARACTER_TONE_REFERENCE_FRAMES,
                     int(usable.shape[0]),
@@ -3058,6 +3177,7 @@ class SimpAIWanAnimateLoop:
                     ),
                 )
                 character_tone_summary = {
+                    "enabled": True,
                     "applied": False,
                     "reason": "first_segment_reference",
                     "reference_created": bool(
@@ -3077,6 +3197,7 @@ class SimpAIWanAnimateLoop:
                     character_tone_reference,
                     character_tone_gains,
                 )
+                character_tone_summary["enabled"] = True
             _calibration_debug_record_stage(
                 calibration_debug_state,
                 chunk_index,
@@ -3086,7 +3207,15 @@ class SimpAIWanAnimateLoop:
                 source_start,
                 discard_head,
             )
-            if character_low_frequency_reference is None:
+            if not enable_character_low_frequency_residual:
+                character_low_frequency_summary = {
+                    "enabled": False,
+                    "applied": False,
+                    "reason": "disabled_by_node_switch",
+                    "reference_created": False,
+                    "passed_to_continue_motion": False,
+                }
+            elif character_low_frequency_reference is None:
                 low_frequency_reference_frames = min(
                     _CHARACTER_TONE_REFERENCE_FRAMES,
                     int(usable.shape[0]),
@@ -3103,6 +3232,7 @@ class SimpAIWanAnimateLoop:
                     )
                 )
                 character_low_frequency_summary = {
+                    "enabled": True,
                     "applied": False,
                     "reason": "first_segment_reference",
                     "reference_created": bool(
@@ -3122,6 +3252,7 @@ class SimpAIWanAnimateLoop:
                     character_low_frequency_reference,
                     character_low_frequency_controls,
                 )
+                character_low_frequency_summary["enabled"] = True
             _calibration_debug_record_stage(
                 calibration_debug_state,
                 chunk_index,
@@ -3138,7 +3269,24 @@ class SimpAIWanAnimateLoop:
                 "scope": "existing_character_mask",
                 "passed_to_continue_motion": False,
             }
-            if chunk_index == 0:
+            if not enable_manual_segment_color:
+                manual_segment_color_summary = {
+                    "enabled": False,
+                    "scope": "existing_character_mask",
+                    "contrast": float(segment_contrast),
+                    "saturation": float(segment_saturation),
+                    "contrast_pivot": 0.5,
+                    "color_space": "ycbcr",
+                    "saturation_transform": "smoothstep_chroma_radius_weighted_gain",
+                    "saturation_curve_end": _MANUAL_SATURATION_CURVE_END,
+                    "visible_output_applied": False,
+                    "passed_to_continue_motion": False,
+                    "applied": False,
+                    "reason": "disabled_by_node_switch",
+                    "first_segment_enabled": False,
+                    "later_segments_enabled": False,
+                }
+            elif chunk_index == 0:
                 manual_segment_color_summary = {
                     "enabled": True,
                     "scope": "existing_character_mask",
@@ -3186,17 +3334,26 @@ class SimpAIWanAnimateLoop:
 
             blend_frames = 0
             overlap_color_summary = {
+                "enabled": bool(enable_overlap_color_calibration),
                 "applied": False,
                 "reason": "first_chunk",
             }
             if discard_head > 0:
                 previous_overlap = _output_tail(output, discard_head)
-                usable, overlap_color_summary = _calibrate_to_previous_overlap(
-                    usable,
-                    previous_overlap,
-                    edit_mask,
-                    discard_head,
-                )
+                if enable_overlap_color_calibration:
+                    usable, overlap_color_summary = _calibrate_to_previous_overlap(
+                        usable,
+                        previous_overlap,
+                        edit_mask,
+                        discard_head,
+                    )
+                    overlap_color_summary["enabled"] = True
+                else:
+                    overlap_color_summary = {
+                        "enabled": False,
+                        "applied": False,
+                        "reason": "disabled_by_node_switch",
+                    }
                 blend_frames = _blend_output_overlap(output, usable[:discard_head].contiguous())
             _calibration_debug_record_stage(
                 calibration_debug_state,
@@ -3244,7 +3401,7 @@ class SimpAIWanAnimateLoop:
 
             output.append(kept)
             produced += int(kept.shape[0])
-            if chunk_index == 0:
+            if chunk_index == 0 and enable_character_color_calibration:
                 fixed_character_color_reference = usable[
                     :color_reference_frames
                 ].contiguous()
@@ -3253,31 +3410,40 @@ class SimpAIWanAnimateLoop:
                     if isinstance(edit_mask, torch.Tensor)
                     else None
                 )
-                reference_frame_count = min(
-                    _CONTINUATION_DETAIL_REFERENCE_FRAMES,
-                    int(output[0].shape[0]),
-                )
-                detail_reference_frames = output[0][:reference_frame_count].contiguous()
-                detail_reference_mask = _prepare_edit_mask(
-                    character_mask,
-                    0,
-                    reference_frame_count,
-                    detail_reference_frames,
-                )
-                (
-                    continuation_detail_reference_level,
-                    continuation_detail_reference_summary,
-                ) = _measure_continuation_detail_reference(
-                    detail_reference_frames,
-                    detail_reference_mask,
-                )
-                continuation_detail_reference_summary["reference_frames"] = int(
-                    reference_frame_count
-                )
-                continuation_detail_reference_summary["reference"] = "first_segment_head"
-                continuation_rgb_summary["detail_reference"] = (
-                    continuation_detail_reference_summary
-                )
+            if chunk_index == 0:
+                if enable_continuation_normalization:
+                    reference_frame_count = min(
+                        _CONTINUATION_DETAIL_REFERENCE_FRAMES,
+                        int(output[0].shape[0]),
+                    )
+                    detail_reference_frames = output[0][:reference_frame_count].contiguous()
+                    detail_reference_mask = _prepare_edit_mask(
+                        character_mask,
+                        0,
+                        reference_frame_count,
+                        detail_reference_frames,
+                    )
+                    (
+                        continuation_detail_reference_level,
+                        continuation_detail_reference_summary,
+                    ) = _measure_continuation_detail_reference(
+                        detail_reference_frames,
+                        detail_reference_mask,
+                    )
+                    continuation_detail_reference_summary["enabled"] = True
+                    continuation_detail_reference_summary["reference_frames"] = int(
+                        reference_frame_count
+                    )
+                    continuation_detail_reference_summary["reference"] = "first_segment_head"
+                    continuation_rgb_summary["detail_reference"] = (
+                        continuation_detail_reference_summary
+                    )
+                else:
+                    continuation_detail_reference_summary = {
+                        "enabled": False,
+                        "applied": False,
+                        "reason": "disabled_by_node_switch",
+                    }
             previous_frames = continuation_source_kept[-overlap:].contiguous()
             chunks.append(
                 {
@@ -3335,16 +3501,62 @@ class SimpAIWanAnimateLoop:
                 "max_chunk_frames": chunk_limit,
                 "overlap_frames": overlap,
                 "tail_guard_frames": _TAIL_GUARD_FRAMES,
+                "minimum_chunk_sample_frames": min(
+                    _MIN_CHUNK_SAMPLE_FRAMES,
+                    chunk_limit,
+                ),
                 "seed_strategy": "global_timeline_aligned_noise",
-                "continue_motion_strategy": "previous_generated_conditioning_normalized_rgb",
+                "continue_motion_strategy": (
+                    "previous_generated_conditioning_normalized_rgb"
+                    if enable_continuation_normalization
+                    else "previous_generated_rgb"
+                ),
                 "continue_motion_frames": _WEAK_CONTINUE_MOTION_FRAMES,
+                "color_correction_switches": {
+                    "enable_continuation_normalization": bool(enable_continuation_normalization),
+                    "enable_background_calibration": bool(enable_background_calibration),
+                    "enable_character_color_calibration": bool(enable_character_color_calibration),
+                    "enable_character_tone_inverse": bool(enable_character_tone_inverse),
+                    "enable_character_low_frequency_residual": bool(enable_character_low_frequency_residual),
+                    "enable_manual_segment_color": bool(enable_manual_segment_color),
+                    "enable_overlap_color_calibration": bool(enable_overlap_color_calibration),
+                    "native_color_path": not any(
+                        (
+                            enable_continuation_normalization,
+                            enable_background_calibration,
+                            enable_character_color_calibration,
+                            enable_character_tone_inverse,
+                            enable_character_low_frequency_residual,
+                            enable_manual_segment_color,
+                            enable_overlap_color_calibration,
+                        )
+                    ),
+                    "overlap_blending_preserved": True,
+                },
                 "continuation_rgb": {
                     "enabled": True,
-                    "source": "previous_segment_manual_color_adjusted_output",
-                    "source_stage": "after_manual_segment_adjustment_before_overlap",
-                    "applies_to": "time_aligned_generated_overlap_after_conditioning_normalization",
+                    "normalization_enabled": bool(enable_continuation_normalization),
+                    "source": (
+                        "previous_segment_manual_color_adjusted_output"
+                        if enable_manual_segment_color
+                        else "previous_segment_pre_overlap_output"
+                    ),
+                    "source_stage": (
+                        "after_manual_segment_adjustment_before_overlap"
+                        if enable_manual_segment_color
+                        else "segment_output_before_overlap"
+                    ),
+                    "applies_to": (
+                        "time_aligned_generated_overlap_after_conditioning_normalization"
+                        if enable_continuation_normalization
+                        else "time_aligned_generated_overlap_native_rgb"
+                    ),
                     "conditioning_only": True,
-                    "detail_reference": "first_segment_head",
+                    "detail_reference": (
+                        "first_segment_head"
+                        if enable_continuation_normalization
+                        else None
+                    ),
                     "detail_reference_frames": _CONTINUATION_DETAIL_REFERENCE_FRAMES,
                     "detail_reference_summary": continuation_detail_reference_summary,
                     "detail_radius": _CONTINUATION_DETAIL_RADIUS,
@@ -3356,12 +3568,13 @@ class SimpAIWanAnimateLoop:
                     "min_luma_scale": _CONTINUATION_LUMA_MIN_SCALE,
                     "max_luma_scale": _CONTINUATION_LUMA_MAX_SCALE,
                     "max_luma_shift": _CONTINUATION_LUMA_MAX_SHIFT,
-                    "aligns_low_frequency_luma": True,
+                    "aligns_low_frequency_luma": bool(enable_continuation_normalization),
                     "luma_alignment_scales_high_frequency_luma": False,
                     "preserves_in_range_high_frequency_luma": True,
                     "detail_policy": "first_segment_reference_ceiling_only",
                     "preserves_chroma": True,
                     "manual_segment_output_adjustment": {
+                        "enabled": bool(enable_manual_segment_color),
                         "scope": "existing_character_mask",
                         "contrast": float(segment_contrast),
                         "saturation": float(segment_saturation),
@@ -3369,14 +3582,14 @@ class SimpAIWanAnimateLoop:
                         "color_space": "ycbcr",
                         "saturation_transform": "smoothstep_chroma_radius_weighted_gain",
                         "saturation_curve_end": _MANUAL_SATURATION_CURVE_END,
-                        "visible_output_applied": True,
-                        "passed_to_continue_motion": True,
+                        "visible_output_applied": bool(enable_manual_segment_color),
+                        "passed_to_continue_motion": bool(enable_manual_segment_color),
                         "first_segment_enabled": False,
-                        "later_segments_enabled": True,
+                        "later_segments_enabled": bool(enable_manual_segment_color),
                     },
                 },
                 "character_tone_inverse": {
-                    "enabled": True,
+                    "enabled": bool(enable_character_tone_inverse),
                     "scope": "existing_character_mask",
                     "reference": "first_segment_head_relative_to_time_aligned_original",
                     "reference_frames": _CHARACTER_TONE_REFERENCE_FRAMES,
@@ -3404,10 +3617,10 @@ class SimpAIWanAnimateLoop:
                     "positive_and_negative_controlled_separately": True,
                     "preserves_scene_base": True,
                     "preserves_chroma": True,
-                    "passed_to_continue_motion": True,
+                    "passed_to_continue_motion": bool(enable_character_tone_inverse),
                 },
                 "character_low_frequency_residual": {
-                    "enabled": True,
+                    "enabled": bool(enable_character_low_frequency_residual),
                     "scope": "existing_character_mask",
                     "reference": "first_segment_head_generated_minus_time_aligned_original",
                     "reference_frames": _CHARACTER_TONE_REFERENCE_FRAMES,
@@ -3423,7 +3636,7 @@ class SimpAIWanAnimateLoop:
                     "temporal_alpha": _CHARACTER_LOW_FREQUENCY_TEMPORAL_ALPHA,
                     "preserves_chroma": True,
                     "preserves_scene_outer_base": True,
-                    "passed_to_continue_motion": True,
+                    "passed_to_continue_motion": bool(enable_character_low_frequency_residual),
                 },
                 "character_saturation_control": {
                     "enabled": False,
@@ -3432,7 +3645,7 @@ class SimpAIWanAnimateLoop:
                     "measurement": "raw_decoded_tail_chroma_p75_vs_first_segment_head_for_report_only",
                     "scope": "existing_character_mask",
                     "passed_to_continue_motion": False,
-                    "manual_segment_controls_preserved": True,
+                    "manual_segment_controls_preserved": bool(enable_manual_segment_color),
                 },
                 "appearance_drift": {
                     "enabled": True,
@@ -3459,7 +3672,7 @@ class SimpAIWanAnimateLoop:
                     "local_block_minimum_mask_coverage": _APPEARANCE_LOCAL_BLOCK_MIN_MASK_COVERAGE,
                 },
                 "character_color_calibration": {
-                    "enabled": True,
+                    "enabled": bool(enable_character_color_calibration),
                     "timing": "after_decode_before_overlap",
                     "applies_to": "every_frame_inside_character_mask",
                     "reference": "fixed_first_segment_head",
@@ -3483,7 +3696,7 @@ class SimpAIWanAnimateLoop:
                     "color_feedback": "fixed_first_segment_head_only",
                 },
                 "background_calibration": {
-                    "enabled": True,
+                    "enabled": bool(enable_background_calibration),
                     "reference": "time_aligned_driving_video_outside_character_mask",
                     "applies_to": "whole_chunk",
                     "pixel_compositing": False,
@@ -3493,7 +3706,7 @@ class SimpAIWanAnimateLoop:
                     "max_chroma_shift": _BACKGROUND_CALIBRATION_MAX_CHROMA_SHIFT,
                 },
                 "overlap_color_calibration": {
-                    "enabled": True,
+                    "enabled": bool(enable_overlap_color_calibration),
                     "reference": "previous_generated_overlap",
                     "preferred_scope": "character_mask",
                     "fallback_scope": "whole_frame",

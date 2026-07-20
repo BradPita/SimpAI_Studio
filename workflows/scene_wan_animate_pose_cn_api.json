@@ -666,9 +666,9 @@
       ],
       "force_size": 1
     },
-    "class_type": "WanAnimateBestFrameWindow",
+    "class_type": "SimpAIWanAnimateBestFrameWindow",
     "_meta": {
-      "title": "WanAnimate Best Frame Window"
+      "title": "SimpAI Wan Animate Best Frame Window"
     }
   },
   "793": {
@@ -851,6 +851,13 @@
       "overlap_frames": 5,
       "segment_contrast": 1,
       "segment_saturation": 1,
+      "enable_continuation_normalization": false,
+      "enable_background_calibration": false,
+      "enable_character_color_calibration": false,
+      "enable_character_tone_inverse": false,
+      "enable_character_low_frequency_residual": false,
+      "enable_manual_segment_color": false,
+      "enable_overlap_color_calibration": false,
       "calibration_debug": false,
       "clip_vision_output": [
         "913",

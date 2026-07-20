@@ -4372,6 +4372,13 @@ with shared.gradio_root:
                 with floating_shell(visible=False, elem_id="identity_dialog", elem_classes=["identity_note"], modal=False) as identity_dialog:
                     with gr.Tabs(elem_id="identity_dialog_content", elem_classes=["identity_note"]):
                         with gr.Tab(label='IdentityCard') as bind_id_tab:
+                            identity_close_button = gr.Button(
+                                value='×',
+                                size='sm',
+                                min_width=32,
+                                elem_id="identity_dialog_close_button",
+                                elem_classes=["simpleai-floating-close"],
+                            )
                             with gr.Row(elem_classes=["identity-summary-row"]):
                                 with gr.Column(scale=5, min_width=250, elem_classes=["identity-summary-main"]):
                                     current_id_info = gr.Markdown(elem_classes='note_info')
@@ -9947,6 +9954,7 @@ with shared.gradio_root:
         state_topbar=state_topbar,
         system_params=system_params,
         identity_export_btn=identity_export_btn,
+        identity_close_button=identity_close_button,
         identity_input_info=identity_input_info,
         identity_phrase_input=identity_phrase_input,
         identity_phrases_confirm_button=identity_phrases_confirm_button,

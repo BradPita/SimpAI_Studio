@@ -3157,6 +3157,9 @@ def toggle_preset_store(state):
         else:
             state['preset_store'] = False
             state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
+            # The guest entry is an identity-card opener, not a toggle. Startup
+            # updates can otherwise leave the server-side flag out of date.
+            state['identity_dialog'] = False
             return [skip_update(), store_update] + update_topbar_js_params(state) + toggle_identity_dialog(state)
 
 def update_navbar_from_mystore(selected_preset, state):

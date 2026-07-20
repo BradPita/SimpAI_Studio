@@ -255,23 +255,25 @@ def _probe_positive_duration(probe, path):
 
 def _best_wan_animate_window(total_frames):
     total_frames = max(1, int(total_frames))
-    if total_frames <= 57:
-        return _align_4n_plus_1(total_frames)
+    one_pass_window = max(17, _align_4n_plus_1(total_frames + 4))
+    if one_pass_window <= 97:
+        return one_pass_window
 
     best_window = 57
     best_candidate = None
     for window in range(57, 98, 4):
-        segment_count = int(math.ceil(total_frames / window))
+        first_keep = window - 4
+        repeat_keep = window - 9
+        segment_count = _pass_count(total_frames, first_keep, repeat_keep)
+        output_capacity = first_keep + (segment_count - 1) * repeat_keep
         candidate = (
-            segment_count * window - total_frames,
             segment_count,
+            output_capacity - total_frames,
             -window,
         )
         if best_candidate is None or candidate < best_candidate:
             best_candidate = candidate
             best_window = window
-        if candidate[0] == 0:
-            break
     return best_window
 
 

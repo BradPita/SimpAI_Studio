@@ -38,6 +38,13 @@
       "overlap_frames": 5,
       "segment_contrast": 1.0,
       "segment_saturation": 1.0,
+      "enable_continuation_normalization": false,
+      "enable_background_calibration": false,
+      "enable_character_color_calibration": false,
+      "enable_character_tone_inverse": false,
+      "enable_character_low_frequency_residual": false,
+      "enable_manual_segment_color": false,
+      "enable_overlap_color_calibration": false,
       "model": [
         "830",
         0
@@ -827,43 +834,17 @@
       "title": "🔧 Simple Math"
     }
   },
-  "743": {
-    "inputs": {
-      "expression": "a//4*4+1",
-      "a": [
-        "747",
-        0
-      ]
-    },
-    "class_type": "UtilityExpression",
-    "_meta": {
-      "title": "Expression"
-    }
-  },
   "744": {
     "inputs": {
-      "expression": "b if (a%b == 0 or a%b>=b*0.5 or a//b==0) else ((max(a//(a//b), b//2)-1)//4)*4+1",
-      "a": [
+      "frame_count": [
         "400",
         1
       ],
-      "b": [
-        "743",
-        0
-      ]
+      "force_size": 1
     },
-    "class_type": "UtilityExpression",
+    "class_type": "SimpAIWanAnimateBestFrameWindow",
     "_meta": {
-      "title": "Expression"
-    }
-  },
-  "747": {
-    "inputs": {
-      "value": 77
-    },
-    "class_type": "easy int",
-    "_meta": {
-      "title": "Int"
+      "title": "SimpAI Wan Animate Best Frame Window"
     }
   },
   "748": {

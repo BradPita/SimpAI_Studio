@@ -6481,7 +6481,7 @@ function portalFloatingShells() {
     }
 
     const targets = [
-        { id: 'identity_dialog', selectors: ['#identity_dialog_content', '#identity_dialog', '.identity_note'] },
+        { id: 'identity_dialog', selectors: ['#identity_dialog', '#identity_dialog_content', '.identity_note'] },
         { id: 'missing_model_modal', selectors: ['#missing_model_modal', '#missing_model_modal_content'] },
         { id: 'model_browser_modal', selectors: ['#model_browser_modal', '#model_browser_modal_content'] },
         { id: 'user_personal_wildcards_modal', selectors: ['#user_personal_wildcards_modal', '#user_personal_wildcards_modal_content'] },
@@ -6531,6 +6531,9 @@ function portalFloatingShells() {
                     store.style.pointerEvents = 'none';
                 });
             }
+            if (target.id === 'identity_dialog' && typeof initIdentityPopup === 'function') {
+                initIdentityPopup();
+            }
             return;
         }
         const originalParent = portalNode.parentElement;
@@ -6546,6 +6549,9 @@ function portalFloatingShells() {
                 store.style.display = 'none';
                 store.style.pointerEvents = 'none';
             });
+        }
+        if (target.id === 'identity_dialog' && typeof initIdentityPopup === 'function') {
+            initIdentityPopup();
         }
         if (
             target.collapseParent
@@ -6735,7 +6741,7 @@ window.installResizablePopup = installResizablePopup;
 
 window.simpleaiTraceFloating = function(id) {
     const aliases = {
-        identity_dialog: ['#identity_dialog_content', '#identity_dialog', '.identity_note'],
+        identity_dialog: ['#identity_dialog', '#identity_dialog_content', '.identity_note'],
         missing_model_modal: ['#missing_model_modal', '#missing_model_modal_content'],
         model_browser_modal: ['#model_browser_modal', '#model_browser_modal_content'],
         user_personal_wildcards_modal: ['#user_personal_wildcards_modal', '#user_personal_wildcards_modal_content'],
@@ -6817,6 +6823,7 @@ onAfterUiUpdate(initParameterProfilePlaceholder);
 function initIdentityPopup() {
     const content = document.getElementById('identity_dialog_content');
     if (!content) return;
+    initIdentityGuestEntryBridge();
     const alreadyInited = content.dataset.identityPopupInited === '1';
 
     content.classList.add('simpleai-identity-card');
@@ -6826,16 +6833,17 @@ function initIdentityPopup() {
     const margin = 10;
     const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
     const applyDefaultPosition = () => {
-        setImportantStyle(content, 'top', '72px');
+        const isMobile = window.matchMedia?.('(max-width: 760px)')?.matches || window.innerWidth <= 760;
+        setImportantStyle(content, 'top', isMobile ? 'max(8px, env(safe-area-inset-top))' : '72px');
         setImportantStyle(content, 'left', '50%');
         setImportantStyle(content, 'right', 'auto');
-        setImportantStyle(content, 'bottom', 'auto');
+        setImportantStyle(content, 'bottom', isMobile ? 'max(8px, env(safe-area-inset-bottom))' : 'auto');
         setImportantStyle(content, 'transform', 'translateX(-50%)');
-        setImportantStyle(content, 'width', 'min(800px, calc(100vw - 48px))');
+        setImportantStyle(content, 'width', isMobile ? 'calc(100vw - 16px)' : 'min(800px, calc(100vw - 48px))');
         setImportantStyle(content, 'min-width', '0');
-        setImportantStyle(content, 'max-width', 'calc(100vw - 48px)');
-        setImportantStyle(content, 'height', 'auto');
-        setImportantStyle(content, 'max-height', 'calc(100vh - 96px)');
+        setImportantStyle(content, 'max-width', isMobile ? 'calc(100vw - 16px)' : 'calc(100vw - 48px)');
+        setImportantStyle(content, 'height', isMobile ? 'calc(100dvh - max(16px, calc(env(safe-area-inset-top) + env(safe-area-inset-bottom))))' : 'auto');
+        setImportantStyle(content, 'max-height', isMobile ? 'none' : 'calc(100vh - 96px)');
     };
     const keepInsideViewport = () => {
         const rect = content.getBoundingClientRect();
@@ -6869,25 +6877,49 @@ function initIdentityPopup() {
     titleText.setAttribute('data-original-text', 'IdentityCard');
     titleText.textContent = simpleaiLocalText('IdentityCard', '身份卡片');
 
-    let closeButton = titlebar.querySelector(':scope > .simpleai-floating-close');
+    let closeButton = document.getElementById('identity_dialog_close_button')
+        || titlebar.querySelector(':scope > .simpleai-floating-close');
     if (!closeButton) {
         closeButton = document.createElement('button');
         closeButton.type = 'button';
         closeButton.className = 'simpleai-floating-close';
         closeButton.textContent = '×';
         titlebar.appendChild(closeButton);
+    } else if (closeButton.parentElement !== titlebar) {
+        titlebar.appendChild(closeButton);
     }
     closeButton.setAttribute('aria-label', simpleaiLocalText('Close', '关闭'));
 
+    if (closeButton.id === 'identity_dialog_close_button' && closeButton.dataset.identityCloseBridge !== '1') {
+        closeButton.dataset.identityCloseBridge = '1';
+        closeButton.addEventListener('click', () => {
+            window.__simpleaiIdentityKeepOpenUntil = 0;
+            window.__simpleaiIdentityReopenSent = true;
+            window.__simpleaiIdentityReopenInFlight = false;
+        }, true);
+    }
+
     const closeBtn = titlebar.querySelector('.simpleai-floating-close');
-    if (closeBtn && closeBtn.dataset.identityCloseBound !== '1') {
+    if (
+        closeBtn
+        && closeBtn.id !== 'identity_dialog_close_button'
+        && closeBtn.dataset.identityCloseBound !== '1'
+    ) {
         closeBtn.dataset.identityCloseBound = '1';
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             const gradioRoot = typeof gradioApp === 'function' ? gradioApp() : null;
-            const identityRoot = document.getElementById('identity_center')
-                || gradioRoot?.getElementById?.('identity_center');
+            const findById = (id) => document.getElementById(id)
+                || gradioRoot?.getElementById?.(id)
+                || gradioRoot?.querySelector?.(`#${id}`);
+            const identityRoot = findById('identity_center')
+                || (() => {
+                    const guestStoreButton = findById('bar_store');
+                    return guestStoreButton?.classList?.contains('simpleai-guest-identity')
+                        ? guestStoreButton
+                        : null;
+                })();
             const identityBtn = identityRoot && (
                 identityRoot.matches?.('button')
                     ? identityRoot
@@ -6951,11 +6983,72 @@ function initIdentityPopup() {
         content.dataset.identityViewportBound = '1';
         window.addEventListener('resize', () => {
             if (content.dataset.identityUserMoved === '1') keepInsideViewport();
+            else applyDefaultPosition();
         });
     }
 
     content.dataset.identityPopupInited = '1';
+    if (content.dataset.identityVisibilityBridge !== '1') {
+        content.dataset.identityVisibilityBridge = '1';
+        const restoreVisible = () => {
+            const keepOpenUntil = Number(window.__simpleaiIdentityKeepOpenUntil || 0);
+            if (keepOpenUntil <= Date.now()) return;
+            const hidden = content.hidden
+                || content.classList.contains('hide')
+                || content.classList.contains('hidden')
+                || getComputedStyle(content).display === 'none';
+            if (!hidden) return;
+            content.hidden = false;
+            content.removeAttribute('hidden');
+            content.removeAttribute('aria-hidden');
+            content.classList.remove('hide', 'hidden');
+            content.style.removeProperty('display');
+            content.style.removeProperty('visibility');
+            content.style.removeProperty('pointer-events');
+            if (window.__simpleaiIdentityReopenSent) return;
+            window.__simpleaiIdentityReopenSent = true;
+            window.__simpleaiIdentityReopenInFlight = true;
+            const button = document.getElementById('bar_store');
+            if (button?.classList?.contains('simpleai-guest-identity')) {
+                dispatchIdentityGuestEntry(button);
+            }
+            window.setTimeout(() => {
+                window.__simpleaiIdentityReopenInFlight = false;
+            }, 2400);
+        };
+        const observer = new MutationObserver(() => window.setTimeout(restoreVisible, 0));
+        observer.observe(content, { attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
+        content.__simpleaiIdentityVisibilityObserver = observer;
+        restoreVisible();
+    }
 }
+
+function dispatchIdentityGuestEntry(button) {
+    if (!button) return;
+    const rect = button.getBoundingClientRect?.();
+    const x = rect?.left ? rect.left + Math.max(1, rect.width / 2) : 1;
+    const y = rect?.top ? rect.top + Math.max(1, rect.height / 2) : 1;
+    const eventInit = { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y };
+    try { button.dispatchEvent(new PointerEvent('pointerdown', eventInit)); } catch (e) {}
+    try { button.dispatchEvent(new PointerEvent('pointerup', eventInit)); } catch (e) {}
+    try { button.dispatchEvent(new MouseEvent('click', eventInit)); } catch (e) {}
+}
+
+function initIdentityGuestEntryBridge() {
+    const button = document.getElementById('bar_store');
+    if (!button || button.dataset.identityEntryBridge === '1') return;
+    button.dataset.identityEntryBridge = '1';
+    button.addEventListener('click', () => {
+        if (!button.classList.contains('simpleai-guest-identity')) return;
+        if (window.__simpleaiIdentityReopenInFlight) return;
+        window.__simpleaiIdentityKeepOpenUntil = Date.now() + 6500;
+        window.__simpleaiIdentityReopenSent = false;
+    }, true);
+}
+
+onUiLoaded(initIdentityGuestEntryBridge);
+onAfterUiUpdate(initIdentityGuestEntryBridge);
+setInterval(initIdentityGuestEntryBridge, 1000);
 
 onUiLoaded(initIdentityPopup);
 onAfterUiUpdate(initIdentityPopup);

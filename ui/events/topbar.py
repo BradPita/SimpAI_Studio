@@ -1272,6 +1272,7 @@ def bind_topbar_identity_events(
     state_topbar,
     system_params,
     identity_export_btn,
+    identity_close_button,
     identity_input_info,
     identity_phrase_input,
     identity_phrases_confirm_button,
@@ -1418,6 +1419,11 @@ def bind_topbar_identity_events(
         stage = _identity_stage_from_base(ctrls) if new_flag else "closed"
         return head + [stage, gr_update(visible=vcode_visible), gr_update(visible=phrase_visible)] + ctrls[:10] + identity_inputs + [""]
 
+    def _close_identity_dialog_reset(state):
+        if isinstance(state, dict):
+            state["identity_dialog"] = True
+        return _toggle_identity_dialog_reset(state)
+
     identity_export_btn.click(
         topbar_module.export_identity,
         inputs=state_topbar,
@@ -1456,10 +1462,26 @@ def bind_topbar_identity_events(
     )
     _after_identity_event_chain(unbind_chain)
 
+    identity_toggle_outputs = [
+        identity_dialog,
+        current_id_info,
+        current_upstream_status,
+        identity_export_btn,
+        identity_stage_state,
+    ] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]]
+
     binding_id_button.click(
         _toggle_identity_dialog_reset,
         inputs=state_topbar,
-        outputs=[identity_dialog, current_id_info, current_upstream_status, identity_export_btn, identity_stage_state] + identity_flow_rows + identity_ctrls + identity_input + [identity_input_info[0]],
+        outputs=identity_toggle_outputs,
+        show_progress=False,
+        queue=False,
+    )
+
+    identity_close_button.click(
+        _close_identity_dialog_reset,
+        inputs=state_topbar,
+        outputs=identity_toggle_outputs,
         show_progress=False,
         queue=False,
     )
