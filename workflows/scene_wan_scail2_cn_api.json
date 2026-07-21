@@ -807,6 +807,7 @@
       "sam_detection_threshold": 0.5,
       "sam_max_objects": 2,
       "sam_detect_interval": 2,
+      "cache_mode": "disk",
       "Update reference inputs": null,
       "model": [
         "727",

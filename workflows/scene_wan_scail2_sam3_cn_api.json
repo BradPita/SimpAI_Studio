@@ -797,6 +797,7 @@
       "overlap_frames": 5,
       "reference_count": 1,
       "color_correction": true,
+      "cache_mode": "disk",
       "Update reference inputs": null,
       "model": [
         "727",

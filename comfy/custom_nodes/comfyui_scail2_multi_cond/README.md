@@ -1,5 +1,7 @@
 # ComfyUI SCAIL2 Scheduled Long Video
 
+[中文说明](README.zh-CN.md)
+
 Multi-reference, multi-prompt scheduling for ComfyUI SCAIL2 long-video workflows.
 
 This custom node package wraps the native SCAIL2 long-video pattern into a cleaner scheduler:
@@ -82,6 +84,140 @@ you fill `object_indices = 1` to select the second person in the driving video
 and the reference image only has one person, also filtering the reference by `1`
 would make the reference mask empty.
 
+### SCAIL-2 Face Detail Refinement
+
+Adds a second-pass face refinement path without replacing either long-video
+scheduler. The intended workflow is:
+
+```text
+SCAIL-2 Scheduled Long Video / Internal SAM.frames  # full-body pass
+  -> SCAIL-2 Head Track Crop
+  -> SCAIL-2 Scheduled Long Video / Internal SAM    # face crop pass
+  -> SCAIL-2 Face Composite Back
+  -> VHS_VideoCombine
+```
+
+`SCAIL-2 Head Track Crop` crops a stable square head video from the generated
+full-body frames. Connect a `head_masks` MASK when available. If your ComfyUI
+build exposes SAM3 tracking, you can instead connect `sam_model` and
+`head_conditioning`. The node first tries to extract the SAM3 face/head mask from
+that conditioned track data, then falls back only to ComfyUI nodes that output a
+regular `MASK`. It does not use SCAIL colored-mask fallback for face detail
+cropping, and it does not estimate a smaller head box from a larger body mask.
+The SAM/input mask is treated as the source of truth: if it returns a face mask,
+the crop follows the face; if it returns an upper-body mask, the crop will expose
+that mask problem instead of hiding it.
+The output `face_crop_video` is the square face-neighborhood crop. The output
+`crop_masks` is the original face/head mask cropped into that square, without
+inner bbox clipping. `crop_manifest.frames[].bbox` records the square's
+full-body paste position, `crop_manifest.frames[].mask_bbox` records the mask
+bbox used for crop placement, and `crop_manifest.frames[].detected_mask_bbox`
+records the direct detected bbox when that frame had mask pixels. For full-body
+9:16 videos, start with `crop_padding_ratio` around `0.35` to `0.5`.
+Keep `square_align` at `32` for SCAIL-2 face-detail passes. The crop node keeps
+the square side on that alignment even near the frame edge; for example, on a
+720-wide source the largest aligned crop is 704, so the second SCAIL pass can
+use the crop resolution exactly instead of silently flooring it from 720 to 704.
+`mask_component_mode` defaults to `largest`, which keeps only the largest
+connected mask region per frame before bbox calculation, so small body fragments
+do not expand the crop canvas. Use `all` only when you need to inspect the raw
+mask exactly as it came from SAM or the external mask input.
+
+`crop_mode` controls how the square crop is placed:
+
+- `center_follow`: keeps the crop size fixed from the first tracked frame, then
+  follows the face center frame by frame.
+- `fixed_canvas`: computes the smallest padded square that covers the tracked
+  face/head region across the whole clip, then uses that same fixed full-body
+  bbox for every frame. Use this when the second pass should refine a stable
+  local camera region while the head moves inside it.
+
+For the face crop pass, use either existing long-video scheduler:
+
+- external-mask scheduler if you want to preview/adjust masks;
+- internal-SAM scheduler if you want the crop video tracked inside the node.
+
+Optional reference pre-alignment:
+
+```text
+SCAIL-2 Head Track Crop.face_crop_video + high-res face reference
+  -> SCAIL-2 Align Reference Face To Crop
+  -> aligned_reference_image
+  -> face crop pass reference_N
+```
+
+Thanks to Aiwu (爱屋) for pointing out that the second-pass face-detail video is
+more stable when the high-resolution reference face is aligned to the crop
+video before generation. The `SCAIL-2 Align Reference Face To Crop` node was
+added for that step: it matches the reference face position and face size to the
+first selected crop frame while preserving as much original reference resolution
+as possible.
+
+`SCAIL-2 Align Reference Face To Crop` uses a face detector to compare the first
+selected crop frame with the high-resolution reference image. It then builds a
+new reference image whose aspect ratio matches the crop frame and whose face
+position/face width matches the crop frame. The node does not shrink the
+reference pixels to the crop resolution. It crops the reference at original
+pixel density. By default, `window_fit_mode=shift_inside_reference` moves the
+computed crop window back inside the reference image when that window can fit,
+so a large enough reference image will not get artificial padding. Padding is
+used only when the requested window is larger than the available reference
+image, or when `window_fit_mode=strict_alignment` is selected to preserve exact
+relative face placement. This keeps the reference as sharp as possible while
+giving the second SCAIL pass a face reference whose layout already matches the
+crop. Use `face_scale` only for intentional small corrections: values above
+`1.0` make the reference face larger inside the output window, and values below
+`1.0` make it smaller.
+
+`face_detector_backend` defaults to `auto`. In auto mode the node tries
+InsightFace first, then falls back to MediaPipe if InsightFace is not installed
+or fails to load/detect a face. Use `insightface` when you want the strongest
+detector and already have `insightface` plus `onnxruntime-gpu` installed. Use
+`mediapipe` when you want the easiest install path:
+
+```text
+python -m pip install mediapipe
+```
+
+For InsightFace, install `insightface` plus `onnxruntime-gpu` for CUDA or
+`onnxruntime` for CPU. The recommended model is `buffalo_l`; `buffalo_s` is
+available when a smaller model is preferred. The MediaPipe backend uses the
+built-in face detection solution, so it does not require a separate `.task`
+model file.
+
+Connect `face_crop_video` to the second scheduler's `pose_video`, and reuse the
+same `segment_plan`, `max_chunk_frames`, `overlap_frames`, and
+`boundary_overlap` settings as the full-body pass. Connect high-resolution face
+references to `reference_N`; if the whole clip should use one face, point every
+segment at reference `1`.
+
+`SCAIL-2 Face Composite Back` pastes the refined crop back into the original
+full-body frames using the crop manifest and mask. `color_correction` can be
+enabled or disabled. When enabled, `local_mean_std` matches the refined face
+crop to the target paste area before feather blending; when disabled, the node
+only blends by mask. The node keeps `crop_masks` in the original crop canvas
+recorded by the manifest, applies mask cleanup there, then fits the refined
+face video back to that same crop canvas before blending and pasting the crop
+back to the full-body frame. `face_fit_mode` controls how refined face frames
+whose resolution changed are matched back to the manifest bbox: `center_crop`
+keeps aspect ratio and crops the center, `pad` keeps aspect ratio and pads, and
+`stretch` directly resizes to the bbox. The crop manifest also includes
+CropAndStitch-style coordinate fields such as `crop_to_canvas_bbox` and
+`canvas_to_original_bbox`; the composite node reads `crop_to_canvas_bbox` first
+and falls back to the legacy `bbox` field for old workflows.
+
+`frame_mismatch_mode` controls tail-frame mismatches between the full-body
+video, refined face video, crop masks, and crop manifest. `trim_to_shortest`
+is the default and trims all inputs to the shortest available frame count,
+discarding extra trailing frames. `error` keeps the old strict validation.
+For edge cleanup, `feather_px` blurs the stitch mask, `mask_contract_px` pulls
+the mask edge inward, and `stitch_mask_expand_px` can grow it outward before
+feathering. `stitch_mask_resize_mode` defaults to `bilinear` so soft feathered
+masks stay soft when the refined crop is resized back to the original bbox;
+`nearest` is available only for hard-mask debugging. `stitch_offset_x_px` and
+`stitch_offset_y_px` apply a final pixel-level paste offset; use negative
+`stitch_offset_x_px` if the pasted face appears a little too far right.
+
 ### SCAIL-2 Multi Reference Colored Mask
 
 Builds SCAIL-2 colored masks for multiple reference tracks in one place.
@@ -107,6 +243,48 @@ are rendered, matching the official SCAIL-2 behavior.
 ### SCAIL-2 Segment Planner
 
 Debug/helper node. It prints the resolved segment and chunk plan before generation.
+
+### SCAIL-2 Chunk Keyframe Extractor
+
+Pre-processing helper for extracting frames from a loaded reference/action video
+before generation. Use it when you want to build manually aligned reference
+images for chunk boundaries.
+
+Modes:
+
+- `planner_summary`: connect `SCAIL-2 Segment Planner.summary`; the extractor
+  follows the exact resolved chunk plan;
+- `standard_long_video`: no planner input required; the extractor derives
+  chunk boundaries from the video length, `max_chunk_frames`, and
+  `overlap_frames`.
+
+`contact_sheet_columns` and `contact_sheet_thumbnail_width` control the labeled
+browser sheet layout.
+
+Outputs:
+
+- `boundary_anchor_frames`: the first frame, then each continued chunk's
+  previous kept-frame anchor. Use these when aligning reference structure to
+  the old video boundary;
+- `new_chunk_start_frames`: the first final frame owned by each chunk;
+- `paired_keyframes`: original-size keyframes in the same visual order as the
+  browser sheet, alternating boundary/start pairs;
+- `contact_sheet`: one labeled table image for preview only. It uses resized
+  thumbnails and text labels, so use `paired_keyframes` when saving usable
+  source images;
+- `summary`: JSON with zero-based indices, one-based frame numbers, chunk
+  ranges, and the safe continued keep size.
+
+### SCAIL-2 Keyframe Matrix Viewer
+
+Output/frontend node for browsing extracted keyframes as a clickable matrix.
+Connect `SCAIL-2 Chunk Keyframe Extractor.paired_keyframes` and `summary` to
+this node. When it runs, it saves each original-size keyframe as an individual
+PNG and renders a labeled matrix in the node UI.
+
+Each matrix cell shows the chunk/type/frame metadata and links to the original
+PNG with `Open`, `Download`, and `Copy URL` actions. This is different from
+`contact_sheet`, which is only a rendered preview image.
 
 ## Workflow
 
@@ -150,15 +328,15 @@ Example plan generated by the builder:
 
 ```text
 # frames | reference | prompt | negative | boundary_overlap
-77 | 1 | character enters the room wearing a coat | |
-141 | 2 | character removes the coat, inner clothes visible | | 1
+77 | 1 | character enters the room wearing a coat | | 5
+141 | 2 | character removes the coat, inner clothes visible | | 5
 ```
 
 Meaning:
 
 - frames `1-77` use `reference_1`;
 - frames `78-218` use `reference_2`;
-- the transition into `reference_2` uses `boundary_overlap = 1`.
+- the transition into `reference_2` uses `boundary_overlap = 5`.
 
 ## Boundary Overlap
 
@@ -176,6 +354,19 @@ For a reference change, `boundary_overlap` can override the global value for the
 | `5` | Strong continuity, slower reference switch |
 
 There is intentionally no `reference_strength` control. SCAIL2 does not expose a true reference-weight input. Pixel-blending a reference image into `previous_frames` can create static-image ghosting, so this package uses overlap control instead.
+
+When planning chunks manually, remember that `max_chunk_frames` is the full
+native generation window, including overlap frames. If `max_chunk_frames=81`
+and `overlap_frames=5`, a continued chunk can only keep `76` new frames before
+another chunk is required. Segment lengths near the full chunk size can create
+tiny follow-up chunks, such as `81 -> 76 + 5`. Use `max_chunk_frames -
+overlap_frames` as the safe boundary for ordinary continued segments. For the
+first chunk after a reference change, use that segment's `boundary_overlap`
+instead of the global overlap when calculating the boundary.
+
+In `SCAIL-2 Chunk Keyframe Extractor.standard_long_video` mode, the same rule
+is used. With `max_chunk_frames=81` and `overlap_frames=5`, boundary anchors
+progress as `1, 81, 157, 233...`, not `1, 81, 162...`.
 
 ## Installation
 
@@ -221,6 +412,11 @@ workflow/SCAIL2_scheduled_long_video_template.json
 workflow/SCAIL2_long_video_sample.json
 workflow/comfyui_scail2_multi_cond_sample_external.json
 workflow/comfyui_scail2_multi_cond_sample_internal.json
+examples/workflows/Wan21_SCAIL2_00_key_frame_capture.example.json
+examples/workflows/Wan21_SCAIL2_01_full_body_pause.example.json
+examples/workflows/Wan21_SCAIL2_02_face_detail_resume.example.json
+examples/workflows/Wan21_SCAIL2_combined_full_body_to_face_detail.example.json
+examples/workflows/Wan21_SCAIL2_two_stage_guide.md
 ```
 
 The sample workflow uses placeholder media names such as:
@@ -234,6 +430,20 @@ reference_3.png
 
 Replace them with your own ComfyUI input files.
 
+The Wan21 examples are split into a practical two-stage face-detail workflow:
+
+- `Wan21_SCAIL2_00_key_frame_capture.example.json` extracts chunk keyframes for
+  reference preparation;
+- `Wan21_SCAIL2_01_full_body_pause.example.json` runs the full-body pass first,
+  so you can inspect and approve the action transfer result;
+- `Wan21_SCAIL2_02_face_detail_resume.example.json` resumes from that approved
+  full-body video, crops the stable face region, aligns the high-resolution face
+  reference with `SCAIL-2 Align Reference Face To Crop`, runs the face-detail
+  pass, and composites the refined face back;
+- `Wan21_SCAIL2_combined_full_body_to_face_detail.example.json` keeps the same
+  idea in one combined reference workflow, but the two-stage files are safer for
+  expensive runs because you can stop after the full-body pass.
+
 ## Recommended Settings
 
 For SCAIL2 long video:
@@ -243,16 +453,17 @@ max_chunk_frames = 81
 overlap_frames = 5
 ```
 
-For reference changes:
+For Plan Builder reference changes:
+
+```text
+boundary_overlap = 5
+```
+
+For manual experiments, lower values are still available when you intentionally
+want a faster reference switch:
 
 ```text
 boundary_overlap = 0 or 1
-```
-
-For same-reference continuation:
-
-```text
-boundary_overlap = -1
 ```
 
 ## Privacy
