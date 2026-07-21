@@ -270,6 +270,7 @@ PRESET_MISSING_MARKER = "\u2B07"
 PRESET_STORE_ORDER = [
     "Z-imageT",
     "Krea2-Turbo",
+    "Krea2-ImageEdit",
     "Z-TTP",
     "Flux2-Klein",
     "Flux2-KleinEdit",
@@ -341,6 +342,7 @@ PRESET_STORE_ORDER = [
     "ReActor-FaceSwap",
     "LivePortrait Exp",
     "LivePortrait Video",
+    "GeneralAPIImage"
 ]
 
 def _strip_preset_marker(name):

@@ -4460,7 +4460,9 @@ with shared.gradio_root:
 
                         def sync_cloud_image_params(params, name, protocol, base_url, api_key, model, scene_theme_value):
                             params = dict(params or {})
-                            if params.get("backend_engine") != "Cloud":
+                            task_method = str(params.get("task_method") or "")
+                            is_general_api_image = str(params.get("preset") or "") == "GeneralAPIImage"
+                            if params.get("backend_engine") != "Cloud" and not (is_general_api_image and task_method.removeprefix("scene_") == "cloud_image_generate"):
                                 return params
                             params.update({
                                 "backend_engine": "Cloud",
