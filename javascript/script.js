@@ -4817,7 +4817,11 @@ function _rc_setTextValue(elemId, value, commit = true) {
     const root = _rc_getRoot(elemId);
     const input = root ? root.querySelector('textarea, input[type="text"], input:not([type])') : null;
     if (!input) return false;
-    input.value = value == null ? "" : String(value);
+    const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+    const nextValue = value == null ? "" : String(value);
+    if (descriptor?.set) descriptor.set.call(input, nextValue);
+    else input.value = nextValue;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     if (commit) input.dispatchEvent(new Event('change', { bubbles: true }));
     return true;
@@ -5341,6 +5345,10 @@ function initResolutionControlWidget(widget, options = {}) {
         const mode = profileMode(profile);
         return mode === 'image_keep_input_area' || mode === 'video_keep_input_area';
     };
+    const profileUsesPreprocessFit = (profile) => {
+        const mode = profileMode(profile);
+        return mode === 'standard' || profileUsesProjectedChoices(profile);
+    };
     const profileStep = (profile) => {
         const raw = parseInt(profile && profile.quantize, 10);
         return [1, 8, 16, 32, 64].includes(raw) ? raw : null;
@@ -5615,7 +5623,12 @@ function initResolutionControlWidget(widget, options = {}) {
         const projectedChoices = getProjectedProfileChoices();
         if (projectedChoices) return { Scene: projectedChoices };
         if (useSceneSelection()) {
-            const sceneChoices = payload.ratios && Array.isArray(payload.ratios.Scene) ? payload.ratios.Scene : [];
+            const params = window.simpleaiTopbarSystemParams
+                || (typeof topbarLastSystemParams !== 'undefined' ? topbarLastSystemParams : null)
+                || {};
+            const sceneChoices = Array.isArray(params.__scene_aspect_ratios) && params.__scene_aspect_ratios.length
+                ? params.__scene_aspect_ratios
+                : (payload.ratios && Array.isArray(payload.ratios.Scene) ? payload.ratios.Scene : []);
             if (sceneChoices.length) return { Scene: sceneChoices };
         }
         return payload.ratios || {};
@@ -5790,6 +5803,7 @@ function initResolutionControlWidget(widget, options = {}) {
 
     const setMode = (mode, commit = true) => {
         mode = normalizeEditMode(mode, 'scale');
+        widget.__rc_user_edit_mode = true;
         _rc_setTextValue(targetEditModeId, mode, commit);
         for (const button of modeButtons) {
             button.classList.toggle('active', button.dataset.mode === mode);
@@ -6046,11 +6060,13 @@ function initResolutionControlWidget(widget, options = {}) {
     const syncFromHidden = () => {
         const profile = getActiveProfile();
         const activeMode = profileMode(profile);
+        const preprocessFitMode = profilePreprocessFitMode(profile);
         const interactive = activeMode ? profileInteractive(profile) : true;
         syncModeButtonLabels();
         const profileKey = JSON.stringify({
             mode: activeMode,
             source: profile.source || "",
+            preprocessFit: preprocessFitMode,
             preset: window.simpleaiTopbarSystemParams && window.simpleaiTopbarSystemParams.__preset,
             theme: window.simpleaiTopbarSystemParams && window.simpleaiTopbarSystemParams.__scene_theme,
             isScene: _rc_getCurrentSceneFlag(),
@@ -6058,14 +6074,18 @@ function initResolutionControlWidget(widget, options = {}) {
         if (widget.__rc_profile_key !== profileKey) {
             widget.__rc_profile_key = profileKey;
             widget.__rc_user_custom_resolution = false;
+            widget.__rc_user_edit_mode = false;
             widget.__rc_force_projected_default = true;
             widget.__rc_manual_draft = null;
             widget.__rc_manual_editing = false;
             if (profileUsesProjectedChoices(profile)) {
                 widget.__rc_projected_choice_key = defaultProjectedChoiceKey();
-                _rc_setTextValue(targetEditModeId, profilePreprocessFitMode(profile) || 'proportional', true);
+                _rc_setTextValue(targetEditModeId, preprocessFitMode || 'proportional', true);
             } else {
                 widget.__rc_projected_choice_key = "";
+                if (profileUsesPreprocessFit(profile) && preprocessFitMode) {
+                    _rc_setTextValue(targetEditModeId, preprocessFitMode, true);
+                }
             }
             _rc_applyResolutionAccordionDefaultOpen(_rc_getCurrentSceneFlag());
         }
@@ -6098,6 +6118,9 @@ function initResolutionControlWidget(widget, options = {}) {
         const multiplier = interactive ? _rc_getSliderFloat(targetMultiplierId, 1.0) : 1.0;
         multiplierInput.value = String(Math.max(1.0, Math.min(2.0, multiplier || 1.0)));
         if (!interactive) _ro_setSliderValue(targetMultiplierId, 1.0, { commit: false });
+        if (activeMode === 'standard' && preprocessFitMode && !widget.__rc_user_edit_mode && normalizeEditMode(_rc_getTextValue(targetEditModeId), 'scale') !== preprocessFitMode) {
+            _rc_setTextValue(targetEditModeId, preprocessFitMode, true);
+        }
         const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'scale');
         for (const button of modeButtons) {
             button.classList.toggle('active', button.dataset.mode === mode);

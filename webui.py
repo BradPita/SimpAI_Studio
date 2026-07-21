@@ -36,6 +36,7 @@ import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_agent as canvas_vlm_agent
 import modules.canvas_vlm_runtime as canvas_vlm_runtime
 import modules.describe_vlm_chat as describe_vlm_chat
+import modules.cloud_image as cloud_image
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 import modules.canvas_workbench_media_gallery as canvas_workbench_media_gallery
 import modules.canvas_workbench_danbooru_gallery as canvas_workbench_danbooru_gallery
@@ -92,7 +93,7 @@ import logging
 logger = logging.getLogger(__name__)
 regen_manifest.ensure_api_params_backend_arg(api_params)
 if isinstance(getattr(api_params, "backend_args", None), list):
-    for backend_arg_name in ("upscale_model", "keep_vlm_model_loaded"):
+    for backend_arg_name in ("upscale_model", "keep_vlm_model_loaded", "cloud_config_name", "cloud_protocol", "cloud_base_url", "cloud_api_key", "cloud_model"):
         if backend_arg_name not in api_params.backend_args:
             api_params.backend_args.append(backend_arg_name)
 
@@ -180,6 +181,10 @@ def _main_vlm_lang(state=None):
 
 
 def _main_vlm_text(state, en, cn):
+    return en if _main_vlm_lang(state) == "en" else (cn or en)
+
+
+def _cloud_task_text(state, en, cn):
     return en if _main_vlm_lang(state) == "en" else (cn or en)
 
 
@@ -535,6 +540,41 @@ def _get_request_identity_did(request):
     except Exception as e:
         logger.debug(f"[IdentityAccess] status monitor did check failed: {e}")
         return ""
+
+
+def _resolve_cloud_config_user_did(state_params=None, request=None):
+    try:
+        if isinstance(state_params, dict):
+            user = state_params.get("user")
+            if user is not None and hasattr(user, "get_did"):
+                user_did = str(user.get_did() or "").strip()
+                if user_did and user_did != "Unknown":
+                    return user_did
+    except Exception:
+        pass
+    try:
+        user_did = str(_get_request_identity_did(request) or "").strip()
+        if user_did and user_did != "Unknown":
+            return user_did
+    except Exception:
+        pass
+    try:
+        token = getattr(shared, "token", None)
+        if token is None:
+            return None
+        if is_local_mode():
+            for method_name in ("get_default_workspace_did", "get_local_did", "get_guest_did"):
+                if hasattr(token, method_name):
+                    user_did = str(getattr(token, method_name)() or "").strip()
+                    if user_did and user_did != "Unknown":
+                        return user_did
+        if hasattr(token, "get_guest_did"):
+            user_did = str(token.get_guest_did() or "").strip()
+            if user_did and user_did != "Unknown":
+                return user_did
+    except Exception:
+        pass
+    return None
 
 
 def _main_vlm_state_from_request(state, request=None):
@@ -1215,8 +1255,13 @@ def generate_clicked(task: worker.AsyncTask, state):
             return bool(getattr(task, "simpleai_comfy_prompt_accepted", False))
         return bool(getattr(task, "processing", False) or len(task.yields) > 0 or len(task.results) > 0)
 
-    worker.add_task(task)
-    qsize = worker.get_task_size()
+    is_cloud_task = getattr(task, "task_class", None) == "Cloud"
+    if is_cloud_task:
+        worker.start_cloud_task(task)
+        qsize = 0
+    else:
+        worker.add_task(task)
+        qsize = worker.get_task_size()
     MAX_LOOP_NUM = qsize
     last_update_time = time.time()
     loop_num = 0
@@ -1225,7 +1270,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     logged_queue_wait = False
     logger.info(f"[Generate] enqueue: qsize={qsize}, {task_meta}")
     try:
-        while qsize > 0:
+        while (not is_cloud_task) and qsize > 0:
             current_time = time.time()
             if len(task.yields) > 0 or len(task.results) > 0 or task.processing:
                 ready_flag = True
@@ -1267,7 +1312,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     
     execution_start_time = time.perf_counter()
     finished = False
-    ready_flag = True if qsize<=1 else ready_flag
+    ready_flag = True if is_cloud_task or qsize<=1 else ready_flag
     MAX_WAIT_TIME = 1800 if task.content_type == 'image' else 7200
     POLL_INTERVAL = 0.08
     in_progress = False
@@ -1298,6 +1343,19 @@ def generate_clicked(task: worker.AsyncTask, state):
     progress_eta_image_key = None
     progress_eta_started_at = local_start_time
     progress_eta_last_step = None
+
+    if is_cloud_task:
+        stop_update, skip_update = controls_interactive_updates(False)
+        yield progress_html_update(1, _cloud_task_text(state, 'Cloud image task submitted. Waiting for API response...', '云端生图任务已提交，正在等待 API 返回结果...')), \
+            tracked_component_update("progress_window", visible=True, value=waiting_welcome_image), \
+            current_task_gallery_update(), \
+            tracked_component_update("progress_video", visible=False), \
+            tracked_component_update("gallery", visible=False), \
+            comparison_state_update(False), \
+            tracked_component_update("comparison_box", visible=False), \
+            compare_button_update(False), \
+            stop_update, \
+            skip_update
 
     def generation_progress_display(percentage, title, now):
         nonlocal progress_eta_image_key, progress_eta_started_at, progress_eta_last_step
@@ -1533,11 +1591,13 @@ def generate_clicked(task: worker.AsyncTask, state):
                         if user_cancel_action is None and getattr(task, 'last_stop', False) in ['stop', 'skip']:
                             user_cancel_action = task.last_stop
                         had_prior_output = bool(getattr(task, "simpleai_generation_had_output", False))
+                        cloud_error_text = str(getattr(task, "cloud_error", "") or "").strip()
+                        ui_error_text = cloud_error_text if getattr(task, "task_class", None) == "Cloud" and cloud_error_text else "Generation failed: backend returned no results. Check the console log for details."
                         try:
                             if user_cancel_action in ['stop', 'skip']:
                                 gr.Info("Generation skipped or stopped by user.")
                             else:
-                                gr.Warning("Generation failed: backend returned no results. Check the console log for details.")
+                                gr.Warning(ui_error_text)
                         except Exception as e:
                             logger.info(f"[Generate] gr.Info/Warning failed: {e}")
                         if user_cancel_action in ['stop', 'skip']:
@@ -1547,7 +1607,7 @@ def generate_clicked(task: worker.AsyncTask, state):
                         task.simpleai_generation_had_output = had_prior_output
                         if had_prior_output:
                             stop_update, skip_update = controls_interactive_updates(True)
-                            yield tracked_component_update("progress_html", visible=False), \
+                            yield progress_html_update(1, ui_error_text, visible=bool(ui_error_text)), \
                                 tracked_component_update("progress_window", visible=False, value=main_welcome_image), \
                                 current_task_gallery_update(force=True), \
                                 tracked_component_update("progress_video", visible=False, value=None), \
@@ -1560,7 +1620,7 @@ def generate_clicked(task: worker.AsyncTask, state):
                             finished = True
                             continue
                         stop_update, skip_update = controls_interactive_updates(True)
-                        yield tracked_component_update("progress_html", visible=False), \
+                        yield progress_html_update(1, ui_error_text, visible=bool(ui_error_text)), \
                             tracked_component_update("progress_window", visible=True, value=main_welcome_image), \
                             progress_gallery_clear_update(preserve_layout=False), \
                             tracked_component_update("progress_video", visible=False, value=None), \
@@ -1621,7 +1681,10 @@ def generate_clicked(task: worker.AsyncTask, state):
                 else:
                     last_heartbeat_time = current_time
 
-                title = 'Preparing task. Loading models...' if not controls_unlocked else 'Task in progress...'
+                if is_cloud_task:
+                    title = _cloud_task_text(state, 'Cloud image task submitted. Waiting for API response...', '云端生图任务已提交，正在等待 API 返回结果...') if not controls_unlocked else _cloud_task_text(state, 'Cloud image task in progress...', '云端生图任务进行中...')
+                else:
+                    title = 'Preparing task. Loading models...' if not controls_unlocked else 'Task in progress...'
                 stop_update, skip_update = controls_interactive_updates(controls_unlocked)
                 yield progress_html_update(max(last_preview_percentage, 1), title), \
                     skip_component_update(), \
@@ -4271,6 +4334,176 @@ with shared.gradio_root:
                         scene_audio_placeholder = gr.HTML('<div style="padding: 20px; text-align: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888;">Hide When Generating...</div>', visible=False, elem_id="scene_audio_placeholder")
                         scene_director_state = gr.State({})
                         scene_additional_prompt_2 = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, visible=True, elem_classes=['scene_input_2', 'simpai-mounted-hidden'], elem_id='scene_additional_prompt_2')
+                        with gr.Accordion("Cloud Image API", open=False, visible="hidden", elem_id="scene_cloud_image_api") as scene_cloud_image_api:
+                            with gr.Row():
+                                scene_cloud_config_id = gr.Dropdown(label="Saved configurations", choices=[], value=None, elem_id="scene_cloud_config_id")
+                            scene_cloud_name = gr.Textbox(label="Configuration name", value="My Image API", elem_id="scene_cloud_name")
+                            scene_cloud_protocol = gr.Dropdown(label="Protocol", choices=[("Auto", "auto"), ("OpenAI Images", "openai_images"), ("OpenRouter Images", "openrouter_images"), ("OpenAI Chat Image", "openai_chat"), ("SiliconFlow Images", "siliconflow"), ("Nano Banana", "nano_banana")], value="auto", elem_id="scene_cloud_protocol")
+                            scene_cloud_base_url = gr.Textbox(label="API Base URL", placeholder="https://api.example.com/v1", elem_id="scene_cloud_base_url")
+                            scene_cloud_api_key = gr.Textbox(label="API Key", type="password", elem_id="scene_cloud_api_key")
+                            scene_cloud_model = gr.Dropdown(label="Model", choices=[], value=None, allow_custom_value=True, elem_id="scene_cloud_model")
+                            with gr.Row():
+                                scene_cloud_load = gr.Button("Load saved", size="sm", scale=1)
+                                scene_cloud_fetch_models = gr.Button("Fetch models", size="sm", scale=1)
+                                scene_cloud_save = gr.Button("Save configuration", size="sm", scale=1)
+                                scene_cloud_delete = gr.Button("Delete configuration", size="sm", scale=1)
+                            scene_cloud_status = gr.Markdown(value="", elem_id="scene_cloud_status")
+                            scene_cloud_delete_panel = floating_panel(visible=False, elem_id="scene_cloud_delete_panel", elem_classes=["restore-defaults-panel"])
+                            with scene_cloud_delete_panel:
+                                with floating_card(elem_id="scene_cloud_delete_panel_content", elem_classes=["restore-defaults-card"], min_width=320):
+                                    scene_cloud_delete_title = gr.Markdown("Confirm delete configuration?", elem_id="scene_cloud_delete_panel_handle")
+                                    scene_cloud_delete_desc = gr.Markdown("This will permanently remove the selected Cloud API configuration for the current user.")
+                                    with gr.Row():
+                                        scene_cloud_delete_confirm = gr.Button("Confirm Delete")
+                                        scene_cloud_delete_cancel = gr.Button("Cancel")
+
+                        def _cloud_config_dropdown_update(user_did, selected_id=None):
+                            choices = cloud_image.config_choices(user_did)
+                            default_item = cloud_image.config_by_id(selected_id, user_did)
+                            value = str(default_item.get("id") or "") if isinstance(default_item, dict) else None
+                            return dropdown_update(choices=choices, value=value)
+
+                        def _cloud_model_dropdown_update(value=None, choices=None):
+                            model_value = str(value or "").strip()
+                            model_choices = []
+                            seen = set()
+                            for item in choices or []:
+                                text = str(item or "").strip()
+                                if not text or text in seen:
+                                    continue
+                                model_choices.append(text)
+                                seen.add(text)
+                            if model_value and model_value not in seen:
+                                model_choices.insert(0, model_value)
+                            return dropdown_update(choices=model_choices, value=model_value or None, allow_custom_value=True)
+
+                        def load_cloud_image_config(config_id, state_params, request: gr.Request):
+                            user_did = _resolve_cloud_config_user_did(state_params, request)
+                            item = cloud_image.config_by_id(config_id, user_did)
+                            config_update = _cloud_config_dropdown_update(user_did, config_id)
+                            if not item:
+                                return config_update, "", "auto", "", "", _cloud_model_dropdown_update("", []), "No saved API configuration"
+                            return config_update, item.get("name", ""), item.get("protocol", "auto"), item.get("base_url", ""), item.get("api_key", ""), _cloud_model_dropdown_update(item.get("model", ""), [item.get("model", "")]), "Loaded configuration"
+
+                        def sync_cloud_image_panel(scene_theme_value, state_params, request: gr.Request):
+                            resolved_theme = str(scene_theme_value or "").strip()
+                            if not resolved_theme and isinstance(state_params, dict):
+                                resolved_theme = str(state_params.get("scene_theme", "") or "").strip()
+                                if not resolved_theme:
+                                    scenes = state_params.get("scene_frontend", {})
+                                    if isinstance(scenes, dict):
+                                        themes = scenes.get("theme", [])
+                                        if isinstance(themes, str):
+                                            resolved_theme = themes.strip()
+                                        elif isinstance(themes, (list, tuple)) and themes:
+                                            resolved_theme = str(themes[0] or "").strip()
+                            visible = resolved_theme == "GeneralAPIImage"
+                            if not visible:
+                                return gr_update(visible="hidden"), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update()
+                            user_did = _resolve_cloud_config_user_did(state_params, request)
+                            item = cloud_image.config_by_id(None, user_did)
+                            config_update = _cloud_config_dropdown_update(user_did, None)
+                            if not item:
+                                return gr_update(visible=True), config_update, "", "auto", "", "", _cloud_model_dropdown_update("", []), "No saved API configuration"
+                            return (
+                                gr_update(visible=True),
+                                config_update,
+                                item.get("name", ""),
+                                item.get("protocol", "auto"),
+                                item.get("base_url", ""),
+                                item.get("api_key", ""),
+                                _cloud_model_dropdown_update(item.get("model", ""), [item.get("model", "")]),
+                                "Loaded configuration",
+                            )
+
+                        def save_cloud_image_config(config_id, name, protocol, base_url, api_key, model, state_params, request: gr.Request):
+                            if not base_url or not api_key or not model:
+                                return skip_component_update(), "Please fill API Base URL, API Key and Model"
+                            user_did = _resolve_cloud_config_user_did(state_params, request)
+                            saved = cloud_image.upsert_config(name, protocol, base_url, api_key, model, user_did, config_id=config_id or None)
+                            config_update = _cloud_config_dropdown_update(user_did, saved.get("default_id"))
+                            return config_update, "Saved configuration"
+
+                        def fetch_cloud_image_models(protocol, base_url, api_key, model):
+                            model_update = _cloud_model_dropdown_update(model, [model])
+                            if not base_url:
+                                return model_update, "Please fill API Base URL before fetching models"
+                            result = cloud_image.list_models(protocol, base_url, api_key, model)
+                            if not result.get("ok"):
+                                message = str(result.get("error") or "unknown error")
+                                return model_update, f"Fetch models failed: {message}"
+                            models = result.get("models") or []
+                            if not models:
+                                return model_update, "No image-capable models found from API"
+                            selected = str(model or "").strip() or models[0]
+                            return _cloud_model_dropdown_update(selected, models), "Fetched image model list"
+
+                        def delete_cloud_image_config(config_id, state_params, request: gr.Request):
+                            if not config_id:
+                                return gr_update(visible=False), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), "No saved API configuration selected"
+                            user_did = _resolve_cloud_config_user_did(state_params, request)
+                            deleted = cloud_image.delete_config(config_id, user_did)
+                            next_item = cloud_image.config_by_id(None, user_did)
+                            config_update = _cloud_config_dropdown_update(user_did, deleted.get("default_id"))
+                            if not next_item:
+                                return gr_update(visible=False), config_update, "", "auto", "", "", _cloud_model_dropdown_update("", []), "Deleted configuration"
+                            return (
+                                gr_update(visible=False),
+                                config_update,
+                                next_item.get("name", ""),
+                                next_item.get("protocol", "auto"),
+                                next_item.get("base_url", ""),
+                                next_item.get("api_key", ""),
+                                _cloud_model_dropdown_update(next_item.get("model", ""), [next_item.get("model", "")]),
+                                "Deleted configuration",
+                            )
+
+                        def sync_cloud_image_params(params, name, protocol, base_url, api_key, model, scene_theme_value):
+                            params = dict(params or {})
+                            if str(scene_theme_value or "") != "GeneralAPIImage" and params.get("backend_engine") != "Cloud":
+                                return params
+                            params.update({
+                                "backend_engine": "Cloud",
+                                "task_method": "cloud_image_generate",
+                                "cloud_config_name": str(name or "").strip(),
+                                "cloud_protocol": str(protocol or "auto").strip(),
+                                "cloud_base_url": str(base_url or "").strip(),
+                                "cloud_api_key": str(api_key or "").strip(),
+                                "cloud_model": str(model or "").strip(),
+                            })
+                            return params
+
+                        scene_cloud_config_id.change(load_cloud_image_config, inputs=[scene_cloud_config_id, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
+                        scene_cloud_load.click(load_cloud_image_config, inputs=[scene_cloud_config_id, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
+                        scene_cloud_fetch_models.click(fetch_cloud_image_models, inputs=[scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model], outputs=[scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
+                        scene_cloud_save.click(save_cloud_image_config, inputs=[scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, state_topbar], outputs=[scene_cloud_config_id, scene_cloud_status], queue=False, show_progress=False)
+                        scene_cloud_delete.click(lambda: gr_update(visible=True), inputs=None, outputs=scene_cloud_delete_panel, queue=False, show_progress=False)
+                        scene_cloud_delete_cancel.click(lambda: gr_update(visible=False), inputs=None, outputs=scene_cloud_delete_panel, queue=False, show_progress=False)
+                        scene_cloud_delete_confirm.click(delete_cloud_image_config, inputs=[scene_cloud_config_id, state_topbar], outputs=[scene_cloud_delete_panel, scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status], queue=False, show_progress=False)
+                        scene_theme.change(
+                            sync_cloud_image_panel,
+                            inputs=[scene_theme, state_topbar],
+                            outputs=[scene_cloud_image_api, scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status],
+                            queue=False,
+                            show_progress=False,
+                        ).then(
+                            lambda: None,
+                            js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_cloud_image_api");}catch(e){console.warn("[UI-TRACE] scene_cloud_image_api_visibility_sync_failed", e);}}',
+                            queue=False,
+                            show_progress=False,
+                        )
+                        shared.gradio_root.load(
+                            sync_cloud_image_panel,
+                            inputs=[scene_theme, state_topbar],
+                            outputs=[scene_cloud_image_api, scene_cloud_config_id, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_cloud_status],
+                            queue=False,
+                            show_progress=False,
+                        ).then(
+                            lambda: None,
+                            js='()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility("scene_cloud_image_api.load");}catch(e){console.warn("[UI-TRACE] scene_cloud_image_api_load_visibility_sync_failed", e);}}',
+                            queue=False,
+                            show_progress=False,
+                        )
                         
                         sam3_input_video.upload(on_sam3_video_upload, inputs=[sam3_input_video], outputs=[sam3_input_video, sam3_original_video_path, active_video_source, resolution_source_meta, sam3_trim_payload], show_progress=True) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("sam3_input_video", "upload");}')
@@ -4546,13 +4779,17 @@ with shared.gradio_root:
 
                         def stop_clicked(currentTask):
                             currentTask.last_stop = 'stop'
-                            if (currentTask.processing):
+                            if getattr(currentTask, "task_class", None) == "Cloud":
+                                currentTask.user_cancel_action = 'stop'
+                            elif (currentTask.processing):
                                 worker.worker.interrupt_processing(currentTask)
                             return currentTask
 
                         def skip_clicked(currentTask):
                             currentTask.last_stop = 'skip'
-                            if (currentTask.processing):
+                            if getattr(currentTask, "task_class", None) == "Cloud":
+                                currentTask.user_cancel_action = 'skip'
+                            elif (currentTask.processing):
                                 worker.worker.interrupt_processing(currentTask)
                             return currentTask
 
@@ -9427,6 +9664,7 @@ with shared.gradio_root:
         generate_event = bind_generation_failure_cleanup(generate_event.success(select_random_aspect_ratio, inputs=[random_aspect_ratio_checkbox, random_aspect_ratio_state, aspect_ratios_selection], outputs=[overwrite_width, overwrite_height, aspect_ratios_selection, random_aspect_ratio_state], show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
         generate_event = bind_generation_failure_cleanup(generate_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False, queue=False))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(sync_cloud_image_params, inputs=[params_backend, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_theme], outputs=params_backend, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts], show_progress=False)
@@ -9471,6 +9709,7 @@ with shared.gradio_root:
         preview_event = bind_generation_failure_cleanup(preview_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
         preview_event = bind_generation_failure_cleanup(preview_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False))
+        preview_event = bind_generation_failure_cleanup(preview_event.success(sync_cloud_image_params, inputs=[params_backend, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_theme], outputs=params_backend, show_progress=False, queue=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls_preview + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(fn=generate_clicked, inputs=[currentTask, state_topbar], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         preview_event = bind_generation_failure_cleanup(preview_event.success(topbar.process_after_generation, inputs=[state_topbar, currentTask, progress_gallery, progress_video], outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False))
@@ -9712,11 +9951,13 @@ with shared.gradio_root:
                    .then(batch_utils.refresh_scene_batch_accordion, inputs=[state_topbar], outputs=[scene_batch_accordion], queue=False, show_progress=False) \
                    .then(batch_utils.refresh_scene_batch_target, inputs=[state_topbar, scene_batch_target], outputs=[scene_batch_target], queue=False, show_progress=False)
 
-        def scene_aspect_ratio_changed(state):
+        def scene_aspect_ratio_changed(state, scene_aspect_ratio_value):
             task_method = ""
             resolved_theme = None
+            resolved_aspect_ratio = ""
             if isinstance(state, dict):
                 scenes = state.get("scene_frontend", {})
+                resolved_aspect_ratio = str(scene_aspect_ratio_value or state.get("scene_aspect_ratio", "") or "").strip()
                 if isinstance(scenes, dict):
                     resolved_theme = state.get("scene_theme", None)
                     themes = scenes.get("theme", [])
@@ -9737,10 +9978,14 @@ with shared.gradio_root:
             util.log_ui_trace(logger, f"[UI-TRACE] scene_aspect_ratio_changed | scene_theme={resolved_theme!r}, task_method={task_method!r}")
             if "t2v" in task_method.lower():
                 return [skip_component_update(), skip_component_update()]
+            parsed_scene_resolution = modules.meta_parser.parse_resolution_pair_value(resolved_aspect_ratio)
+            if parsed_scene_resolution is not None:
+                width, height = parsed_scene_resolution
+                return [gr_update(value=int(width)), gr_update(value=int(height))]
             return [gr_update(value=-1), gr_update(value=-1)]
 
         scene_aspect_ratio_user_event = getattr(scene_aspect_ratio, "input", scene_aspect_ratio.change)
-        scene_aspect_ratio_user_event(scene_aspect_ratio_changed, inputs=[state_topbar], outputs=[overwrite_width, overwrite_height], queue=False, show_progress=False)
+        scene_aspect_ratio_user_event(scene_aspect_ratio_changed, inputs=[state_topbar, scene_aspect_ratio], outputs=[overwrite_width, overwrite_height], queue=False, show_progress=False)
 
         scene_video.upload(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "ready");}')

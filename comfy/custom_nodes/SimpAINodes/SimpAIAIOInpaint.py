@@ -1,13 +1,7 @@
-import sys
-from pathlib import Path
-
-_STUDIO_ROOT = str(Path(__file__).resolve().parents[3])
-if _STUDIO_ROOT not in sys.path:
-    sys.path.insert(0, _STUDIO_ROOT)
-
 from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
 from comfy_execution.graph_utils import GraphBuilder
-from modules.inpaint_worker import mask_blend_parameters
+
+from .inpaint_worker import mask_blend_parameters
 
 
 def _mask_from_config(graph, config):

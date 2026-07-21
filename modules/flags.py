@@ -1,4 +1,5 @@
 import math
+import re
 from enum import IntEnum, Enum
 
 
@@ -167,6 +168,24 @@ def scene_aspect_ratios_derive(ar):
 scene_aspect_ratios_mapping = lambda x: scene_aspect_ratios_map.get(x, x) if '|' not in x else scene_aspect_ratios_derive(x)
 scene_aspect_ratios_mapping_list = lambda m: [scene_aspect_ratios_mapping(x) for x in m]
 
+
+def normalize_scene_aspect_ratio_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    normalized = text.replace("×", "*").replace("x", "*").replace("X", "*")
+    if re.fullmatch(r"\d+\*\d+", normalized):
+        return normalized
+    return scene_aspect_ratios_mapping(text)
+
+
+def normalize_scene_aspect_ratio_list(values):
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, (list, tuple)):
+        return []
+    return [normalized for normalized in (normalize_scene_aspect_ratio_value(value) for value in values) if normalized]
+
 def get_value_by_scene_theme(state, theme, key, default):
     value = state.get('scene_frontend', {}).get(key, default)
     if isinstance(value, dict):
@@ -275,6 +294,7 @@ task_class_mapping = {
             'LTX'    : 'LTX2.3',
             'Qwen'   : 'Qwen',
             'Z-image': 'Z-image',
+            'Cloud': 'Cloud API',
             }
 def get_taskclass_by_fullname(fullname):
     if ':' in fullname:

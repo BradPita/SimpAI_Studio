@@ -1,17 +1,11 @@
 import os
-import sys
-from pathlib import Path
-
-_STUDIO_ROOT = str(Path(__file__).resolve().parents[3])
-if _STUDIO_ROOT not in sys.path:
-    sys.path.insert(0, _STUDIO_ROOT)
 
 import folder_paths
 import numpy as np
 import torch
 from torch.hub import download_url_to_file
 
-from modules.model_path_utils import find_dir_containing_model, find_model_in_dirs, first_model_dir
+from .model_path_utils import find_dir_containing_model, find_model_in_dirs, first_model_dir
 
 
 def _folder_dirs(name, fallback):
@@ -36,7 +30,7 @@ class _ComfyMaskBackend:
         self.sam_dirs = _folder_dirs("sams", "sams") + _folder_dirs("inpaint", "inpaint")
         self.rembg_dirs = _folder_dirs("rembg", "rembg") + _folder_dirs("inpaint", "inpaint")
         dino_dirs = _folder_dirs("grounding-dino", "grounding-dino") + _folder_dirs("inpaint", "inpaint")
-        from extras.GroundingDINO.util.inference import GroundingDinoModel
+        from .grounding_dino import GroundingDinoModel
         self.groundingdino = GroundingDinoModel(dino_dirs, dino_dirs[0]).predict_with_caption
 
     def resolve_sam_model(self, model_type):
@@ -82,7 +76,7 @@ class SimpAIAIORegionMask:
     CATEGORY = "SimpAI/AIO/Improve Detail"
 
     def generate(self, image, region):
-        from extras.inpaint_mask import SAMOptions, generate_mask_from_image
+        from .inpaint_mask import SAMOptions, generate_mask_from_image
 
         masks = []
         dino_total = sam_total = applied_total = 0

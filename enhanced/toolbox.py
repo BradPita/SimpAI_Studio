@@ -1344,6 +1344,11 @@ def save_preset(*args):
                 "backend_engine",
                 "clip_model",
                 "upscale_model",
+                "cloud_config_name",
+                "cloud_protocol",
+                "cloud_base_url",
+                "cloud_api_key",
+                "cloud_model",
             ]:
                 backend_params_sanitized.pop(k, None)
             if not backend_params_sanitized:

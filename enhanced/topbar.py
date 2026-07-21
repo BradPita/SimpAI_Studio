@@ -2317,6 +2317,16 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             value = str(value or "").strip()
             if not value:
                 return modules.flags.scene_aspect_ratios_size[modules.flags.scene_aspect_ratios[0]]
+            compact = value.split("|", 1)[0].strip().replace("×", "*").replace("x", "*")
+            parts = compact.split("*")
+            if len(parts) == 2:
+                try:
+                    width = int(float(parts[0]))
+                    height = int(float(parts[1]))
+                    if width > 0 and height > 0:
+                        return f"{width}×{height}"
+                except Exception:
+                    pass
             if '×' in value:
                 return value.split('|')[0].strip()
             if value in modules.flags.scene_aspect_ratios_size:
@@ -3639,7 +3649,7 @@ def _build_scene_default_payload(scene_frontend, scene_theme, overwrite_step_def
 
     aspect_ratios = _scene_value_by_theme(scene_frontend, scene_theme, "aspect_ratio", [])
     try:
-        aspect_ratios = modules.flags.scene_aspect_ratios_mapping_list(aspect_ratios)
+        aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(aspect_ratios)
     except Exception:
         aspect_ratios = []
     payload["scene_aspect_ratio"] = aspect_ratios[0] if aspect_ratios else ""
@@ -3833,6 +3843,13 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         state["preset_store"] = False
         state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
 
+    try:
+        scene_aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(
+            _scene_value_by_theme(scene_frontend, scene_theme, "aspect_ratio", [])
+        )
+    except Exception:
+        scene_aspect_ratios = []
+
     system_params= dict(
         __preset=state.get("__preset"),
         __preset_missing=current_preset_missing,
@@ -3849,6 +3866,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
             scene_theme,
             _scene_standard_overwrite_step_default_from_state(state),
         ),
+        __scene_aspect_ratios=scene_aspect_ratios,
         __scene_control_props=_build_scene_control_props(scene_frontend, scene_theme),
         __scene_task_method=str(scene_task_method or ""),
         __scene_canvas_mask_disabled=_resolve_scene_canvas_mask_disabled(scene_frontend, scene_theme),

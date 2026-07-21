@@ -690,10 +690,10 @@ def switch_scene_theme(state, image_number, canvas_image, input_image1, addition
         aspect_ratios = aspect_ratios_new
         if 'auto_match' in aspect_ratio_select_mode:
             aspect_ratios = [aspect_ratio]
-        aspect_ratios = modules.flags.scene_aspect_ratios_mapping_list(aspect_ratios)
-        aspect_ratio = modules.flags.scene_aspect_ratios_mapping(aspect_ratio)
+        aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(aspect_ratios)
+        aspect_ratio = modules.flags.normalize_scene_aspect_ratio_value(aspect_ratio)
     else:
-        aspect_ratios = modules.flags.scene_aspect_ratios_mapping_list(aspect_ratios)
+        aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(aspect_ratios)
         aspect_ratio = '' if len(aspect_ratios)==0 else aspect_ratios[0]
     results.append(gr_update(value=aspect_ratio, visible="hidden"))
     results.append(get_scene_safe_update('scene_image_number', image_number, visible, inter))
@@ -1261,7 +1261,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
         results.append(gr_update(label=switch_option4_title, value=modules.flags.get_value_by_scene_theme(state_params, theme_default, 'switch_option4', False), interactive='scene_switch_option4' not in inter))
 
         aspect_ratios = modules.flags.get_value_by_scene_theme(state_params, theme_default, 'aspect_ratio', [])
-        aspect_ratios = modules.flags.scene_aspect_ratios_mapping_list(aspect_ratios)
+        aspect_ratios = modules.flags.normalize_scene_aspect_ratio_list(aspect_ratios)
         aspect_ratio = '' if len(aspect_ratios) == 0 else aspect_ratios[0]
         results.append(gr_update(value=aspect_ratio, visible="hidden"))
 

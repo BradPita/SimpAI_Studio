@@ -14,6 +14,7 @@ import modules.config
 patch_all()
 
 exclusive_task_lock = threading.Lock()
+cloud_task_semaphore = threading.Semaphore(2)
 
 
 def _standard_stream_is_closed(stream):
@@ -212,7 +213,7 @@ class AsyncTask:
         regen_manifest.ensure_api_params_backend_arg(api_params)
         backend_args = getattr(api_params, 'backend_args', None)
         if isinstance(backend_args, list):
-            for backend_arg_name in ('upscale_model', 'keep_vlm_model_loaded'):
+            for backend_arg_name in ('upscale_model', 'keep_vlm_model_loaded', 'cloud_config_name', 'cloud_protocol', 'cloud_base_url', 'cloud_api_key', 'cloud_model'):
                 if backend_arg_name not in backend_args:
                     backend_args.append(backend_arg_name)
 
@@ -690,8 +691,15 @@ def worker():
             p2p_task.call_remote_stop(async_task, processing_start_time, status)
         return
 
+    def finalize_task(async_task):
+        if async_task.generate_image_grid:
+            build_image_wall(async_task)
+        async_task.yields.append(['finish', async_task.results])
+
     def interrupt_processing(prompt_id=None):
         _restore_standard_streams_if_closed()
+        if getattr(prompt_id, "task_class", None) == 'Cloud':
+            return
         target_prompt_id = None
         if isinstance(prompt_id, str):
             target_prompt_id = str(prompt_id).strip() or None
@@ -706,6 +714,75 @@ def worker():
         else:
             comfyd.interrupt()
         ldm_patched.modules.model_management.interrupt_current_processing()
+
+    def run_cloud_task(async_task: AsyncTask):
+        from modules import cloud_image
+        preparation_start_time = int(time.time() * 1000)
+        acquired_cloud_slot = False
+        try:
+            if async_task.last_stop == 'skip':
+                logger.info('User skipped Cloud task before start')
+                async_task.user_cancel_action = 'skip'
+                async_task.last_stop = False
+                stop_processing(async_task, preparation_start_time, 'Skipped')
+                return
+            if async_task.last_stop == 'stop':
+                logger.info('User stopped Cloud task before start')
+                async_task.user_cancel_action = 'stop'
+                stop_processing(async_task, preparation_start_time, 'Stopped')
+                return
+            while not acquired_cloud_slot:
+                if async_task.last_stop == 'skip':
+                    logger.info('User skipped Cloud task while waiting for cloud slot')
+                    async_task.user_cancel_action = 'skip'
+                    async_task.last_stop = False
+                    stop_processing(async_task, preparation_start_time, 'Skipped')
+                    return
+                if async_task.last_stop == 'stop':
+                    logger.info('User stopped Cloud task while waiting for cloud slot')
+                    async_task.user_cancel_action = 'stop'
+                    stop_processing(async_task, preparation_start_time, 'Stopped')
+                    return
+                acquired_cloud_slot = cloud_task_semaphore.acquire(timeout=0.25)
+            if async_task.last_stop == 'skip':
+                logger.info('User skipped Cloud task')
+                async_task.user_cancel_action = 'skip'
+                async_task.last_stop = False
+                stop_processing(async_task, preparation_start_time, 'Skipped')
+                return
+            if async_task.last_stop == 'stop':
+                logger.info('User stopped Cloud task')
+                async_task.user_cancel_action = 'stop'
+                stop_processing(async_task, preparation_start_time, 'Stopped')
+                return
+            async_task.processing = True
+            async_task.cloud_error = ""
+            cloud_image.generate(
+                async_task,
+                progressbar,
+                yield_result,
+                stop_processing,
+                preparation_start_time,
+            )
+        except Exception as error:
+            async_task.cloud_error = str(error)
+            logger.exception('Cloud image generation failed')
+            stop_processing(async_task, preparation_start_time, str(error))
+        finally:
+            if acquired_cloud_slot:
+                cloud_task_semaphore.release()
+            finalize_task(async_task)
+
+    def start_cloud_task(async_task: AsyncTask):
+        async_task.processing = True
+        thread = threading.Thread(
+            target=run_cloud_task,
+            args=(async_task,),
+            daemon=True,
+            name=f"cloud-task-{async_task.task_id[:8]}",
+        )
+        thread.start()
+        return
 
     def build_image_wall(async_task):
         results = []
@@ -1843,6 +1920,9 @@ def worker():
     @torch.inference_mode()
     def handler(async_task: AsyncTask):
         logger.info(f'Task_class:{async_task.task_class}, Task_name:{async_task.task_name}, Task_method:{async_task.task_method}')
+        if async_task.task_class == 'Cloud':
+            start_cloud_task(async_task)
+            return
         p2p_remote_process = ads.get_admin_default("p2p_remote_process")
         remote_process = True if p2p_remote_process is not None and p2p_remote_process.lower() == 'out' else False
         preparation_start_time = time.perf_counter()
@@ -2715,6 +2795,8 @@ def worker():
     worker.stop_processing = stop_processing
     worker.interrupt_processing = interrupt_processing
     worker.get_service_info = get_service_info
+    worker.start_cloud_task = start_cloud_task
+    globals()["start_cloud_task"] = start_cloud_task
 
     last_active = time.time()
     while True:
@@ -2731,10 +2813,9 @@ def worker():
             try:
                 with exclusive_task_lock:
                     handler(task)
-                    if task.generate_image_grid:
-                        build_image_wall(task)
-                    task.yields.append(['finish', task.results])
-                    if task.task_class not in flags.comfy_classes and not args_manager.args.disable_backend:
+                    if task.task_class != 'Cloud':
+                        finalize_task(task)
+                    if task.task_class == 'Fooocus' and not args_manager.args.disable_backend:
                         pipeline.prepare_text_encoder(async_call=True)
             except:
                 _restore_standard_streams_if_closed()
@@ -2742,7 +2823,8 @@ def worker():
                     traceback.print_exc()
                 except Exception:
                     pass
-                task.yields.append(['finish', task.results])
+                if task.task_class != 'Cloud':
+                    task.yields.append(['finish', task.results])
             finally:
                 async_tasks.task_done()
                 p2p_task.gc_p2p_task()

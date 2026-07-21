@@ -1,10 +1,10 @@
 import numpy as np
-import sys
 import torch
-from pathlib import Path
 
 from comfy.samplers import SAMPLER_NAMES, SCHEDULER_NAMES
 from comfy_execution.graph_utils import GraphBuilder
+
+from .inpaint_worker import InpaintWorker
 
 
 TILED_PROMPT_GUARD_LONG_EDGE = 6000
@@ -78,11 +78,6 @@ class SimpAIAIOPrepareRegionInpaint:
     CATEGORY = "SimpAI/AIO/Improve Detail/Internal"
 
     def prepare(self, image, mask, respective_field, use_fill):
-        studio_root = str(Path(__file__).resolve().parents[3])
-        if studio_root not in sys.path:
-            sys.path.insert(0, studio_root)
-        from modules.inpaint_worker import InpaintWorker
-
         workers = []
         images = []
         masks = []
