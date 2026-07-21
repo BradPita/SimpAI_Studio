@@ -4,6 +4,7 @@ import json
 import logging
 import mimetypes
 import os
+import random
 import re
 import time
 import uuid
@@ -528,7 +529,7 @@ def _raw_to_array(raw):
 def _build_metadata_entries(task, model, protocol, prompt, size, source_image_count):
     entries = [
         ("Prompt", "prompt", prompt),
-        ("Negative Prompt", "negative_prompt", str(getattr(task, "negative_prompt", "") or "")),
+        ("Negative Prompt", "negative_prompt", str(getattr(task, "rendered_negative_prompt", getattr(task, "negative_prompt", "")) or "")),
         ("Resolution", "resolution", size),
         ("Image Number", "image_number", str(getattr(task, "image_number", 1) or 1)),
         ("Cloud Model", "cloud_model", model),
@@ -545,15 +546,22 @@ def _build_metadata_entries(task, model, protocol, prompt, size, source_image_co
     return entries
 
 
-def _build_metadata_parser(task, prompt):
+def _build_metadata_parser(task, prompt, negative_prompt=None):
     if not getattr(task, "save_metadata_to_images", False):
         return None
+    negative_prompt = str(
+        getattr(
+            task,
+            "rendered_negative_prompt",
+            negative_prompt if negative_prompt is not None else getattr(task, "negative_prompt", ""),
+        ) or ""
+    )
     parser = get_metadata_parser(task.metadata_scheme)
     parser.set_data(
         prompt,
         [prompt] if prompt else [],
-        str(getattr(task, "negative_prompt", "") or ""),
-        [str(getattr(task, "negative_prompt", "") or "")] if str(getattr(task, "negative_prompt", "") or "") else [],
+        negative_prompt,
+        [negative_prompt] if negative_prompt else [],
         int(getattr(task, "steps", 1) or 1),
         "None",
         "None",
@@ -578,6 +586,60 @@ def _save_with_metadata(task, raw, metadata, metadata_parser):
     return path
 
 
+def _build_prompt_requests(task, count):
+    import modules.constants as constants
+
+    base_prompt = str(getattr(task, "prompt", "") or "").strip()
+    additional_prompt = str(getattr(task, "scene_additional_prompt", "") or "").strip()
+    negative_prompt = str(getattr(task, "negative_prompt", "") or "").strip()
+    seed = int(getattr(task, "seed", 0) or 0)
+    disable_seed_increment = bool(getattr(task, "disable_seed_increment", False))
+    user_did = getattr(task, "user_did", None)
+    try:
+        import enhanced.wildcards as wildcards
+    except ModuleNotFoundError:
+        prompt = f"{base_prompt}, {additional_prompt}" if base_prompt and additional_prompt else (base_prompt or additional_prompt)
+        return [
+            {
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "seed": (seed + index) % (constants.MAX_SEED + 1),
+            }
+            for index in range(count)
+        ]
+
+    initial_rng = random.Random(seed % (constants.MAX_SEED + 1))
+    compiled_prompt, wildcards_arrays, arrays_mult, seed_fixed = wildcards.compile_arrays(
+        base_prompt,
+        initial_rng,
+        user_did=user_did,
+    )
+    total_requests = count if arrays_mult == 0 else arrays_mult
+    requests = []
+
+    for index in range(total_requests):
+        if arrays_mult == 0 or not seed_fixed or not disable_seed_increment:
+            request_seed = (seed + index) % (constants.MAX_SEED + 1)
+        else:
+            request_seed = seed % (constants.MAX_SEED + 1)
+
+        request_rng = random.Random(request_seed)
+        rendered_prompt = wildcards.apply_arrays(compiled_prompt, index, wildcards_arrays, arrays_mult)
+        rendered_prompt = wildcards.replace_wildcard(rendered_prompt, request_rng, user_did=user_did).strip()
+        rendered_negative_prompt = wildcards.apply_wildcards(negative_prompt, request_rng, user_did=user_did).strip()
+        rendered_additional_prompt = wildcards.apply_wildcards(additional_prompt, request_rng, user_did=user_did).strip()
+        if rendered_additional_prompt:
+            rendered_prompt = f"{rendered_prompt}, {rendered_additional_prompt}" if rendered_prompt else rendered_additional_prompt
+
+        requests.append({
+            "prompt": rendered_prompt,
+            "negative_prompt": rendered_negative_prompt,
+            "seed": request_seed,
+        })
+
+    return requests
+
+
 def generate(task, progressbar, yield_result, stop_processing, started_at):
     task.simpleai_generation_had_output = False
     task.cloud_error = ""
@@ -589,19 +651,15 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         raise ValueError("请先配置 API 地址、API Key 和模型")
     protocol = _protocol(params.get("cloud_protocol"), base_url, model)
     count = max(1, min(int(getattr(task, "image_number", 1) or 1), 8))
-    prompt = str(task.prompt or "").strip()
-    if task.scene_additional_prompt:
-        prompt = f"{prompt}, {task.scene_additional_prompt}" if prompt else str(task.scene_additional_prompt)
+    prompt_requests = _build_prompt_requests(task, count)
     image_paths = _image_paths(task)
     size = _size(task)
     session = requests.Session()
     headers = {"Authorization": f"Bearer {api_key}"}
-    metadata = _build_metadata_entries(task, model, protocol, prompt, size, len(image_paths))
-    metadata_parser = _build_metadata_parser(task, prompt)
     input_image_bytes = sum(Path(path).stat().st_size for path in image_paths if os.path.isfile(path))
     request_timeout = _request_timeout(protocol, image_paths)
     logger.info(
-        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s",
+        "Cloud image request prepared: task_id=%s protocol=%s model=%s size=%s overwrite_width=%s overwrite_height=%s aspect_ratios_selection=%s image_count=%s request_count=%s input_images=%s input_image_bytes=%s request_timeout=%s scene_canvas=%s scene_input1=%s scene_input2=%s scene_input3=%s scene_input4=%s",
         getattr(task, "task_id", None),
         protocol,
         model,
@@ -610,6 +668,7 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         getattr(task, "overwrite_height", None),
         getattr(task, "aspect_ratios_selection", None),
         count,
+        len(prompt_requests),
         len(image_paths),
         input_image_bytes,
         request_timeout,
@@ -619,23 +678,31 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         getattr(task, "scene_input_image3", None) is not None,
         getattr(task, "scene_input_image4", None) is not None,
     )
-    if protocol in ("openai_images", "openrouter_images"):
-        request_specs = [(protocol, count)]
-    elif protocol == "siliconflow" and model == "Kwai-Kolors/Kolors":
-        request_specs = [(protocol, min(count, 4))]
-    else:
-        request_specs = [(protocol, 1) for _ in range(count)]
     results = []
+    result_prompts = []
+    result_negative_prompts = []
     request_errors = []
     try:
         progressbar(task, 10, "提交云端生图任务 ...")
-        for request_index, (request_protocol, request_count) in enumerate(request_specs, 1):
+        for request_index, prompt_request in enumerate(prompt_requests, 1):
             if task.user_cancel_action == "stop":
                 break
-            progressbar(task, 10 + int(request_index * 25 / len(request_specs)), f"提交第 {request_index} 个云端请求 ...")
+            progressbar(task, 10 + int(request_index * 25 / len(prompt_requests)), f"提交第 {request_index} 个云端请求 ...")
+            prompt = prompt_request["prompt"]
+            rendered_negative_prompt = prompt_request["negative_prompt"]
+            logger.info(
+                "Cloud image final prompt: task_id=%s request_index=%s request_total=%s protocol=%s model=%s prompt=%r negative_prompt=%r",
+                getattr(task, "task_id", None),
+                request_index,
+                len(prompt_requests),
+                protocol,
+                model,
+                prompt,
+                rendered_negative_prompt,
+            )
             try:
-                endpoint = _endpoint(base_url, request_protocol, bool(image_paths))
-                if request_protocol == "openai_chat":
+                endpoint = _endpoint(base_url, protocol, bool(image_paths))
+                if protocol == "openai_chat":
                     content = [{"type": "text", "text": prompt}]
                     for path in image_paths:
                         encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
@@ -643,28 +710,28 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                     payload = {"model": model, "messages": [{"role": "user", "content": content}], "n": 1, "size": size, "response_format": "url"}
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = True
-                elif request_protocol == "openrouter_images":
+                elif protocol == "openrouter_images":
                     payload = {
                         "model": model,
                         "prompt": prompt,
-                        "n": request_count,
+                        "n": 1,
                         "size": size,
                     }
                     if image_paths:
                         payload["input_references"] = _openrouter_input_references(image_paths)
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
-                elif request_protocol == "siliconflow":
+                elif protocol == "siliconflow":
                     payload = {"model": model, "prompt": prompt, "image_size": size}
                     if model == "Kwai-Kolors/Kolors":
-                        payload["batch_size"] = request_count
+                        payload["batch_size"] = 1
                     if image_paths:
                         path = image_paths[0]
                         encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
                         payload["image"] = f"data:{_mime_type(path)};base64,{encoded}"
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
-                elif request_protocol == "nano_banana":
+                elif protocol == "nano_banana":
                     ratio = str(getattr(task, "aspect_ratios_selection", None) or "auto").split("|", 1)[0].strip()
                     payload = {"model": model, "prompt": prompt, "replyType": "json", "aspectRatio": ratio}
                     if "lite" not in model.lower():
@@ -679,14 +746,14 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
                     try:
                         field = "image" if len(handles) == 1 else "image[]"
                         files = [(field, (os.path.basename(path), handle, _mime_type(path))) for path, handle in zip(image_paths, handles)]
-                        data = {"model": model, "prompt": prompt, "n": request_count, "size": size, "response_format": "b64_json"}
+                        data = {"model": model, "prompt": prompt, "n": 1, "size": size, "response_format": "b64_json"}
                         response = session.post(endpoint, headers=headers, data=data, files=files, timeout=request_timeout)
                     finally:
                         for handle in handles:
                             handle.close()
                     is_chat_response = False
                 else:
-                    payload = {"model": model, "prompt": prompt, "n": request_count, "size": size, "response_format": "b64_json"}
+                    payload = {"model": model, "prompt": prompt, "n": 1, "size": size, "response_format": "b64_json"}
                     response = session.post(endpoint, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=request_timeout)
                     is_chat_response = False
             except requests.RequestException as error:
@@ -703,6 +770,8 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
             extracted = _extract_chat_images(response_data) if is_chat_response else _extract_images(response_data)
             if extracted:
                 results.extend(extracted)
+                result_prompts.extend([prompt] * len(extracted))
+                result_negative_prompts.extend([rendered_negative_prompt] * len(extracted))
             else:
                 request_errors.append(f"请求 {request_index}: API 返回中没有可识别的图片")
         if not results:
@@ -716,6 +785,11 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
             progressbar(task, 35 + int(index * 60 / len(results)), f"保存第 {index} 张图片 ...")
             try:
                 raw = value if kind == "bytes" else _download_bytes(value, session)
+                rendered_prompt = result_prompts[index - 1] if index - 1 < len(result_prompts) else ""
+                rendered_negative_prompt = result_negative_prompts[index - 1] if index - 1 < len(result_negative_prompts) else ""
+                task.rendered_negative_prompt = rendered_negative_prompt
+                metadata = _build_metadata_entries(task, model, protocol, rendered_prompt, size, len(image_paths))
+                metadata_parser = _build_metadata_parser(task, rendered_prompt, rendered_negative_prompt)
                 paths.append(_save_with_metadata(task, raw, metadata, metadata_parser))
             except (OSError, ValueError, requests.RequestException) as error:
                 download_errors.append(f"第 {index} 张: {error}")
@@ -727,4 +801,6 @@ def generate(task, progressbar, yield_result, stop_processing, started_at):
         if request_errors or download_errors:
             logger.warning("Cloud image task completed partially: %s", "；".join(request_errors + download_errors))
     finally:
+        if hasattr(task, "rendered_negative_prompt"):
+            delattr(task, "rendered_negative_prompt")
         stop_processing(task, started_at, "Finished" if task.simpleai_generation_had_output else "Stopped")
