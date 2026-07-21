@@ -4420,7 +4420,9 @@ with shared.gradio_root:
                             if not base_url or not api_key or not model:
                                 return skip_component_update(), "Please fill API Base URL, API Key and Model"
                             user_did = _resolve_cloud_config_user_did(state_params, request)
-                            saved = cloud_image.upsert_config(name, protocol, base_url, api_key, model, user_did, config_id=config_id or None)
+                            existing = cloud_image.config_by_id(config_id, user_did) if config_id else None
+                            update_id = config_id if isinstance(existing, dict) and str(existing.get("name") or "").strip() == str(name or "").strip() else None
+                            saved = cloud_image.upsert_config(name, protocol, base_url, api_key, model, user_did, config_id=update_id)
                             config_update = _cloud_config_dropdown_update(user_did, saved.get("default_id"))
                             return config_update, "Saved configuration"
 

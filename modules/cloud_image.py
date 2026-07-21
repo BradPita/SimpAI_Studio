@@ -264,7 +264,7 @@ def _extract_images(data):
                 collect(value[child_key], child_key)
 
     collect(data)
-    return result
+    return list(dict.fromkeys(result))
 
 
 def _decode_data_url(value):
@@ -296,7 +296,7 @@ def _extract_chat_images(data):
                 result.append(("bytes", raw))
             elif isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
                 result.append(("url", candidate))
-    return result
+    return list(dict.fromkeys(result))
 
 
 def _protocol(protocol, base_url, model):
