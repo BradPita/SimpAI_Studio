@@ -789,7 +789,7 @@ def bind_topbar_navigation_events(
             chain.then(
                 fn=None,
                 inputs=system_params,
-                js="(x)=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh'); if(typeof refresh_scene_localization==='function') refresh_scene_localization(); setTimeout(()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh+120ms');}catch(e){}},120);}catch(e){console.warn('[UI-TRACE] preset_nav_after_mount_scene_refresh_failed', e);}}",
+                js="(x)=>{try{if(typeof scheduleScenePanelVisibilityRepair==='function') scheduleScenePanelVisibilityRepair(x,'preset_nav_after_mount_scene_refresh'); if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh'); if(typeof refresh_scene_localization==='function') refresh_scene_localization(); setTimeout(()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh+120ms');}catch(e){}},120);}catch(e){console.warn('[UI-TRACE] preset_nav_after_mount_scene_refresh_failed', e);}}",
                 queue=False,
                 show_progress=False,
             )
@@ -887,7 +887,10 @@ def bind_topbar_load_chain(
                 sp.get("__preset", None) if isinstance(sp, dict) else None,
                 sorted(list(sp.keys()))[:20] if isinstance(sp, dict) else None,
             )
-            result = topbar_module.update_topbar_js_params(sp)[0]
+            # The initial page already has the navigation names and can load
+            # the model catalog on demand. Avoid sending the large model and
+            # preset catalogs again while the rest of the controls mount.
+            result = topbar_module.update_topbar_js_params(sp, include_canvas_catalogs=False)[0]
             try:
                 _debug_load_trace(
                     "load.after_update_topbar_js_params",

@@ -5901,6 +5901,12 @@ function refresh_topbar_status_js_for_preset_nav(system_params) {
     }
 
     try {
+        scheduleScenePanelVisibilityRepair(system_params, "preset_nav_status");
+    } catch (e) {
+        console.error('[UI-TRACE] preset_nav_js.scene_panel_repair_failed', e);
+    }
+
+    try {
         finishPresetNavProgress(system_params && system_params["__preset"]);
     } catch (e) {
         console.error('[UI-TRACE] preset_nav_js.finish_progress_failed', e);
@@ -5912,6 +5918,26 @@ function refresh_topbar_status_js_for_preset_nav(system_params) {
         });
     }
 
+}
+
+function scheduleScenePanelVisibilityRepair(system_params, traceLabel) {
+    if (!system_params || typeof system_params !== "object" || !system_params.__is_scene_frontend) return;
+    const expectedPreset = normalizePresetName(system_params.__preset);
+    const apply = () => {
+        const current = window.simpleaiTopbarSystemParams
+            || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+            || null;
+        const currentPreset = normalizePresetName(current && current.__preset);
+        if (expectedPreset && currentPreset && expectedPreset !== currentPreset) return;
+        try { setPresetNavSceneSuppressed(false); } catch (e) {}
+        try { setPanelVisibleById("scene_panel", true); } catch (e) {}
+        try {
+            if (typeof window.syncGradio6MountedDynamicVisibility === "function") {
+                window.syncGradio6MountedDynamicVisibility(`${traceLabel || "scene_panel_repair"}.mounted`);
+            }
+        } catch (e) {}
+    };
+    [0, 180, 560, 1000].forEach((delay) => setTimeout(apply, delay));
 }
 
 function scheduleMissingModelCheckHintSync(system_params, traceLabel) {
@@ -12944,6 +12970,14 @@ function scheduleSceneAndAdvancedSync(traceLabel, isSceneFrontend) {
     try { simpaiUiTrace("log", "[UI-TRACE] scheduleSceneAndAdvancedSync.called | trace=" + traceLabel + " isScene=" + !!isSceneFrontend); } catch(e) {}
     var nextIsScene = !!isSceneFrontend;
     var forceSync = /regen_(reset|preset_restore)/.test(String(traceLabel || ""));
+    var liveParams = window.simpleaiTopbarSystemParams
+        || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+        || null;
+    var nextPreset = liveParams && typeof liveParams === "object"
+        ? normalizePresetName(liveParams.__preset)
+        : "";
+    var previousPreset = normalizePresetName(window.__simpleai_last_scene_sync_preset || "");
+    var presetChanged = !!nextPreset && nextPreset !== previousPreset;
     if (!nextIsScene && typeof window.closeSam3FramesEditor === "function") {
         try { window.closeSam3FramesEditor(); } catch (e) {}
     }
@@ -12958,27 +12992,45 @@ function scheduleSceneAndAdvancedSync(traceLabel, isSceneFrontend) {
     };
     var prevIsScene = window.__simpleai_last_scene_sync_is_scene;
     var stateChanged = prevIsScene !== nextIsScene;
+    var now = Date.now();
+    var last = window.__simpleai_last_scene_sync_schedule || 0;
     if (!window.__simpleai_ui_ready) {
         window.__simpleai_last_scene_sync_is_scene = nextIsScene;
+        window.__simpleai_last_scene_sync_preset = nextPreset;
         syncSceneAndAdvancedColumns(`${traceLabel}+0ms`, nextIsScene);
         setTimeout(scheduleMountedVisibilitySync, 0);
         try { simpaiUiTrace("log", "[UI-TRACE] scheduleSceneAndAdvancedSync.skipped_retries | trace=" + traceLabel); } catch(e) {}
         return;
     }
-    var now = Date.now();
-    var last = window.__simpleai_last_scene_sync_schedule || 0;
-    if (!stateChanged && !forceSync && now - last < 2000) {
+    if (!stateChanged && !forceSync && !presetChanged && now - last < 2000) {
         try { simpaiUiTrace("log", "[UI-TRACE] scheduleSceneAndAdvancedSync.cooldown | since_last=" + (now - last) + "ms trace=" + traceLabel); } catch(e) {}
         return;
     }
+    const syncGeneration = (Number(window.__simpleai_scene_sync_generation || 0) || 0) + 1;
+    window.__simpleai_scene_sync_generation = syncGeneration;
+    window.__simpleai_last_scene_sync_preset = nextPreset;
+    const isCurrentSync = () => {
+        if (window.__simpleai_scene_sync_generation !== syncGeneration) return false;
+        const current = window.simpleaiTopbarSystemParams
+            || (typeof topbarLastSystemParams !== "undefined" ? topbarLastSystemParams : null)
+            || null;
+        if (!current || typeof current !== "object") return true;
+        const currentPreset = normalizePresetName(current.__preset);
+        if (nextPreset && currentPreset && nextPreset !== currentPreset) return false;
+        return !!(current.__is_scene_frontend || current.scene_frontend) === nextIsScene;
+    };
+    const syncIfCurrent = (label) => {
+        if (!isCurrentSync()) return;
+        syncSceneAndAdvancedColumns(label, nextIsScene);
+    };
     window.__simpleai_last_scene_sync_is_scene = nextIsScene;
     window.__simpleai_last_scene_sync_schedule = now;
-    syncSceneAndAdvancedColumns(`${traceLabel}+immediate`, nextIsScene);
-    setTimeout(() => syncSceneAndAdvancedColumns(`${traceLabel}+120ms`, nextIsScene), 120);
-    setTimeout(() => syncSceneAndAdvancedColumns(`${traceLabel}+500ms`, nextIsScene), 500);
-    setTimeout(scheduleMountedVisibilitySync, 0);
-    setTimeout(scheduleMountedVisibilitySync, 140);
-    setTimeout(scheduleMountedVisibilitySync, 520);
+    syncIfCurrent(`${traceLabel}+immediate`);
+    setTimeout(() => syncIfCurrent(`${traceLabel}+120ms`), 120);
+    setTimeout(() => syncIfCurrent(`${traceLabel}+500ms`), 500);
+    setTimeout(() => { if (isCurrentSync()) scheduleMountedVisibilitySync(); }, 0);
+    setTimeout(() => { if (isCurrentSync()) scheduleMountedVisibilitySync(); }, 140);
+    setTimeout(() => { if (isCurrentSync()) scheduleMountedVisibilitySync(); }, 520);
 }
 
 

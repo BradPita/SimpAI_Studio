@@ -925,11 +925,18 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     preset_scheduler = _preset_str_value('scheduler', 'Scheduler')
 
     results = [params_backend]
+    mobile_advanced_collapsed = bool(state_params.get("__is_mobile", False))
     if is_scene_frontend:
         results.append(gr_update(
-            value=True,
+            value=not mobile_advanced_collapsed,
             visible=True,
             interactive=True,
+        ))
+    elif mobile_advanced_collapsed:
+        results.append(gr_update(
+            value=False,
+            visible='advanced_checkbox' not in visible,
+            interactive='advanced_checkbox' not in inter,
         ))
     else:
         results.append(get_layout_invert_visible_inter('advanced_checkbox', visible, inter))

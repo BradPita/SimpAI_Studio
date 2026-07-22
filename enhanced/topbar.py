@@ -15,6 +15,7 @@ import shared
 import modules.util as util
 import modules.config as config
 import modules.flags
+from ui.generation_performance import is_mobile_user_agent
 import modules.regen_manifest as regen_manifest
 import modules.sdxl_styles
 import modules.constants as constants
@@ -1023,14 +1024,16 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     initial_preset = get_initial_nav_preset(state_params)
     if "__preset" not in state_params.keys():
         state_params.update({"__preset": initial_preset})
-    if "__is_mobile" not in state_params.keys():
-        state_params.update({"__is_mobile": False if user_agent.find("Mobile")>0 and user_agent.find("AppleWebKit")>0 else False})
+    # The browser can keep the state object across a reload. Refresh the
+    # device classification from the current request so a session opened on
+    # desktop does not keep desktop layout values when it is later opened on
+    # a phone (and vice versa).
+    detected_mobile = is_mobile_user_agent(user_agent)
+    state_params.update({"__is_mobile": detected_mobile})
     _update_request_web_state(state_params, request)
-    if "__max_per_page" not in state_params.keys():
-        if state_params["__is_mobile"]:
-            state_params.update({"__max_per_page": 9})
-        else:
-            state_params.update({"__max_per_page": 18})
+    # Keep gallery paging identical across devices; only rendering cadence is
+    # device-specific for performance.
+    state_params.update({"__max_per_page": 18})
     if "__max_catalog" not in state_params.keys():
         state_params.update({"__max_catalog": config.default_image_catalog_max_number })
     state_params.update({"infobox_state": 0})
@@ -1165,11 +1168,9 @@ def refresh_nav_bars(state_params):
 
     for i in range(shared.BUTTON_NUM - len(preset_name_list)):
         preset_name_list.append('')
-    results = []
-    if state_params["__is_mobile"]:
-        results += [gr.update(visible=False)]
-    else:
-        results += [gr.update(visible=True)]
+    # PresetStore is available on every device; mobile only changes sizing
+    # and preview cadence, not the navigation feature set.
+    results = [gr.update(visible=True)]
     missing_count = 0
     total_count = 0
     for i in range(len(preset_name_list)):

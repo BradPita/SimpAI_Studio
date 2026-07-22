@@ -46,6 +46,8 @@ import args_manager
 import ldm_patched.modules.model_management as model_management
 from ui.components.sketch_image import create_sketch_image
 from ui.components import sketch_cache as sketch_payload_cache
+from ui.generation_performance import force_generation_preview, generation_preview_interval
+from ui.generation_sync import synchronize_generation_inputs
 from ui.layout.floating import floating_card, floating_panel, floating_shell
 from ui.bootstrap import apply_webui_assets, create_root_blocks, launch_root_app
 from ui.frontend_http_guard import configure_frontend_http_guard
@@ -1337,7 +1339,7 @@ def generate_clicked(task: worker.AsyncTask, state):
     last_preview_shown_title = ""
     last_preview_shown_percentage = 0
     waiting_for_new_step_frame = False
-    preview_interval = 1.0 / 8.0
+    preview_interval = generation_preview_interval(is_mobile)
     last_preview_image = None
     max_video_preview_cache = 128
     progress_eta_image_key = None
@@ -1527,9 +1529,11 @@ def generate_clicked(task: worker.AsyncTask, state):
                         last_preview_frame_time = current_time
 
                     should_yield_preview = False
-                    if new_step_frame_arrived:
-                        should_yield_preview = True
-                    elif step_changed:
+                    if force_generation_preview(
+                        is_mobile,
+                        step_changed=step_changed,
+                        new_step_frame=new_step_frame_arrived,
+                    ):
                         should_yield_preview = True
                     elif image_to_show is not None:
                         should_yield_preview = current_time >= next_preview_ui_time
@@ -4005,14 +4009,36 @@ with shared.gradio_root:
                                     pil_image = Image.fromarray(image)
                                     if pil_image.mode not in ("RGB", "RGBA"):
                                         pil_image = pil_image.convert("RGBA")
-                                    max_size = 512
+                                    # The 3D viewers only need a preview-sized RGB image.
+                                    # Returning the original PNG here made every canvas change
+                                    # produce a 400KB+ Gradio response, even while both viewers
+                                    # were hidden. Keep transparency when it is meaningful, but
+                                    # use a compact JPEG for ordinary photos.
+                                    max_size = 384
                                     if pil_image.width > max_size or pil_image.height > max_size:
                                         pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
                                     
                                     buffered = io.BytesIO()
-                                    pil_image.save(buffered, format="PNG")
+                                    has_transparency = False
+                                    if pil_image.mode == "RGBA":
+                                        try:
+                                            has_transparency = pil_image.getchannel("A").getextrema()[0] < 255
+                                        except Exception:
+                                            has_transparency = True
+                                    if has_transparency:
+                                        pil_image.save(buffered, format="PNG", optimize=True)
+                                        mime_type = "image/png"
+                                    else:
+                                        pil_image.convert("RGB").save(
+                                            buffered,
+                                            format="JPEG",
+                                            quality=82,
+                                            optimize=True,
+                                            progressive=True,
+                                        )
+                                        mime_type = "image/jpeg"
                                     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                                    return f"data:image/png;base64,{img_str}"
+                                    return f"data:{mime_type};base64,{img_str}"
                             except Exception as e:
                                 print(f"Error converting image for Qwen viewer: {e}")
                                 return None
@@ -4963,7 +4989,10 @@ with shared.gradio_root:
                 input_image_checkbox = gr.Checkbox(label='Input Image', value=modules.config.default_image_prompt_checkbox, container=False, elem_classes=['min_check', 'topbar_toggle_check'], elem_id='input_image_checkbox')
                 prompt_panel_checkbox = gr.Checkbox(label='Prompt Panel', value=False, container=False, elem_classes=['min_check', 'topbar_toggle_check'], elem_id='prompt_panel_checkbox')
                 qwen_tts_checkbox = gr.Checkbox(label='TTS Audio', value=False, container=False, elem_classes=['min_check', 'topbar_toggle_check'], elem_id='qwen_tts_checkbox')
-                advanced_checkbox = gr.Checkbox(label='Advanced+', value=modules.config.default_advanced_checkbox, container=False, elem_classes=['min_check', 'topbar_toggle_check'], elem_id='advanced_checkbox')
+                # Start with the heavy advanced surface collapsed. The first
+                # preset layout update restores the desktop default, while
+                # mobile layouts intentionally remain collapsed.
+                advanced_checkbox = gr.Checkbox(label='Advanced+', value=False, container=False, elem_classes=['min_check', 'topbar_toggle_check'], elem_id='advanced_checkbox')
                 ui_ready_state = gr.State(False)
             
             engine_class_display = gr.HTML(visible=True, value="Z-image", elem_classes=["engineClass"], elem_id='engine_class')
@@ -6364,7 +6393,7 @@ with shared.gradio_root:
             scale=1,
             visible=True,
             elem_id="advanced_column",
-            elem_classes=["scrollable-box-hidden"] + ([] if modules.config.default_advanced_checkbox else ["simpai-mounted-hidden"]),
+            elem_classes=["scrollable-box-hidden", "simpai-mounted-hidden"],
         ) as advanced_column:
             models_tab_active_state = gr.State(False)
             with gr.Tabs(elem_id="advanced_tabs"):
@@ -9631,6 +9660,97 @@ with shared.gradio_root:
             )
             return event
 
+        generation_sync_groups = {
+            "model": list(model_state_ui_inputs),
+            "prompt": [prompt, state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2],
+            "backend": [params_backend],
+            "director": [scene_director_enabled, scene_director_state],
+            "random": [random_aspect_ratio_checkbox, random_aspect_ratio_state, aspect_ratios_selection],
+            "quick_enhance": [quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength],
+            "inpaint": [inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls],
+            "cloud": [scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model],
+        }
+        generation_sync_inputs = [component for group in generation_sync_groups.values() for component in group]
+        generation_sync_outputs = [
+            model_params_state,
+            prompt,
+            params_backend,
+            overwrite_width,
+            overwrite_height,
+            aspect_ratios_selection,
+            random_aspect_ratio_state,
+            enhance_checkbox,
+            enhance_uov_method,
+            enhance_uov_strength,
+            inpaint_engine,
+            *enhance_inpaint_engine_ctrls,
+        ]
+
+        def sync_generation_inputs(*values):
+            cursor = 0
+
+            def take(group_name):
+                nonlocal cursor
+                group_size = len(generation_sync_groups[group_name])
+                group_values = values[cursor:cursor + group_size]
+                cursor += group_size
+                return group_values
+
+            model_values = take("model")
+            prompt_values = take("prompt")
+            backend_params_value = take("backend")[0]
+            director_values = take("director")
+            random_values = take("random")
+            quick_enhance_values = take("quick_enhance")
+            inpaint_values = take("inpaint")
+            cloud_values = take("cloud")
+            if cursor != len(values):
+                raise ValueError(f"Unexpected generation sync input count: {len(values)}")
+
+            return synchronize_generation_inputs(
+                model_values=model_values,
+                prompt_values=prompt_values,
+                backend_params=backend_params_value,
+                director_values=director_values,
+                random_values=random_values,
+                quick_enhance_values=quick_enhance_values,
+                inpaint_values=inpaint_values,
+                cloud_values=cloud_values,
+                sync_model_state=_sync_model_params_state_from_ui,
+                wait_for_vlm=topbar.wait_for_vlm_completion,
+                avoid_empty_prompt=topbar.avoid_empty_prompt_for_scene,
+                apply_director_prompt=apply_scene_director_prompt_for_generation,
+                select_random_aspect_ratio=select_random_aspect_ratio,
+                sync_quick_enhance=sync_quick_enhance_for_generation,
+                sync_inpaint_engines=sync_inpaint_engine_dropdowns_before_generation,
+                sync_cloud_params=sync_cloud_image_params,
+            )
+
+        quick_enhance_input_index = sum(
+            len(generation_sync_groups[name])
+            for name in ("model", "prompt", "backend", "director", "random")
+        )
+        enhance_checkbox_input_index = quick_enhance_input_index + 2
+        generation_sync_submit_state_js = """(...args) => {
+            try {
+                const readCheckbox = (id, fallback) => {
+                    const root = document.getElementById(id);
+                    const input = root && root.querySelector ? root.querySelector('input[type="checkbox"]') : null;
+                    return input ? !!input.checked : !!fallback;
+                };
+                args[%d] = readCheckbox("quick_enhance", args[%d]);
+                args[%d] = readCheckbox("enhance_checkbox", args[%d]);
+            } catch (e) {
+                console.warn("[UI-TRACE] generation_sync_submit_state_failed", e);
+            }
+            return args;
+        }""" % (
+            quick_enhance_input_index,
+            quick_enhance_input_index,
+            enhance_checkbox_input_index,
+            enhance_checkbox_input_index,
+        )
+
         uov_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
             .then(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_batch"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_batch");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: !(state && state.__skip_gallery_browser_refresh_once), syncSwitch:false});}')
         enhance_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
@@ -9661,14 +9781,7 @@ with shared.gradio_root:
             outputs=[stop_button, skip_button, generate_button, gallery, state_is_generating, index_radio, image_toolbox, prompt_info_box, image_seed, params_backend] + protections + [preset_store, identity_dialog],
             show_progress=False,
         ))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(_sync_model_params_state_from_ui, inputs=model_state_ui_inputs, outputs=model_params_state, show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.wait_for_vlm_completion, outputs=[], show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(topbar.avoid_empty_prompt_for_scene, inputs=[prompt, state_topbar, scene_canvas_image, scene_input_image1, scene_theme, scene_additional_prompt, scene_additional_prompt_2], outputs=prompt, show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(apply_scene_director_prompt_for_generation, inputs=[prompt, params_backend, scene_director_enabled, scene_director_state, state_topbar, scene_theme], outputs=[prompt, params_backend], show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(select_random_aspect_ratio, inputs=[random_aspect_ratio_checkbox, random_aspect_ratio_state, aspect_ratios_selection], outputs=[overwrite_width, overwrite_height, aspect_ratios_selection, random_aspect_ratio_state], show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(sync_quick_enhance_for_generation, inputs=[quick_enhance, quick_enhance_uov_strength, enhance_checkbox, enhance_uov_method, enhance_uov_strength], outputs=[enhance_checkbox, enhance_uov_method, enhance_uov_strength], show_progress=False, queue=False, js=sync_enhance_submit_state_js))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(sync_inpaint_engine_dropdowns_before_generation, inputs=[state_topbar, inpaint_engine_state, inpaint_mode, outpaint_selections, *enhance_inpaint_mode_ctrls], outputs=[inpaint_engine, *enhance_inpaint_engine_ctrls], show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(sync_cloud_image_params, inputs=[params_backend, scene_cloud_name, scene_cloud_protocol, scene_cloud_base_url, scene_cloud_api_key, scene_cloud_model, scene_theme], outputs=params_backend, show_progress=False, queue=False))
+        generate_event = bind_generation_failure_cleanup(generate_event.success(sync_generation_inputs, inputs=generation_sync_inputs, outputs=generation_sync_outputs, show_progress=False, queue=False, js=generation_sync_submit_state_js))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=get_task_with_resolution_multiplier_and_model_state, inputs=ctrls + [model_params_state, clip_model, upscale_model, resolution_multiplier, resolution_quantize_step], outputs=currentTask, show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(fn=generate_clicked_or_director, inputs=[currentTask, state_topbar, scene_director_enabled, scene_director_state], outputs=[progress_html, progress_window, progress_gallery, progress_video, gallery, comparison_state, comparison_box, compare_btn, stop_button, skip_button], show_progress=False))
         generate_event.success(fn=update_prompt_history, inputs=[currentTask, state_prompt_history, prompt], outputs=[state_prompt_history, history_prompts], show_progress=False)
@@ -10143,7 +10256,7 @@ with shared.gradio_root:
             is_scene,
             state_params.get("engine_type") if isinstance(state_params, dict) else None,
         )
-        return topbar.update_topbar_js_params(state_params)[0]
+        return topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)[0]
     
     prompt_regen_evt = prompt_regen_button.click(toolbox.toggle_note_box_regen, inputs=model_check + [state_topbar], outputs=note_box_outputs, show_progress=False)
     prompt_regen_evt.then(lambda: None, queue=False, show_progress=False, js='()=>{try{showToolboxNoteOverlayFromSource("regen");}catch(e){console.warn("[UI-TRACE] toolbox_note.regen_overlay_failed", e);}}')
@@ -10183,7 +10296,7 @@ with shared.gradio_root:
                 gr_update(visible=is_admin),
                 gr_update(visible=admin_visible),
                 gr_update(visible=admin_visible, value=topbar.update_comfyd_url(state_params)),
-                topbar.update_topbar_js_params(state_params)[0],
+                topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)[0],
             ]
         except Exception as e:
             logger.warning(f"[IdentityAccess] failed to refresh admin surface: {e}")
