@@ -357,7 +357,6 @@ def get_annotated_filepath(name: str, default_dir: str | None=None) -> str:
             base_dir = default_dir
         else:
             base_dir = get_input_directory()  # fallback path
-
     filepath = os.path.abspath(os.path.join(base_dir, name))
     # Prevent path traversal: the resolved path must stay within base_dir.
     # repr() the name in the message so a crafted value can't inject log lines.
