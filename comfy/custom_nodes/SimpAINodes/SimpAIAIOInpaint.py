@@ -244,18 +244,33 @@ class SimpAIAIOInpaintZImage(_SimpAIAIOInpaintBase):
 class SimpAIAIOInpaintAnima(_SimpAIAIOInpaintBase):
     FAMILY = "anima"
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        types["optional"]["model_patch"] = ("MODEL_PATCH", {"lazy": True})
+        return types
+
+    def check_lazy_status(self, model, positive, negative, vae, inpaint, seed, steps, cfg,
+                          sampler_name, scheduler, inpaint_control_net=None, progress_node_id="",
+                          use_differential_diffusion=True, model_patch=None):
+        if str(inpaint.get("engine", "")).strip() == "anima_inpainting" and model_patch is None:
+            return ["model_patch"]
+        return []
+
     def expand(self, model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
-               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True):
+               inpaint_control_net=None, progress_node_id="", use_differential_diffusion=True, model_patch=None):
         if str(inpaint.get("engine", "")).strip() != "anima_inpainting":
             return super().expand(
                 model, positive, negative, vae, inpaint, seed, steps, cfg, sampler_name, scheduler,
                 inpaint_control_net, progress_node_id, use_differential_diffusion,
             )
+        if model_patch is None:
+            raise ValueError("Anima inpainting requires MODEL_PATCH")
         graph = GraphBuilder()
         mask = _mask_from_config(graph, inpaint)
-        patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="anima-lllite-inpainting-v2.safetensors",
+        patched = graph.node("AnimaLLLiteApply", model=model, model_patch=model_patch,
                              image=inpaint["image"], mask=mask, strength=1.0, start_percent=0.0,
-                             end_percent=1.0, preserve_wrapper=True)
+                             end_percent=1.0)
         conditioned = graph.node("InpaintModelConditioning", positive=positive, negative=negative, vae=vae,
                                  pixels=inpaint["image"], mask=mask, noise_mask=True)
         sampled = graph.node("KSampler", model=patched.out(0), positive=conditioned.out(0), negative=conditioned.out(1),

@@ -89,6 +89,8 @@ import modules.model_loader as model_loader
 from modules.model_path_utils import find_model_in_dirs, first_model_dir
 import enhanced.qwen_multiangle as qwen_multiangle
 import enhanced.flux_anglelight as flux_anglelight
+import enhanced.camera_motion_reference as camera_motion_reference
+import enhanced.resolution_preprocess as resolution_preprocess
 import enhanced.transfer_style_gallery as transfer_style_gallery
 import enhanced.sam3_video_mask as sam3_video_mask
 import logging
@@ -3827,7 +3829,7 @@ with shared.gradio_root:
                         # Qwen Multiangle Camera Control
                         with gr.Accordion("📸 3D Camera Control", open=False, visible=True, elem_id="camera_control_accordion", elem_classes=['simpai-mounted-hidden']) as camera_control_accordion:
                             gr.HTML(value=qwen_multiangle.get_viewer_html(), elem_id="qwen_viewer_container")
-                        
+
                         # Flux Anglelight Lighting Control
                         with gr.Accordion("💡 3D Lighting Control", open=False, visible=True, elem_id="anglelight_control_accordion", elem_classes=['simpai-mounted-hidden']) as anglelight_control_accordion:
                             gr.HTML(value=flux_anglelight.get_viewer_html(), elem_id="flux_anglelight_viewer_container")
@@ -3976,7 +3978,6 @@ with shared.gradio_root:
                         scene_video = gr.Video(label="Video (Upload)", visible=True, sources=["upload"], height=400, elem_id="scene_video", elem_classes=['simpai-mounted-hidden'])
                         scene_video_first_frame_path = gr.Textbox(value="", visible="hidden", elem_id="scene_video_first_frame_path", elem_classes=["sai-gradio-hidden-bridge"])
                         scene_video_placeholder = gr.HTML('<div style="height: 400px; display: flex; align-items: center; justify-content: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888; font-size: 16px;"><span>Hide When Generating...</span></div>', visible=False, elem_id="scene_video_placeholder")
-                        scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=300, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
                         scene_canvas_image = create_sketch_image(label='Upload and canvas(1)', show_label=True, type='numpy', height=420, width=630, brush_color="#70FF81", image_mode='RGBA', preserve_mask_color=True, elem_id='scene_canvas')
                         with gr.Row(elem_id="scene_input_images") as scene_input_images:
                             scene_input_image1 = gr.Image(label='Upload prompt image(2)', value=None, sources=['upload'], type='numpy', image_mode='RGBA', show_label=True, height=300, buttons=["fullscreen"], elem_id="scene_input_image1")
@@ -4289,14 +4290,155 @@ with shared.gradio_root:
 
                         def on_reference_video_upload(video_path):
                             if video_path is None:
-                                return None, None
+                                return None, None, None, ""
                             try:
                                 preview_path = util.compress_video(video_path)
                                 gr.Info("Compression completed!")
-                                return preview_path, video_path
+                                return preview_path, video_path, None, ""
                             except Exception as e:
                                 gr.Warning(f"Compression failed: {e}")
-                                return video_path, video_path
+                                return video_path, video_path, None, ""
+
+                        def _camera_motion_text(state, english):
+                            return camera_motion_reference.localized_text(state, english)
+
+                        def _camera_motion_settings(
+                            motion_type,
+                            direction,
+                            speed,
+                            amplitude,
+                            duration,
+                            fps,
+                            scene_aspect_ratio_value,
+                            overwrite_width_value,
+                            overwrite_height_value,
+                            resolution_multiplier_value,
+                            resolution_quantize_step_value,
+                        ):
+                            target_size = resolution_preprocess.resolve_target_size(
+                                overwrite_width=overwrite_width_value,
+                                overwrite_height=overwrite_height_value,
+                                scene_aspect_ratio=scene_aspect_ratio_value,
+                                resolution_multiplier=resolution_multiplier_value,
+                                resolution_quantize_step=resolution_quantize_step_value,
+                            )
+                            width, height = target_size or (640, 640)
+                            return camera_motion_reference.normalize_camera_motion_settings(
+                                motion_type=motion_type,
+                                direction=direction,
+                                speed=speed,
+                                amplitude=amplitude,
+                                duration=duration,
+                                fps=fps,
+                                width=width,
+                                height=height,
+                            )
+
+                        def generate_camera_motion_reference(
+                            state,
+                            motion_type,
+                            direction,
+                            speed,
+                            amplitude,
+                            duration,
+                            fps,
+                            scene_aspect_ratio_value,
+                            overwrite_width_value,
+                            overwrite_height_value,
+                            resolution_multiplier_value,
+                            resolution_quantize_step_value,
+                        ):
+                            settings = _camera_motion_settings(
+                                motion_type,
+                                direction,
+                                speed,
+                                amplitude,
+                                duration,
+                                fps,
+                                scene_aspect_ratio_value,
+                                overwrite_width_value,
+                                overwrite_height_value,
+                                resolution_multiplier_value,
+                                resolution_quantize_step_value,
+                            )
+                            try:
+                                path = camera_motion_reference.generate_camera_motion_video(**settings)
+                            except Exception as exc:
+                                logger.exception("[CameraMotion] reference video generation failed")
+                                message = _camera_motion_text(state, "Camera-motion reference generation failed.")
+                                raise gr.Error(message) from exc
+                            status = _camera_motion_text(
+                                state,
+                                "Neutral 3D camera reference generated. Uni3C patch will be used for this video.",
+                            )
+                            snapshot = {"path": path, "settings": settings}
+                            return path, path, snapshot, status
+
+                        def clear_camera_motion_reference(state):
+                            return (
+                                None,
+                                None,
+                                None,
+                                _camera_motion_text(
+                                    state,
+                                    "Camera reference cleared. The original generation route will be used.",
+                                ),
+                            )
+
+                        def camera_motion_reference_cleared(state):
+                            return (
+                                None,
+                                _camera_motion_text(
+                                    state,
+                                    "Camera reference cleared. The original generation route will be used.",
+                                ),
+                            )
+
+                        def camera_motion_reference_parameter_status(
+                            state,
+                            generated_snapshot,
+                            reference_path,
+                            motion_type,
+                            direction,
+                            speed,
+                            amplitude,
+                            duration,
+                            fps,
+                            scene_aspect_ratio_value,
+                            overwrite_width_value,
+                            overwrite_height_value,
+                            resolution_multiplier_value,
+                            resolution_quantize_step_value,
+                        ):
+                            if not isinstance(generated_snapshot, dict):
+                                return skip_component_update(), skip_component_update()
+                            generated_path = str(generated_snapshot.get("path") or "")
+                            if not generated_path or str(reference_path or "") != generated_path:
+                                return None, ""
+                            current_settings = _camera_motion_settings(
+                                motion_type,
+                                direction,
+                                speed,
+                                amplitude,
+                                duration,
+                                fps,
+                                scene_aspect_ratio_value,
+                                overwrite_width_value,
+                                overwrite_height_value,
+                                resolution_multiplier_value,
+                                resolution_quantize_step_value,
+                            )
+                            if current_settings != generated_snapshot.get("settings"):
+                                warning = _camera_motion_text(
+                                    state,
+                                    "Video settings changed. Regenerate the camera-motion reference before generation to avoid degraded motion control.",
+                                )
+                                return generated_snapshot, f"> **{warning}**"
+                            status = _camera_motion_text(
+                                state,
+                                "Neutral 3D camera reference generated. Uni3C patch will be used for this video.",
+                            )
+                            return generated_snapshot, status
 
                         def on_sam3_video_upload(video_path):
                             preview_path, original_path, source = sam3_video_mask.on_video_upload_with_preview(video_path)
@@ -4349,8 +4491,6 @@ with shared.gradio_root:
                         scene_video.upload(on_video_upload, inputs=[scene_video], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path], show_progress=True, queue=False) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "upload");}')
                         scene_video.clear(lambda: "", outputs=[scene_video_first_frame_path], queue=False, show_progress=False)
-                        scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video], outputs=[scene_reference_video, scene_reference_video_original_path], show_progress=True, queue=False)
-                        scene_reference_video.clear(lambda: None, outputs=[scene_reference_video_original_path], queue=False, show_progress=False)
                         scene_resolution_control = create_scene_resolution_control()
                         scene_resolution_override_accordion = scene_resolution_control.container
                         scene_use_resolution_override_checkbox = scene_resolution_control.use_override_checkbox
@@ -4360,7 +4500,7 @@ with shared.gradio_root:
                         scene_audio_placeholder = gr.HTML('<div style="padding: 20px; text-align: center; border: 2px dashed #ccc; border-radius: 8px; background: rgba(128,128,128,0.1); color: #888;">Hide When Generating...</div>', visible=False, elem_id="scene_audio_placeholder")
                         scene_director_state = gr.State({})
                         scene_additional_prompt_2 = gr.Textbox(label="Additional Prompt", show_label=True, max_lines=1, visible=True, elem_classes=['scene_input_2', 'simpai-mounted-hidden'], elem_id='scene_additional_prompt_2')
-                        with gr.Accordion("Cloud Image API", open=False, visible="hidden", elem_id="scene_cloud_image_api") as scene_cloud_image_api:
+                        with gr.Accordion("Cloud Image API", open=False, visible="hidden", elem_id="scene_cloud_image_api", elem_classes=["simpai-mounted-hidden"]) as scene_cloud_image_api:
                             with gr.Row():
                                 scene_cloud_config_id = gr.Dropdown(label="Saved configurations", choices=[], value=None, elem_id="scene_cloud_config_id")
                             scene_cloud_name = gr.Textbox(label="Configuration name", value="My Image API", elem_id="scene_cloud_name")
@@ -4413,6 +4553,9 @@ with shared.gradio_root:
 
                         def sync_cloud_image_panel(scene_theme_value, state_params, request: gr.Request):
                             resolved_theme = str(scene_theme_value or "").strip()
+                            resolved_preset = ""
+                            if isinstance(state_params, dict):
+                                resolved_preset = str(state_params.get("__preset") or state_params.get("preset") or "").strip()
                             if not resolved_theme and isinstance(state_params, dict):
                                 resolved_theme = str(state_params.get("scene_theme", "") or "").strip()
                                 if not resolved_theme:
@@ -4423,7 +4566,7 @@ with shared.gradio_root:
                                             resolved_theme = themes.strip()
                                         elif isinstance(themes, (list, tuple)) and themes:
                                             resolved_theme = str(themes[0] or "").strip()
-                            visible = resolved_theme == "GeneralAPIImage"
+                            visible = resolved_preset == "GeneralAPIImage" and resolved_theme == "GeneralAPIImage"
                             if not visible:
                                 return gr_update(visible="hidden"), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update()
                             user_did = _resolve_cloud_config_user_did(state_params, request)
@@ -4562,6 +4705,51 @@ with shared.gradio_root:
                         initial_use_model_filter = ads.get_user_default("use_model_filter_checkbox", {}, True)
                         model_filter_state = gr.State(initial_use_model_filter)
                         model_filter_sync_lock = gr.State(False)
+
+                        scene_reference_video = gr.Video(label="Reference Video (Upload)", visible=True, sources=["upload"], height=300, elem_id="scene_reference_video", elem_classes=['simpai-mounted-hidden'])
+                        with gr.Accordion("🎥 Reference Camera Motion", open=False, visible=True, elem_id="camera_motion_reference_accordion", elem_classes=['simpai-mounted-hidden']) as camera_motion_reference_accordion:
+                            with gr.Row(elem_id="camera_motion_reference_row_1"):
+                                camera_motion_type = gr.Dropdown(
+                                    choices=list(camera_motion_reference.MOTION_TYPES),
+                                    value="orbit",
+                                    label="Motion Type",
+                                    elem_id="camera_motion_type",
+                                )
+                                camera_motion_direction = gr.Dropdown(
+                                    choices=list(camera_motion_reference.DIRECTIONS),
+                                    value="forward",
+                                    label="Direction",
+                                    elem_id="camera_motion_direction",
+                                )
+                            with gr.Row(elem_id="camera_motion_reference_row_2"):
+                                camera_motion_speed = gr.Slider(
+                                    label="Speed",
+                                    minimum=0.1,
+                                    maximum=2.0,
+                                    step=0.05,
+                                    value=1.0,
+                                    elem_id="camera_motion_speed",
+                                )
+                                camera_motion_amplitude = gr.Slider(
+                                    label="Amplitude",
+                                    minimum=0.0,
+                                    maximum=2.0,
+                                    step=0.05,
+                                    value=1.0,
+                                    elem_id="camera_motion_amplitude",
+                                )
+                            with gr.Row(elem_id="camera_motion_reference_actions"):
+                                camera_motion_generate_btn = gr.Button("Generate Reference", variant="primary", elem_id="camera_motion_generate_btn")
+                                camera_motion_clear_btn = gr.Button("Clear Reference", elem_id="camera_motion_clear_btn")
+                            camera_motion_generated_snapshot = gr.State(None)
+                            camera_motion_status = gr.Markdown(
+                                value="No generated camera reference.",
+                                elem_id="camera_motion_status",
+                            )
+
+                        scene_reference_video.upload(on_reference_video_upload, inputs=[scene_reference_video], outputs=[scene_reference_video, scene_reference_video_original_path, camera_motion_generated_snapshot, camera_motion_status], show_progress=True, queue=False)
+                        scene_reference_video.clear(lambda: None, outputs=[scene_reference_video_original_path], queue=False, show_progress=False)
+                        scene_reference_video.clear(camera_motion_reference_cleared, inputs=[state_topbar], outputs=[camera_motion_generated_snapshot, camera_motion_status], queue=False, show_progress=False)
 
                         gr.HTML(value="", elem_id="scene_panel_bottom_fill")
                 with gr.Accordion("🔧 Advanced Parameters", open=False, visible=True, elem_id="scene_advanced_parameters_accordion"):
@@ -4969,7 +5157,7 @@ with shared.gradio_root:
                             user = state_params.get("user", None) if isinstance(state_params, dict) else None
                             user_did = user.get_did() if user is not None and hasattr(user, "get_did") else None
                             if not user_has_full_local_access(user_did):
-                                lang = state_params.get("__lang", "cn") if isinstance(state_params, dict) else "cn"
+                                lang = state_params.get("__lang", "en") if isinstance(state_params, dict) else "en"
                                 msg = "Please verify identity first." if not is_local_mode() else "Local mode personal wildcards are unavailable."
                                 return _deny_personal_wildcards_open(msg)
                         except Exception:
@@ -6765,7 +6953,7 @@ with shared.gradio_root:
 
                             def trigger_metadata_preview(file, state_params):
                                 parameters, metadata_scheme = modules.meta_parser.read_info_from_media(file)
-                                is_english = str((state_params or {}).get('__lang', 'cn')).lower().startswith('en')
+                                is_english = str((state_params or {}).get('__lang', 'en')).lower().startswith('en')
                                 media_type = modules.meta_parser.metadata_media_type(file)
 
                                 results = {}
@@ -10104,6 +10292,58 @@ with shared.gradio_root:
         scene_aspect_ratio_user_event = getattr(scene_aspect_ratio, "input", scene_aspect_ratio.change)
         scene_aspect_ratio_user_event(scene_aspect_ratio_changed, inputs=[state_topbar, scene_aspect_ratio], outputs=[overwrite_width, overwrite_height], queue=False, show_progress=False)
 
+        camera_motion_generation_inputs = [
+            camera_motion_type,
+            camera_motion_direction,
+            camera_motion_speed,
+            camera_motion_amplitude,
+            scene_video_duration,
+            scene_var_number2,
+            scene_aspect_ratio,
+            overwrite_width,
+            overwrite_height,
+            resolution_multiplier,
+            resolution_quantize_step,
+        ]
+        camera_motion_generate_btn.click(
+            generate_camera_motion_reference,
+            inputs=[state_topbar, *camera_motion_generation_inputs],
+            outputs=[
+                scene_reference_video,
+                scene_reference_video_original_path,
+                camera_motion_generated_snapshot,
+                camera_motion_status,
+            ],
+            show_progress=True,
+            queue=False,
+        )
+        camera_motion_clear_btn.click(
+            clear_camera_motion_reference,
+            inputs=[state_topbar],
+            outputs=[
+                scene_reference_video,
+                scene_reference_video_original_path,
+                camera_motion_generated_snapshot,
+                camera_motion_status,
+            ],
+            show_progress=False,
+            queue=False,
+        )
+        camera_motion_status_inputs = [
+            state_topbar,
+            camera_motion_generated_snapshot,
+            scene_reference_video_original_path,
+            *camera_motion_generation_inputs,
+        ]
+        for camera_motion_component in camera_motion_generation_inputs:
+            camera_motion_component.input(
+                camera_motion_reference_parameter_status,
+                inputs=camera_motion_status_inputs,
+                outputs=[camera_motion_generated_snapshot, camera_motion_status],
+                show_progress=False,
+                queue=False,
+            )
+
         scene_video.upload(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "ready");}')
         scene_video.clear(switch_scene_theme_ready_to_gen, inputs=[state_topbar, image_number, scene_canvas_image, scene_input_image1, scene_additional_prompt, scene_additional_prompt_2, scene_theme, scene_video, scene_audio], outputs=[prompt, generate_button], queue=False, show_progress=False) \
@@ -11130,7 +11370,7 @@ def _canvas_workbench_standalone_system_params(request: Request):
     if not user_did:
         user_did = "local" if is_local_mode() else "guest"
     theme = str(query.get("__theme") or args_manager.args.theme or "light").strip() or "light"
-    lang = str(query.get("__lang") or query.get("lang") or "cn").strip() or "cn"
+    lang = str(query.get("__lang") or query.get("lang") or args_manager.args.language or "en").strip() or "en"
     access_mode = "local" if is_local_mode() else "multi"
     return {
         "access_mode": access_mode,
@@ -11210,6 +11450,7 @@ def _canvas_workbench_standalone_html(request: Request):
         webpath("javascript/canvas_workbench/nodes/audio_node.js"),
         webpath("javascript/canvas_workbench/nodes/compare_node.js"),
         webpath("javascript/canvas_workbench/nodes/sam3_video_mask_node.js"),
+        webpath("javascript/canvas_workbench/nodes/camera_motion_node.js"),
         webpath("javascript/canvas_workbench/nodes/pose_studio_node.js"),
         webpath("javascript/canvas_workbench/nodes/gaussian_studio_node.js"),
         webpath("javascript/canvas_workbench/nodes/liveportrait_expression_node.js"),
@@ -11872,7 +12113,7 @@ async def simpleai_prompt_recommendations(payload: dict = Body(...)):
         result = await run_in_threadpool(lambda: scene_prompt_recommendations.recommendation_payload(
             payload.get("preset") or payload.get("__preset") or "",
             scene_theme=payload.get("scene_theme") or payload.get("__scene_theme") or "",
-            lang=payload.get("__lang") or payload.get("lang") or payload.get("language") or "cn",
+            lang=payload.get("__lang") or payload.get("lang") or payload.get("language") or args_manager.args.language or "en",
             limit=payload.get("limit") or 12,
         ))
         return JSONResponse(result)
@@ -11888,7 +12129,7 @@ async def simpleai_random_prompt(payload: dict = Body(...)):
         result = await run_in_threadpool(lambda: scene_prompt_recommendations.compose_random_prompt(
             preset_name=payload.get("preset") or payload.get("__preset") or "",
             scene_theme=payload.get("scene_theme") or payload.get("__scene_theme") or "",
-            lang=payload.get("__lang") or payload.get("lang") or payload.get("language") or "cn",
+            lang=payload.get("__lang") or payload.get("lang") or payload.get("language") or args_manager.args.language or "en",
             seed=payload.get("seed"),
             source_mode=payload.get("tag_source") or payload.get("tag_source_mode") or "all",
             prompt_text=payload.get("prompt_head") or payload.get("prompt") or payload.get("positive_prompt") or payload.get("source_prompt") or "",
@@ -12778,6 +13019,42 @@ async def canvas_workbench_model_catalog_endpoint(payload: dict = Body(...)):
             status_code=500,
         )
 
+@app.post("/canvas-workbench/preset-catalog")
+async def canvas_workbench_preset_catalog_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
+                status_code=400,
+            )
+
+        def safe_process():
+            state_params = _canvas_workbench_state_params(payload)
+            catalog = topbar._build_preset_store_meta(state_params)
+            entries = []
+            for name, raw in (catalog.items() if isinstance(catalog, dict) else []):
+                if not isinstance(raw, dict):
+                    continue
+                entry = copy.deepcopy(raw)
+                entry["name"] = str(name)
+                entry["display_name"] = str(name)
+                entries.append(entry)
+            return {"ok": True, "presets": entries}
+
+        result = await run_in_threadpool(safe_process)
+        return JSONResponse(result, status_code=200)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Canvas Workbench Preset Catalog Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
 @app.post("/canvas-workbench/preset-model-status")
 async def canvas_workbench_preset_model_status_endpoint(payload: dict = Body(...)):
     try:
@@ -13206,6 +13483,86 @@ async def canvas_workbench_generate_mask_endpoint(payload: dict = Body(...)):
             {
                 "ok": False,
                 "error": "Canvas Workbench Mask Generation Error",
+                "details": str(e),
+            },
+            status_code=500,
+        )
+
+@app.post("/canvas-workbench/generate-camera-motion-reference")
+async def canvas_workbench_generate_camera_motion_reference_endpoint(payload: dict = Body(...)):
+    try:
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                {"ok": False, "error": "Bad Request", "details": "Payload must be an object."},
+                status_code=400,
+            )
+
+        def safe_process():
+            state_params = _canvas_workbench_state_params(payload)
+            project_id = payload.get("project_id") or "default"
+            node_id = str(payload.get("node_id") or "")
+            params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+            motion_types = {value for _, value in camera_motion_reference.MOTION_TYPES}
+            directions = {value for _, value in camera_motion_reference.DIRECTIONS}
+            motion_type = str(params.get("motion_type") or "orbit").lower()
+            direction = str(params.get("direction") or "forward").lower()
+            settings = camera_motion_reference.normalize_camera_motion_settings(
+                motion_type=motion_type if motion_type in motion_types else "orbit",
+                direction=direction if direction in directions else "forward",
+                speed=params.get("speed", 1.0),
+                amplitude=params.get("amplitude", 1.0),
+                duration=params.get("duration", 5.0),
+                fps=params.get("fps", 16),
+                width=params.get("width", 640),
+                height=params.get("height", 640),
+            )
+            output_path = camera_motion_reference.generate_camera_motion_video(**settings)
+            if not output_path or not os.path.exists(output_path):
+                return {"ok": False, "error": "Camera-motion reference returned no output"}
+            browser_path = util.compress_video(
+                output_path,
+                target_height=int(settings["height"]),
+                crf=18,
+            )
+            if browser_path and os.path.exists(browser_path):
+                output_path = browser_path
+
+            frame_count = max(2, int(round(float(settings["duration"]) * float(settings["fps"]))))
+            output_ref = canvas_workbench_assets.register_existing_file_asset(
+                output_path,
+                project_id,
+                state_params,
+                node_id=node_id,
+                role="camera_motion_reference_video",
+                metadata={
+                    "mime": "video/mp4",
+                    "width": settings["width"],
+                    "height": settings["height"],
+                    "duration": settings["duration"],
+                    "fps": settings["fps"],
+                    "frame_count": frame_count,
+                },
+                copy_to_assets=True,
+            )
+            if not isinstance(output_ref, dict):
+                return {"ok": False, "error": "Camera-motion reference asset registration failed"}
+            output_ref["camera_motion_settings"] = settings
+            return {
+                "ok": True,
+                "asset_ref": output_ref,
+                "reference_video": output_ref,
+                "settings": settings,
+            }
+
+        result = await run_in_threadpool(safe_process)
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Canvas Workbench Camera Motion Reference Error",
                 "details": str(e),
             },
             status_code=500,

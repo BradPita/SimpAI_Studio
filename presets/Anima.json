@@ -67,10 +67,10 @@
         "text_encoders,qwen_3_06b_base.safetensors,1192135096,0,https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/split_files/text_encoders/qwen_3_06b_base.safetensors",
         "vae,qwen_image_vae.safetensors,253806246,0,",
         "upscale_models,4x-AnimeSharp.pth,67010245,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/upscale_models/4x-AnimeSharp.pth",
-        "controlnet,anima-lllite-any-test-like-v2.safetensors,16403008,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors",
-        "controlnet,anima-lllite-pose-1.safetensors,23310040,0,https://modelscope.cn/models/kohya-ss/Anima-LLLite/resolve/master/anima-lllite-pose-1.safetensors,https://huggingface.co/kohya-ss/Anima-LLLite/resolve/main/anima-lllite-pose-1.safetensors",
-        "controlnet,anima-lllite-inpainting-v2.safetensors,65772872,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors",
-        "controlnet,animaTileRepair_v20.safetensors,94037744,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/animaTileRepair_v20.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/animaTileRepair_v20.safetensors"
+        "model_patches,anima-lllite-any-test-like-v2.safetensors,16403008,0,https://www.modelscope.cn/models/Comfy-Org/Anima-LLLite/resolve/master/model_patches/anima-lllite-any-test-like-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-any-test-like-v2.safetensors",
+        "model_patches,anima-lllite-pose-1.safetensors,23310040,0,https://www.modelscope.cn/models/Comfy-Org/Anima-LLLite/resolve/master/model_patches/anima-lllite-pose-1.safetensors,https://huggingface.co/kohya-ss/Anima-LLLite/resolve/main/anima-lllite-pose-1.safetensors",
+        "model_patches,anima-lllite-inpainting-v2.safetensors,65772872,0,https://www.modelscope.cn/models/Comfy-Org/Anima-LLLite/resolve/master/model_patches/anima-lllite-inpainting-v2.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/anima-lllite-inpainting-v2.safetensors",
+        "model_patches,animaTileRepair_v20.safetensors,94037744,0,https://modelscope.cn/models/windecay/SimpAI_dev/resolve/master/SimpleModels/controlnet/animaTileRepair_v20.safetensors,https://huggingface.co/windecay/SimpleSDXL2/resolve/main/SimpleModels/controlnet/animaTileRepair_v20.safetensors"
     ]
 }
 

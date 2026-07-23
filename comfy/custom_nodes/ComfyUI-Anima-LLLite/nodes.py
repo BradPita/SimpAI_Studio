@@ -35,6 +35,21 @@ from .control_net_lllite_anima import (
 logger = logging.getLogger(__name__)
 
 
+def _lllite_filenames():
+    names = set()
+    for folder_name in ("model_patches", "controlnet"):
+        names.update(folder_paths.get_filename_list(folder_name))
+    return sorted(names, key=str.casefold)
+
+
+def _lllite_path(name):
+    for folder_name in ("model_patches", "controlnet"):
+        path = folder_paths.get_full_path(folder_name, name)
+        if path is not None:
+            return path
+    return None
+
+
 def _get_inner_dit(model) -> torch.nn.Module:
     """Reach the underlying Anima DiT (nn.Module) from a ComfyUI ModelPatcher."""
     inner = getattr(model, "model", None)
@@ -119,13 +134,13 @@ def _build_inpaint_cond_image(rgb_pm1: torch.Tensor, mask01: torch.Tensor,
     return torch.cat([rgb_pm1, mask_pm1], dim=1)
 
 
-class AnimaLLLiteApply:
+class AnimaLLLiteApplyCustom:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "model": ("MODEL",),
-                "lllite_name": (folder_paths.get_filename_list("controlnet"),),
+                "lllite_name": (_lllite_filenames(),),
                 "image": ("IMAGE",),
                 "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
                 "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
@@ -145,7 +160,7 @@ class AnimaLLLiteApply:
 
     def apply(self, model, lllite_name, image, strength, start_percent, end_percent,
               preserve_wrapper=True, mask=None):
-        weights_path = folder_paths.get_full_path("controlnet", lllite_name)
+        weights_path = _lllite_path(lllite_name)
         if weights_path is None or not os.path.isfile(weights_path):
             raise FileNotFoundError(f"LLLite weights not found: {lllite_name}")
 
@@ -279,9 +294,9 @@ class AnimaLLLiteApply:
 
 
 NODE_CLASS_MAPPINGS = {
-    "AnimaLLLiteApply": AnimaLLLiteApply,
+    "AnimaLLLiteApplyCustom": AnimaLLLiteApplyCustom,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "AnimaLLLiteApply": "Apply Anima ControlNet-LLLite",
+    "AnimaLLLiteApplyCustom": "Apply Anima ControlNet-LLLite (Custom)",
 }

@@ -22,6 +22,7 @@
     const WORKBENCH_AUDIO_NODE = window.SimpAICanvasWorkbenchAudioNode || {};
     const WORKBENCH_COMPARE_NODE = window.SimpAICanvasWorkbenchCompareNode || {};
     const WORKBENCH_SAM3_VIDEO_MASK_NODE = window.SimpAICanvasWorkbenchSam3VideoMaskNode || {};
+    const WORKBENCH_CAMERA_MOTION_NODE = window.SimpAICanvasWorkbenchCameraMotionNode || {};
     const WORKBENCH_POSE_STUDIO_NODE = window.SimpAICanvasWorkbenchPoseStudioNode || {};
     const WORKBENCH_GAUSSIAN_STUDIO_NODE = window.SimpAICanvasWorkbenchGaussianStudioNode || {};
     const WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE = window.SimpAICanvasWorkbenchLivePortraitExpressionNode || {};
@@ -35,7 +36,7 @@
     const PROJECT_ID = WORKBENCH_PROJECT.PROJECT_ID || 'default';
     const t = WORKBENCH_UTILS.t || ((en, cn) => cn || en);
     const tOption = WORKBENCH_UTILS.tOption || ((value) => String(value ?? ''));
-    const getUiLang = WORKBENCH_UTILS.getUiLang || (window.SimpAII18n?.getUiLang) || (() => 'cn');
+    const getUiLang = WORKBENCH_UTILS.getUiLang || (window.SimpAII18n?.getUiLang) || (() => 'en');
     function runtimeUiLang(source) {
         return getUiLang(source || window.simpleaiTopbarSystemParams || {});
     }
@@ -658,6 +659,9 @@
     ].join(',');
 
     let canvasProjectAssetCatalog = [];
+    let authoritativePresetCatalog = null;
+    let authoritativePresetCatalogPromise = null;
+    let authoritativePresetCatalogState = 'idle';
     let storageScope = getStorageScope();
     let storageBaseKey = getStorageKey(storageScope);
     let storageKey = initialBrowserStorageKey(storageScope);
@@ -2532,6 +2536,7 @@
     ${sideButton('add-vlm', 'sai-vlm-glyph', t('Add VLM node', '添加 VLM 节点'))}
     ${sideButton('add-qwen-tts', 'fa-microphone-lines', t('Add Qwen TTS node', '添加 Qwen TTS 节点'))}
     ${sideButton('add-sam3-video-mask', 'fa-wand-magic-sparkles', t('Add SAM3 video mask node', '添加 SAM3 视频遮罩节点'))}
+    ${sideButton('add-camera-motion', 'fa-camera-rotate', t('Add Uni3C Camera Motion node', '添加 Uni3C 运镜节点'))}
     ${sideButton('add-pose-studio', 'fa-person', t('Add Pose Studio node', '添加 Pose Studio 节点'))}
     ${sideButton('add-gaussian-studio', 'fa-cube', t('Add Gaussian Studio node', '添加 Gaussian Studio 节点'))}
     ${sideButton('add-liveportrait-expression', 'fa-face-smile', t('Add LivePortrait Exp node', '添加 LivePortrait Exp 节点'))}
@@ -3821,13 +3826,18 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
 
         palette.querySelector('[data-palette-close]').addEventListener('click', closePresetPalette);
         palette.querySelector('.sai-canvas-palette-search').addEventListener('input', renderPresetPalette);
-        palette.addEventListener('click', (evt) => {
+        palette.addEventListener('click', async (evt) => {
             if (evt.target === palette) closePresetPalette();
             const item = evt.target.closest('[data-preset-name]');
             if (!item) return;
-            const catalog = getPresetCatalog();
             const name = item.getAttribute('data-preset-name');
-            const entry = catalog.find(x => x.name === name) || { name };
+            item.disabled = true;
+            const entry = await resolvePresetCatalogEntry(name);
+            item.disabled = false;
+            if (!entry) {
+                showToast(t('Preset definition is not ready. Please reopen the preset list.', 'Preset 定义尚未加载，请重新打开 Preset 列表。'));
+                return;
+            }
             addPresetNode(entry, lastPointerWorld);
             closePresetPalette();
         });
@@ -4089,6 +4099,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
             case 'add-sam3-video-mask':
                 addSam3VideoMaskNode(viewportCenterWorld());
                 break;
+            case 'add-camera-motion':
+                addCameraMotionNode(viewportCenterWorld());
+                break;
             case 'add-pose-studio':
                 addPoseStudioNode(viewportCenterWorld());
                 break;
@@ -4187,7 +4200,9 @@ ${meta ? `<div class="sai-hover-preview-meta">${escapeHtml(meta)}</div>` : ''}
         applyThemeClass();
         resetGalleryFrostReveals();
         renderAll();
-        refreshCanvasProjectFromBackendOnOpen().catch(() => {});
+        refreshCanvasProjectFromBackendOnOpen().catch(() => {}).finally(() => {
+            refreshPresetCatalog({ force: true }).catch(() => {});
+        });
         startPerformanceHud();
         startStandaloneStatusMonitor();
         scheduleAutoPresetModelChecks();
@@ -15132,6 +15147,7 @@ ${[0, 1, 2].map((index) => {
         if (node.type === 'vlm') return renderVlmNodeHtml(node);
         if (node.type === 'mask') return renderMaskNodeHtml(node);
         if (node.type === 'sam3_video_mask') return renderSam3VideoMaskNodeHtml(node);
+        if (node.type === 'camera_motion') return renderCameraMotionNodeHtml(node);
         if (node.type === 'pose_studio') return renderPoseStudioNodeHtml(node);
         if (node.type === 'gaussian_studio') return renderGaussianStudioNodeHtml(node);
         if (node.type === 'liveportrait_expression') return renderLivePortraitExpressionNodeHtml(node);
@@ -15182,6 +15198,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'tag_cart') return tagCartLabel();
         if (node.type === 'wd14') return 'WD14';
         if (node.type === 'sam3_video_mask') return 'SAM3';
+        if (node.type === 'camera_motion') return 'Uni3C';
         if (node.type === 'pose_studio') return t('Pose', '姿势');
         if (node.type === 'gaussian_studio') return '3DGS';
         if (node.type === 'liveportrait_expression') return t('Live Exp', '表情');
@@ -15194,7 +15211,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (['image', 'result', 'mask', 'wd14', 'batch_any'].includes(node.type)) return 'fa-image';
         if (node.type === 'xy_matrix' || node.type === 'xyz_matrix') return 'fa-table-cells-large';
         if (isDirectorTimelineNode(node)) return 'fa-timeline';
-        if (['video', 'sam3_video_mask', 'timeline', 'media_browser'].includes(node.type)) return 'fa-film';
+        if (['video', 'sam3_video_mask', 'camera_motion', 'timeline', 'media_browser'].includes(node.type)) return 'fa-film';
         if (node.type === 'audio' || isQwenTtsNode(node)) return 'fa-wave-square';
         if (node.type === 'style_selector') return 'fa-palette';
         if (node.type === 'pose_studio') return 'fa-person';
@@ -15346,7 +15363,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         if (node.type === 'pose_studio') return 'image';
         if (node.type === 'gaussian_studio') return 'image';
         if (node.type === 'liveportrait_expression') return 'image';
-        if (node.type === 'video' || node.type === 'sam3_video_mask') return 'video';
+        if (node.type === 'video' || node.type === 'sam3_video_mask' || node.type === 'camera_motion') return 'video';
         if (node.type === 'audio') return 'audio';
         if (node.type === 'result') return 'result';
         if (['text', 'text_merge', 'translation', 'tag_cart', 'wd14', 'vlm', 'wildcards_helper', 'style_selector'].includes(node.type)) return 'text';
@@ -15569,19 +15586,11 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
 
     function getVisibleUploadSlots(node) {
         const schema = getPresetSchema(node);
-        const rawDivisible = Array.isArray(schema.divisible) ? schema.divisible.map(item => String(item)) : null;
-        const divisible = rawDivisible && rawDivisible.length ? rawDivisible : null;
         const slots = Array.isArray(schema.upload_slots) && schema.upload_slots.length
             ? schema.upload_slots
             : SLOT_ORDER.map(key => ({ key, label: SLOT_LABELS[key], visible: true, interactive: true }));
         return slots
-            .filter(slot => {
-                if (!slot || slot.visible === false) return false;
-                if (divisible && ['sam3_input_video', 'sam3_mask_video'].includes(slot.key)) {
-                    return divisible.includes(slot.key);
-                }
-                return true;
-            })
+            .filter(slot => slot && slot.visible !== false)
             .sort((a, b) => {
                 const ai = SLOT_ORDER.indexOf(a.key);
                 const bi = SLOT_ORDER.indexOf(b.key);
@@ -15616,6 +15625,9 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
         const mime = String(asset?.mime || '').toLowerCase();
         if (kind === 'audio') return node?.type === 'audio' || (node?.type === 'result' && mime.startsWith('audio/'));
         if (kind === 'video') {
+            if (node?.type === 'camera_motion') {
+                return String(slotKey || '').toLowerCase() === 'scene_reference_video';
+            }
             if (node?.type === 'sam3_video_mask') {
                 const key = String(slotKey || '').toLowerCase();
                 return key === 'sam3_mask_video' || (key.includes('mask') && key.includes('video'));
@@ -19000,6 +19012,37 @@ ${status ? `<div class="sai-node-foot">${escapeHtml(status)}</div>` : ''}
 
     function renderSam3VideoMaskNodeHtml(node) {
         return WORKBENCH_SAM3_VIDEO_MASK_NODE.renderNodeHtml(node, sam3VideoMaskNodeContext());
+    }
+
+    function cameraMotionNodeContext() {
+        return {
+            project,
+            projectId: project.id || PROJECT_ID,
+            assetDisplaySrc,
+            defaultNodeSize,
+            getNode,
+            isNodeIgnored,
+            isNodeLocked,
+            mediaAspectStyle,
+            mutate,
+            placeNodeAvoidingOverlap,
+            pushHistory,
+            pushHistoryBatch,
+            readAssetInfo,
+            renderNodeStateBadges,
+            scheduleSave,
+            setSelectedNode: (id) => {
+                selectedNodeId = id || null;
+                selectedNodeIds = new Set(id ? [id] : []);
+                selectedEdgeId = null;
+                selectedGroupId = null;
+            },
+            showToast
+        };
+    }
+
+    function renderCameraMotionNodeHtml(node) {
+        return WORKBENCH_CAMERA_MOTION_NODE.renderNodeHtml(node, cameraMotionNodeContext());
     }
 
     function poseStudioNodeContext() {
@@ -23621,6 +23664,12 @@ ${actions}
                 updateSam3VideoMaskParam(node.id, sam3VideoParam.getAttribute('data-sam3-video-param'), sam3VideoParam.type === 'checkbox' ? sam3VideoParam.checked : sam3VideoParam.value, sam3VideoParam.type);
                 return;
             }
+            const cameraMotionParam = evt.target.closest('[data-camera-motion-param]');
+            if (cameraMotionParam) {
+                syncTwinParamInputs(cameraMotionParam, '[data-camera-motion-param]');
+                updateCameraMotionParam(node.id, cameraMotionParam.getAttribute('data-camera-motion-param'), cameraMotionParam.value, cameraMotionParam.type);
+                return;
+            }
             const classicIpStop = evt.target.closest('[data-classic-ip-stop]');
             if (classicIpStop) {
                 syncTwinParamInputs(classicIpStop, '[data-classic-ip-stop]');
@@ -23891,6 +23940,12 @@ ${actions}
             if (sam3VideoParam) {
                 syncTwinParamInputs(sam3VideoParam, '[data-sam3-video-param]');
                 updateSam3VideoMaskParam(node.id, sam3VideoParam.getAttribute('data-sam3-video-param'), sam3VideoParam.type === 'checkbox' ? sam3VideoParam.checked : sam3VideoParam.value, sam3VideoParam.type);
+                return;
+            }
+            const cameraMotionParam = evt.target.closest('[data-camera-motion-param]');
+            if (cameraMotionParam) {
+                syncTwinParamInputs(cameraMotionParam, '[data-camera-motion-param]');
+                updateCameraMotionParam(node.id, cameraMotionParam.getAttribute('data-camera-motion-param'), cameraMotionParam.value, cameraMotionParam.type);
                 return;
             }
             if (!param) return;
@@ -25230,6 +25285,7 @@ ${actions}
         else if (node.type === 'vlm') html = renderVlmInspector(node);
         else if (node.type === 'mask') html = renderMaskInspector(node);
         else if (node.type === 'sam3_video_mask') html = renderSam3VideoMaskInspector(node);
+        else if (node.type === 'camera_motion') html = renderCameraMotionInspector(node);
         else if (node.type === 'pose_studio') html = WORKBENCH_POSE_STUDIO_NODE.renderInspector(node, poseStudioNodeContext());
         else if (node.type === 'gaussian_studio') html = WORKBENCH_GAUSSIAN_STUDIO_NODE.renderInspector(node, gaussianStudioNodeContext());
         else if (node.type === 'liveportrait_expression') html = WORKBENCH_LIVEPORTRAIT_EXPRESSION_NODE.renderInspector(node, livePortraitExpressionNodeContext());
@@ -25471,6 +25527,10 @@ ${actions}
 
     function renderSam3VideoMaskInspector(node) {
         return WORKBENCH_SAM3_VIDEO_MASK_NODE.renderInspector(node, sam3VideoMaskNodeContext());
+    }
+
+    function renderCameraMotionInspector(node) {
+        return WORKBENCH_CAMERA_MOTION_NODE.renderInspector(node, cameraMotionNodeContext());
     }
 
     function renderTimelineInspector(node) {
@@ -26264,7 +26324,7 @@ ${renderGenerationMetadataInspectorSection(node)}
 
     function isInteractiveTarget(target) {
         if (textareaEditorFieldFromTitleClick(target)) return true;
-        return !!(target && target.closest && target.closest('button,input,textarea,select,option,audio,video,[contenteditable="true"],.sai-vlm-chat-log,.sai-vlm-compose,.sai-vlm-compose-images,.sai-media-browser-grid,.sai-media-browser-detail,.sai-media-browser-controls,.sai-media-browser-tabs,.sai-media-browser-foot,.sai-preset-special-controller,[data-hover-preview-kind],[data-model-preview-param],[data-model-preview-lora-index],[data-model-browser-param],[data-model-browser-lora-index],[data-compare-position],[data-compare-mode],[data-compare-mode-select],[data-timeline-param],[data-timeline-clip-param],[data-media-seek],[data-media-trim-start],[data-media-trim-end],[data-media-player],[data-node-param],[data-text-value],[data-inspector-text-value],[data-text-merge-separator],[data-translation-input],[data-translation-param],[data-tagcart-param],[data-wd14-param],[data-vlm-param],[data-mask-param],[data-sam3-video-param],[data-config-param],[data-config-model-filter],[data-config-style],[data-style-config-search],[data-style-config-action],[data-config-lora-model],[data-config-lora-weight],[data-config-lora-enabled],[data-config-interface],[data-slot-row],[data-sam3-video-row],[data-classic-mode],[data-classic-ip-type],[data-classic-ip-stop],[data-classic-ip-weight],[data-classic-param]'));
+        return !!(target && target.closest && target.closest('button,input,textarea,select,option,audio,video,[contenteditable="true"],.sai-vlm-chat-log,.sai-vlm-compose,.sai-vlm-compose-images,.sai-media-browser-grid,.sai-media-browser-detail,.sai-media-browser-controls,.sai-media-browser-tabs,.sai-media-browser-foot,.sai-preset-special-controller,[data-hover-preview-kind],[data-model-preview-param],[data-model-preview-lora-index],[data-model-browser-param],[data-model-browser-lora-index],[data-compare-position],[data-compare-mode],[data-compare-mode-select],[data-timeline-param],[data-timeline-clip-param],[data-media-seek],[data-media-trim-start],[data-media-trim-end],[data-media-player],[data-node-param],[data-text-value],[data-inspector-text-value],[data-text-merge-separator],[data-translation-input],[data-translation-param],[data-tagcart-param],[data-wd14-param],[data-vlm-param],[data-mask-param],[data-sam3-video-param],[data-camera-motion-param],[data-config-param],[data-config-model-filter],[data-config-style],[data-style-config-search],[data-style-config-action],[data-config-lora-model],[data-config-lora-weight],[data-config-lora-enabled],[data-config-interface],[data-slot-row],[data-sam3-video-row],[data-classic-mode],[data-classic-ip-type],[data-classic-ip-stop],[data-classic-ip-weight],[data-classic-param]'));
     }
 
     function onViewportDoubleClick(evt) {
@@ -27690,6 +27750,7 @@ ${renderGenerationMetadataInspectorSection(node)}
                     { label: t('Add VLM node', '添加 VLM 节点'), icon: 'sai-vlm-glyph', search: 'vlm vision language model chat multimodal 添加 视觉模型 多模态 聊天', action: () => addVlmNode(targetWorld) },
                     { label: t('Add Advanced Masking node', '添加高级遮罩节点'), icon: 'fa-wand-magic-sparkles', search: 'advanced masking mask segment cutout 添加 高级遮罩 蒙版 抠图 分割', action: () => addMaskNode(targetWorld) },
                     { label: t('Add SAM3 Video Mask node', '添加 SAM3 视频遮罩节点'), icon: 'fa-film', search: 'sam3 video mask masking segment 添加 视频遮罩 视频蒙版 分割', action: () => addSam3VideoMaskNode(targetWorld) },
+                    { label: t('Add Uni3C Camera Motion node', '添加 Uni3C 运镜节点'), icon: 'fa-camera-rotate', search: 'uni3c camera motion reference video orbit pan dolly 运镜 参考视频 环绕 推拉', action: () => addCameraMotionNode(targetWorld) },
                     { label: t('Add Pose Studio node', '添加 Pose Studio 节点'), icon: 'fa-person', search: 'pose studio openpose reference body posture 添加 姿势 姿态 骨架 参考图', action: () => addPoseStudioNode(targetWorld) },
                     { label: t('Add Gaussian Studio node', '添加 Gaussian Studio 节点'), icon: 'fa-cube', search: 'gaussian studio 3dgs sharp splat ply rotate view 添加 高斯 三维 视角', action: () => addGaussianStudioNode(targetWorld) },
                     { label: t('Add LivePortrait Exp node', '添加 LivePortrait Exp 节点'), icon: 'fa-face-smile', search: 'liveportrait expression face smile edit reference 添加 表情 编辑 参考表情', action: () => addLivePortraitExpressionNode(targetWorld) },
@@ -28452,6 +28513,11 @@ ${renderGenerationMetadataInspectorSection(node)}
             items.push({ label: t('Open LivePortrait Exp', '打开 LivePortrait Exp'), icon: 'fa-face-smile', action: () => openLivePortraitExpressionEditor(node) });
             items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
         }
+        if (node.type === 'camera_motion') {
+            items.push({ label: t('Generate reference video', '生成参考视频'), icon: 'fa-camera-rotate', action: () => runCameraMotionNode(node) });
+            items.push({ label: t('Clear reference video', '清除参考视频'), icon: 'fa-eraser', action: () => clearCameraMotionNode(node), disabled: !node.asset });
+            items.push({ label: t('View video', '查看视频'), icon: 'fa-magnifying-glass-plus', action: () => openMediaViewer(node), disabled: !node.asset });
+        }
         if (node.type === 'result') {
             items.push({ label: t('View media', '查看媒体'), icon: 'fa-magnifying-glass-plus', action: () => node.type === 'result' ? openAssetViewer(getSelectedResultAsset(node), node.title || 'Result') : openImageViewer(node), disabled: !(node.type === 'result' ? getSelectedResultAsset(node) : node.asset) });
             if (isCanvasAgentImageTarget(node)) {
@@ -28609,6 +28675,10 @@ ${renderGenerationMetadataInspectorSection(node)}
                 { key: 'sam3', label: t('SAM3 Video Mask node', 'SAM3 视频遮罩节点'), icon: 'fa-wand-magic-sparkles' },
                 mediaCreationOption('video', false)
             ];
+            if (target.slot === 'scene_reference_video') return [
+                mediaCreationOption('video', false),
+                { key: 'camera_motion', label: t('Uni3C Camera Motion node', 'Uni3C 运镜节点'), icon: 'fa-camera-rotate' }
+            ];
             return [mediaCreationOption(getUploadSlotMediaKind(target.slot) || 'image', false)];
         }
         if (['wd14', 'mask_source', 'pose_reference', 'gaussian_reference', 'liveportrait_source', 'liveportrait_reference', 'compare'].includes(target.kind)) return [mediaCreationOption('image', false)];
@@ -28700,6 +28770,7 @@ ${renderGenerationMetadataInspectorSection(node)}
         if (key === 'text_merge') return addTextMergeNode(nodeWorld);
         if (key === 'mask') return addMaskNode(nodeWorld);
         if (key === 'sam3') return addSam3VideoMaskNode(nodeWorld);
+        if (key === 'camera_motion') return addCameraMotionNode(nodeWorld);
         if (key === 'classic') return addClassicNode({ name: 'default', display_name: t('Classic', '经典'), backend_engine: 'Fooocus', engine_type: 'image' }, nodeWorld);
         if (key === 'timeline') return addTimelineNode(nodeWorld);
         if (key === 'qwen_tts') return addQwenTtsNode('voice_design', nodeWorld);
@@ -35276,60 +35347,86 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         return WORKBENCH_MASK_EDITOR.openMaskEditor(node, maskEditorContext());
     }
 
-    function getPresetCatalog() {
-        const systemParams = window.simpleaiTopbarSystemParams || {};
-        const metaSource = systemParams.__canvas_preset_catalog || systemParams.__preset_store_meta || {};
-        const meta = metaSource && typeof metaSource === 'object' ? metaSource : {};
-        const entries = [];
+    function normalizePresetCatalog(source) {
+        const rows = [];
+        if (Array.isArray(source)) {
+            source.forEach((raw) => {
+                if (!raw || typeof raw !== 'object') return;
+                const name = normalizePresetName(raw.name || raw.display_name || '');
+                if (!name) return;
+                rows.push(Object.assign({ name, display_name: name }, raw, { name }));
+            });
+            return rows;
+        }
+        const meta = source && typeof source === 'object' ? source : {};
         Object.keys(meta).forEach((name) => {
             const clean = normalizePresetName(name);
             if (!clean) return;
-            const raw = meta[name] || {};
+            const raw = meta[name] && typeof meta[name] === 'object' ? meta[name] : {};
             const defaultEngine = raw.default_engine && typeof raw.default_engine === 'object' ? raw.default_engine : {};
             const backendParams = defaultEngine.backend_params && typeof defaultEngine.backend_params === 'object' ? defaultEngine.backend_params : {};
-            entries.push(Object.assign({
+            rows.push(Object.assign({
                 name: clean,
                 display_name: clean,
                 task_method: raw.task_method || backendParams.task_method || '',
                 backend_engine: raw.backend_engine || backendParams.backend_engine || ''
-            }, raw));
+            }, raw, { name: clean }));
         });
+        return rows;
+    }
 
-        const navList = String(systemParams.__nav_name_list || '')
-            .split(',')
-            .map(normalizePresetName)
-            .filter(Boolean);
-        const current = normalizePresetName(systemParams.__preset || '');
-        if (current) navList.unshift(current);
-
-        const seen = new Set(entries.map(x => normalizePresetName(x.name)));
-        navList.forEach((name, index) => {
-            if (seen.has(name)) return;
-            seen.add(name);
-            entries.push({
-                name,
-                display_name: name,
-                backend_engine: systemParams.__backend_engine || systemParams.task_class_name || 'Current',
-                engine_type: systemParams.engine_type || systemParams.__gallery_engine_type || 'image',
-                scene: !!systemParams.__is_scene_frontend,
-                task_method: systemParams.__scene_task_method || '',
-                order: 10000 + index,
-                source: 'nav'
-            });
-        });
-
-        if (!entries.length) {
-            entries.push({
-                name: 'default',
-                display_name: 'default',
-                backend_engine: 'Fooocus',
-                engine_type: 'image',
-                scene: false,
-                task_method: ''
-            });
-        }
-
+    function sortPresetCatalog(entries) {
         return entries.sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.name).localeCompare(String(b.name)));
+    }
+
+    function getPresetCatalog() {
+        if (Array.isArray(authoritativePresetCatalog)) {
+            return sortPresetCatalog(authoritativePresetCatalog.slice());
+        }
+        const systemParams = window.simpleaiTopbarSystemParams || {};
+        const metaSource = systemParams.__canvas_preset_catalog || systemParams.__preset_store_meta || {};
+        return sortPresetCatalog(normalizePresetCatalog(metaSource));
+    }
+
+    async function refreshPresetCatalog(options) {
+        const force = !!options?.force;
+        if (authoritativePresetCatalogPromise) return authoritativePresetCatalogPromise;
+        if (!force && Array.isArray(authoritativePresetCatalog) && authoritativePresetCatalog.length) return authoritativePresetCatalog;
+        authoritativePresetCatalogState = 'loading';
+        if (palette && !palette.hidden) renderPresetPalette();
+        authoritativePresetCatalogPromise = WORKBENCH_API.presetCatalog({
+            user_context: getWorkbenchUserContext()
+        }).then((response) => {
+            const entries = normalizePresetCatalog(response?.presets || []);
+            if (!response?.ok || !entries.length) {
+                throw new Error(response?.details || response?.error || 'Preset catalog is empty');
+            }
+            authoritativePresetCatalog = entries;
+            authoritativePresetCatalogState = 'ready';
+            const repaired = reconcilePresetNodesWithCatalog(entries);
+            if (repaired > 0) {
+                mutate();
+                showToast(t('{count} preset node definition(s) refreshed.', '已刷新 {count} 个 Preset 节点定义。').replace('{count}', String(repaired)));
+            } else if (root && !root.hidden) {
+                renderAll({ inspector: false });
+            }
+            return entries;
+        }).catch((err) => {
+            authoritativePresetCatalogState = 'error';
+            console.warn('[SimpAI Canvas] preset catalog refresh failed', err);
+            return getPresetCatalog();
+        }).finally(() => {
+            authoritativePresetCatalogPromise = null;
+            if (palette && !palette.hidden) renderPresetPalette();
+        });
+        return authoritativePresetCatalogPromise;
+    }
+
+    async function resolvePresetCatalogEntry(name) {
+        const clean = normalizePresetName(name || '');
+        if (!clean) return null;
+        const entries = await refreshPresetCatalog();
+        return (Array.isArray(entries) ? entries : []).find(entry => normalizePresetName(entry.name || '') === clean) || null;
     }
 
     function openPresetPalette(world) {
@@ -35339,6 +35436,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         const input = palette.querySelector('.sai-canvas-palette-search');
         input.value = '';
         renderPresetPalette();
+        refreshPresetCatalog().catch(() => {});
         setTimeout(() => input.focus(), 0);
     }
 
@@ -35377,7 +35475,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
   <span>${escapeHtml(entry.display_name || entry.name)}</span>
   <b>${escapeHtml(entry.backend_engine || 'Backend')}</b>
   <small>${escapeHtml(entryKindLabel(entry))}</small>
-</button>`).join('') || `<div class="sai-canvas-palette-empty">${escapeHtml(t('No matching presets', '没有匹配的预设'))}</div>`;
+</button>`).join('') || `<div class="sai-canvas-palette-empty">${escapeHtml(authoritativePresetCatalogState === 'loading' ? t('Loading preset definitions...', '正在加载 Preset 定义…') : t('No matching presets', '没有匹配的预设'))}</div>`;
     }
 
     function addPresetNode(entry, world, options) {
@@ -35497,6 +35595,115 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         scheduleAutoPresetModelChecks();
         showToast(autoMessage ? t('Added preset node, {message}', '已添加预设节点，{message}').replace('{message}', autoMessage) : t('Added preset node', '已添加预设节点'));
         return node;
+    }
+
+    function scenePresetDefinition(entry) {
+        const schema = entry?.schema && typeof entry.schema === 'object' ? cloneRunValue(entry.schema, {}) : {};
+        const themes = Array.isArray(schema.themes) ? schema.themes : [];
+        const theme = schema.default_theme || themes[0] || '';
+        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
+        const themeInfo = perTheme[theme] || {};
+        return {
+            schema,
+            theme,
+            taskMethod: themeInfo.task_method || entry?.task_method || ''
+        };
+    }
+
+    function refreshScenePresetNodeDefinition(node, entry) {
+        if (!node || !entry) return false;
+        const expected = scenePresetDefinition(entry);
+        const expectedScene = !!entry.scene || !!expected.schema.scene_frontend;
+        if (!expectedScene) return false;
+        const schemaMatches = JSON.stringify(node.schema || {}) === JSON.stringify(expected.schema);
+        const taskMatches = String(node.runtime?.task_method || '') === String(expected.taskMethod || '');
+        if (node.type === 'preset' && schemaMatches && taskMatches) return false;
+
+        const previousParams = node.params && typeof node.params === 'object' ? node.params : {};
+        const previousUploads = node.upload_slots && typeof node.upload_slots === 'object' ? node.upload_slots : {};
+        const perTheme = expected.schema.per_theme && typeof expected.schema.per_theme === 'object' ? expected.schema.per_theme : {};
+        const themeInfo = perTheme[expected.theme] || {};
+        const nextParams = {};
+        getVisiblePresetParams({ schema: expected.schema, runtime: { scene_theme: expected.theme }, params: {} }).forEach((param) => {
+            if (Object.prototype.hasOwnProperty.call(previousParams, param.key)) {
+                nextParams[param.key] = previousParams[param.key];
+            } else if (themeInfo.defaults && Object.prototype.hasOwnProperty.call(themeInfo.defaults, param.key)) {
+                nextParams[param.key] = themeInfo.defaults[param.key];
+            } else {
+                nextParams[param.key] = param.default ?? '';
+            }
+        });
+        const nextUploads = {};
+        getVisibleUploadSlots({ schema: expected.schema }).forEach((slot) => {
+            nextUploads[slot.key] = previousUploads[slot.key] || null;
+        });
+        const allowedUploads = new Set(Object.keys(nextUploads));
+        project.edges = project.edges.filter(edge => !(edge.type === 'upload' && edge.to === node.id && !allowedUploads.has(edge.slot)));
+
+        const promptDefaults = canvasAgentPresetPromptDefaults(entry);
+        const keepOverrides = (value) => value?.overrides && typeof value.overrides === 'object' ? cloneRunValue(value.overrides, {}) : {};
+        const modelList = Array.isArray(entry.model_list) ? cloneRunValue(entry.model_list, []) : [];
+        const cleanName = normalizePresetName(entry.name || entry.display_name || node.preset?.name || node.title || 'preset');
+        node.type = 'preset';
+        node.title = entry.display_name || cleanName;
+        node.w = 360;
+        node.h = 420;
+        node.preset = {
+            name: cleanName,
+            display_name: entry.display_name || cleanName,
+            snapshot_hash: null,
+            snapshot: {
+                default_styles: promptDefaults.styles.slice(),
+                default_prompt: promptDefaults.prompt || '',
+                default_prompt_negative: promptDefaults.negative_prompt || ''
+            }
+        };
+        node.runtime = {
+            backend_engine: entry.backend_engine || 'Current',
+            engine_type: entry.engine_type || 'image',
+            scene_frontend: 'scene',
+            scene_theme: expected.theme,
+            task_method: expected.taskMethod
+        };
+        node.schema = expected.schema;
+        node.params = nextParams;
+        node.upload_slots = nextUploads;
+        node.models_config = { mode: 'preset_default', defaults: cloneRunValue(entry.models_config || {}, {}), overrides: keepOverrides(node.models_config) };
+        node.styles_config = { mode: 'preset_default', defaults: { style_selections: promptDefaults.styles.slice() }, overrides: keepOverrides(node.styles_config) };
+        node.resolution_config = { mode: 'preset_default', defaults: cloneRunValue(entry.resolution_config || {}, {}), overrides: keepOverrides(node.resolution_config) };
+        node.generation_config = { mode: 'preset_default', defaults: cloneRunValue(entry.generation_config || {}, {}), overrides: keepOverrides(node.generation_config) };
+        node.model_requirements = {
+            model_list: modelList,
+            has_model_probe: !!entry.has_model_probe,
+            source: entry.source || ''
+        };
+        node.model_status = entry.missing ? {
+            state: 'missing',
+            missing_count: null,
+            message: 'Preset is marked as missing models in the main preset list.'
+        } : {
+            state: 'unknown',
+            missing_count: 0,
+            message: modelList.length ? 'Model requirements loaded; click to check.' : 'Model availability has not been checked.'
+        };
+        delete node.classic_mode;
+        delete node.classic_ip_count;
+        delete node.enhance_detection_configs;
+        ensurePresetSpecialControllerState(node);
+        return true;
+    }
+
+    function reconcilePresetNodesWithCatalog(entries) {
+        if (!project || !Array.isArray(project.nodes) || !Array.isArray(entries)) return 0;
+        const byName = new Map(entries.map(entry => [normalizePresetName(entry.name || ''), entry]));
+        let repaired = 0;
+        project.nodes.forEach((node) => {
+            if (!node || !['preset', 'classic'].includes(node.type)) return;
+            const name = normalizePresetName(node.preset?.name || node.title || '');
+            const entry = byName.get(name);
+            if (entry && refreshScenePresetNodeDefinition(node, entry)) repaired += 1;
+        });
+        return repaired;
     }
 
     function setPresetTheme(nodeId, theme) {
@@ -36841,6 +37048,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         WORKBENCH_SAM3_VIDEO_MASK_NODE.updateParam(nodeId, key, value, inputType, sam3VideoMaskNodeContext());
     }
 
+    function updateCameraMotionParam(nodeId, key, value, inputType) {
+        WORKBENCH_CAMERA_MOTION_NODE.updateParam(nodeId, key, value, inputType, cameraMotionNodeContext());
+    }
+
     function updateQwenTtsParam(nodeId, key, value, inputType) {
         const node = getNode(nodeId);
         if (!isQwenTtsNode(node) || !key || isNodeLocked(node)) return;
@@ -37205,6 +37416,23 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
 
     function addSam3VideoMaskNode(world, options) {
         return WORKBENCH_SAM3_VIDEO_MASK_NODE.createNode(world, options || {}, sam3VideoMaskNodeContext());
+    }
+
+    function addCameraMotionNode(world, options) {
+        const opts = options || {};
+        const node = WORKBENCH_CAMERA_MOTION_NODE.createNode(world, Object.assign({}, opts, {
+            render: false,
+            toast: false
+        }), cameraMotionNodeContext());
+        if (!node) return null;
+        const autoMessage = completePendingConnectionToNode(node);
+        selectedNodeId = node.id;
+        selectedNodeIds = new Set([node.id]);
+        selectedEdgeId = null;
+        selectedGroupId = null;
+        if (opts.render !== false) mutate();
+        if (opts.toast !== false) showToast(autoMessage ? `${node.title || 'Uni3C Camera Motion'} node added, ${autoMessage}` : t('Uni3C Camera Motion node added', '已添加 Uni3C 运镜节点'));
+        return node;
     }
 
     function addPoseStudioNode(world, options) {
@@ -39232,6 +39460,14 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
 
     function unloadSam3MaskForNode(node) {
         return WORKBENCH_SAM3_VIDEO_MASK_NODE.unloadMaskForNode(node, sam3VideoMaskNodeContext());
+    }
+
+    async function runCameraMotionNode(node) {
+        return WORKBENCH_CAMERA_MOTION_NODE.runNode(node, cameraMotionNodeContext());
+    }
+
+    function clearCameraMotionNode(node) {
+        return WORKBENCH_CAMERA_MOTION_NODE.clearNode(node, cameraMotionNodeContext());
     }
 
     async function ensureWorkbenchLazyRuntime(groupName, isReady, loadingMessage, failureMessage) {
@@ -43707,6 +43943,10 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
             uploadSam3MaskForNode(node);
         } else if (action === 'unload-sam3-mask' && node.type === 'sam3_video_mask') {
             unloadSam3MaskForNode(node);
+        } else if (action === 'generate-camera-motion-reference' && node.type === 'camera_motion') {
+            runCameraMotionNode(node);
+        } else if (action === 'clear-camera-motion-reference' && node.type === 'camera_motion') {
+            clearCameraMotionNode(node);
         } else if (action === 'edit-pose-studio' && node.type === 'pose_studio') {
             openPoseStudioEditor(node);
         } else if (action === 'edit-gaussian-studio' && node.type === 'gaussian_studio') {
@@ -46489,6 +46729,7 @@ ${metadataParams ? `<code>${escapeHtml(metadataParams)}</code>` : ''}`;
         const changed = syncStorageScope({ silent: true });
         applyThemeClass();
         if (changed || !root.hidden) renderAll();
+        refreshPresetCatalog({ force: true }).catch(() => {});
     });
     window.addEventListener('simpai:status-monitor-updated', () => {
         if (!root || root.hidden) return;

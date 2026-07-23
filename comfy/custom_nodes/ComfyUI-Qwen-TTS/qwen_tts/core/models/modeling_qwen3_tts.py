@@ -2301,33 +2301,6 @@ class Qwen3TTSForConditionalGeneration(Qwen3TTSPreTrainedModel, GenerationMixin)
         talker_codes_list = [talker_codes[i, :length, ] for i, length in enumerate(effective_lengths)]
         talker_hidden_states_list = [None for _ in range(len(talker_codes_list))]
 
-        try:
-            tail_pad_frames = int(kwargs.get("tail_pad_frames", 8))
-        except Exception:
-            tail_pad_frames = 8
-        if tail_pad_frames < 0:
-            tail_pad_frames = 0
-        if tail_pad_frames > 64:
-            tail_pad_frames = 64
-        if tail_pad_frames > 0:
-            padded_codes_list = []
-            padded_hs_list = []
-            for codes, hs in zip(talker_codes_list, talker_hidden_states_list):
-                if codes is None or codes.numel() == 0:
-                    padded_codes_list.append(codes)
-                    padded_hs_list.append(hs)
-                    continue
-                last_codes = codes[-1:, :].expand(tail_pad_frames, -1)
-                padded_codes_list.append(torch.cat([codes, last_codes], dim=0))
-
-                if hs is not None and hs.numel() > 0:
-                    last = hs[-1:, :].expand(tail_pad_frames, -1)
-                    padded_hs_list.append(torch.cat([hs, last], dim=0))
-                else:
-                    padded_hs_list.append(hs)
-            talker_codes_list = padded_codes_list
-            talker_hidden_states_list = padded_hs_list
-        
         return talker_codes_list, talker_hidden_states_list
 
 __all__ = [

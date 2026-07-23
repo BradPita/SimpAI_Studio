@@ -196,7 +196,7 @@
             {
               "enabled": true,
               "model": "Bernini-R_LightX2V_low_noise.safetensors",
-              "weight": 1
+              "weight": 0.8
             }
           ]
         },
@@ -234,7 +234,7 @@
             {
               "enabled": true,
               "model": "Bernini-R_LightX2V_low_noise.safetensors",
-              "weight": 1
+              "weight": 0.8
             },
             {
               "enabled": true,
@@ -524,7 +524,7 @@
             {
               "enabled": true,
               "model": "Bernini-R_LightX2V_low_noise.safetensors",
-              "weight": 1
+              "weight": 0.8
             }
           ]
         },
@@ -562,7 +562,7 @@
             {
               "enabled": true,
               "model": "Bernini-R_LightX2V_low_noise.safetensors",
-              "weight": 1
+              "weight": 0.8
             },
             {
               "enabled": true,

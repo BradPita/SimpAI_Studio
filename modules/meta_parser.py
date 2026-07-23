@@ -227,6 +227,27 @@ def scene_frontend_all_sam3_themes(scenes):
     return bool(normalized) and all("sam3" in value for value in normalized)
 
 
+def scene_sam3_inputs_enabled(scenes, theme):
+    if not isinstance(scenes, dict):
+        return False
+
+    raw_hidden = scenes.get("disvisible", [])
+    if isinstance(raw_hidden, str):
+        raw_hidden = [item.strip() for item in raw_hidden.split(",") if item.strip()]
+    hidden = set(str(item).strip() for item in raw_hidden) if isinstance(raw_hidden, (list, tuple, set)) else set()
+    if any(key in hidden for key in ("sam3_video_mask_accordion", "sam3_input_video", "sam3_mask_video")):
+        return False
+
+    theme_l = str(theme or "").lower()
+    task_method_l = get_scene_task_method(scenes, theme).lower()
+    if "sam3" in theme_l or "sam3" in task_method_l or scene_frontend_all_sam3_themes(scenes):
+        return True
+
+    raw_enabled = scenes.get("divisible", [])
+    enabled = set(str(item).strip() for item in raw_enabled) if isinstance(raw_enabled, (list, tuple, set)) else set()
+    return any(key in enabled for key in ("sam3_input_video", "sam3_mask_video"))
+
+
 def get_scene_resolution_override_updates(scenes, theme):
     return [
         gr_update(visible="hidden", open=False),
@@ -242,7 +263,7 @@ def get_scene_aux_control_updates(scenes, theme):
     show_camera = bool(theme_l and "multiangle" in theme_l and "camera_control_accordion" not in hidden)
     show_light = bool(theme_l and ("anglelight" in theme_l or "lightning" in theme_l) and "anglelight_control_accordion" not in hidden)
     show_style_transfer = bool(theme_l and "flux2_styletransfer" in theme_l and "style_transfer_accordion" not in hidden)
-    show_sam3 = bool(("sam3" in theme_l or "sam3" in task_method_l or scene_frontend_all_sam3_themes(scenes)) and "sam3_video_mask_accordion" not in hidden)
+    show_sam3 = scene_sam3_inputs_enabled(scenes, theme)
     show_pose = bool(("pose" in theme_l or "pose" in task_method_l) and "pose_studio" not in hidden)
     gaussian_markers = ("gaussian", "3dgs", "splat", "sharp")
     show_gaussian = bool((any(marker in theme_l for marker in gaussian_markers) or any(marker in task_method_l for marker in gaussian_markers)) and "gaussian_studio" not in hidden)

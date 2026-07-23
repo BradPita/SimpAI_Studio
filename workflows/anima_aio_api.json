@@ -566,6 +566,42 @@
       "title": "SimpAI AIO ImagePrompt Style Transfer"
     }
   },
+  "aio_anima_control_patch": {
+    "inputs": {
+      "name": "anima-lllite-any-test-like-v2.safetensors"
+    },
+    "class_type": "ModelPatchLoader",
+    "_meta": {
+      "title": "Anima LLLite Control Patch"
+    }
+  },
+  "aio_anima_pose_patch": {
+    "inputs": {
+      "name": "anima-lllite-pose-1.safetensors"
+    },
+    "class_type": "ModelPatchLoader",
+    "_meta": {
+      "title": "Anima LLLite Pose Patch"
+    }
+  },
+  "aio_anima_inpaint_patch": {
+    "inputs": {
+      "name": "anima-lllite-inpainting-v2.safetensors"
+    },
+    "class_type": "ModelPatchLoader",
+    "_meta": {
+      "title": "Anima LLLite Inpaint Patch"
+    }
+  },
+  "aio_anima_tile_patch": {
+    "inputs": {
+      "name": "animaTileRepair_v20.safetensors"
+    },
+    "class_type": "ModelPatchLoader",
+    "_meta": {
+      "title": "Anima LLLite Tile Patch"
+    }
+  },
   "aio_reference_1": {
     "inputs": {
       "model": [
@@ -586,6 +622,14 @@
       ],
       "reference": [
         "aio_ref_config_1",
+        0
+      ],
+      "control_model_patch": [
+        "aio_anima_control_patch",
+        0
+      ],
+      "pose_model_patch": [
+        "aio_anima_pose_patch",
         0
       ]
     },
@@ -615,6 +659,14 @@
       "reference": [
         "aio_ref_config_2",
         0
+      ],
+      "control_model_patch": [
+        "aio_anima_control_patch",
+        0
+      ],
+      "pose_model_patch": [
+        "aio_anima_pose_patch",
+        0
       ]
     },
     "class_type": "SimpAIAIOReferenceAnima",
@@ -643,6 +695,14 @@
       "reference": [
         "aio_ref_config_3",
         0
+      ],
+      "control_model_patch": [
+        "aio_anima_control_patch",
+        0
+      ],
+      "pose_model_patch": [
+        "aio_anima_pose_patch",
+        0
       ]
     },
     "class_type": "SimpAIAIOReferenceAnima",
@@ -670,6 +730,14 @@
       ],
       "reference": [
         "aio_ref_config_4",
+        0
+      ],
+      "control_model_patch": [
+        "aio_anima_control_patch",
+        0
+      ],
+      "pose_model_patch": [
+        "aio_anima_pose_patch",
         0
       ]
     },
@@ -830,6 +898,10 @@
       "denoise": [
         "27",
         9
+      ],
+      "model_patch": [
+        "aio_anima_tile_patch",
+        0
       ]
     },
     "class_type": "SimpAIAIOUOVAnima",
@@ -902,6 +974,10 @@
       ],
       "inpaint": [
         "aio_inpaint_config",
+        0
+      ],
+      "model_patch": [
+        "aio_anima_inpaint_patch",
         0
       ]
     },
@@ -1087,6 +1163,10 @@
       ],
       "enhance_uov": [
         "aio_enhance_uov",
+        0
+      ],
+      "model_patch": [
+        "aio_anima_tile_patch",
         0
       ]
     },

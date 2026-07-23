@@ -203,6 +203,7 @@ def javascript_html():
     canvas_workbench_audio_node_path = webpath('javascript/canvas_workbench/nodes/audio_node.js')
     canvas_workbench_compare_node_path = webpath('javascript/canvas_workbench/nodes/compare_node.js')
     canvas_workbench_sam3_video_mask_node_path = webpath('javascript/canvas_workbench/nodes/sam3_video_mask_node.js')
+    canvas_workbench_camera_motion_node_path = webpath('javascript/canvas_workbench/nodes/camera_motion_node.js')
     canvas_workbench_pose_studio_node_path = webpath('javascript/canvas_workbench/nodes/pose_studio_node.js')
     canvas_workbench_gaussian_studio_node_path = webpath('javascript/canvas_workbench/nodes/gaussian_studio_node.js')
     canvas_workbench_liveportrait_expression_node_path = webpath('javascript/canvas_workbench/nodes/liveportrait_expression_node.js')
@@ -270,6 +271,7 @@ def javascript_html():
             canvas_workbench_audio_node_path,
             canvas_workbench_compare_node_path,
             canvas_workbench_sam3_video_mask_node_path,
+            canvas_workbench_camera_motion_node_path,
             canvas_workbench_pose_studio_node_path,
             canvas_workbench_gaussian_studio_node_path,
             canvas_workbench_liveportrait_expression_node_path,

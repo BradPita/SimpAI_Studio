@@ -774,47 +774,6 @@ class QwenTTSWrapper:
                     pass
 
                 try:
-                    into_silence = (need_samples > 0) or (float(leading[i + 1]) >= 0.02) or (float(quiet_leading[i + 1]) >= 0.02)
-                    if into_silence:
-                        extra_n = int(min(int(float(sr) * 0.008), int(prev_w.shape[-1])))
-                        if extra_n > 1:
-                            ramp = torch.cos(torch.linspace(0.0, float(torch.pi) / 2.0, extra_n, dtype=prev_w.dtype))
-                            prev_w[..., -extra_n:] = prev_w[..., -extra_n:] * ramp
-
-                        x = prev_w
-                        if getattr(x, "ndim", 0) == 3:
-                            x = x[0]
-                        if getattr(x, "ndim", 0) == 2:
-                            x = x.mean(dim=0)
-                        x = x.to(torch.float32)
-                        n = int(x.shape[-1])
-                        lookback_n = int(min(n, int(float(sr) * 1.2)))
-                        win = int(max(4, int(float(sr) * 0.02)))
-                        hop = int(max(1, int(float(sr) * 0.005)))
-                        if lookback_n >= win:
-                            start = n - lookback_n
-                            tail = x[start:]
-                            frames = tail.unfold(0, win, hop)
-                            rms = frames.pow(2.0).mean(dim=1).sqrt()
-                            max_rms = float(rms.max().item()) if int(rms.numel()) > 0 else 0.0
-                            speech_thr = float(max(0.007, 0.06 * max_rms))
-                            idx = torch.nonzero(rms > speech_thr, as_tuple=False)
-                            if int(idx.numel()) > 0:
-                                last = int(idx[-1].item())
-                                cut = int(min(n, start + last * hop + win))
-                            else:
-                                cut = int(max(0, n - int(float(sr) * 0.25)))
-                            fade_n = int(max(1, int(float(sr) * 0.02)))
-                            fade_end = int(min(n, cut + fade_n))
-                            if fade_end > cut + 1:
-                                ramp = torch.linspace(1.0, 0.0, fade_end - cut, dtype=prev_w.dtype)
-                                prev_w[..., cut:fade_end] = prev_w[..., cut:fade_end] * ramp
-                            if fade_end < n:
-                                prev_w[..., fade_end:] = 0
-                except Exception:
-                    pass
-
-                try:
                     dn = int(min(declick_n, int(next_w.shape[-1])))
                     allow_in = (need_samples > 0) or (float(quiet_leading[i + 1]) >= (float(declick_n) / float(sr)))
                     if allow_in and dn > 1:
@@ -827,6 +786,11 @@ class QwenTTSWrapper:
                     merged_parts.append(torch.zeros((1, target_channels, need_samples), dtype=fixed[i].dtype))
                 merged_parts.append(next_w)
             merged_waveform = torch.cat(merged_parts, dim=-1)
+        end_fade_samples = int(min(int(merged_waveform.shape[-1]), max(1, int(0.008 * float(sr)))))
+        if end_fade_samples > 1:
+            ramp = torch.cos(torch.linspace(0.0, float(torch.pi) / 2.0, end_fade_samples, dtype=merged_waveform.dtype))
+            merged_waveform[..., -end_fade_samples:] = merged_waveform[..., -end_fade_samples:] * ramp
+
         tail_samples = int(max(0.0, float(tail_seconds)) * float(sr))
         if tail_samples > 0:
             merged_waveform = torch.cat(
@@ -1242,7 +1206,7 @@ class QwenTTSWrapper:
                     start_index += len(batch_texts)
 
         merge_gap = 0.0 if saw_pause_markup else 0.4
-        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap) if len(audios) > 1 else audios[0]
+        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap)
         if unload_model_after_generate:
             try:
                 unload_qwen_tts_models()
@@ -1460,7 +1424,7 @@ class QwenTTSWrapper:
                 start_index += len(batch_texts)
 
         merge_gap = 0.0 if saw_pause_markup else 0.14
-        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap) if len(audios) > 1 else audios[0]
+        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap)
         if unload_model_after_generate:
             try:
                 unload_qwen_tts_models()
@@ -1663,7 +1627,7 @@ class QwenTTSWrapper:
                 start_index += len(batch_texts)
 
         merge_gap = 0.0 if saw_pause_markup else 0.14
-        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap) if len(audios) > 1 else audios[0]
+        merged = self._merge_audio_dicts(audios, gap_seconds=merge_gap)
         if unload_model_after_generate:
             try:
                 unload_qwen_tts_models()
@@ -1907,7 +1871,7 @@ class QwenTTSWrapper:
                     cursor += 1
                 if pause_total > 0.0 and sr_known is not None:
                     audios.append(self._make_silence_audio_dict(int(sr_known), float(min(pause_total, 120.0)), seg_audio))
-            merged_dialogue = self._merge_audio_dicts(audios, gap_seconds=0.0) if len(audios) > 1 else audios[0]
+            merged_dialogue = self._merge_audio_dicts(audios, gap_seconds=0.0)
             result = (merged_dialogue,)
             if unload_model_after_generate:
                 try:

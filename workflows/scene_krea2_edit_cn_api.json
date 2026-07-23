@@ -581,7 +581,7 @@
   "198": {
     "inputs": {
       "clip_name": "placeholder.safetensors",
-      "type": "qwen_image"
+      "type": "krea2"
     },
     "class_type": "CLIPLoaderGGUF",
     "_meta": {
@@ -612,6 +612,7 @@
         0
       ],
       "grounding_px": 768,
+      "system_prompt": "",
       "clip": [
         "197",
         0
@@ -637,6 +638,7 @@
         29
       ],
       "grounding_px": 768,
+      "system_prompt": "",
       "clip": [
         "197",
         0

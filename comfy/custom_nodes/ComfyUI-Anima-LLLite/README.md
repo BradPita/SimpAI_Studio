@@ -21,16 +21,23 @@ cd ComfyUI/custom_nodes
 git clone <this-repo> ComfyUI-Anima-LLLite
 ```
 
-Place LLLite weights (`.safetensors`) under `ComfyUI/models/controlnet/`.
+Place LLLite weights (`.safetensors`) under `ComfyUI/models/model_patches/`.
+The legacy `ComfyUI/models/controlnet/` location is also supported.
 
 ## Node
 
-**Apply Anima ControlNet-LLLite** (`loaders` category)
+**Apply Anima ControlNet-LLLite (Custom)** (`loaders` category, node ID
+`AnimaLLLiteApplyCustom`)
+
+Current ComfyUI versions include a built-in node named `AnimaLLLiteApply`.
+This custom implementation uses a separate node ID so both implementations
+can be loaded at the same time. Workflows created with this implementation
+should use `AnimaLLLiteApplyCustom`.
 
 | Input | Type | Notes |
 |---|---|---|
 | `model` | MODEL | Anima checkpoint |
-| `lllite_name` | filename | from `models/controlnet/` |
+| `lllite_name` | filename | from `models/model_patches/` or legacy `models/controlnet/` |
 | `image` | IMAGE | control image (any resolution; auto-resized to latent×8) |
 | `strength` | FLOAT | LLLite multiplier (default 1.0) |
 | `start_percent` | FLOAT | start of the active sampling window (0.0 = sigma_max) |

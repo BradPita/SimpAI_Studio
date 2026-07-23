@@ -300,10 +300,12 @@ PRESET_STORE_ORDER = [
     "ChenkinXL",
     "Anima",
     "Wan(I2V)",
+    "Wan-Uni3C(I2V)",
     "Wan-Extent",
     "Dasiwa(I2V)",
     "Dasiwa-Extent",
     "Wan(T2V)",
+    "Wan-Uni3C(T2V)",
     "Wan(T2I)",
     "Bernini-ImageEdit",
     "Bernini-MultiI2V",
@@ -1016,8 +1018,6 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     state_params.update({"local_access":  True if client_host == shared.args.listen or shared.args.listen=='127.0.0.1' or client_host=='127.0.0.1' else False})
 
     if "__lang" not in state_params.keys():
-        if 'accept-language' in headers and 'zh-CN' in headers['accept-language']:
-            args_manager.args.language = 'cn'
         state_params.update({"__lang": ads.get_user_default("__lang", state_params, args_manager.args.language)})
     if "__theme" not in state_params.keys():
         state_params.update({"__theme": ads.get_user_default("__theme", state_params, args_manager.args.theme)})
@@ -1405,6 +1405,10 @@ def _build_canvas_scene_schema(scene_frontend):
         divisible = None
     elif not divisible:
         divisible = None
+    sam3_inputs_visible = any(
+        meta_parser.scene_sam3_inputs_enabled(scene_frontend, theme)
+        for theme in (themes or [default_theme])
+    )
 
     slot_defs = [
         ("scene_video", "Scene Video"),
@@ -1421,8 +1425,8 @@ def _build_canvas_scene_schema(scene_frontend):
     def _slot_visible(key):
         if key in disvisible:
             return False
-        if key in ("sam3_input_video", "sam3_mask_video") and divisible is not None:
-            return key in divisible
+        if key in ("sam3_input_video", "sam3_mask_video"):
+            return sam3_inputs_visible
         return True
 
     upload_slots = [
@@ -1588,6 +1592,8 @@ def _build_preset_store_meta(state):
     try:
         if isinstance(state, dict) and state.get("user"):
             user_did = state["user"].get_did()
+        elif isinstance(state, dict):
+            user_did = str(state.get("user_did") or "").strip() or None
     except Exception:
         user_did = None
 
@@ -1996,6 +2002,39 @@ def _scene_director_audio_status_for_generation(scene_director_enabled=False, sc
     return status
 
 
+def _clean_scene_reference_video_path(value):
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("video") or value.get("name")
+    text = str(value or "").strip().strip('"')
+    if not text or text.lower() in ("none", "null"):
+        return None
+    return text
+
+
+def _effective_scene_reference_video(state_params, scene_theme, scene_reference_video, scene_reference_video_original_path):
+    del state_params, scene_theme
+    component_path = _clean_scene_reference_video_path(scene_reference_video)
+    if not component_path:
+        return None
+    original_path = _clean_scene_reference_video_path(scene_reference_video_original_path)
+    if original_path:
+        return original_path
+    return component_path
+
+
+def _apply_scene_reference_video_backend_param(backend_params, reference_video):
+    if reference_video:
+        backend_params["reference_video"] = reference_video
+    else:
+        backend_params.pop("reference_video", None)
+
+
+def _apply_scene_video_backend_params(backend_params, video, mask_video, reference_video):
+    backend_params["video"] = video
+    backend_params["mask_video"] = mask_video
+    _apply_scene_reference_video_backend_param(backend_params, reference_video)
+
+
 def process_before_generation(state_params, seed_random, image_seed, backend_params, scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_video, scene_audio, scene_original_video_path, active_video_source, sam3_input_video, sam3_original_video_path, sam3_mask_video, overwrite_width=None, overwrite_height=None, resolution_multiplier=1.0, resolution_quantize_step=None, resolution_edit_mode=None, resolution_original_input=False, sam3_trim_payload=None, overwrite_step=None, scene_director_enabled=False, scene_director_state=None, scene_video_duration=None, scene_reference_video=None, scene_reference_video_original_path=None):
     regen_scene_additional_prompt = scene_additional_prompt
     regen_scene_additional_prompt_2 = scene_additional_prompt_2
@@ -2054,14 +2093,7 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video_original_path = None
         if 'scene_audio' in disvisible:
             scene_audio = None
-        sam3_hidden = (
-            'sam3_video_mask_accordion' in disvisible
-            or (
-                isinstance(scene_frontend, dict)
-                and isinstance(scene_frontend.get("divisible"), list)
-                and not any(key in scene_frontend.get("divisible", []) for key in ("sam3_input_video", "sam3_mask_video"))
-            )
-        )
+        sam3_hidden = not meta_parser.scene_sam3_inputs_enabled(scene_frontend, scene_theme)
         if sam3_hidden:
             sam3_input_video = None
             sam3_original_video_path = None
@@ -2224,7 +2256,12 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             video_effective = sam3_video_effective if sam3_video_effective else scene_video_effective
         else:
             video_effective = sam3_video_effective if sam3_video_effective else scene_video_effective
-        reference_video_effective = scene_reference_video_original_path if scene_reference_video and scene_reference_video_original_path else scene_reference_video
+        reference_video_effective = _effective_scene_reference_video(
+            state_params,
+            scene_theme,
+            scene_reference_video,
+            scene_reference_video_original_path,
+        )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
 
         def _scene_image_trace_shape(value, *, sketch=False):
@@ -2371,12 +2408,15 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_switch_option4=scene_switch_option4,
             scene_aspect_ratio=_scene_aspect_to_resolution(scene_aspect_ratio),
             scene_image_number=scene_image_number,
-            video=video_effective,
-            reference_video=reference_video_effective,
             audio=scene_audio,
-            mask_video=sam3_mask_video,
             scene_steps=None,
             ))
+        _apply_scene_video_backend_params(
+            backend_params,
+            video_effective,
+            sam3_mask_video,
+            reference_video_effective,
+        )
     regen_data = _build_regen_manifest_for_generation(
         state_params,
         backend_params,

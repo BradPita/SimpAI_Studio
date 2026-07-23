@@ -58,7 +58,7 @@
             candidates.push(localStorage.getItem('ailang'));
         } catch (err) {}
         candidates.push(readCookie('ailang'));
-        const raw = candidates.map(value => String(value || '').trim().toLowerCase()).find(Boolean) || 'cn';
+        const raw = candidates.map(value => String(value || '').trim().toLowerCase()).find(Boolean) || 'en';
         return raw.startsWith('en') ? 'en' : 'cn';
     }
 

@@ -233,6 +233,13 @@
         });
     }
 
+    function presetCatalog(payload) {
+        return postJson('/canvas-workbench/preset-catalog', payload || {}, {
+            emptyError: 'empty preset catalog response',
+            requestError: 'preset catalog request failed'
+        });
+    }
+
     function modelBrowserQuery(payload) {
         return postJson('/model-browser/query', payload || {}, {
             emptyError: 'empty model-browser response',
@@ -307,6 +314,13 @@
         return postJson('/canvas-workbench/generate-mask', payload, {
             emptyError: 'empty mask generation response',
             requestError: 'mask generation request failed'
+        });
+    }
+
+    function generateCameraMotionReference(payload) {
+        return postJson('/canvas-workbench/generate-camera-motion-reference', payload, {
+            emptyError: 'empty camera motion reference response',
+            requestError: 'camera motion reference request failed'
         });
     }
 
@@ -622,6 +636,7 @@
         qwenTtsControl,
         qwenTtsPresets,
         modelCatalog,
+        presetCatalog,
         modelBrowserQuery,
         modelBrowserFetchMetadata,
         modelBrowserFetchBatch,
@@ -633,6 +648,7 @@
         deleteAssets,
         materializeAsset,
         generateMask,
+        generateCameraMotionReference,
         generateSam3VideoMask,
         cancelSam3VideoMask,
         normalizeSam3MaskVideo,

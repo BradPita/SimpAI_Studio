@@ -346,22 +346,34 @@ class SimpAIAIOReferenceAnima:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {"model": ("MODEL",), "positive": ("CONDITIONING",), "negative": ("CONDITIONING",),
-                             "vae": ("VAE",), "reference": ("SIMPAI_AIO_REFERENCE_CONFIG",)}}
+                             "vae": ("VAE",), "reference": ("SIMPAI_AIO_REFERENCE_CONFIG",),
+                             "control_model_patch": ("MODEL_PATCH", {"lazy": True}),
+                             "pose_model_patch": ("MODEL_PATCH", {"lazy": True})}}
     RETURN_TYPES = ("MODEL", "CONDITIONING", "CONDITIONING")
     RETURN_NAMES = ("model", "positive", "negative")
     FUNCTION = "expand"
     CATEGORY = "SimpAI/AIO/Reference"
 
-    def expand(self, model, positive, negative, vae, reference):
+    def check_lazy_status(self, model, positive, negative, vae, reference, control_model_patch=None, pose_model_patch=None):
+        mode = int(reference.get("mode", 0))
+        if mode == 5 and pose_model_patch is None:
+            return ["pose_model_patch"]
+        if mode > 0 and mode not in (1, 4, 5) and control_model_patch is None:
+            return ["control_model_patch"]
+        return []
+
+    def expand(self, model, positive, negative, vae, reference, control_model_patch=None, pose_model_patch=None):
         mode = int(reference.get("mode", 0))
         if mode <= 0 or mode in (1, 4):
             return (model, positive, negative)
         graph = GraphBuilder()
         image = _prepare_control_image(graph, reference["image"], mode, bool(reference.get("skip_preprocessor", False)))
-        lllite_name = "anima-lllite-pose-1.safetensors" if mode == 5 else "anima-lllite-any-test-like-v2.safetensors"
-        patched = graph.node("AnimaLLLiteApply", model=model, lllite_name=lllite_name,
+        model_patch = pose_model_patch if mode == 5 else control_model_patch
+        if model_patch is None:
+            raise ValueError("Anima control reference requires MODEL_PATCH")
+        patched = graph.node("AnimaLLLiteApply", model=model, model_patch=model_patch,
                              image=image, strength=float(reference.get("weight", 0.7)), start_percent=0.0,
-                             end_percent=float(reference.get("stop_percent", 0.6)), preserve_wrapper=True)
+                             end_percent=float(reference.get("stop_percent", 0.6)))
         return {"result": (patched.out(0), positive, negative), "expand": graph.finalize()}
 
 

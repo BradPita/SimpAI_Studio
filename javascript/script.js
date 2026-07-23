@@ -967,7 +967,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 return window.SimpAII18n.getUiLang(source);
             } catch (e) {}
         }
-        return 'cn';
+        return 'en';
     }
 
     function modelsPanelLangSource() {
@@ -2680,6 +2680,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'scene_reference_video', group: 'scene' },
         { id: 'scene_audio', group: 'scene' },
         { id: 'camera_control_accordion', group: 'scene-aux' },
+        { id: 'camera_motion_reference_accordion', group: 'scene-aux' },
         { id: 'anglelight_control_accordion', group: 'scene-aux' },
         { id: 'style_transfer_accordion', group: 'scene-aux' },
         { id: 'sam3_video_mask_accordion', group: 'scene-aux' },
@@ -2687,6 +2688,7 @@ document.addEventListener("DOMContentLoaded", function() {
         { id: 'gaussian_studio', group: 'scene-aux' },
         { id: 'liveportrait_expression', group: 'scene-aux' },
         { id: 'relight_light_control', group: 'scene-aux' },
+        { id: 'scene_cloud_image_api', group: 'scene-aux' },
     ]);
 
     function normalizeChoice(value) {
@@ -2850,8 +2852,20 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     function sceneSam3VisibilityDecision(sceneFrontend, theme, params) {
+        const rawHidden = sceneFrontend?.disvisible;
+        const hidden = new Set(
+            (Array.isArray(rawHidden) ? rawHidden : String(rawHidden || '').split(','))
+                .map((value) => String(value || '').trim())
+                .filter(Boolean)
+        );
+        if (['sam3_video_mask_accordion', 'sam3_input_video', 'sam3_mask_video'].some((key) => hidden.has(key))) {
+            return false;
+        }
+        const rawEnabled = sceneFrontend?.divisible;
+        const enabled = new Set(Array.isArray(rawEnabled) ? rawEnabled.map(String) : []);
+        const inputsExplicitlyEnabled = ['sam3_input_video', 'sam3_mask_video'].some((key) => enabled.has(key));
         const byTheme = sceneTaskMethodForTheme(sceneFrontend, theme);
-        if (byTheme.known) return byTheme.value.toLowerCase().includes('sam3');
+        if (byTheme.known) return byTheme.value.toLowerCase().includes('sam3') || inputsExplicitlyEnabled;
         const selected = sceneSelectedThemeValue();
         if (sceneFrontendAllThemesSam3(sceneFrontend || {})) return true;
         const hasSam3Option = sceneFrontendHasSam3Option(sceneFrontend || {});
@@ -2861,18 +2875,18 @@ document.addEventListener("DOMContentLoaded", function() {
         const fallbackTask = sceneTaskMethodNeedsThemeMatch(sceneFrontend || {})
             ? ''
             : sceneTaskMethodValue(sceneFrontend, theme, params).toLowerCase();
-        if (fallbackTask) return fallbackTask.includes('sam3');
+        if (fallbackTask) return fallbackTask.includes('sam3') || inputsExplicitlyEnabled;
         const themeText = String(theme || selected || '').toLowerCase();
-        return themeText.includes('sam3');
+        return themeText.includes('sam3') || inputsExplicitlyEnabled;
     }
 
     function sceneDisvisibleSet(sceneFrontend, params) {
-        const raw = Array.isArray(params?.__scene_disvisible)
+        const hasResolved = Array.isArray(params?.__scene_disvisible);
+        const source = hasResolved
             ? params.__scene_disvisible
-            : [];
-        const source = sceneFrontend && Object.prototype.hasOwnProperty.call(sceneFrontend, 'disvisible')
-            ? sceneFrontend.disvisible
-            : raw;
+            : (sceneFrontend && Object.prototype.hasOwnProperty.call(sceneFrontend, 'disvisible')
+                ? sceneFrontend.disvisible
+                : []);
         return Array.isArray(source)
             ? new Set(source.map(String))
             : new Set(String(source || '').split(',').map((x) => x.trim()).filter(Boolean));
@@ -2882,9 +2896,11 @@ document.addEventListener("DOMContentLoaded", function() {
         const params = getTopbarParams();
         const sceneFrontend = params && typeof params === 'object' ? params.scene_frontend : null;
         const isScene = isSceneFrontendParams(params);
+        const preset = String((params && (params.__preset || params.preset)) || '').trim();
         setVisible('scene_panel', isScene);
         setVisible('scene_primary_row', isScene);
         setVisible('scene_additional_prompt', isScene);
+        setVisible('scene_cloud_image_api', isScene && preset === 'GeneralAPIImage');
         if (!isScene) {
             if (typeof window.closeSam3FramesEditor === 'function') {
                 try { window.closeSam3FramesEditor(); } catch (e) {}
@@ -2899,12 +2915,15 @@ document.addEventListener("DOMContentLoaded", function() {
         const theme = sceneThemeValue(sceneFrontend || {}, params || {});
         const themeLower = theme.toLowerCase();
         const taskMethodLower = sceneTaskMethodValue(sceneFrontend || {}, theme, params || {}).toLowerCase();
+        const engineLower = String((params && (params.backend_engine || params.engine)) || '').toLowerCase();
         const disvisible = sceneDisvisibleSet(sceneFrontend || {}, params || {});
         if (typeof window.syncSceneCanvasMaskMode === 'function') {
             window.syncSceneCanvasMaskMode(params || {});
         }
 
         setVisible('camera_control_accordion', themeLower.includes('multiangle') && !disvisible.has('camera_control_accordion'));
+        const wanCameraMotion = ['uni3c'].some((marker) => themeLower.includes(marker) || taskMethodLower.includes(marker) || engineLower.includes(marker));
+        setVisible('camera_motion_reference_accordion', wanCameraMotion && !disvisible.has('scene_reference_video'));
         setVisible('anglelight_control_accordion', (themeLower.includes('anglelight') || themeLower.includes('lightning')) && !disvisible.has('anglelight_control_accordion'));
         setVisible('style_transfer_accordion', themeLower.includes('flux2_styletransfer') && !disvisible.has('style_transfer_accordion'));
         const showSam3 = sceneSam3VisibilityDecision(sceneFrontend || {}, theme, params || {});

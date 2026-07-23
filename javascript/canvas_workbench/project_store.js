@@ -7,7 +7,7 @@
     const sanitizeStoragePart = UTILS.sanitizeStoragePart || ((value) => String(value || 'guest').replace(/[^a-zA-Z0-9_.:-]/g, '_') || 'guest');
     const shortIdentity = UTILS.shortIdentity || ((value) => String(value || 'guest'));
     const t = UTILS.t || ((en, cn) => cn || en);
-    const getUiLang = UTILS.getUiLang || (() => 'cn');
+    const getUiLang = UTILS.getUiLang || (() => 'en');
 
     const LEGACY_STORAGE_KEY = 'simpai.infiniteCanvasWorkbench.v1';
     const STORAGE_KEY_PREFIX = 'simpai.infiniteCanvasWorkbench.v1';

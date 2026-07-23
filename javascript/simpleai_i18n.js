@@ -50,14 +50,16 @@
     function normalizeLang(value) {
         const raw = String(value || '').trim().toLowerCase();
         if (!raw) return '';
-        return raw.startsWith('en') ? 'en' : 'cn';
+        if (raw.startsWith('en')) return 'en';
+        if (raw.startsWith('cn') || raw.startsWith('zh')) return 'cn';
+        return '';
     }
 
     function getUiLang(source) {
         const match = collectLangCandidates(source)
             .map(normalizeLang)
             .find(Boolean);
-        return match || 'cn';
+        return match || 'en';
     }
 
     function isEnglishUi(source) {

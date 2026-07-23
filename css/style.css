@@ -7614,6 +7614,7 @@ html.simpai-preset-nav-active #pose_studio,
 html.simpai-preset-nav-active #gaussian_studio,
 html.simpai-preset-nav-active #liveportrait_expression,
 html.simpai-preset-nav-active #relight_light_control,
+html.simpai-preset-nav-active #scene_cloud_image_api,
 html.simpai-preset-nav-active #scene_resolution_override_accordion {
     display: none !important;
     min-height: 0 !important;
@@ -7646,6 +7647,7 @@ html.simpai-preset-nav-active #pose_studio > *,
 html.simpai-preset-nav-active #gaussian_studio > *,
 html.simpai-preset-nav-active #liveportrait_expression > *,
 html.simpai-preset-nav-active #relight_light_control > *,
+html.simpai-preset-nav-active #scene_cloud_image_api > *,
 html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     display: none !important;
 }

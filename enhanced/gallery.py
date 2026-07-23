@@ -499,7 +499,7 @@ def _gallery_lang(state_params):
         lang = str(state_params.get("__lang") or "").strip().lower()
         if lang.startswith("en"):
             return "en"
-    return "cn"
+    return "en"
 
 
 def _gallery_media_label(media_type, state_params):

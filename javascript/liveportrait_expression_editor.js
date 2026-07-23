@@ -68,7 +68,7 @@
 
     function getLangSource() {
         const state = window.simpleaiTopbarSystemParams || window.topbarLastSystemParams || {};
-        const lang = state.__lang || state.lang || window.locale_lang || 'cn';
+        const lang = state.__lang || state.lang || window.locale_lang || 'en';
         return Object.assign({}, state, { __lang: lang });
     }
 

@@ -2525,7 +2525,7 @@ function showToolboxNoteOverlayFromSource(kind) {
         if (kind === "delete") {
             const target = window.__simpleaiPendingGalleryDeleteTarget;
             const params = topbarLastSystemParams && typeof topbarLastSystemParams === "object" ? topbarLastSystemParams : {};
-            const isEnglish = String(params.__lang || "cn").toLowerCase() === "en";
+            const isEnglish = String(params.__lang || "en").toLowerCase() === "en";
             const fileName = target && target.valid ? String(target.file_name || "") : "";
             body.textContent = fileName
                 ? (isEnglish
@@ -3168,7 +3168,7 @@ function schedulePresetInstructionIframeSync() {
     }
 }
 
-function set_iframe_src(theme = 'default', lang = 'cn', url) {
+function set_iframe_src(theme = 'default', lang = 'en', url) {
     const urlParams = new URLSearchParams(window.location.search);
     const themeParam = urlParams.get('__theme') || theme;
     const langParam = urlParams.get('__lang') || lang;
@@ -5048,7 +5048,7 @@ function reconcileSceneVisibilityForPreset(system_params) {
         const shouldHide = !isScene || controls.every((name) => hidden.has(name));
         setForcedHidden(id, shouldHide);
     }
-    reconcileSceneAuxControlsFromValues(isScene, system_params["__scene_theme"], system_params["__scene_task_method"], system_params.scene_frontend && system_params.scene_frontend.disvisible, system_params);
+    reconcileSceneAuxControlsFromValues(isScene, system_params["__scene_theme"], system_params["__scene_task_method"], system_params["__scene_disvisible"], system_params);
     reconcileMainModelDropdownVisibilityForPreset(system_params, "scene_visibility");
 }
 
@@ -5603,7 +5603,7 @@ function relightLightLang(langSource) {
     try {
         if (window.SimpAII18n?.isEnglishUi) return window.SimpAII18n.isEnglishUi() ? "en" : "cn";
     } catch (e) {}
-    return "cn";
+    return "en";
 }
 
 function relightLightText(en, cn, langSource) {
@@ -5776,19 +5776,31 @@ function sceneTaskMethodForTheme(sceneFrontend, theme) {
 }
 
 function sceneSam3VisibilityDecision(sceneFrontend, theme, taskMethod) {
+    const rawHidden = sceneFrontend && sceneFrontend.disvisible;
+    const hidden = new Set(
+        (Array.isArray(rawHidden) ? rawHidden : String(rawHidden || "").split(","))
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+    );
+    if (["sam3_video_mask_accordion", "sam3_input_video", "sam3_mask_video"].some((key) => hidden.has(key))) {
+        return false;
+    }
+    const rawEnabled = sceneFrontend && sceneFrontend.divisible;
+    const enabled = new Set(Array.isArray(rawEnabled) ? rawEnabled.map(String) : []);
+    const inputsExplicitlyEnabled = ["sam3_input_video", "sam3_mask_video"].some((key) => enabled.has(key));
     const selected = sceneSelectedThemeValue();
     const currentTheme = selected && sceneThemeBelongsToFrontend(sceneFrontend, selected) ? selected : theme;
     const byTheme = sceneTaskMethodForTheme(sceneFrontend, currentTheme);
-    if (byTheme.known) return byTheme.value.toLowerCase().includes("sam3");
+    if (byTheme.known) return byTheme.value.toLowerCase().includes("sam3") || inputsExplicitlyEnabled;
     if (sceneFrontendAllThemesSam3(sceneFrontend || {})) return true;
     const hasSam3Option = sceneFrontendHasSam3Option(sceneFrontend || {});
     if (selected && hasSam3Option && !sceneThemeBelongsToFrontend(sceneFrontend, selected)) {
         return selected.toLowerCase().includes("sam3");
     }
     const taskText = sceneTaskMethodNeedsThemeMatch(sceneFrontend || {}) ? "" : String(taskMethod || "").toLowerCase();
-    if (taskText) return taskText.includes("sam3");
+    if (taskText) return taskText.includes("sam3") || inputsExplicitlyEnabled;
     const themeText = String(currentTheme || selected || "").toLowerCase();
-    return themeText.includes("sam3");
+    return themeText.includes("sam3") || inputsExplicitlyEnabled;
 }
 
 function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisible, langSource) {
@@ -5807,7 +5819,13 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     const liveportraitMarkers = ["liveportrait", "advancedliveportrait"];
     const showLivePortraitExpression = !!(isScene && liveportraitMarkers.some((marker) => themeText.includes(marker) || taskText.includes(marker)) && !hidden.has("liveportrait_expression"));
     const showRelightLight = !!(isScene && (themeText.includes("relight") || taskText.includes("relight")) && !hidden.has("relight_light_control"));
+    const presetName = String((langSource && (langSource.__preset || langSource.preset)) || "").trim();
+    const showCloudImageApi = !!(isScene && presetName === "GeneralAPIImage");
+    const engineText = String((langSource && (langSource.backend_engine || langSource.engine)) || "").toLowerCase();
+    const wanCameraMotion = ["uni3c"].some((marker) => themeText.includes(marker) || taskText.includes(marker) || engineText.includes(marker));
+    const showCameraMotionReference = !!(isScene && wanCameraMotion && !hidden.has("scene_reference_video"));
     setSceneAuxControlVisible("camera_control_accordion", showCamera);
+    setSceneAuxControlVisible("camera_motion_reference_accordion", showCameraMotionReference);
     setSceneAuxControlVisible("anglelight_control_accordion", showLight);
     setSceneAuxControlVisible("style_transfer_accordion", showStyle);
     if (showSam3 !== null) {
@@ -5817,6 +5835,7 @@ function reconcileSceneAuxControlsFromValues(isScene, theme, taskMethod, disvisi
     setSceneAuxControlVisible("gaussian_studio", showGaussianStudio);
     setSceneAuxControlVisible("liveportrait_expression", showLivePortraitExpression);
     setSceneAuxControlVisible("relight_light_control", showRelightLight);
+    setSceneAuxControlVisible("scene_cloud_image_api", showCloudImageApi);
     setRelightLightSliderHidden(showRelightLight);
     setGaussianStudioSceneImageMode(showGaussianStudio, langSource);
     setLivePortraitExpressionSceneImageMode(showLivePortraitExpression, langSource);
@@ -5841,7 +5860,10 @@ function reconcileSceneAuxControls(state, theme) {
         if (typeof themes === "string") resolvedTheme = themes;
         else if (Array.isArray(themes) && themes.length) resolvedTheme = themes[0];
     }
-    reconcileSceneAuxControlsFromValues(isScene, resolvedTheme, getSceneTaskMethodFromState(state, resolvedTheme), sceneFrontend && sceneFrontend.disvisible, state);
+    const resolvedHidden = Array.isArray(state && state.__scene_disvisible)
+        ? state.__scene_disvisible
+        : (sceneFrontend && sceneFrontend.disvisible);
+    reconcileSceneAuxControlsFromValues(isScene, resolvedTheme, getSceneTaskMethodFromState(state, resolvedTheme), resolvedHidden, state);
 }
 
 function refresh_topbar_status_js_for_preset_nav(system_params) {

@@ -1512,7 +1512,7 @@ def sync_model_info_click(*args):
 
 
 def open_output_folder(state_params):
-    lang = state_params.get("__lang", "cn")
+    lang = state_params.get("__lang", "en")
     is_cn = lang != "en"
 
     local_access = state_params.get("local_access", False)

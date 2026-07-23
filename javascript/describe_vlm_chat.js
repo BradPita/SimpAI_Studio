@@ -9,7 +9,7 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;'));
-    const getUiLang = UTILS.getUiLang || (() => 'cn');
+    const getUiLang = UTILS.getUiLang || (() => 'en');
 
     const MAX_ATTACHMENTS = 5;
     const MAX_HISTORY_TURNS = 18;

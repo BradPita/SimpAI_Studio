@@ -190,6 +190,13 @@ class _SimpAIAIOImproveDetailBase:
 
     @classmethod
     def INPUT_TYPES(cls):
+        optional = {
+            "fallback_image": ("IMAGE", {"lazy": True}),
+            "inpaint_model": ("MODEL", {"lazy": True}),
+            "inpaint_control_net": ("CONTROL_NET", {"lazy": True}),
+        }
+        if cls.FAMILY == "anima":
+            optional["model_patch"] = ("MODEL_PATCH", {"lazy": True})
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -209,11 +216,7 @@ class _SimpAIAIOImproveDetailBase:
                 "sampler_name": (SAMPLER_NAMES,),
                 "scheduler": (SCHEDULER_NAMES,),
             },
-            "optional": {
-                "fallback_image": ("IMAGE", {"lazy": True}),
-                "inpaint_model": ("MODEL", {"lazy": True}),
-                "inpaint_control_net": ("CONTROL_NET", {"lazy": True}),
-            },
+            "optional": optional,
         }
 
     RETURN_TYPES = ("IMAGE", "BOOLEAN", "IMAGE")
@@ -221,7 +224,7 @@ class _SimpAIAIOImproveDetailBase:
     FUNCTION = "expand"
     CATEGORY = "SimpAI/AIO/Improve Detail"
 
-    def check_lazy_status(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None):
+    def check_lazy_status(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None):
         required = []
         image_is_empty = float(image.detach().abs().max()) == 0.0
         if image_is_empty and fallback_image is None:
@@ -250,6 +253,8 @@ class _SimpAIAIOImproveDetailBase:
                 and _tiled_guard_needs_quality_prompt(source_image, enhance_uov["multiple"])
             ) or _enhance_uses_region_prompt(regions, enhance_uov):
                 required.append("clip")
+        if self.FAMILY == "anima" and method in ("upscale (1.5x)", "upscale (2x)"):
+            required.append("model_patch")
 
         values = {
             "model": model,
@@ -261,6 +266,7 @@ class _SimpAIAIOImproveDetailBase:
             "fallback_image": fallback_image,
             "inpaint_model": inpaint_model,
             "inpaint_control_net": inpaint_control_net,
+            "model_patch": model_patch,
         }
         return list(dict.fromkeys(name for name in required if values[name] is None))
 
@@ -284,7 +290,7 @@ class _SimpAIAIOImproveDetailBase:
             "anima": "SimpAIAIOInpaintFlux",
         }[self.FAMILY]
 
-    def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler):
+    def _apply_uov(self, graph, image, model, clip, positive, negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch=None):
         methods = {
             "disabled": 0,
             "upscale (fast 2x)": 1,
@@ -319,23 +325,25 @@ class _SimpAIAIOImproveDetailBase:
             hires_stop=0.8,
             hires_blur=0.0,
         )
-        applied = graph.node(
-            self._uov_node(),
-            model=model,
-            clip=clip,
-            positive=positive,
-            negative=negative,
-            vae=vae,
-            upscale_model=upscale_model,
-            uov=uov.out(0),
-            seed=seed,
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-            progress_node_id="aio_enhance_uov",
-            denoise=enhance_uov["denoise"],
-        )
+        inputs = {
+            "model": model,
+            "clip": clip,
+            "positive": positive,
+            "negative": negative,
+            "vae": vae,
+            "upscale_model": upscale_model,
+            "uov": uov.out(0),
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "progress_node_id": "aio_enhance_uov",
+            "denoise": enhance_uov["denoise"],
+        }
+        if self.FAMILY == "anima":
+            inputs["model_patch"] = model_patch
+        applied = graph.node(self._uov_node(), **inputs)
         return applied.out(0)
 
     def _uov_conditioning(self, graph, clip, positive, negative, regions, enhance_uov, cfg):
@@ -352,7 +360,7 @@ class _SimpAIAIOImproveDetailBase:
             _conditioning_for_region(graph, self.FAMILY, clip, negative, selected["negative_prompt"], cfg),
         )
 
-    def expand(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None):
+    def expand(self, image, model, clip, positive, negative, vae, upscale_model, region_1, region_2, region_3, enhance_uov, seed, steps, cfg, sampler_name, scheduler, fallback_image=None, inpaint_model=None, inpaint_control_net=None, model_patch=None):
         graph = GraphBuilder()
         if fallback_image is not None and float(image.detach().abs().max()) == 0.0:
             image = fallback_image
@@ -362,7 +370,7 @@ class _SimpAIAIOImproveDetailBase:
         active = enhance_uov["method"] != "disabled" or any(region["detection_prompt"] for region in regions)
         uov_positive, uov_negative = self._uov_conditioning(graph, clip, positive, negative, regions, enhance_uov, cfg)
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "Before First Enhancement":
-            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch)
 
         for index, region in enumerate(regions):
             if not region["detection_prompt"]:
@@ -391,7 +399,7 @@ class _SimpAIAIOImproveDetailBase:
             current = graph.node("SimpAIAIOApplyRegion", **inputs).out(0)
 
         if enhance_uov["method"] != "disabled" and enhance_uov["processing_order"] == "After Last Enhancement":
-            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler)
+            current = self._apply_uov(graph, current, model, clip, uov_positive, uov_negative, vae, upscale_model, enhance_uov, seed, steps, cfg, sampler_name, scheduler, model_patch)
 
         return {"result": (current, active, source_image), "expand": graph.finalize()}
 

@@ -239,15 +239,32 @@ SimpAIAIOUOVFlux2 = _family_node("SimpAIAIOUOVFlux2", "flux2")
 class SimpAIAIOUOVAnima(_SimpAIAIOUOVBase):
     FAMILY = "anima"
 
-    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id="", denoise=-1.0):
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        types["optional"]["model_patch"] = ("MODEL_PATCH", {"lazy": True})
+        return types
+
+    def check_lazy_status(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg,
+                          sampler_name, scheduler, progress_node_id="", denoise=-1.0, model_patch=None):
+        missing = super().check_lazy_status(model, clip, positive, negative, vae, upscale_model, uov, seed,
+                                            steps, cfg, sampler_name, scheduler, progress_node_id, denoise)
+        if int(uov.get("mode", 0)) == 4 and model_patch is None:
+            missing.append("model_patch")
+        return missing
+
+    def expand(self, model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name,
+               scheduler, progress_node_id="", denoise=-1.0, model_patch=None):
         if int(uov.get("mode", 0)) != 4:
             return super().expand(model, clip, positive, negative, vae, upscale_model, uov, seed, steps, cfg, sampler_name, scheduler, progress_node_id, denoise)
+        if model_patch is None:
+            raise ValueError("Anima tiled upscale requires MODEL_PATCH")
         graph = GraphBuilder()
         positive = self._guard_tiled_positive(
             graph, uov["image"], clip, positive, float(uov.get("multiple", 1.5)), cfg
         )
-        patched = graph.node("AnimaLLLiteApply", model=model, lllite_name="animaTileRepair_v20.safetensors",
-                             image=uov["image"], strength=0.35, start_percent=0.0, end_percent=0.50, preserve_wrapper=True)
+        patched = graph.node("AnimaLLLiteApply", model=model, model_patch=model_patch,
+                             image=uov["image"], strength=0.35, start_percent=0.0, end_percent=0.50)
         tiled = graph.node("UltimateSDUpscale", image=uov["image"], model=patched.out(0), positive=positive,
                            negative=negative, vae=vae, upscale_model=upscale_model, upscale_by=float(uov.get("multiple", 1.5)),
                            seed=seed, steps=int(uov.get("tile_steps", steps)), cfg=cfg, sampler_name=sampler_name,

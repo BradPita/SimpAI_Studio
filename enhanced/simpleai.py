@@ -790,7 +790,7 @@ identity_mode_texts = {
     },
 }
 def normalize_ui_lang(lang):
-    lang = str(lang or args_manager.args.language or "cn").lower()
+    lang = str(lang or args_manager.args.language or "en").lower()
     return "en" if lang.startswith("en") else "cn"
 
 
