@@ -25,6 +25,15 @@ from PIL import Image
 from transformers import AutoTokenizer, AutoModel
 from modules.util import HWC3, resize_image, is_chinese
 from enhanced.simpleai import comfyd, p2p_task
+from modules.custom_llm_api import (
+    OPENAI_CHAT_COMPLETIONS,
+    api_format_supported,
+    custom_llm_url,
+    extract_response_text,
+    models_url,
+    prepare_completion_request,
+    request_json,
+)
 
 DEFAULT_VLM_VERSION = "Qwen3.5-9B-abliterated-Q4_K_M"
 HUIHUI_QWEN35_MODEL_DIR = "Huihui-Qwen3.5-9B-abliterated"
@@ -243,67 +252,15 @@ def _superprompt_clean_output(text, fallback=""):
 
 
 def _custom_llm_url(base_url, suffix):
-    base = str(base_url or "").strip().rstrip("/")
-    suffix = str(suffix or "").strip()
-    if not suffix.startswith("/"):
-        suffix = "/" + suffix
-    return base + suffix
+    return custom_llm_url(base_url, suffix)
 
 
 def _custom_llm_request_json(url, payload=None, api_key="", method="POST", timeout=120):
-    import urllib.error
-    import urllib.request
-
-    data = None
-    headers = {"Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    api_key = str(api_key or "").strip()
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            return json.loads(body) if body else {}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        try:
-            parsed = json.loads(body)
-        except Exception:
-            parsed = {"message": body}
-        message = parsed.get("error", {}).get("message") if isinstance(parsed.get("error"), dict) else parsed.get("message")
-        raise RuntimeError(message or body or str(exc))
+    return request_json(url, payload, api_key=api_key, method=method, timeout=timeout)
 
 
 def _extract_openai_compatible_text(response):
-    choices = response.get("choices") if isinstance(response, dict) else None
-    if not choices:
-        return ""
-    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
-    content = message.get("content") if isinstance(message, dict) else ""
-    if isinstance(content, str) and content.strip():
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") in ("text", "output_text"):
-                parts.append(str(item.get("text") or ""))
-            elif isinstance(item.get("content"), str):
-                parts.append(item.get("content"))
-        text = "\n".join([part for part in parts if part])
-        if text.strip():
-            return text
-    reasoning = message.get("reasoning_content") if isinstance(message, dict) else ""
-    if isinstance(reasoning, str) and reasoning.strip() and reasoning.strip() != "None":
-        return reasoning
-    reasoning = message.get("reasoning") if isinstance(message, dict) else ""
-    if isinstance(reasoning, str) and reasoning.strip() and reasoning.strip() != "None":
-        return reasoning
-    return str(content or "")
+    return extract_response_text(response)
 
 
 def _custom_vlm_image_to_data_url(image):
@@ -385,7 +342,7 @@ class VLM:
     image_max_tokens = 0
     current_version = ""
     custom_api_name = "Custom"
-    custom_api_format = "openai_compatible"
+    custom_api_format = OPENAI_CHAT_COMPLETIONS
     custom_base_url = ""
     custom_model = ""
     custom_api_key = ""
@@ -466,8 +423,8 @@ class VLM:
             missing.append("API Base URL")
         if not str(cls.custom_model or "").strip():
             missing.append("Model")
-        if str(cls.custom_api_format or "openai_compatible").strip() != "openai_compatible":
-            missing.append("OpenAI-compatible API format")
+        if not api_format_supported(cls.custom_api_format):
+            missing.append(f"Unsupported API format: {cls.custom_api_format}")
         return missing
 
     @classmethod
@@ -489,7 +446,7 @@ class VLM:
                 cls.is_llamacpp = False
                 cls.chat_handler = ""
                 cls.gguf_file = ""
-            logger.debug("设置 VLM 模型: 版本=Custom, backend=OpenAI-compatible API")
+            logger.debug("设置 VLM 模型: 版本=Custom, backend=%s", cls.custom_api_format)
             return
 
         config_data = cls.VERSIONS.get(version)
@@ -746,7 +703,7 @@ class VLM:
             return {"ok": False, "error": "API Base URL is required."}
         try:
             response = _custom_llm_request_json(
-                _custom_llm_url(base_url, "/models"),
+                models_url(base_url),
                 None,
                 api_key=api_key,
                 method="GET",
@@ -768,8 +725,8 @@ class VLM:
         if missing:
             raise RuntimeError(f"Custom VLM settings incomplete: {', '.join(missing)}")
         settings = VLM.get_custom_settings()
-        if settings["api_format"] != "openai_compatible":
-            raise RuntimeError("Only OpenAI-compatible custom VLM API is supported.")
+        if not api_format_supported(settings["api_format"]):
+            raise RuntimeError(f"Unsupported Custom VLM API format: {settings['api_format']}")
 
         messages = []
         system_prompt = str(system_prompt or "").strip()
@@ -804,8 +761,13 @@ class VLM:
             seed_value = -1
         if seed_value >= 0:
             request_payload["seed"] = seed_value
+        request_url, request_payload = prepare_completion_request(
+            settings["base_url"],
+            settings["api_format"],
+            request_payload,
+        )
         response = _custom_llm_request_json(
-            _custom_llm_url(settings["base_url"], "/chat/completions"),
+            request_url,
             request_payload,
             api_key=settings["api_key"],
             method="POST",

@@ -165,7 +165,11 @@ MAIN_VLM_CUSTOM_PROVIDERS = [
     {"key": "tencent", "label": "腾讯云", "base_url": "https://api.hunyuan.cloud.tencent.com/v1", "format": "openai_compatible", "supports_images": True},
     {"key": "ppio", "label": "PPIO", "base_url": "https://api.ppinfra.com/v3/openai", "format": "openai_compatible", "supports_images": True},
     {"key": "ollama_cloud", "label": "Ollama Cloud", "base_url": "https://ollama.com/v1", "format": "openai_compatible", "supports_images": True},
-    {"key": "custom", "label": "Custom OpenAI Compatible", "label_cn": "自定义 OpenAI Compatible", "base_url": "", "format": "openai_compatible", "supports_images": True},
+    {"key": "custom", "label": "Custom OpenAI API", "label_cn": "自定义 OpenAI API", "base_url": "", "format": "openai_compatible", "supports_images": True},
+]
+MAIN_VLM_CUSTOM_API_FORMAT_CHOICES = [
+    ("OpenAI Chat Completions", "openai_compatible"),
+    ("OpenAI Responses", "openai_responses"),
 ]
 
 
@@ -215,7 +219,7 @@ def _main_vlm_ui_texts(state=None):
         "help_title": _main_vlm_text(state, "Custom API", "自定义 API"),
         "help_aria": _main_vlm_text(state, "Custom VLM help", "Custom VLM 帮助"),
         "help_heading": _main_vlm_text(state, "Custom VLM", "自定义 VLM"),
-        "help_endpoint": _main_vlm_text(state, "Use an OpenAI-compatible endpoint.", "使用 OpenAI-compatible 接口。"),
+        "help_endpoint": _main_vlm_text(state, "Supports OpenAI Chat Completions and Responses APIs.", "支持 OpenAI Chat Completions 和 Responses API。"),
         "help_key": _main_vlm_text(state, "API Key is optional for local Ollama/LM Studio.", "本机 Ollama/LM Studio 可不填 API Key。"),
         "api_name_label": _main_vlm_text(state, "API Name", "接口名称"),
         "api_name_placeholder": _main_vlm_text(state, "Custom / Ollama / LM Studio", "Custom / Ollama / LM Studio"),
@@ -284,7 +288,7 @@ def _vlm_model_status_html(version):
     status = VLM.get_version_status(version)
     state_class = "ready" if status["exists"] else "missing"
     if version == VLM.CUSTOM_VERSION and status["exists"]:
-        title = "Custom OpenAI-compatible API is ready."
+        title = "Custom OpenAI API is ready."
     elif version == VLM.CUSTOM_VERSION:
         missing = ", ".join(status["missing_files"][:3])
         title = f'Custom API settings incomplete: {missing}'
@@ -6861,10 +6865,10 @@ with shared.gradio_root:
                                             )
                                             describe_vlm_custom_api_format = gr.Dropdown(
                                                 label=_initial_main_vlm_texts["api_format_label"],
-                                                choices=['openai_compatible'],
+                                                choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES,
                                                 value=_initial_main_vlm_custom_settings["api_format"],
                                                 interactive=True,
-                                                visible=False,
+                                                visible=True,
                                                 elem_id='describe_vlm_custom_api_format',
                                             )
                                         describe_vlm_custom_base_url = gr.Textbox(
@@ -8088,7 +8092,7 @@ with shared.gradio_root:
                         gr_update(value=_main_vlm_custom_help_html(state)),
                         gr_update(value=settings["api_name"], label=texts["api_name_label"], placeholder=texts["api_name_placeholder"]),
                         dropdown_update(choices=_main_vlm_provider_choices(state), value=settings["provider"], label=texts["provider_label"]),
-                        dropdown_update(choices=["openai_compatible"], value=settings["api_format"], label=texts["api_format_label"], visible=False),
+                        dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=settings["api_format"], label=texts["api_format_label"], visible=True),
                         gr_update(value=settings["base_url"], label=texts["base_url_label"], placeholder=texts["base_url_placeholder"]),
                         dropdown_update(choices=model_choices, value=settings["model"] or None, allow_custom_value=True, label=texts["model_label"]),
                         gr_update(value=settings["api_key"], label=texts["api_key_label"], placeholder=texts["api_key_placeholder"]),
@@ -8143,7 +8147,8 @@ with shared.gradio_root:
                 def sync_main_vlm_custom_provider(api_name, provider, api_format, base_url, model, api_key, supports_images, version, state, request: gr.Request):
                     state = _main_vlm_state_from_request(state, request)
                     provider_data = _main_vlm_provider_by_key(provider)
-                    settings = _main_vlm_settings_from_inputs(api_name, provider, provider_data.get("format"), base_url, model, api_key, supports_images)
+                    selected_api_format = api_format if provider_data["key"] == "custom" else provider_data.get("format")
+                    settings = _main_vlm_settings_from_inputs(api_name, provider, selected_api_format, base_url, model, api_key, supports_images)
                     if provider_data["key"] != "custom":
                         settings["api_name"] = _main_vlm_provider_label(provider_data, state)
                         settings["base_url"] = provider_data.get("base_url") or ""
@@ -8156,7 +8161,7 @@ with shared.gradio_root:
                         _main_vlm_save_selected_version(version, state, request=request)
                     return (
                         gr_update(value=settings["api_name"]),
-                        dropdown_update(choices=["openai_compatible"], value=settings["api_format"], visible=False),
+                        dropdown_update(choices=MAIN_VLM_CUSTOM_API_FORMAT_CHOICES, value=settings["api_format"], visible=True),
                         gr_update(value=settings["base_url"]),
                         gr_update(value=settings["supports_images"]),
                         _describe_vlm_dropdown_update(version),
@@ -8322,7 +8327,7 @@ with shared.gradio_root:
                         queue=False,
                         show_progress=False,
                     )
-                describe_vlm_custom_provider.change(
+                describe_vlm_custom_provider.input(
                     sync_main_vlm_custom_provider,
                     inputs=main_vlm_custom_inputs + [describe_vlm_model, state_topbar],
                     outputs=[

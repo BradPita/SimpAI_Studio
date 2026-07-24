@@ -297,7 +297,7 @@
         { key: 'tencent', label: '腾讯云', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'ppio', label: 'PPIO', baseUrl: 'https://api.ppinfra.com/v3/openai', format: 'openai_compatible', supportsImages: true },
         { key: 'ollama_cloud', label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', format: 'openai_compatible', supportsImages: true },
-        { key: 'custom', label: 'Custom OpenAI Compatible', baseUrl: '', format: 'openai_compatible', supportsImages: true }
+        { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }
     ];
     const DEFAULT_SETTINGS = Object.assign({
         __lang: runtimeUiLang()
@@ -18633,7 +18633,7 @@ ${outputKind ? renderOverviewPort({ kind: outputKind, title: overviewOutputTitle
   <div class="sai-vlm-custom-grid">
     <label class="sai-node-field"><span>${escapeHtml(t('API Name', 'API 名称'))}</span><input data-vlm-param="custom_api_name" value="${escapeHtml(apiName)}" placeholder="OpenAI / SiliconFlow"></label>
     <label class="sai-node-field"><span>${escapeHtml(t('Provider', '服务商'))}</span><select data-vlm-param="custom_provider">${VLM_CUSTOM_API_PROVIDERS.map(item => `<option value="${escapeHtml(item.key)}" ${item.key === (params.custom_provider || 'openai') ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}</select></label>
-    <label class="sai-node-field"><span>${escapeHtml(t('API Format', '接口格式'))}</span><select data-vlm-param="custom_api_format"><option value="openai_compatible" ${format === 'openai_compatible' ? 'selected' : ''}>OpenAI Compatible</option></select></label>
+    <label class="sai-node-field"><span>${escapeHtml(t('API Format', '接口格式'))}</span><select data-vlm-param="custom_api_format"><option value="openai_compatible" ${format === 'openai_compatible' ? 'selected' : ''}>OpenAI Chat Completions</option><option value="openai_responses" ${format === 'openai_responses' ? 'selected' : ''}>OpenAI Responses</option></select></label>
     <label class="sai-node-field"><span>${escapeHtml(t('API Base URL', 'API Base URL'))}</span><input data-vlm-param="custom_base_url" value="${escapeHtml(baseUrl)}" placeholder="https://api.openai.com/v1"></label>
     <label class="sai-node-field sai-vlm-api-key-field"><span>${escapeHtml(t('API Key', 'API Key'))}</span><input data-vlm-custom-key type="password" value="${escapeHtml(profile?.api_key || '')}" placeholder="${escapeHtml(profile?.api_key ? t('Secret loaded locally', '已从本地读取密钥') : t('Optional for Ollama/LM Studio', 'Ollama/LM Studio 可留空'))}"></label>
     <label class="sai-node-field"><span>${escapeHtml(t('Model', '模型'))}</span>${modelControl}</label>
@@ -29046,7 +29046,7 @@ ${renderGenerationMetadataInspectorSection(node)}
       <label><span>${escapeHtml(t('API Name', 'API 名称'))}</span><input data-canvas-agent-setting="customApiName" value="${escapeHtml(settings.customApiName || provider.label || '')}" placeholder="OpenAI / SiliconFlow"></label>
       <label><span>${escapeHtml(t('Provider', '服务商'))}</span><select data-canvas-agent-setting="customProvider">${VLM_CUSTOM_API_PROVIDERS.map(item => `<option value="${escapeHtml(item.key)}" ${item.key === (settings.customProvider || 'openai') ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}</select></label>
       <label><span>${escapeHtml(t('API Base URL', 'API Base URL'))}</span><input data-canvas-agent-setting="customBaseUrl" value="${escapeHtml(settings.customBaseUrl || provider.baseUrl || '')}" placeholder="https://api.openai.com/v1"></label>
-      <label><span>${escapeHtml(t('API Format', '接口格式'))}</span><select data-canvas-agent-setting="customApiFormat"><option value="openai_compatible" ${settings.customApiFormat === 'openai_compatible' ? 'selected' : ''}>OpenAI Compatible</option></select></label>
+      <label><span>${escapeHtml(t('API Format', '接口格式'))}</span><select data-canvas-agent-setting="customApiFormat"><option value="openai_compatible" ${settings.customApiFormat === 'openai_compatible' ? 'selected' : ''}>OpenAI Chat Completions</option><option value="openai_responses" ${settings.customApiFormat === 'openai_responses' ? 'selected' : ''}>OpenAI Responses</option></select></label>
       <label><span>${escapeHtml(t('Model', '模型'))}</span>${modelControl}</label>
       <label><span>${escapeHtml(t('API Key', 'API Key'))}</span><input data-canvas-agent-custom-key type="password" value="${escapeHtml(profile?.api_key || '')}" placeholder="${escapeHtml(profile?.api_key ? t('Secret loaded locally', '已从本地读取密钥') : t('Optional for Ollama/LM Studio', 'Ollama/LM Studio 可留空'))}"></label>
       <label class="sai-settings-check"><input type="checkbox" data-canvas-agent-setting="customSupportsImages" ${settings.customSupportsImages !== false ? 'checked' : ''}><span>${escapeHtml(t('Selected model supports image input', '当前模型支持图像输入'))}</span></label>

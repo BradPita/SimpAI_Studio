@@ -19,6 +19,14 @@ import modules.util as util
 import shared
 from enhanced.vlm import VLM, vlm
 from modules.access_mode import user_can_download_models
+from modules.custom_llm_api import (
+    api_format_supported,
+    custom_llm_url,
+    extract_response_text,
+    models_url,
+    prepare_completion_request,
+    request_json,
+)
 from modules.model_path_utils import find_model_in_dirs
 
 logger = logging.getLogger(__name__)
@@ -167,8 +175,8 @@ def canvas_vlm_model_status(payload):
             missing.append("API Base URL")
         if not model:
             missing.append("Model")
-        if api_format != "openai_compatible":
-            missing.append("OpenAI-compatible API format")
+        if not api_format_supported(api_format):
+            missing.append(f"Unsupported API format: {api_format}")
         ready = not missing
         return {
             "ok": True,
@@ -268,35 +276,21 @@ def canvas_queue_vlm_model_downloads(payload):
 
 
 def canvas_custom_llm_url(base_url, suffix):
-    base = str(base_url or "").strip().rstrip("/")
-    suffix = str(suffix or "").strip()
-    if not suffix.startswith("/"):
-        suffix = "/" + suffix
-    return base + suffix
+    return custom_llm_url(base_url, suffix)
 
 def canvas_custom_llm_request_json(url, payload=None, api_key="", method="POST", timeout=120):
-    import urllib.request
-    import urllib.error
+    return request_json(url, payload, api_key=api_key, method=method, timeout=timeout)
 
-    data = None
-    headers = {"Accept": "application/json"}
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
-            return json.loads(body) if body else {}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        try:
-            parsed = json.loads(body)
-        except Exception:
-            parsed = {"message": body}
-        raise RuntimeError(parsed.get("error", {}).get("message") if isinstance(parsed.get("error"), dict) else parsed.get("message") or body or str(exc))
+
+def canvas_custom_llm_completion_request(base_url, api_key, api_format, payload, timeout=120):
+    url, request_payload = prepare_completion_request(base_url, api_format, payload)
+    return canvas_custom_llm_request_json(
+        url,
+        request_payload,
+        api_key=api_key,
+        method="POST",
+        timeout=timeout,
+    )
 
 def canvas_file_to_data_url(path, mime=""):
     import mimetypes
@@ -307,35 +301,19 @@ def canvas_file_to_data_url(path, mime=""):
     return f"data:{mime};base64,{encoded}"
 
 def canvas_extract_openai_text(response):
-    choices = response.get("choices") if isinstance(response, dict) else None
-    if not choices:
-        return ""
-    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
-    content = message.get("content") if isinstance(message, dict) else ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                if item.get("type") in ("text", "output_text"):
-                    parts.append(str(item.get("text") or ""))
-                elif isinstance(item.get("content"), str):
-                    parts.append(item.get("content"))
-        return "\n".join([p for p in parts if p])
-    return str(content or "")
+    return extract_response_text(response)
 
 def canvas_custom_llm_models(payload):
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     base_url = str(params.get("custom_base_url") or "").strip()
     api_key = str(payload.get("api_key") or params.get("custom_api_key") or "").strip()
     api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
-    if api_format != "openai_compatible":
-        return {"ok": False, "error": "Only OpenAI-compatible model listing is implemented in v1."}
+    if not api_format_supported(api_format):
+        return {"ok": False, "error": f"Unsupported Custom API format: {api_format}"}
     if not base_url:
         return {"ok": False, "error": "API Base URL is required."}
     try:
-        data = canvas_custom_llm_request_json(canvas_custom_llm_url(base_url, "/models"), None, api_key=api_key, method="GET", timeout=30)
+        data = canvas_custom_llm_request_json(models_url(base_url), None, api_key=api_key, method="GET", timeout=30)
         rows = data.get("data") if isinstance(data, dict) else []
         models = []
         for item in rows or []:
@@ -355,8 +333,8 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     model = str(params.get("custom_model") or "").strip()
     api_format = str(params.get("custom_api_format") or "openai_compatible").strip()
     supports_images = bool(params.get("custom_supports_images", True))
-    if api_format != "openai_compatible":
-        return {"ok": False, "error": "Only OpenAI-compatible custom API format is implemented in v1."}
+    if not api_format_supported(api_format):
+        return {"ok": False, "error": f"Unsupported Custom API format: {api_format}"}
     if not base_url or not model:
         return {"ok": False, "error": "Custom API settings are incomplete.", "details": "API Base URL and Model are required."}
 
@@ -389,11 +367,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             }
             if int(params.get("seed", -1)) >= 0:
                 intent_request["seed"] = int(params.get("seed"))
-            intent_response = canvas_custom_llm_request_json(
-                canvas_custom_llm_url(base_url, "/chat/completions"),
+            intent_response = canvas_custom_llm_completion_request(
+                base_url,
+                api_key,
+                api_format,
                 intent_request,
-                api_key=api_key,
-                method="POST",
                 timeout=120,
             )
             intent_text = canvas_extract_openai_text(intent_response).strip()
@@ -448,11 +426,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
     if int(params.get("seed", -1)) >= 0:
         request_payload["seed"] = int(params.get("seed"))
     main_started = time.monotonic()
-    response = canvas_custom_llm_request_json(
-        canvas_custom_llm_url(base_url, "/chat/completions"),
+    response = canvas_custom_llm_completion_request(
+        base_url,
+        api_key,
+        api_format,
         request_payload,
-        api_key=api_key,
-        method="POST",
         timeout=180,
     )
     _canvas_vlm_add_timing(params, "custom_main_api_call", time.monotonic() - main_started)
@@ -466,11 +444,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             "top_p": 0.8,
             "max_tokens": int(params.get("danbooru_review_max_tokens") or 800),
         }
-        review_response = canvas_custom_llm_request_json(
-            canvas_custom_llm_url(base_url, "/chat/completions"),
+        review_response = canvas_custom_llm_completion_request(
+            base_url,
+            api_key,
+            api_format,
             review_request,
-            api_key=api_key,
-            method="POST",
             timeout=120,
         )
         return canvas_extract_openai_text(review_response).strip()
@@ -496,11 +474,11 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
             "top_p": 0.8,
             "max_tokens": max(int(params.get("max_tokens", 1024)), 1024),
         }
-        retry_response = canvas_custom_llm_request_json(
-            canvas_custom_llm_url(base_url, "/chat/completions"),
+        retry_response = canvas_custom_llm_completion_request(
+            base_url,
+            api_key,
+            api_format,
             retry_request,
-            api_key=api_key,
-            method="POST",
             timeout=180,
         )
         _canvas_vlm_add_timing(params, "custom_draft_retry_api_call", time.monotonic() - retry_started)

@@ -35,7 +35,7 @@
         { key: 'tencent', label: '腾讯云', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', format: 'openai_compatible', supportsImages: true },
         { key: 'ppio', label: 'PPIO', baseUrl: 'https://api.ppinfra.com/v3/openai', format: 'openai_compatible', supportsImages: true },
         { key: 'ollama_cloud', label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', format: 'openai_compatible', supportsImages: true },
-        { key: 'custom', label: 'Custom OpenAI Compatible', baseUrl: '', format: 'openai_compatible', supportsImages: true }
+        { key: 'custom', label: 'Custom OpenAI API', baseUrl: '', format: 'openai_compatible', supportsImages: true }
     ];
 
     window.SimpAICanvasWorkbenchVlm = Object.assign({}, window.SimpAICanvasWorkbenchVlm || {}, {

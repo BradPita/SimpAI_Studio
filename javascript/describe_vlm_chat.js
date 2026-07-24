@@ -499,6 +499,13 @@
         return text;
     }
 
+    function cleanCustomApiFormat(value) {
+        const text = String(value || '').trim();
+        if (text === 'OpenAI Responses' || text === 'openai_responses') return 'openai_responses';
+        if (text === 'OpenAI Chat Completions' || text === 'openai_compatible') return 'openai_compatible';
+        return text;
+    }
+
     function currentCustomVlmModelName() {
         return String(readComponentValue('describe_vlm_custom_model') || '').trim();
     }
@@ -678,7 +685,7 @@
         return {
             api_name: readComponentValue('describe_vlm_custom_api_name') || 'Custom',
             provider: readComponentValue('describe_vlm_custom_provider') || 'custom',
-            api_format: readComponentValue('describe_vlm_custom_api_format') || 'openai_compatible',
+            api_format: cleanCustomApiFormat(readComponentValue('describe_vlm_custom_api_format')) || 'openai_compatible',
             base_url: readComponentValue('describe_vlm_custom_base_url'),
             model: readComponentValue('describe_vlm_custom_model'),
             api_key: readComponentValue('describe_vlm_custom_api_key'),
