@@ -2,7 +2,7 @@ import ldm_patched.modules.args_parser as args_parser
 
 args_parser.parser.add_argument("--share", action='store_true', help="Set whether to share on Gradio.")
 args_parser.parser.add_argument("--preset", type=str, default='Z-imageT', help="Apply specified UI preset.")
-args_parser.parser.add_argument("--language", type=str, default='en',
+args_parser.parser.add_argument("--language", type=str, default='cn',
                                 help="Translate UI using json files in [language] folder. "
                                   "For example, [--language example] will use [language/example.json] for translation.")
 

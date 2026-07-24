@@ -24,7 +24,11 @@
     ];
     const ONE_PIXEL_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
+    const CONVERSATION_STORAGE_KEY = 'simpai.describeVlmChat.conversation.v1';
+    const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
+    const MAX_PERSISTED_MESSAGES = 80;
+    const MAX_PERSISTED_TEXT = 12000;
 
     function normalizeChatMode(value) {
         const mode = String(value || '').trim().toLowerCase().replace(/-/g, '_');
@@ -91,7 +95,9 @@
         systemPromptTemplatesLoaded: false,
         systemPromptTemplatesLoading: false,
         unloadAfterChat: !!savedChatSettings.unloadAfterChat,
-        windowLayout: savedChatSettings.windowLayout
+        windowLayout: savedChatSettings.windowLayout,
+        persistenceRestored: false,
+        persistenceDirty: false
     };
 
     function root() {
@@ -166,11 +172,13 @@
         const template = modal.querySelector('[data-describe-vlm-chat-template]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const unload = modal.querySelector('[data-describe-vlm-chat-unload-after]');
+        const useImage = modal.querySelector('[data-describe-vlm-chat-use-image]');
         const modeHint = modal.querySelector('[data-describe-vlm-chat-mode-hint]');
         if (mode) mode.value = state.chatMode;
         if (system && system.value !== state.customSystemPrompt) system.value = state.customSystemPrompt;
         if (template) syncSystemPromptTemplateControls(modal);
         if (unload) unload.checked = !!state.unloadAfterChat;
+        if (useImage) useImage.checked = !!state.useImage;
         if (modeHint) modeHint.hidden = state.chatMode !== 'chat';
         if (input) input.setAttribute('placeholder', chatInputPlaceholder(state.chatMode));
         updateAnswerModelIndicator(modal);
@@ -1129,6 +1137,8 @@
   <div class="describe-vlm-chat-compose">
     <div class="describe-vlm-chat-compose-tools" aria-label="${escapeHtml(t('Chat tools', '对话工具'))}">
       <button type="button" data-describe-vlm-chat-import-prompt title="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}" aria-label="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}"><i class="fa-solid fa-file-import"></i></button>
+      <button type="button" data-describe-vlm-chat-save title="${escapeHtml(t('Save conversation', '保存对话'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
+      <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
       <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
     </div>
     <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Use image', '使用图片'))}</span></label>
@@ -1139,6 +1149,7 @@
     <button type="button" data-describe-vlm-chat-stop title="${escapeHtml(t('Stop reply', '停止回答'))}" aria-label="${escapeHtml(t('Stop reply', '停止回答'))}" hidden><i class="fa-solid fa-stop"></i></button>
     <button type="button" data-describe-vlm-chat-send title="${escapeHtml(t('Send', '发送'))}" aria-label="${escapeHtml(t('Send', '发送'))}"><i class="fa-solid fa-paper-plane"></i></button>
     <input type="file" accept="image/*" multiple data-describe-vlm-chat-file hidden>
+    <input type="file" accept="application/json,.json" data-describe-vlm-chat-conversation-file hidden>
   </div>
   <button type="button" class="describe-vlm-chat-resize-handle simpleai-popup-resize-handle" data-describe-vlm-chat-resize title="${escapeHtml(t('Resize window', '调整窗口大小'))}" aria-label="${escapeHtml(t('Resize window', '调整窗口大小'))}"></button>
 </div>`;
@@ -1153,7 +1164,9 @@
 
     function openModal() {
         const modal = ensureModal();
+        restoreConversationSnapshot();
         syncChatSettingsControls(modal);
+        renderMessages();
         ensureSystemPromptTemplates(modal).catch(() => {});
         modal.hidden = false;
         installDescribeFloatingLayer(modal);
@@ -1165,6 +1178,115 @@
             if (panel?.dataset.describeVlmChatMoved === '1' || panel?.dataset.describeVlmChatResized === '1') keepFloatingPanelInViewport(panel);
         });
         window.setTimeout(() => modal.querySelector('[data-describe-vlm-chat-input]')?.focus(), 40);
+    }
+
+    function normalizePersistedMessage(message) {
+        if (!message || typeof message !== 'object') return null;
+        const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
+        const content = String(message.content || '').slice(0, MAX_PERSISTED_TEXT);
+        const images = Array.isArray(message.images) ? message.images.slice(0, MAX_ATTACHMENTS).map((image) => ({
+            name: String(image?.name || 'image').slice(0, 200),
+            width: Number.isFinite(Number(image?.width)) ? Number(image.width) : null,
+            height: Number.isFinite(Number(image?.height)) ? Number(image.height) : null,
+            placeholder: true
+        })) : [];
+        const actions = Array.isArray(message.actions) ? message.actions.slice(0, 20).map((action) => ({
+            type: String(action?.type || '').slice(0, 80),
+            prompt: String(action?.prompt || '').slice(0, MAX_PERSISTED_TEXT)
+        })).filter((action) => action.prompt) : [];
+        if (!content && !images.length && !actions.length) return null;
+        return { role, content, actions, images, image_count: Math.max(0, Number(message.image_count) || images.length) };
+    }
+
+    function conversationPayload() {
+        return {
+            schema: CONVERSATION_SCHEMA,
+            version: 1,
+            saved_at: new Date().toISOString(),
+            conversation_id: String(state.conversationId || ''),
+            messages: state.messages.filter((message) => !message?.pending).slice(-MAX_PERSISTED_MESSAGES).map(normalizePersistedMessage).filter(Boolean),
+            chatMode: normalizeChatMode(state.chatMode),
+            customSystemPrompt: String(state.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
+            systemPromptTemplateId: String(state.systemPromptTemplateId || '').slice(0, 200),
+            useImage: !!state.useImage
+        };
+    }
+
+    function normalizeConversationPayload(data) {
+        if (!data || typeof data !== 'object' || data.schema !== CONVERSATION_SCHEMA || Number(data.version) !== 1 || !Array.isArray(data.messages)) return null;
+        return {
+            conversationId: uid('describe_vlm_chat_import'),
+            messages: data.messages.slice(-MAX_PERSISTED_MESSAGES).map(normalizePersistedMessage).filter(Boolean),
+            chatMode: normalizeChatMode(data.chatMode),
+            customSystemPrompt: String(data.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
+            systemPromptTemplateId: String(data.systemPromptTemplateId || '').slice(0, 200),
+            useImage: !!data.useImage
+        };
+    }
+
+    function saveConversationSnapshot() {
+        try {
+            const serialized = JSON.stringify(conversationPayload());
+            if (serialized.length > 900000) return;
+            window.localStorage?.setItem(CONVERSATION_STORAGE_KEY, serialized);
+            state.persistenceDirty = false;
+        } catch (err) {}
+    }
+
+    function restoreConversationSnapshot() {
+        if (state.persistenceRestored || state.messages.length || state.persistenceDirty) return;
+        state.persistenceRestored = true;
+        try {
+            const data = JSON.parse(window.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || 'null');
+            const restored = normalizeConversationPayload(data);
+            if (!restored || !restored.messages.length) return;
+            state.conversationId = restored.conversationId;
+            state.messages = restored.messages;
+            state.chatMode = restored.chatMode;
+            state.customSystemPrompt = restored.customSystemPrompt;
+            state.systemPromptTemplateId = restored.systemPromptTemplateId;
+            state.useImage = restored.useImage;
+            saveChatSettings();
+            setStatus(t('Recent conversation restored.', '已恢复最近对话。'));
+        } catch (err) {}
+    }
+
+    function downloadConversation() {
+        const blob = new Blob([JSON.stringify(conversationPayload(), null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `simpai-vlm-chat-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        setStatus(t('Conversation saved.', '对话已保存。'));
+    }
+
+    function importConversationFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const restored = normalizeConversationPayload(JSON.parse(String(reader.result || '')));
+                if (!restored) throw new Error('invalid conversation');
+                state.requestToken += 1;
+                abortActiveChatRequest();
+                state.busy = false;
+                Object.assign(state, restored);
+                state.pendingImages = [];
+                state.persistenceRestored = true;
+                saveChatSettings();
+                saveConversationSnapshot();
+                const modal = document.getElementById('describe_vlm_chat_modal');
+                syncChatSettingsControls(modal);
+                renderPendingImages();
+                renderMessages();
+                setStatus(t('Conversation imported.', '对话已导入。'));
+            } catch (err) {
+                setStatus(t('Invalid conversation file.', '对话文件格式无效。'), true);
+            }
+        };
+        reader.readAsText(file);
     }
 
     function closeModal() {
@@ -1181,6 +1303,9 @@
         abortActiveChatRequest();
         state.messages = [];
         state.conversationId = uid('describe_vlm_chat');
+        state.persistenceRestored = true;
+        state.persistenceDirty = false;
+        try { window.localStorage?.removeItem(CONVERSATION_STORAGE_KEY); } catch (err) {}
         setStatus('');
         syncBusyControls(document.getElementById('describe_vlm_chat_modal'));
         renderMessages();
@@ -1436,6 +1561,7 @@
         resetConversationAfterContextEdit();
         setStatus(t('Message moved back to input.', '消息已回到输入框。'));
         renderMessages();
+        saveConversationSnapshot();
         setChatInputValue(draft, true);
     }
 
@@ -1450,6 +1576,7 @@
         resetConversationAfterContextEdit();
         setStatus(t('Message deleted from context.', '消息已从上下文删除。'));
         renderMessages();
+        saveConversationSnapshot();
     }
 
     function renderPendingImages() {
@@ -1809,6 +1936,9 @@
         resetConversationForImage(imageKey);
         const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET);
         const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET);
+        if (history.omitted > 0) {
+            setStatus(t('Older messages were automatically omitted from context.', '已自动省略较早消息以保护上下文。'));
+        }
 
         const images = [];
         try {
@@ -1889,6 +2019,8 @@
         else state.messages.push(assistant);
         if (response?.conversation_id) state.conversationId = response.conversation_id;
         state.busy = false;
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
         renderMessages();
         if (!response?.ok) setStatus(reply, true);
     }
@@ -1942,6 +2074,14 @@
         }
         if (evt.target.closest('[data-describe-vlm-chat-import-prompt]')) {
             importMainPromptToChatInput();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-save]')) {
+            downloadConversation();
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-import]')) {
+            modal.querySelector('[data-describe-vlm-chat-conversation-file]')?.click();
             return;
         }
         if (evt.target.closest('[data-describe-vlm-chat-pick-image]')) {
@@ -2019,6 +2159,7 @@
         if (evt.target?.matches?.('[data-describe-vlm-chat-mode]')) {
             state.chatMode = normalizeChatMode(evt.target.value);
             saveChatSettings();
+            saveConversationSnapshot();
             syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-template]')) {
@@ -2026,6 +2167,7 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-use-image]')) {
             state.useImage = !!evt.target.checked;
+            saveConversationSnapshot();
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-unload-after]')) {
             state.unloadAfterChat = !!evt.target.checked;
@@ -2033,6 +2175,10 @@
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-file]')) {
             addPendingImageFiles(evt.target.files || []);
+            evt.target.value = '';
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-conversation-file]')) {
+            importConversationFile(evt.target.files?.[0]);
             evt.target.value = '';
         }
         if (evt.target?.closest?.('#describe_vlm_model_dropdown, #describe_vlm_model, #describe_vlm_custom_panel')) {
