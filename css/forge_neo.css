@@ -16,6 +16,279 @@ body:has(#forge_neo_root),
     --button-secondary-text-color-disabled: #7f8796;
 }
 
+#forge_neo_root .forge-neo-forge-couple-outer-tabs {
+    min-width: 0;
+    width: 100%;
+}
+
+#forge_neo_root .forge-neo-forge-couple-header,
+#forge_neo_root .forge-neo-forge-couple-settings-row,
+#forge_neo_root .forge-neo-forge-couple-common-row {
+    align-items: flex-start !important;
+    gap: 24px !important;
+    width: 100%;
+}
+
+#forge_neo_root .forge-neo-forge-couple-checks {
+    gap: 8px !important;
+    padding-top: 8px;
+}
+
+#forge_neo_root .forge-neo-forge-couple-checks > * {
+    min-height: 32px;
+}
+
+#forge_neo_root .forge-neo-forge-couple-basic-settings,
+#forge_neo_root .forge-neo-forge-couple-advanced,
+#forge_neo_root .forge-neo-forge-couple-mask {
+    width: 100%;
+}
+
+#forge_neo_root .forge-neo-forge-couple-default-row {
+    justify-content: center !important;
+    padding: 12px 0;
+}
+
+#forge_neo_root .forge-neo-forge-couple-default-row > button,
+#forge_neo_root .forge-neo-forge-couple-default-row > .form > button {
+    flex: 0 1 280px !important;
+    max-width: 280px !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mapping-shell {
+    background: var(--panel-background-fill);
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+    width: 100%;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] {
+    min-height: 150px;
+    min-width: 0;
+    overflow-x: auto;
+    width: 100%;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] table {
+    table-layout: fixed;
+    min-width: 720px;
+    width: 100%;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] :is(th, td) {
+    border-width: 2px !important;
+    min-width: 0;
+    overflow: hidden;
+    padding: 5px 8px !important;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] th {
+    text-align: center !important;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] tbody tr:nth-child(7n + 1) td:last-child {
+    background: color-mix(in srgb, #ef4444 34%, transparent);
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] tbody tr:nth-child(7n + 2) td:last-child {
+    background: color-mix(in srgb, #f59e0b 34%, transparent);
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] tbody tr:nth-child(7n + 3) td:last-child {
+    background: color-mix(in srgb, #22c55e 30%, transparent);
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_mapping"] tbody tr:nth-child(7n + 4) td:last-child {
+    background: color-mix(in srgb, #0ea5e9 30%, transparent);
+}
+
+#forge_neo_root .forge-neo-forge-couple-mapping-actions {
+    gap: 4px !important;
+    justify-content: flex-end !important;
+    opacity: 0;
+    position: absolute;
+    right: 18px;
+    top: 8px;
+    transition: opacity 120ms ease;
+    width: auto !important;
+    z-index: 2;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mapping-shell:hover .forge-neo-forge-couple-mapping-actions,
+#forge_neo_root .forge-neo-forge-couple-mapping-shell:focus-within .forge-neo-forge-couple-mapping-actions {
+    opacity: 1;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mapping-actions > *,
+#forge_neo_root .forge-neo-forge-couple-mapping-actions > .form > * {
+    flex: 0 0 40px !important;
+    max-width: 40px !important;
+    min-width: 40px !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-preview-stage {
+    align-items: flex-start !important;
+    gap: 6px !important;
+    justify-content: center !important;
+    padding: 24px 52px 18px 0;
+    position: relative;
+    width: 100%;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_preview"],
+#forge_neo_root [id$="_forge_couple_mask_preview"] {
+    background: #000;
+    flex: 0 1 512px !important;
+    height: 512px !important;
+    margin-inline: auto;
+    max-width: 512px;
+    min-height: 320px;
+    width: min(512px, 100%) !important;
+}
+
+#forge_neo_root [id$="_forge_couple_advanced_preview"] img,
+#forge_neo_root [id$="_forge_couple_mask_preview"] img {
+    background: #000;
+    height: 100% !important;
+    object-fit: contain !important;
+    width: 100% !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-preview-tools {
+    flex: 0 0 44px !important;
+    gap: 4px !important;
+    max-width: 44px !important;
+    min-width: 44px !important;
+    width: 44px !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-preview-tools > * {
+    height: 44px !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    width: 44px !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-wide-button {
+    margin: 8px 0 !important;
+    width: 100% !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-section-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 24px 0 8px;
+    text-align: center;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mask-canvas.forge-neo-forge-canvas,
+#forge_neo_root .forge-neo-forge-couple-mask-canvas.forge-neo-forge-canvas .forge-container {
+    height: 512px;
+    margin-inline: auto;
+    max-height: 512px !important;
+    max-width: 100%;
+    min-height: 360px;
+    width: 100% !important;
+}
+
+#forge_neo_root [id$="_forge_couple_mask_gallery"] {
+    min-height: 180px;
+    width: 100%;
+}
+
+#forge_neo_root [id$="_forge_couple_mask_gallery"] .grid-wrap {
+    align-content: start;
+    grid-auto-rows: minmax(84px, 1fr);
+    min-height: 150px;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mask-io,
+#forge_neo_root .forge-neo-forge-couple-mask-order,
+#forge_neo_root .forge-neo-forge-couple-mask-uploads,
+#forge_neo_root .forge-neo-forge-couple-preset-row {
+    align-items: flex-end !important;
+    gap: 12px !important;
+    width: 100%;
+}
+
+#forge_neo_root .forge-neo-forge-couple-mask-io > *,
+#forge_neo_root .forge-neo-forge-couple-mask-order > *,
+#forge_neo_root .forge-neo-forge-couple-mask-uploads > *,
+#forge_neo_root .forge-neo-forge-couple-preset-row > * {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+}
+
+#forge_neo_root .forge-neo-forge-couple-tile-title {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 2px 12px;
+}
+
+#forge_neo_root .forge-neo-forge-couple-tile-title h2 {
+    font-size: 22px;
+    margin: 0;
+}
+
+#forge_neo_root .forge-neo-forge-couple-tile-title strong {
+    color: var(--forge-neo-muted);
+    font-size: 13px;
+}
+
+@media (max-width: 720px) {
+    #forge_neo_root .forge-neo-forge-couple-header,
+    #forge_neo_root .forge-neo-forge-couple-settings-row,
+    #forge_neo_root .forge-neo-forge-couple-common-row,
+    #forge_neo_root .forge-neo-forge-couple-mask-io,
+    #forge_neo_root .forge-neo-forge-couple-mask-order,
+    #forge_neo_root .forge-neo-forge-couple-mask-uploads,
+    #forge_neo_root .forge-neo-forge-couple-preset-row {
+        flex-direction: column !important;
+        flex-wrap: nowrap !important;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-header > *,
+    #forge_neo_root .forge-neo-forge-couple-settings-row > *,
+    #forge_neo_root .forge-neo-forge-couple-common-row > *,
+    #forge_neo_root .forge-neo-forge-couple-mask-io > *,
+    #forge_neo_root .forge-neo-forge-couple-mask-order > *,
+    #forge_neo_root .forge-neo-forge-couple-mask-uploads > *,
+    #forge_neo_root .forge-neo-forge-couple-preset-row > * {
+        flex: 1 1 auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+        width: 100% !important;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-mask-canvas.forge-neo-forge-canvas,
+    #forge_neo_root .forge-neo-forge-couple-mask-canvas.forge-neo-forge-canvas .forge-container {
+        height: 360px !important;
+        max-height: 360px !important;
+        min-height: 280px !important;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-preview-stage {
+        padding-right: 0;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-preview-tools {
+        position: absolute;
+        right: 4px;
+        top: 28px;
+    }
+
+    #forge_neo_root [id$="_forge_couple_advanced_preview"],
+    #forge_neo_root [id$="_forge_couple_mask_preview"] {
+        height: min(512px, 88vw) !important;
+        max-height: min(512px, 88vw) !important;
+        min-height: 280px;
+    }
+}
+
 #forge_neo_root {
     --forge-neo-bg: var(--background-fill-primary, #0f0f10);
     --forge-neo-panel: var(--block-background-fill, #202124);
@@ -5687,5 +5960,34 @@ body:has(#forge_neo_root) .gradio-container main.contain #forge_neo_root {
         max-width: 40px !important;
         min-width: 40px !important;
         width: 40px !important;
+    }
+}
+
+@media (max-width: 720px) {
+    #forge_neo_root #forge_neo_img2img_tab .forge-neo-workspace > .forge-neo-params {
+        flex: 1 1 auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+        width: 100% !important;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-tile-primary,
+    #forge_neo_root .forge-neo-forge-couple-tile-primary > .form,
+    #forge_neo_root .forge-neo-forge-couple-tile-counts,
+    #forge_neo_root .forge-neo-forge-couple-tile-counts > .form {
+        flex-direction: column !important;
+        flex-wrap: nowrap !important;
+        min-width: 0 !important;
+        width: 100% !important;
+    }
+
+    #forge_neo_root .forge-neo-forge-couple-tile-primary > *,
+    #forge_neo_root .forge-neo-forge-couple-tile-primary > .form > *,
+    #forge_neo_root .forge-neo-forge-couple-tile-counts > *,
+    #forge_neo_root .forge-neo-forge-couple-tile-counts > .form > * {
+        flex: 1 1 auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+        width: 100% !important;
     }
 }

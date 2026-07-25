@@ -24,6 +24,11 @@ from PIL import Image, ImageFilter, PngImagePlugin
 
 from forge_neo.adetailer_compat import adetailer_model_names, adetailer_schema_payload, adetailer_version
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_EXTENSION, DYNAMIC_PROMPTS_SCRIPT_BASE_NAME
+from forge_neo.forge_couple_compat import (
+    FORGE_COUPLE_SCRIPT_NAME,
+    forge_couple_default_args,
+    forge_couple_schema_payload,
+)
 from forge_neo.regional_prompter_compat import (
     REGIONAL_PROMPTER_SCRIPT_NAME,
     regional_prompter_default_args,
@@ -42,6 +47,7 @@ WD14_TAGGER_EXTENSION = "stable-diffusion-webui-wd14-tagger"
 ADETAILER_EXTENSION = "adetailer"
 ADETAILER_EXTENSION_DIRNAME = "ADetailer-Neo"
 REGIONAL_PROMPTER_EXTENSION = "sd-neo-regional-prompter"
+FORGE_COUPLE_EXTENSION = "sd-forge-couple"
 INFINITE_BROWSING_EXTENSION = "infinite-browsing"
 AUTO_PHOTOSHOP_EXTENSION = "Auto-Photoshop-StableDiffusion-Plugin"
 AESTHETIC_ENHANCEMENT_EXTENSION = "sd-webui-AestheticEnhancement"
@@ -58,7 +64,14 @@ TRELLIS2_EXTENSION = "sd-webui-trellis2"
 AUTO_COMPLETE_EXTENSION = "sd-webui-auto-complete"
 SUPPORTED_PROMPT_EXTENSIONS = (TAGCOMPLETE_EXTENSION, PROMPT_ALL_IN_ONE_EXTENSION)
 FIRST_BATCH_PROMPT_EXTENSION_PROFILES = (TAGCOMPLETE_EXTENSION, PROMPT_ALL_IN_ONE_EXTENSION)
-PRIORITY_EXTENSION_PROFILES = (DYNAMIC_PROMPTS_EXTENSION, WD14_TAGGER_EXTENSION, ADETAILER_EXTENSION, REGIONAL_PROMPTER_EXTENSION, INFINITE_BROWSING_EXTENSION)
+PRIORITY_EXTENSION_PROFILES = (
+    DYNAMIC_PROMPTS_EXTENSION,
+    WD14_TAGGER_EXTENSION,
+    ADETAILER_EXTENSION,
+    REGIONAL_PROMPTER_EXTENSION,
+    FORGE_COUPLE_EXTENSION,
+    INFINITE_BROWSING_EXTENSION,
+)
 API_ROUTE_EXTENSION_PROFILES = (AUTO_PHOTOSHOP_EXTENSION,)
 UI_HELPER_EXTENSION_PROFILES = (ASPECT_RATIO_HELPER_EXTENSION,)
 UI_TAB_EXTENSION_PROFILES = (
@@ -406,6 +419,59 @@ REGIONAL_PROMPTER_PROFILE = ForgeNeoExtensionProfile(
         "Regional Prompter is an always-visible source generation script.",
         "Forge Neo emits source-compatible alwayson script args for Regional Prompter.",
         "The source backend imports rp.py only when the request asks for Regional Prompter.",
+    ),
+)
+
+FORGE_COUPLE_PROFILE = ForgeNeoExtensionProfile(
+    name=FORGE_COUPLE_EXTENSION,
+    display_name="Forge Couple",
+    family="generation-hook",
+    support_level="priority-profile",
+    adapter_scope="alwayson-args",
+    remote_url="https://github.com/Haoming02/sd-forge-couple",
+    repository_layout="standalone",
+    source_branch="main",
+    required_files=(
+        "scripts/forge_couple.py",
+        "lib_couple/attention_couple.py",
+        "lib_couple/attention_masks.py",
+        "lib_couple/mapping.py",
+        "lib_couple/settings.py",
+        "lib_couple/tile_funcs.py",
+        "lib_couple/ui.py",
+        "lib_couple/ui_masks.py",
+        "javascript/couple.js",
+        "style.css",
+    ),
+    javascript_files=(
+        "javascript/background_loader.js",
+        "javascript/bbox.js",
+        "javascript/couple.js",
+        "javascript/dataframe.js",
+        "javascript/edit_timer.js",
+        "javascript/mask.js",
+    ),
+    css_files=("style.css",),
+    routes=(
+        "/forge-couple/v1/schema",
+        "/forge-couple/v1/defaults",
+    ),
+    source_callbacks=(
+        "scripts.AlwaysVisible",
+        "setup",
+        "before_process",
+        "after_extra_networks_activate",
+        "before_process_batch",
+        "process_before_every_sampling",
+        "before_hr",
+        "script_callbacks.on_ui_settings(fc_settings)",
+    ),
+    notes=(
+        "Forge Couple is an always-visible source generation script.",
+        "Forge Neo provides a native Gradio 6 UI for Basic, Advanced, Mask, Common Prompts, and img2img Tile settings.",
+        "Forge Neo mirrors the source extension's four options in a native Forge Couple Settings page.",
+        "The source backend imports forge_couple.py only when the request asks for Forge Couple.",
+        "The source extension JavaScript and CSS are catalogued but not loaded into the native Forge Neo UI.",
     ),
 )
 
@@ -950,6 +1016,7 @@ EXTENSION_PROFILES = (
     WD14_TAGGER_PROFILE,
     ADETAILER_PROFILE,
     REGIONAL_PROMPTER_PROFILE,
+    FORGE_COUPLE_PROFILE,
     INFINITE_BROWSING_PROFILE,
     *API_ROUTE_EXTENSION_PROFILE_OBJECTS,
     *UI_HELPER_EXTENSION_PROFILE_OBJECTS,
@@ -1507,6 +1574,10 @@ def dynamic_prompts_available() -> bool:
 
 def regional_prompter_available() -> bool:
     return extension_profile_available(REGIONAL_PROMPTER_EXTENSION)
+
+
+def forge_couple_available() -> bool:
+    return extension_profile_available(FORGE_COUPLE_EXTENSION)
 
 
 def infinite_browsing_available() -> bool:
@@ -2764,6 +2835,14 @@ def install_extension_adapter_routes(app: Any) -> None:
     @app.get("/regional-prompter/v1/defaults")
     async def _regional_prompter_defaults():
         return {"script": REGIONAL_PROMPTER_SCRIPT_NAME, "args": regional_prompter_default_args()}
+
+    @app.get("/forge-couple/v1/schema")
+    async def _forge_couple_schema():
+        return forge_couple_schema_payload()
+
+    @app.get("/forge-couple/v1/defaults")
+    async def _forge_couple_defaults():
+        return {"script": FORGE_COUPLE_SCRIPT_NAME, "args": forge_couple_default_args()}
 
     @app.post("/tacapi/v1/refresh-temp-files")
     async def _tac_refresh_temp_files():

@@ -1855,10 +1855,28 @@
         }
     }
 
+    function isLayerForgeWelcomeMedia(container, src) {
+        try {
+            if (container?.closest?.('.sai-gradio-hidden-bridge'))
+                return true;
+            if (container?.closest?.('[data-simpleai-welcome-media-kind="title"], [data-simpleai-welcome-media-kind="waiting"]'))
+                return true;
+            if (typeof window.isStudioWelcomeMediaSource === 'function') {
+                if (window.isStudioWelcomeMediaSource(src, 'title') || window.isStudioWelcomeMediaSource(src, 'waiting'))
+                    return true;
+            }
+        } catch {
+        }
+        return /presets\/welcome\//.test(src)
+            || /studio_ui\/welcome\/(?:title|waiting)-/.test(src)
+            || /(?:^|\/)(?:title|waiting)-(?:desktop|mobile)-[0-9a-f]{16}\.webp(?:[?#].*)?$/.test(src)
+            || /(?:^|\/)(?:\d+_welcome_[wm]|welcome_[^/?#]+_[wm])\.(?:jpe?g|png|gif|webp)(?:[?#].*)?$/.test(src);
+    }
+
     function isLayerForgeSystemImage(container, img) {
         try {
             const src = String(img?.getAttribute?.('src') || img?.src || '').toLowerCase().replace(/\\/g, '/');
-            if (/presets\/welcome\//.test(src) || /\/welcome[^/]*\.png(?:[?#].*)?$/.test(src))
+            if (isLayerForgeWelcomeMedia(container, src) || /(?:^|\/)welcome[^/]*\.png(?:[?#].*)?$/.test(src))
                 return true;
             if (container?.closest?.('#missing_model_welcome_hint'))
                 return true;

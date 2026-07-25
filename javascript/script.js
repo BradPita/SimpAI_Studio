@@ -809,6 +809,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             || src === 'data:,'
             || src.startsWith('data:image/svg')
             || /presets\/welcome\//.test(src)
+            || /studio_ui\/welcome\/(?:title|waiting)-/.test(src)
             || /\/welcome[^/]*\.png(?:[?#].*)?$/.test(src)
             || !!container?.closest?.('#missing_model_welcome_hint');
     }

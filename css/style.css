@@ -15154,3 +15154,72 @@ button[aria-label="Edit"][title="Edit"] {
     padding: 10px !important;
   }
 }
+/* Welcome media replacement controls stay inside the mounted Gradio 6 image surface. */
+#preview_generating {
+    position: relative !important;
+}
+
+.simpleai-welcome-media-actions {
+    position: absolute;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 40;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+.simpleai-welcome-media-actions.is-active {
+    display: flex;
+}
+
+.simpleai-welcome-media-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    margin: 0;
+    padding: 0;
+    color: #ffffff;
+    background: rgba(18, 20, 24, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.simpleai-welcome-media-action:hover,
+.simpleai-welcome-media-action:focus-visible {
+    color: #ffffff;
+    background: rgba(36, 40, 48, 0.94);
+    border-color: rgba(255, 255, 255, 0.68);
+    outline: 2px solid var(--color-accent, #2f9cf4);
+    outline-offset: 2px;
+}
+
+.simpleai-welcome-media-action:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.simpleai-welcome-media-action[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 700px) {
+    .simpleai-welcome-media-actions {
+        right: max(10px, env(safe-area-inset-right));
+        bottom: max(10px, env(safe-area-inset-bottom));
+        gap: 6px;
+    }
+}

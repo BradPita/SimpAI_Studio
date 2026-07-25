@@ -166,6 +166,7 @@
             { type: "tab", panelId: "forge_neo_settings_live_previews", en: "Live Previews", cn: "实时预览" },
             { type: "tab", panelId: "forge_neo_settings_prompt_editing", en: "Prompt Editing", cn: "提示词编辑" },
             { type: "tab", panelId: "forge_neo_settings_tagcomplete", en: "Tag Autocomplete", cn: "标签补全" },
+            { type: "tab", panelId: "forge_neo_settings_forge_couple", en: "Forge Couple", cn: "Forge Couple", optional: true },
             { type: "tab", panelId: "forge_neo_settings_settings_in_ui", en: "Settings in UI", cn: "UI 内设置" },
             { type: "tab", panelId: "forge_neo_settings_ui_alternatives", en: "UI Alternatives", cn: "UI Alternatives" },
             { type: "tab", panelId: "forge_neo_settings_user_interface", en: "User Interface", cn: "界面" },
@@ -210,7 +211,9 @@
         const selectedPanelId = (selected ? selected.getAttribute("aria-controls") || "" : "") || (visiblePanel ? visiblePanel.id : "") || settingsStaticSelectedPanelId;
         const selectedLabel = selected ? normalizedSettingsText(selected.textContent) : "";
 
-        const entries = settingsStaticNavPageDefinitions().map(function (entry) {
+        const entries = settingsStaticNavPageDefinitions().filter(function (entry) {
+            return !entry.optional || document.getElementById(entry.panelId);
+        }).map(function (entry) {
             if (entry.type === "group") {
                 return { ...entry, text: t(entry.en, entry.cn) };
             }
@@ -1608,8 +1611,8 @@
         [
             ["#forge_neo_unload_models", "Unload models to RAM", "卸载模型到内存"],
             ["#forge_neo_refresh_models", "Refresh models", "刷新模型"],
-            ["#forge_neo_paste_params", "Read generation parameters", "读取生成参数"],
-            ["#forge_neo_img2img_paste_params", "Read generation parameters", "读取生成参数"],
+            ["#forge_neo_paste_params", "Read generation parameters from prompt or last generated image", "从提示词或上次生成的图片中读取生成参数"],
+            ["#forge_neo_img2img_paste_params", "Read generation parameters from prompt or last generated image", "从提示词或上次生成的图片中读取生成参数"],
             ["#forge_neo_clear_prompt", "Clear prompt", "清空提示词"],
             ["#forge_neo_img2img_clear_prompt", "Clear prompt", "清空提示词"],
             ["#forge_neo_style_apply", "Apply selected styles", "应用所选样式"],

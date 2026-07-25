@@ -15,7 +15,7 @@ from functools import partial
 from pathlib import Path
 
 import gradio as gr
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance
 
 import args_manager
 from forge_neo.adetailer_compat import (
@@ -37,6 +37,7 @@ from forge_neo.extension_adapter import (
     camera_angle_selector_available,
     civitai_helper_available,
     dynamic_prompts_available,
+    forge_couple_available,
     infinite_browsing_iframe_html,
     infinite_browsing_available,
     multimodal_media_available,
@@ -84,6 +85,14 @@ from forge_neo.extensions import (
 )
 from forge_neo.dynamic_prompts_wildcards import create_dynamic_prompts_wildcards_tab
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_ARG_DEFAULTS, DYNAMIC_PROMPTS_ARG_KEYS, dynamic_prompts_arg_dict
+from forge_neo.forge_couple_compat import (
+    FORGE_COUPLE_ARG_DEFAULTS,
+    FORGE_COUPLE_ARG_KEYS,
+    FORGE_COUPLE_DEFAULT_MAPPING,
+    forge_couple_arg_dict,
+    normalize_advanced_mapping,
+    normalize_mask_mapping,
+)
 from forge_neo.forge_canvas import ForgeCanvas
 from forge_neo.i18n import t
 from forge_neo.licenses import license_notice_html
@@ -146,6 +155,7 @@ from forge_neo.settings import (
     CALLBACK_PRIORITY_CHOICES,
     CALLBACK_PRIORITY_KEYS,
     DEFAULT_SETTINGS,
+    FORGE_COUPLE_SETTING_KEYS,
     PRESET_ARCHES,
     PRESET_DISTILL,
     PRESET_DISPLAY_NAMES,
@@ -486,10 +496,18 @@ ADETAILER_UNIT_FIELD_COUNT = len(ADETAILER_UNIT_FIELD_NAMES)
 ADETAILER_FIELD_COUNT = 2 + ADETAILER_UNIT_COUNT * ADETAILER_UNIT_FIELD_COUNT
 DYNAMIC_PROMPTS_FIELD_COUNT = len(DYNAMIC_PROMPTS_ARG_KEYS)
 REGIONAL_PROMPTER_FIELD_COUNT = len(REGIONAL_PROMPTER_ARG_KEYS)
+FORGE_COUPLE_FIELD_COUNT = len(FORGE_COUPLE_ARG_KEYS)
 SCRIPT_PANEL_FIELD_COUNT = 5
 SCRIPT_FILL_BUTTON_FIELD_COUNT = 3
 SCRIPT_SEND_FIELD_COUNT = 1 + SCRIPT_PANEL_FIELD_COUNT + SCRIPT_PARAM_FIELD_COUNT + SCRIPT_FILL_BUTTON_FIELD_COUNT
-INTEGRATED_COMMON_FIELD_COUNT = 32 + SCRIPT_PARAM_FIELD_COUNT + ADETAILER_FIELD_COUNT + DYNAMIC_PROMPTS_FIELD_COUNT + REGIONAL_PROMPTER_FIELD_COUNT
+INTEGRATED_COMMON_FIELD_COUNT = (
+    32
+    + SCRIPT_PARAM_FIELD_COUNT
+    + ADETAILER_FIELD_COUNT
+    + DYNAMIC_PROMPTS_FIELD_COUNT
+    + REGIONAL_PROMPTER_FIELD_COUNT
+    + FORGE_COUPLE_FIELD_COUNT
+)
 INTEGRATED_FIELD_COUNT = CONTROLNET_UNIT_COUNT * CONTROLNET_UNIT_FIELD_COUNT + INTEGRATED_COMMON_FIELD_COUNT
 XYZ_IMG2IMG_AXIS_CHOICES = [
     "Nothing",
@@ -847,6 +865,7 @@ SETTINGS_INPUT_KEYS = [
     "svdq_attention",
     "svdq_use_pin_memory",
     "svdq_num_blocks_on_gpu",
+    *FORGE_COUPLE_SETTING_KEYS,
     *PRESET_SETTING_KEYS,
 ]
 SOURCE_SETTINGS_PAGE_GROUPS: tuple[tuple[str, str, str, tuple[tuple[str, str], ...]], ...] = (
@@ -995,6 +1014,17 @@ SOURCE_SETTINGS_PAGE_GROUPS: tuple[tuple[str, str, str, tuple[tuple[str, str], .
             ("Extra filename", "额外标签文件"),
             ("Chant filename", "长提示文件"),
             ("Completion behavior", "补全行为"),
+        ),
+    ),
+    (
+        "Forge Couple",
+        "Forge Couple",
+        "forge_neo_settings_forge_couple",
+        (
+            ("Interrupt on Error", "发生错误时中断生成"),
+            ("Advanced presets", "Advanced 预设"),
+            ("img2img Tile mode", "img2img Tile 模式"),
+            ("Advanced dataframe newlines", "Advanced 表格换行符"),
         ),
     ),
     (
@@ -1442,6 +1472,93 @@ def _create_tagcomplete_settings_page(settings_initial: dict[str, object]) -> li
         )
 
     return components
+
+
+def _create_forge_couple_settings_page(
+    settings_initial: dict[str, object],
+    *,
+    state_value: Mapping[str, object],
+    bridge: dict[str, dict[str, object]] | None = None,
+) -> list[object]:
+    lang = state_value.get("__lang", getattr(args_manager.args, "language", "cn"))
+    label = partial(_label_for_lang, lang)
+
+    with gr.Column(elem_classes=["forge-neo-settings-panel", "forge-neo-forge-couple-settings-panel"]):
+        interrupt = gr.Checkbox(
+            value=_setting_initial_value(settings_initial, "fc_do_interrupt"),
+            label=label("Interrupt on Error", "发生错误时中断生成"),
+            info=label(
+                "If disabled, Forge Couple will fail silently when it encounters an error.",
+                "关闭后，Forge Couple 遇到错误时会静默停用，不中断生成。",
+            ),
+            elem_id="forge_neo_setting_fc_do_interrupt",
+        )
+        no_presets = gr.Checkbox(
+            value=_setting_initial_value(settings_initial, "fc_no_presets"),
+            label=label("Disable the Presets feature in Advanced mode", "禁用 Advanced 模式的预设功能"),
+            info=label("Requires Reload UI.", "需要重载 UI。"),
+            elem_id="forge_neo_setting_fc_no_presets",
+        )
+        no_tile = gr.Checkbox(
+            value=_setting_initial_value(settings_initial, "fc_no_tile"),
+            label=label("Disable the Tile mode in img2img", "禁用 img2img 的 Tile 模式"),
+            info=label("Requires Reload UI.", "需要重载 UI。"),
+            elem_id="forge_neo_setting_fc_no_tile",
+        )
+        advanced_newline = gr.Checkbox(
+            value=_setting_initial_value(settings_initial, "fc_adv_newline"),
+            label=label(
+                "Keep newline characters in Advanced mode dataframe",
+                "在 Advanced 表格中保留换行符",
+            ),
+            info=label(
+                'Newlines are shown as "\\n" literals.',
+                '换行符会显示为“\\n”字面量。',
+            ),
+            elem_id="forge_neo_setting_fc_adv_newline",
+        )
+
+    newline_states = [
+        entry["advanced_newline"]
+        for entry in (bridge or {}).values()
+        if isinstance(entry, dict) and entry.get("advanced_newline") is not None
+    ]
+    if newline_states:
+        advanced_newline.change(
+            lambda enabled: [bool(enabled)] * len(newline_states),
+            inputs=[advanced_newline],
+            outputs=newline_states,
+            show_progress=False,
+            queue=False,
+        )
+    return [interrupt, no_presets, no_tile, advanced_newline]
+
+
+def _create_forge_couple_settings_tab(
+    settings_initial: dict[str, object],
+    *,
+    state_value: Mapping[str, object],
+    bridge: dict[str, dict[str, object]] | None = None,
+    available: bool | None = None,
+) -> list[object]:
+    if available is None:
+        available = forge_couple_available()
+    if not available:
+        return [
+            gr.State(_setting_initial_value(settings_initial, key))
+            for key in FORGE_COUPLE_SETTING_KEYS
+        ]
+
+    with gr.Tab(
+        _label_for_lang(state_value, "Forge Couple", "Forge Couple"),
+        elem_id="forge_neo_settings_forge_couple",
+        render_children=True,
+    ):
+        return _create_forge_couple_settings_page(
+            settings_initial,
+            state_value=state_value,
+            bridge=bridge,
+        )
 
 
 def _create_preset_settings_page(arch: str, settings_initial: dict[str, object]) -> list[object]:
@@ -4977,6 +5094,18 @@ def _regional_prompter_from_integrated(integrated, offset: int) -> dict[str, obj
     return regional_prompter_arg_dict(raw, enabled=_as_bool_param(raw.get("active"), False))
 
 
+def _forge_couple_from_integrated(integrated, offset: int, *, is_img2img: bool) -> dict[str, object]:
+    raw = {
+        key: integrated(offset + index, FORGE_COUPLE_ARG_DEFAULTS.get(key))
+        for index, key in enumerate(FORGE_COUPLE_ARG_KEYS)
+    }
+    return forge_couple_arg_dict(
+        raw,
+        enabled=_as_bool_param(raw.get("enable"), False),
+        is_img2img=is_img2img,
+    )
+
+
 def _build_request(
     mode: str,
     preset: str,
@@ -5195,6 +5324,15 @@ def _build_request(
     regional_prompter_args = {}
     if regional_prompter_enabled:
         regional_prompter_args = _regional_prompter_from_integrated(integrated, regional_prompter_offset)
+    forge_couple_offset = regional_prompter_offset + REGIONAL_PROMPTER_FIELD_COUNT
+    forge_couple_enabled = bool(integrated(forge_couple_offset + 0, False))
+    forge_couple_args = {}
+    if forge_couple_enabled:
+        forge_couple_args = _forge_couple_from_integrated(
+            integrated,
+            forge_couple_offset,
+            is_img2img=mode != "txt2img",
+        )
 
     def gallery_count(value) -> int:
         if not value:
@@ -5320,6 +5458,8 @@ def _build_request(
         dynamic_prompts_args=dynamic_prompts_args,
         regional_prompter_enabled=bool(regional_prompter_enabled),
         regional_prompter_args=regional_prompter_args,
+        forge_couple_enabled=bool(forge_couple_enabled),
+        forge_couple_args=forge_couple_args,
         seed_variance_enabled=bool(seed_variance_enabled),
         seed_variance_delta=int(seed_variance_delta or 0),
         seed_variance_strength=float(seed_variance_strength or 0.0),
@@ -5361,6 +5501,8 @@ def _generate_clicked(*values):
     state = values[0]
     request = _build_request(*values[1:])
     result = worker.run(request, state)
+    if result.status == "finished" and _has_generation_parameter_payload(result.infotext):
+        _write_prompt_history(result.infotext)
     status = _status(state, "Finished.", "已完成。")
     if result.status == "backend_pending":
         status = _status(
@@ -6988,11 +7130,45 @@ def _has_generation_parameter_payload(text: str | None) -> bool:
     return bool(GENERATION_PARAMETER_KEYS.intersection(params))
 
 
+def _prompt_history_path() -> Path:
+    configured_root = str(
+        os.environ.get("FORGE_NEO_SOURCE_BACKEND_DATA_DIR")
+        or os.environ.get("FORGE_NEO_DATA_PATH")
+        or ""
+    ).strip()
+    if configured_root:
+        root = Path(configured_root).expanduser()
+        if (root / "webui" / "models").is_dir():
+            root = root / "webui"
+    else:
+        root = Path(__file__).resolve().parent / "webui"
+    return root / "params.txt"
+
+
+def _read_prompt_history() -> str:
+    try:
+        return _prompt_history_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _write_prompt_history(infotext: str | None) -> None:
+    value = str(infotext or "").strip()
+    if not value:
+        return
+    try:
+        path = _prompt_history_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value, encoding="utf-8")
+    except OSError:
+        pass
+
+
 def _paste_parameter_source(prompt_text: str | None, infotext: str | None) -> str:
     prompt_source = str(prompt_text or "").strip()
     if prompt_source:
-        return prompt_source if _has_generation_parameter_payload(prompt_source) else ""
-    return str(infotext or "").strip()
+        return prompt_source
+    return _read_prompt_history() or str(infotext or "").strip()
 
 
 def _paste_txt2img_params_clicked(prompt_text: str | None, infotext: str | None, state):
@@ -7930,6 +8106,7 @@ def _integrated_inputs(controls: dict[str, object]) -> list[gr.components.Compon
             *_adetailer_unit_controls(controls),
             *_dynamic_prompts_controls(controls),
             *_regional_prompter_controls(controls),
+            *_forge_couple_controls(controls),
         ]
     )
     return inputs
@@ -9197,6 +9374,1379 @@ def _create_adetailer_controls(controls: dict[str, gr.components.Component], pre
     controls["adetailer_inpaint_padding"] = controls[unit_one("ad_inpaint_only_masked_padding")]
 
 
+FORGE_COUPLE_GUIDE_URL = "https://github.com/Haoming02/sd-forge-couple"
+FORGE_COUPLE_MAPPING_PRESETS = {
+    "two_columns": [
+        [0.0, 0.5, 0.0, 1.0, 1.0],
+        [0.5, 1.0, 0.0, 1.0, 1.0],
+    ],
+    "three_columns": [
+        [0.0, 1.0 / 3.0, 0.0, 1.0, 1.0],
+        [1.0 / 3.0, 2.0 / 3.0, 0.0, 1.0, 1.0],
+        [2.0 / 3.0, 1.0, 0.0, 1.0, 1.0],
+    ],
+    "two_rows": [
+        [0.0, 1.0, 0.0, 0.5, 1.0],
+        [0.0, 1.0, 0.5, 1.0, 1.0],
+    ],
+    "four_quadrants": [
+        [0.0, 0.5, 0.0, 0.5, 1.0],
+        [0.5, 1.0, 0.0, 0.5, 1.0],
+        [0.0, 0.5, 0.5, 1.0, 1.0],
+        [0.5, 1.0, 0.5, 1.0, 1.0],
+    ],
+}
+FORGE_COUPLE_PREVIEW_COLORS = (
+    (239, 68, 68),
+    (245, 158, 11),
+    (34, 197, 94),
+    (14, 165, 233),
+    (99, 102, 241),
+    (168, 85, 247),
+    (236, 72, 153),
+)
+
+
+def _forge_couple_control_key(field_name: str) -> str:
+    return f"forge_couple_{field_name}"
+
+
+def _forge_couple_default(field_name: str, fallback: object = None) -> object:
+    return FORGE_COUPLE_ARG_DEFAULTS.get(field_name, fallback)
+
+
+def _forge_couple_controls(controls: dict[str, gr.components.Component]) -> list[gr.components.Component]:
+    return [controls[_forge_couple_control_key(field_name)] for field_name in FORGE_COUPLE_ARG_KEYS]
+
+
+def _forge_couple_image(value: object) -> Image.Image | None:
+    if isinstance(value, str) and value.startswith("data:image/") and "base64," in value:
+        try:
+            raw = base64.b64decode(value.split("base64,", 1)[1])
+            with Image.open(io.BytesIO(raw)) as image:
+                return image.convert("RGBA").copy()
+        except Exception:
+            return None
+    return _image_from_value(value)
+
+
+def _forge_couple_canvas_dimensions(width: object, height: object) -> tuple[int, int]:
+    canvas_width = max(64, min(_as_int_param(width, 512), 2048))
+    canvas_height = max(64, min(_as_int_param(height, 512), 2048))
+    while canvas_width * canvas_height > 1024 * 1024:
+        canvas_width = max(64, canvas_width // 2)
+        canvas_height = max(64, canvas_height // 2)
+    return canvas_width, canvas_height
+
+
+def _forge_couple_preview_dimensions(width: object, height: object) -> tuple[int, int]:
+    canvas_width, canvas_height = _forge_couple_canvas_dimensions(width, height)
+    longest = max(canvas_width, canvas_height)
+    if longest > 768:
+        scale = 768.0 / longest
+        canvas_width = max(64, int(round(canvas_width * scale)))
+        canvas_height = max(64, int(round(canvas_height * scale)))
+    return canvas_width, canvas_height
+
+
+def _forge_couple_prompt_lines(prompt: object, separator: object) -> list[str]:
+    delimiter = _forge_couple_separator_value(separator)
+    return [item.strip() for item in str(prompt or "").split(delimiter)]
+
+
+def _forge_couple_separator_value(separator: object) -> str:
+    delimiter = str(separator or "").replace("\\n", "\n").replace("\\t", "\t")
+    return delimiter if delimiter else "\n"
+
+
+def _forge_couple_reference_image(value: object, size: tuple[int, int]) -> Image.Image:
+    image = _forge_couple_image(value)
+    if image is None:
+        return Image.new("RGB", size, "black")
+    image = image.convert("RGB").resize(size, Image.Resampling.LANCZOS)
+    return ImageEnhance.Brightness(image).enhance(0.56)
+
+
+def _forge_couple_binary_mask(value: object, width: object, height: object) -> Image.Image | None:
+    image = _forge_couple_image(value)
+    if image is None:
+        return None
+    size = _forge_couple_canvas_dimensions(width, height)
+    rgba = image.convert("RGBA").resize(size, Image.Resampling.NEAREST)
+    red, green, blue, alpha = rgba.split()
+    red = red.point(lambda pixel: 255 if pixel >= 248 else 0)
+    green = green.point(lambda pixel: 255 if pixel >= 248 else 0)
+    blue = blue.point(lambda pixel: 255 if pixel >= 248 else 0)
+    alpha = alpha.point(lambda pixel: 255 if pixel > 0 else 0)
+    mask = ImageChops.multiply(ImageChops.multiply(red, green), ImageChops.multiply(blue, alpha))
+    return mask if mask.getbbox() else None
+
+
+def _forge_couple_mask_foreground(mask: object) -> Image.Image | None:
+    image = _forge_couple_image(mask)
+    if image is None:
+        return None
+    alpha = image.convert("L")
+    foreground = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    foreground.putalpha(alpha)
+    return foreground
+
+
+def _forge_couple_mask_gallery(layers: object, lang: object) -> list[tuple[Image.Image, str]]:
+    label = partial(_label_for_lang, lang)
+    values: list[tuple[Image.Image, str]] = []
+    for index, item in enumerate(normalize_mask_mapping(layers)):
+        image = _forge_couple_image(item.get("mask"))
+        if image is None:
+            continue
+        caption = label(
+            f"Region {index + 1} | Weight {float(item.get('weight', 1.0)):.2f}",
+            f"区域 {index + 1} | 权重 {float(item.get('weight', 1.0)):.2f}",
+        )
+        values.append((image.convert("RGB"), caption))
+    return values
+
+
+def _forge_couple_preview(
+    prompt: object,
+    separator: object,
+    mode: object,
+    direction: object,
+    background: object,
+    background_weight: object,
+    mapping: object,
+    mask_layers: object,
+    width: object,
+    height: object,
+    reference: object,
+) -> Image.Image:
+    size = _forge_couple_preview_dimensions(width, height)
+    base = _forge_couple_reference_image(reference, size).convert("RGBA")
+    overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    selected_mode = str(mode or "Basic")
+    selected_background = str(background or "None")
+
+    if selected_mode == "Basic":
+        lines = _forge_couple_prompt_lines(prompt, separator)
+        region_count = max(1, len(lines) - int(selected_background != "None"))
+        horizontal = str(direction or "Horizontal") == "Horizontal"
+        for index in range(region_count):
+            if horizontal:
+                x0 = int(round(size[0] * index / region_count))
+                x1 = size[0] if index == region_count - 1 else int(round(size[0] * (index + 1) / region_count))
+                rectangle = (x0, 0, x1, size[1])
+            else:
+                y0 = int(round(size[1] * index / region_count))
+                y1 = size[1] if index == region_count - 1 else int(round(size[1] * (index + 1) / region_count))
+                rectangle = (0, y0, size[0], y1)
+            color = FORGE_COUPLE_PREVIEW_COLORS[index % len(FORGE_COUPLE_PREVIEW_COLORS)]
+            draw.rectangle(rectangle, fill=(*color, 92), outline=(*color, 255), width=3)
+            draw.text((rectangle[0] + 8, rectangle[1] + 8), str(index + 1), fill=(255, 255, 255, 255))
+    elif selected_mode == "Advanced":
+        for index, (x1, x2, y1, y2, weight) in enumerate(normalize_advanced_mapping(mapping, use_default=False)):
+            rectangle = (
+                int(round(size[0] * x1)),
+                int(round(size[1] * y1)),
+                int(round(size[0] * x2)),
+                int(round(size[1] * y2)),
+            )
+            color = FORGE_COUPLE_PREVIEW_COLORS[index % len(FORGE_COUPLE_PREVIEW_COLORS)]
+            draw.rectangle(rectangle, outline=(*color, 255), width=4)
+            draw.text((rectangle[0] + 8, rectangle[1] + 8), str(index + 1), fill=(255, 255, 255, 255))
+    else:
+        for index, item in enumerate(normalize_mask_mapping(mask_layers)):
+            mask = _forge_couple_image(item.get("mask"))
+            if mask is None:
+                continue
+            mask = mask.convert("L").resize(size, Image.Resampling.NEAREST)
+            opacity = int(round(70 + 70 * min(max(float(item.get("weight", 1.0)), 0.0), 1.0)))
+            alpha = ImageChops.multiply(mask, Image.new("L", size, opacity))
+            color = FORGE_COUPLE_PREVIEW_COLORS[index % len(FORGE_COUPLE_PREVIEW_COLORS)]
+            layer = Image.new("RGBA", size, (*color, 0))
+            layer.putalpha(alpha)
+            overlay = Image.alpha_composite(overlay, layer)
+            bounds = mask.getbbox()
+            if bounds:
+                ImageDraw.Draw(overlay).text((bounds[0] + 8, bounds[1] + 8), str(index + 1), fill=(255, 255, 255, 255))
+
+    if selected_background != "None":
+        try:
+            global_opacity = int(round(42 * max(0.1, min(float(background_weight), 1.0))))
+        except Exception:
+            global_opacity = 21
+        overlay = Image.alpha_composite(Image.new("RGBA", size, (255, 255, 255, global_opacity)), overlay)
+    return Image.alpha_composite(base, overlay).convert("RGB")
+
+
+def _forge_couple_create_mask_canvas(width: object, height: object):
+    size = _forge_couple_canvas_dimensions(width, height)
+    return Image.new("RGB", size, "black"), None
+
+
+def _forge_couple_dataframe_prompt(value: object, keep_newlines: object = False) -> str:
+    text = str(value or "").strip()
+    if bool(keep_newlines):
+        return text.replace("\n", "\\n")
+    lines = [line.strip(" ,") for line in text.splitlines() if line.strip(" ,")]
+    return ", ".join(lines) if len(lines) > 1 else text
+
+
+def _forge_couple_mapping_table(
+    mapping: object,
+    prompt: object = "",
+    separator: object = "",
+    keep_newlines: object = False,
+) -> list[list[object]]:
+    rows = normalize_advanced_mapping(mapping)
+    prompts = _forge_couple_prompt_lines(prompt, separator)
+    return [
+        [*row, _forge_couple_dataframe_prompt(prompts[index], keep_newlines) if index < len(prompts) else ""]
+        for index, row in enumerate(rows)
+    ]
+
+
+def _forge_couple_table_prompt_values(value: object, keep_newlines: object = False) -> list[str]:
+    rows = value.get("data", []) if isinstance(value, dict) else value
+    if not isinstance(rows, (list, tuple)):
+        return []
+    prompts: list[str] = []
+    for row in rows:
+        if isinstance(row, (list, tuple)) and len(row) >= 6:
+            prompt = str(row[5] or "").strip()
+        elif isinstance(row, dict):
+            prompt = str(row.get("prompt", "") or "").strip()
+        else:
+            prompt = ""
+        prompts.append(prompt.replace("\\n", "\n") if bool(keep_newlines) else prompt)
+    return prompts
+
+
+def _forge_couple_prompt_from_table(
+    value: object,
+    prompt: object,
+    separator: object,
+    keep_newlines: object = False,
+) -> str:
+    table_prompts = _forge_couple_table_prompt_values(value, keep_newlines)
+    previous = _forge_couple_prompt_lines(prompt, separator)
+    if len(table_prompts) < len(previous):
+        table_prompts.extend(previous[len(table_prompts):])
+    return _forge_couple_separator_value(separator).join(table_prompts)
+
+
+def _forge_couple_advanced_preview(
+    prompt: object,
+    separator: object,
+    mapping: object,
+    width: object,
+    height: object,
+    reference: object,
+) -> Image.Image:
+    return _forge_couple_preview(
+        prompt,
+        separator,
+        "Advanced",
+        "Horizontal",
+        "None",
+        0.5,
+        mapping,
+        [],
+        width,
+        height,
+        reference,
+    )
+
+
+def _forge_couple_mask_preview(layers: object, width: object, height: object) -> Image.Image:
+    return _forge_couple_preview(
+        "",
+        "",
+        "Mask",
+        "Horizontal",
+        "None",
+        0.5,
+        [],
+        layers,
+        width,
+        height,
+        None,
+    )
+
+
+def _forge_couple_advanced_table_changed(value, prompt, separator, width, height, reference, keep_newlines=False):
+    mapping = normalize_advanced_mapping(value)
+    updated_prompt = _forge_couple_prompt_from_table(value, prompt, separator, keep_newlines)
+    preview = _forge_couple_advanced_preview(updated_prompt, separator, mapping, width, height, reference)
+    return mapping, updated_prompt, preview
+
+
+def _forge_couple_sync_advanced_prompts(prompt, separator, value, width, height, reference, keep_newlines=False):
+    mapping = normalize_advanced_mapping(value)
+    table = _forge_couple_mapping_table(mapping, prompt, separator, keep_newlines)
+    preview = _forge_couple_advanced_preview(prompt, separator, mapping, width, height, reference)
+    return gr.update(value=table), preview
+
+
+def _forge_couple_reference_uploaded(value, prompt, separator, mapping, width, height):
+    image = _forge_couple_image(value)
+    return image, _forge_couple_advanced_preview(prompt, separator, mapping, width, height, image)
+
+
+def _forge_couple_reference_cleared(prompt, separator, mapping, width, height):
+    return None, gr.update(value=None), _forge_couple_advanced_preview(prompt, separator, mapping, width, height, None)
+
+
+def _forge_couple_mask_background_uploaded(value, width, height):
+    image = _forge_couple_image(value)
+    if image is None:
+        return gr.update(), gr.update(value=None)
+    size = _forge_couple_canvas_dimensions(width, height)
+    background = ImageEnhance.Brightness(image.convert("RGB").resize(size, Image.Resampling.LANCZOS)).enhance(0.75)
+    return background, gr.update(value=None)
+
+
+def _forge_couple_mask_image_uploaded(value, width, height):
+    mask = _forge_couple_binary_mask(value, width, height)
+    return _forge_couple_mask_foreground(mask), gr.update(value=None)
+
+
+def _forge_couple_mask_load(layers, selected):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    if index < 0 or index >= len(values):
+        return gr.update()
+    return _forge_couple_mask_foreground(values[index]["mask"])
+
+
+def _forge_couple_mask_action_updates(layers, selected):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    active = 0 <= index < len(values)
+    return [gr.update(interactive=active)] * 3
+
+
+def _forge_couple_mode_changed(choice, advanced_table, mask_layers):
+    selected = str(choice or "Basic")
+    mapping = normalize_mask_mapping(mask_layers) if selected == "Mask" else normalize_advanced_mapping(advanced_table)
+    return (
+        gr.update(visible=selected in {"Basic", "Mask"}),
+        gr.update(visible=selected == "Basic"),
+        gr.update(visible=selected == "Mask"),
+        gr.update(visible=selected == "Advanced"),
+        gr.update(visible=selected == "Mask"),
+        mapping,
+    )
+
+
+def _forge_couple_pull_advanced(source_table, prompt, separator, width, height, reference, keep_newlines=False):
+    mapping = normalize_advanced_mapping(source_table)
+    table = _forge_couple_mapping_table(mapping, prompt, separator, keep_newlines)
+    preview = _forge_couple_advanced_preview(prompt, separator, mapping, width, height, reference)
+    return gr.update(value=table), mapping, preview
+
+
+def _forge_couple_pull_masks(source_layers, width, height, *, lang):
+    layers = normalize_mask_mapping(source_layers)
+    preview = _forge_couple_mask_preview(layers, width, height)
+    return layers, layers, gr.update(value=_forge_couple_mask_gallery(layers, lang), selected_index=None), -1, None, 1.0, preview
+
+
+def _forge_couple_advanced_changed(value: object) -> list[list[float]]:
+    return normalize_advanced_mapping(value)
+
+
+def _forge_couple_select_advanced(value: object):
+    return "Advanced", normalize_advanced_mapping(value)
+
+
+def _forge_couple_select_mask(layers: object):
+    return "Mask", normalize_mask_mapping(layers)
+
+
+def _forge_couple_apply_mapping_preset(
+    name: object,
+    prompt: object = "",
+    separator: object = "",
+    keep_newlines: object = False,
+):
+    mapping = normalize_advanced_mapping(FORGE_COUPLE_MAPPING_PRESETS.get(str(name or ""), FORGE_COUPLE_DEFAULT_MAPPING))
+    return gr.update(value=_forge_couple_mapping_table(mapping, prompt, separator, keep_newlines)), mapping
+
+
+def _forge_couple_mapping_add(
+    value: object,
+    prompt: object = "",
+    separator: object = "",
+    keep_newlines: object = False,
+):
+    mapping = normalize_advanced_mapping(value)
+    mapping.append([0.25, 0.75, 0.25, 0.75, 1.0])
+    return gr.update(value=_forge_couple_mapping_table(mapping, prompt, separator, keep_newlines)), mapping
+
+
+def _forge_couple_mapping_remove(
+    value: object,
+    prompt: object = "",
+    separator: object = "",
+    keep_newlines: object = False,
+):
+    mapping = normalize_advanced_mapping(value)
+    if len(mapping) > 1:
+        mapping.pop()
+    return gr.update(value=_forge_couple_mapping_table(mapping, prompt, separator, keep_newlines)), mapping
+
+
+def _forge_couple_mask_add(foreground, weight, layers, width, height, *, lang):
+    values = normalize_mask_mapping(layers)
+    mask = _forge_couple_binary_mask(foreground, width, height)
+    if mask is None:
+        return values, values, gr.update(), len(values) - 1, foreground, weight
+    values.append({"mask": mask, "weight": max(0.0, min(float(weight or 1.0), 5.0))})
+    selected = len(values) - 1
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=selected), selected, None, values[selected]["weight"]
+
+
+def _forge_couple_mask_selected(layers, evt: gr.EventData, *, lang):
+    values = normalize_mask_mapping(layers)
+    index = getattr(evt, "index", -1)
+    if isinstance(index, (list, tuple)):
+        index = index[0] if index else -1
+    try:
+        selected = int(index)
+    except Exception:
+        selected = -1
+    if selected < 0 or selected >= len(values):
+        return -1, None, 1.0
+    return selected, _forge_couple_mask_foreground(values[selected]["mask"]), float(values[selected].get("weight", 1.0))
+
+
+def _forge_couple_mask_replace(foreground, weight, layers, selected, width, height, *, lang):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    mask = _forge_couple_binary_mask(foreground, width, height)
+    if mask is None or index < 0 or index >= len(values):
+        return values, values, gr.update(), index, foreground, weight
+    values[index] = {"mask": mask, "weight": max(0.0, min(float(weight or 1.0), 5.0))}
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=index), index, foreground, values[index]["weight"]
+
+
+def _forge_couple_mask_delete(layers, selected, *, lang):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    if 0 <= index < len(values):
+        del values[index]
+    next_index = min(index, len(values) - 1)
+    foreground = _forge_couple_mask_foreground(values[next_index]["mask"]) if next_index >= 0 else None
+    weight = float(values[next_index].get("weight", 1.0)) if next_index >= 0 else 1.0
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=next_index if next_index >= 0 else None), next_index, foreground, weight
+
+
+def _forge_couple_mask_move(layers, selected, delta: int, *, lang):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    target = index + int(delta)
+    if 0 <= index < len(values) and 0 <= target < len(values):
+        values[index], values[target] = values[target], values[index]
+        index = target
+    foreground = _forge_couple_mask_foreground(values[index]["mask"]) if 0 <= index < len(values) else None
+    weight = float(values[index].get("weight", 1.0)) if 0 <= index < len(values) else 1.0
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=index if index >= 0 else None), index, foreground, weight
+
+
+def _forge_couple_mask_weight_changed(weight, layers, selected, *, lang):
+    values = normalize_mask_mapping(layers)
+    try:
+        index = int(selected)
+    except Exception:
+        index = -1
+    if 0 <= index < len(values):
+        values[index]["weight"] = max(0.0, min(float(weight or 1.0), 5.0))
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=index if index >= 0 else None)
+
+
+def _forge_couple_mask_import(files, layers, width, height, *, lang):
+    values = normalize_mask_mapping(layers)
+    for item in list(files or []):
+        mask = _forge_couple_binary_mask(item, width, height)
+        if mask is not None:
+            values.append({"mask": mask, "weight": 1.0})
+    selected = len(values) - 1
+    foreground = _forge_couple_mask_foreground(values[selected]["mask"]) if selected >= 0 else None
+    return values, values, gr.update(value=_forge_couple_mask_gallery(values, lang), selected_index=selected if selected >= 0 else None), selected, foreground, 1.0
+
+
+def _forge_couple_mask_reset(*, lang):
+    return [], [], gr.update(value=_forge_couple_mask_gallery([], lang), selected_index=None), -1, None, 1.0
+
+
+def _create_forge_couple_controls(
+    controls: dict[str, gr.components.Component],
+    prefix: str,
+    *,
+    is_img2img: bool,
+    state_value: Mapping[str, object],
+    prompt: gr.components.Component,
+    width: gr.components.Component,
+    height: gr.components.Component,
+    settings_value: Mapping[str, object] | None = None,
+    source_image: gr.components.Component | None = None,
+    bridge: dict[str, dict[str, object]] | None = None,
+) -> None:
+    lang = state_value.get("__lang", getattr(args_manager.args, "language", "cn"))
+    label = partial(_label_for_lang, lang)
+    initial_prompt = getattr(prompt, "value", "") or ""
+    active_settings = settings_value if isinstance(settings_value, Mapping) else DEFAULT_SETTINGS
+    disable_presets = bool(active_settings.get("fc_no_presets", False))
+    disable_tile = bool(active_settings.get("fc_no_tile", False))
+    keep_advanced_newlines = bool(active_settings.get("fc_adv_newline", False))
+
+    def store(field_name: str, component: gr.components.Component) -> gr.components.Component:
+        controls[_forge_couple_control_key(field_name)] = component
+        return component
+
+    def select_mask_layer(layers, evt: gr.EventData):
+        selected, _foreground, selected_weight = _forge_couple_mask_selected(layers, evt, lang=lang)
+        action_updates = _forge_couple_mask_action_updates(layers, selected)
+        return selected, selected_weight, *action_updates
+
+    def build_regions(mapping: gr.State, mask_layers: gr.State, mask_selected: gr.State) -> dict[str, object]:
+        with gr.Row(elem_classes=["forge-neo-forge-couple-header"]):
+            with gr.Column(scale=2, min_width=150, elem_classes=["forge-neo-forge-couple-checks"]):
+                enable = store(
+                    "enable",
+                    gr.Checkbox(
+                        bool(_forge_couple_default("enable", False)),
+                        label=label("Enable", "启用"),
+                        elem_id=_forge_elem(prefix, "forge_couple_enable"),
+                    ),
+                )
+                disable_hr = store(
+                    "disable_hr",
+                    gr.Checkbox(
+                        bool(_forge_couple_default("disable_hr", True)),
+                        label=label("Compatibility", "兼容性"),
+                        elem_id=_forge_elem(prefix, "forge_couple_disable_hr"),
+                    ),
+                )
+
+            mode = store(
+                "mode",
+                gr.Radio(
+                    [
+                        (label("Basic", "基础"), "Basic"),
+                        (label("Advanced", "高级"), "Advanced"),
+                        (label("Mask", "蒙版"), "Mask"),
+                    ],
+                    value=str(_forge_couple_default("mode", "Basic")),
+                    label=label("Region Assignment", "区域分配"),
+                    scale=3,
+                    elem_id=_forge_elem(prefix, "forge_couple_mode"),
+                    elem_classes=["forge-neo-forge-couple-mode"],
+                ),
+            )
+            separator = store(
+                "separator",
+                gr.Textbox(
+                    value=str(_forge_couple_default("separator", "")),
+                    label=label("Couple Separator", "区域提示词分隔符"),
+                    placeholder="\\n",
+                    lines=1,
+                    max_lines=1,
+                    scale=1,
+                    elem_id=_forge_elem(prefix, "forge_couple_separator"),
+                ),
+            )
+
+        with gr.Group(
+            visible=True,
+            elem_id=_forge_elem(prefix, "forge_couple_basic_settings"),
+            elem_classes=["forge-neo-forge-couple-basic-settings"],
+        ) as basic_settings:
+            with gr.Row(elem_classes=["forge-neo-forge-couple-settings-row"]):
+                with gr.Column(
+                    scale=2,
+                    min_width=150,
+                    elem_id=_forge_elem(prefix, "forge_couple_direction_slot"),
+                    elem_classes=["forge-neo-forge-couple-direction-slot"],
+                ) as direction_slot:
+                    direction = store(
+                        "direction",
+                        gr.Radio(
+                            [
+                                (label("Horizontal", "水平"), "Horizontal"),
+                                (label("Vertical", "垂直"), "Vertical"),
+                            ],
+                            value=str(_forge_couple_default("direction", "Horizontal")),
+                            label=label("Tile Direction", "区域方向"),
+                            elem_id=_forge_elem(prefix, "forge_couple_direction"),
+                        ),
+                    )
+                with gr.Column(
+                    scale=2,
+                    min_width=150,
+                    visible=False,
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_spacer"),
+                    elem_classes=["forge-neo-forge-couple-mask-spacer"],
+                ) as mask_spacer:
+                    gr.HTML("<span aria-hidden=\"true\"></span>")
+                background = store(
+                    "background",
+                    gr.Radio(
+                        [
+                            (label("None", "无"), "None"),
+                            (label("First Line", "第一行"), "First Line"),
+                            (label("Last Line", "最后一行"), "Last Line"),
+                        ],
+                        value=str(_forge_couple_default("background", "None")),
+                        label=label("Global Effect", "全局效果"),
+                        scale=3,
+                        elem_id=_forge_elem(prefix, "forge_couple_background"),
+                    ),
+                )
+                background_weight = store(
+                    "background_weight",
+                    gr.Slider(
+                        0.1,
+                        1.0,
+                        value=float(_forge_couple_default("background_weight", 0.5)),
+                        step=0.1,
+                        interactive=False,
+                        label=label("Global Effect Weight", "全局效果权重"),
+                        scale=1,
+                        elem_id=_forge_elem(prefix, "forge_couple_background_weight"),
+                    ),
+                )
+
+        with gr.Group(
+            visible=False,
+            elem_id=_forge_elem(prefix, "forge_couple_advanced_settings"),
+            elem_classes=["forge-neo-forge-couple-advanced"],
+        ) as advanced_settings:
+            with gr.Row(elem_classes=["forge-neo-forge-couple-default-row"]):
+                default_mapping = gr.Button(
+                    label("Default Mapping", "默认映射"),
+                    min_width=240,
+                    elem_id=_forge_elem(prefix, "forge_couple_default_mapping"),
+                )
+
+            with gr.Group(elem_classes=["forge-neo-forge-couple-mapping-shell"]):
+                advanced_mapping = gr.Dataframe(
+                    value=_forge_couple_mapping_table(
+                        FORGE_COUPLE_DEFAULT_MAPPING,
+                        initial_prompt,
+                        "",
+                        keep_advanced_newlines,
+                    ),
+                    headers=["x1", "x2", "y1", "y2", "w", label("Prompt", "正向提示词")],
+                    row_count=2,
+                    column_count=6,
+                    datatype=["number", "number", "number", "number", "number", "str"],
+                    type="array",
+                    interactive=True,
+                    max_height=300,
+                    show_label=False,
+                    wrap=False,
+                    line_breaks=False,
+                    column_widths=["7%", "7%", "7%", "7%", "7%", "65%"],
+                    buttons=[],
+                    elem_id=_forge_elem(prefix, "forge_couple_advanced_mapping"),
+                )
+                with gr.Row(elem_classes=["forge-neo-forge-couple-mapping-actions"]):
+                    mapping_add = gr.Button(
+                        "+",
+                        size="sm",
+                        min_width=40,
+                        elem_id=_forge_elem(prefix, "forge_couple_mapping_add"),
+                        elem_classes=["forge-neo-tool-button"],
+                    )
+                    mapping_remove = gr.Button(
+                        "−",
+                        size="sm",
+                        min_width=40,
+                        elem_id=_forge_elem(prefix, "forge_couple_mapping_remove"),
+                        elem_classes=["forge-neo-tool-button"],
+                    )
+
+            reference_image = gr.State(None)
+            with gr.Row(elem_classes=["forge-neo-forge-couple-preview-stage"]):
+                advanced_preview = gr.Image(
+                    value=_forge_couple_advanced_preview(initial_prompt, "", FORGE_COUPLE_DEFAULT_MAPPING, 512, 512, None),
+                    type="pil",
+                    interactive=False,
+                    height=512,
+                    width=512,
+                    show_label=False,
+                    buttons=[],
+                    elem_id=_forge_elem(prefix, "forge_couple_advanced_preview"),
+                )
+                with gr.Column(scale=0, min_width=44, elem_classes=["forge-neo-forge-couple-preview-tools"]):
+                    reference_upload = gr.UploadButton(
+                        "📂",
+                        file_types=["image"],
+                        type="filepath",
+                        size="sm",
+                        min_width=44,
+                        elem_id=_forge_elem(prefix, "forge_couple_reference_upload"),
+                        elem_classes=["forge-neo-tool-button"],
+                    )
+                    load_source = None
+                    if source_image is not None:
+                        load_source = gr.Button(
+                            "↓",
+                            size="sm",
+                            min_width=44,
+                            elem_id=_forge_elem(prefix, "forge_couple_reference_source"),
+                            elem_classes=["forge-neo-tool-button"],
+                        )
+                    clear_reference = gr.Button(
+                        "🗑",
+                        size="sm",
+                        min_width=44,
+                        elem_id=_forge_elem(prefix, "forge_couple_reference_clear"),
+                        elem_classes=["forge-neo-tool-button"],
+                    )
+
+            advanced_pull = gr.Button(
+                label("Pull from txt2img" if is_img2img else "Pull from img2img", "从文生图读取" if is_img2img else "从图生图读取"),
+                elem_id=_forge_elem(prefix, "forge_couple_advanced_pull"),
+                elem_classes=["forge-neo-forge-couple-wide-button"],
+            )
+
+            with gr.Accordion(
+                label("Presets", "预设"),
+                open=False,
+                visible=not disable_presets,
+                elem_id=_forge_elem(prefix, "forge_couple_presets"),
+            ):
+                with gr.Row(elem_classes=["forge-neo-integrated-row", "forge-neo-forge-couple-preset-row"]):
+                    mapping_preset = gr.Dropdown(
+                        [
+                            (label("Two columns", "左右两列"), "two_columns"),
+                            (label("Three columns", "三列"), "three_columns"),
+                            (label("Two rows", "上下两行"), "two_rows"),
+                            (label("Four quadrants", "四宫格"), "four_quadrants"),
+                        ],
+                        value="two_columns",
+                        label=label("Mapping Presets", "映射预设"),
+                        elem_id=_forge_elem(prefix, "forge_couple_mapping_preset"),
+                    )
+                    apply_mapping_preset = gr.Button(
+                        label("Apply Preset", "应用预设"),
+                        elem_id=_forge_elem(prefix, "forge_couple_mapping_preset_apply"),
+                    )
+
+        with gr.Group(
+            visible=False,
+            elem_id=_forge_elem(prefix, "forge_couple_mask_settings"),
+            elem_classes=["forge-neo-forge-couple-mask"],
+        ) as mask_settings:
+            mask_create = gr.Button(
+                label("Create Empty Canvas", "创建空白画布"),
+                elem_id=_forge_elem(prefix, "forge_couple_mask_create"),
+                elem_classes=["forge-neo-forge-couple-wide-button"],
+            )
+            gr.HTML(
+                f'<h2 class="forge-neo-forge-couple-section-title"><u>{html_lib.escape(label("Mask Canvas", "蒙版画布"))}</u></h2>'
+            )
+            mask_canvas = ForgeCanvas(
+                height=512,
+                no_upload=True,
+                scribble_color="#ffffff",
+                scribble_color_fixed=True,
+                scribble_width=28,
+                elem_id=_forge_elem(prefix, "forge_couple_mask_canvas"),
+                elem_classes=["forge-neo-img2img-input", "forge-neo-forge-couple-mask-canvas"],
+            )
+            with gr.Row(elem_classes=["forge-neo-forge-couple-mask-io"]):
+                mask_save = gr.Button(label("Save Mask", "保存蒙版"), elem_id=_forge_elem(prefix, "forge_couple_mask_save"))
+                mask_load = gr.Button(
+                    label("Load Mask", "加载蒙版"),
+                    interactive=False,
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_load"),
+                )
+                mask_override = gr.Button(
+                    label("Override Mask", "覆盖蒙版"),
+                    interactive=False,
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_override"),
+                )
+
+            gr.HTML(
+                f'<h2 class="forge-neo-forge-couple-section-title"><u>{html_lib.escape(label("Mask Layers", "蒙版图层"))}</u></h2>'
+            )
+            mask_gallery = gr.Gallery(
+                value=[],
+                show_label=False,
+                columns=4,
+                rows=2,
+                height=220,
+                type="pil",
+                preview=False,
+                buttons=[],
+                elem_id=_forge_elem(prefix, "forge_couple_mask_gallery"),
+            )
+            with gr.Row(elem_classes=["forge-neo-forge-couple-mask-order"]):
+                mask_up = gr.Button(label("Move Up", "上移"), elem_id=_forge_elem(prefix, "forge_couple_mask_up"))
+                mask_down = gr.Button(label("Move Down", "下移"), elem_id=_forge_elem(prefix, "forge_couple_mask_down"))
+                mask_weight = gr.Slider(
+                    0.0,
+                    5.0,
+                    value=1.0,
+                    step=0.05,
+                    label=label("Selected Weight", "所选蒙版权重"),
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_weight"),
+                )
+                mask_delete = gr.Button(
+                    label("Delete Mask", "删除蒙版"),
+                    interactive=False,
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_delete"),
+                )
+
+            gr.HTML(
+                f'<h2 class="forge-neo-forge-couple-section-title"><u>{html_lib.escape(label("Mask Preview", "蒙版预览"))}</u></h2>'
+            )
+            mask_preview = gr.Image(
+                value=_forge_couple_mask_preview([], 512, 512),
+                type="pil",
+                interactive=False,
+                height=512,
+                width=512,
+                show_label=False,
+                buttons=[],
+                elem_id=_forge_elem(prefix, "forge_couple_mask_preview"),
+            )
+            mask_reset = gr.Button(
+                label("Reset All Masks", "重置全部蒙版"),
+                elem_id=_forge_elem(prefix, "forge_couple_mask_reset"),
+                elem_classes=["forge-neo-forge-couple-wide-button"],
+            )
+            mask_pull = gr.Button(
+                label("Pull from txt2img" if is_img2img else "Pull from img2img", "从文生图读取" if is_img2img else "从图生图读取"),
+                elem_id=_forge_elem(prefix, "forge_couple_mask_pull"),
+                elem_classes=["forge-neo-forge-couple-wide-button"],
+            )
+            with gr.Row(elem_classes=["forge-neo-forge-couple-mask-uploads"]):
+                mask_background_upload = gr.Image(
+                    image_mode="RGBA",
+                    type="pil",
+                    sources=["upload", "clipboard"],
+                    height=256,
+                    label=label("Upload Background", "上传背景图"),
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_background_upload"),
+                )
+                mask_image_upload = gr.Image(
+                    image_mode="RGBA",
+                    type="pil",
+                    sources=["upload", "clipboard"],
+                    height=256,
+                    label=label("Upload Mask", "上传蒙版"),
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_image_upload"),
+                )
+            with gr.Accordion(label("Import Masks", "批量导入蒙版"), open=False, elem_id=_forge_elem(prefix, "forge_couple_mask_import_panel")):
+                mask_import = gr.File(
+                    file_count="multiple",
+                    file_types=["image"],
+                    type="filepath",
+                    label=label("Mask Image Files", "蒙版图片文件"),
+                    elem_id=_forge_elem(prefix, "forge_couple_mask_import"),
+                )
+
+        with gr.Accordion(label("Common Prompts", "通用提示词"), open=False, elem_id=_forge_elem(prefix, "forge_couple_common_prompts")):
+            with gr.Row(elem_classes=["forge-neo-forge-couple-common-row"]):
+                common_parser = store(
+                    "common_parser",
+                    gr.Radio(
+                        [(label("Off", "关闭"), "off"), ("{ }", "{ }"), ("< >", "< >")],
+                        value=str(_forge_couple_default("common_parser", "{ }")),
+                        label=label("Syntax", "语法"),
+                        scale=3,
+                        elem_id=_forge_elem(prefix, "forge_couple_common_parser"),
+                    ),
+                )
+                def_in_prompt = store(
+                    "def_in_prompt",
+                    gr.Checkbox(
+                        bool(_forge_couple_default("def_in_prompt", True)),
+                        label=label("Include Definitions in Prompt", "在提示词中保留定义"),
+                        scale=3,
+                        elem_id=_forge_elem(prefix, "forge_couple_def_in_prompt"),
+                    ),
+                )
+                common_debug = store(
+                    "common_debug",
+                    gr.Checkbox(
+                        bool(_forge_couple_default("common_debug", False)),
+                        label=label("Debug", "调试"),
+                        scale=1,
+                        elem_id=_forge_elem(prefix, "forge_couple_common_debug"),
+                    ),
+                )
+
+        return {
+            "enable": enable,
+            "disable_hr": disable_hr,
+            "mode": mode,
+            "separator": separator,
+            "direction": direction,
+            "background": background,
+            "background_weight": background_weight,
+            "basic_settings": basic_settings,
+            "direction_slot": direction_slot,
+            "mask_spacer": mask_spacer,
+            "advanced_settings": advanced_settings,
+            "advanced_mapping": advanced_mapping,
+            "default_mapping": default_mapping,
+            "mapping_add": mapping_add,
+            "mapping_remove": mapping_remove,
+            "mapping_preset": mapping_preset,
+            "apply_mapping_preset": apply_mapping_preset,
+            "reference_image": reference_image,
+            "reference_upload": reference_upload,
+            "load_source": load_source,
+            "clear_reference": clear_reference,
+            "advanced_preview": advanced_preview,
+            "advanced_pull": advanced_pull,
+            "mask_settings": mask_settings,
+            "mask_canvas": mask_canvas,
+            "mask_create": mask_create,
+            "mask_save": mask_save,
+            "mask_load": mask_load,
+            "mask_override": mask_override,
+            "mask_delete": mask_delete,
+            "mask_gallery": mask_gallery,
+            "mask_up": mask_up,
+            "mask_down": mask_down,
+            "mask_weight": mask_weight,
+            "mask_preview": mask_preview,
+            "mask_reset": mask_reset,
+            "mask_pull": mask_pull,
+            "mask_background_upload": mask_background_upload,
+            "mask_image_upload": mask_image_upload,
+            "mask_import": mask_import,
+            "common_parser": common_parser,
+            "def_in_prompt": def_in_prompt,
+            "common_debug": common_debug,
+        }
+
+    def build_tiles() -> None:
+        gr.HTML(
+            f'<div class="forge-neo-forge-couple-tile-title"><h2>{html_lib.escape(label("Tile Mode", "分块模式"))}</h2><strong>{html_lib.escape(label("Experimental", "实验性"))}</strong></div>'
+        )
+        with gr.Row(elem_classes=["forge-neo-integrated-row", "forge-neo-forge-couple-tile-primary"]):
+            store(
+                "tile_enabled",
+                gr.Checkbox(
+                    bool(_forge_couple_default("tile_enabled", False)),
+                    label=label("Enable Tile Mode", "启用分块模式"),
+                    elem_id=_forge_elem(prefix, "forge_couple_tile_enabled"),
+                ),
+            )
+            store(
+                "tile_debug",
+                gr.Checkbox(
+                    bool(_forge_couple_default("tile_debug", False)),
+                    label=label("Debug Tiles", "调试分块"),
+                    elem_id=_forge_elem(prefix, "forge_couple_tile_debug"),
+                ),
+            )
+            store(
+                "tile_threshold",
+                gr.Slider(
+                    0.0,
+                    1.0,
+                    value=float(_forge_couple_default("tile_threshold", 0.75)),
+                    step=0.05,
+                    label=label("Inclusion Threshold", "区域纳入阈值"),
+                    elem_id=_forge_elem(prefix, "forge_couple_tile_threshold"),
+                ),
+            )
+        with gr.Row(elem_classes=["forge-neo-integrated-row", "forge-neo-forge-couple-tile-counts"]):
+            store(
+                "tile_columns",
+                gr.Slider(1, 16, value=2, step=1, label=label("Column Count", "列数"), elem_id=_forge_elem(prefix, "forge_couple_tile_columns")),
+            )
+            store(
+                "tile_rows",
+                gr.Slider(1, 16, value=2, step=1, label=label("Row Count", "行数"), elem_id=_forge_elem(prefix, "forge_couple_tile_rows")),
+            )
+        store(
+            "tile_replacements",
+            gr.Textbox(
+                value=str(_forge_couple_default("tile_replacements", "")),
+                lines=3,
+                label=label("Subject Replacement", "主体替换"),
+                placeholder="1boy: 2boys, multiple boys",
+                elem_id=_forge_elem(prefix, "forge_couple_tile_replacements"),
+            ),
+        )
+
+    with gr.Accordion(
+        "Forge Couple v7.1.0",
+        open=False,
+        visible=forge_couple_available(),
+        elem_id=_forge_elem(prefix, "forge_couple"),
+        elem_classes=["forge-neo-integrated-accordion", "forge-neo-forge-couple"],
+    ):
+        mapping = store("mapping", gr.State(normalize_advanced_mapping(FORGE_COUPLE_DEFAULT_MAPPING)))
+        mask_layers = gr.State([])
+        mask_selected = gr.State(-1)
+        advanced_newline = gr.State(keep_advanced_newlines)
+
+        if is_img2img and not disable_tile:
+            with gr.Tabs(elem_id=_forge_elem(prefix, "forge_couple_outer_tabs"), elem_classes=["forge-neo-forge-couple-outer-tabs"]):
+                with gr.Tab(label("Regions", "区域"), elem_id=_forge_elem(prefix, "forge_couple_regions_tab")):
+                    region = build_regions(mapping, mask_layers, mask_selected)
+                with gr.Tab(label("Tiles", "分块"), elem_id=_forge_elem(prefix, "forge_couple_tiles_tab")):
+                    build_tiles()
+        else:
+            region = build_regions(mapping, mask_layers, mask_selected)
+            store("tile_enabled", gr.State(False))
+            store("tile_columns", gr.State(-1))
+            store("tile_rows", gr.State(-1))
+            store("tile_threshold", gr.State(float(_forge_couple_default("tile_threshold", 0.75))))
+            store("tile_replacements", gr.State(""))
+            store("tile_debug", gr.State(False))
+
+        mode = region["mode"]
+        separator = region["separator"]
+        background = region["background"]
+        background_weight = region["background_weight"]
+        advanced_mapping = region["advanced_mapping"]
+        reference_image = region["reference_image"]
+        advanced_preview = region["advanced_preview"]
+        mask_canvas = region["mask_canvas"]
+        mask_gallery = region["mask_gallery"]
+        mask_weight = region["mask_weight"]
+        mask_preview = region["mask_preview"]
+
+        background.change(
+            lambda choice: gr.update(interactive=str(choice) != "None"),
+            inputs=[background],
+            outputs=[background_weight],
+            show_progress=False,
+            queue=False,
+        )
+        mode.change(
+            _forge_couple_mode_changed,
+            inputs=[mode, advanced_mapping, mask_layers],
+            outputs=[
+                region["basic_settings"],
+                region["direction_slot"],
+                region["mask_spacer"],
+                region["advanced_settings"],
+                region["mask_settings"],
+                mapping,
+            ],
+            show_progress=False,
+            queue=False,
+        )
+
+        advanced_mapping.input(
+            _forge_couple_advanced_table_changed,
+            inputs=[advanced_mapping, prompt, separator, width, height, reference_image, advanced_newline],
+            outputs=[mapping, prompt, advanced_preview],
+            show_progress=False,
+            queue=False,
+        )
+        prompt.input(
+            _forge_couple_sync_advanced_prompts,
+            inputs=[prompt, separator, advanced_mapping, width, height, reference_image, advanced_newline],
+            outputs=[advanced_mapping, advanced_preview],
+            show_progress=False,
+            queue=False,
+        )
+        separator.change(
+            _forge_couple_sync_advanced_prompts,
+            inputs=[prompt, separator, advanced_mapping, width, height, reference_image, advanced_newline],
+            outputs=[advanced_mapping, advanced_preview],
+            show_progress=False,
+            queue=False,
+        )
+
+        def refresh_advanced_after(event):
+            event.then(
+                _forge_couple_advanced_preview,
+                inputs=[prompt, separator, mapping, width, height, reference_image],
+                outputs=[advanced_preview],
+                show_progress=False,
+                queue=False,
+            )
+
+        refresh_advanced_after(
+            region["default_mapping"].click(
+                _forge_couple_apply_mapping_preset,
+                inputs=[gr.State("two_columns"), prompt, separator, advanced_newline],
+                outputs=[advanced_mapping, mapping],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        refresh_advanced_after(
+            region["apply_mapping_preset"].click(
+                _forge_couple_apply_mapping_preset,
+                inputs=[region["mapping_preset"], prompt, separator, advanced_newline],
+                outputs=[advanced_mapping, mapping],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        refresh_advanced_after(
+            region["mapping_add"].click(
+                _forge_couple_mapping_add,
+                inputs=[advanced_mapping, prompt, separator, advanced_newline],
+                outputs=[advanced_mapping, mapping],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        refresh_advanced_after(
+            region["mapping_remove"].click(
+                _forge_couple_mapping_remove,
+                inputs=[advanced_mapping, prompt, separator, advanced_newline],
+                outputs=[advanced_mapping, mapping],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        region["reference_upload"].upload(
+            _forge_couple_reference_uploaded,
+            inputs=[region["reference_upload"], prompt, separator, mapping, width, height],
+            outputs=[reference_image, advanced_preview],
+            show_progress=False,
+            queue=False,
+        )
+        region["clear_reference"].click(
+            _forge_couple_reference_cleared,
+            inputs=[prompt, separator, mapping, width, height],
+            outputs=[reference_image, region["reference_upload"], advanced_preview],
+            show_progress=False,
+            queue=False,
+        )
+        if region["load_source"] is not None and source_image is not None:
+            region["load_source"].click(
+                _forge_couple_reference_uploaded,
+                inputs=[source_image, prompt, separator, mapping, width, height],
+                outputs=[reference_image, advanced_preview],
+                show_progress=False,
+                queue=False,
+            )
+
+        region["mask_create"].click(
+            _forge_couple_create_mask_canvas,
+            inputs=[width, height],
+            outputs=[mask_canvas.background, mask_canvas.foreground],
+            show_progress=False,
+            queue=False,
+        )
+        mask_gallery.select(
+            select_mask_layer,
+            inputs=[mask_layers],
+            outputs=[mask_selected, mask_weight, region["mask_load"], region["mask_override"], region["mask_delete"]],
+            show_progress=False,
+            queue=False,
+        )
+        region["mask_load"].click(
+            _forge_couple_mask_load,
+            inputs=[mask_layers, mask_selected],
+            outputs=[mask_canvas.foreground],
+            show_progress=False,
+            queue=False,
+        )
+
+        def mask_followups(event):
+            event.then(
+                _forge_couple_mask_preview,
+                inputs=[mask_layers, width, height],
+                outputs=[mask_preview],
+                show_progress=False,
+                queue=False,
+            ).then(
+                _forge_couple_mask_action_updates,
+                inputs=[mask_layers, mask_selected],
+                outputs=[region["mask_load"], region["mask_override"], region["mask_delete"]],
+                show_progress=False,
+                queue=False,
+            )
+
+        mask_followups(
+            region["mask_save"].click(
+                partial(_forge_couple_mask_add, lang=lang),
+                inputs=[mask_canvas.foreground, mask_weight, mask_layers, width, height],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_override"].click(
+                partial(_forge_couple_mask_replace, lang=lang),
+                inputs=[mask_canvas.foreground, mask_weight, mask_layers, mask_selected, width, height],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_delete"].click(
+                partial(_forge_couple_mask_delete, lang=lang),
+                inputs=[mask_layers, mask_selected],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_up"].click(
+                partial(_forge_couple_mask_move, delta=-1, lang=lang),
+                inputs=[mask_layers, mask_selected],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_down"].click(
+                partial(_forge_couple_mask_move, delta=1, lang=lang),
+                inputs=[mask_layers, mask_selected],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            mask_weight.release(
+                partial(_forge_couple_mask_weight_changed, lang=lang),
+                inputs=[mask_weight, mask_layers, mask_selected],
+                outputs=[mask_layers, mapping, mask_gallery],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_import"].upload(
+                partial(_forge_couple_mask_import, lang=lang),
+                inputs=[region["mask_import"], mask_layers, width, height],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        mask_followups(
+            region["mask_reset"].click(
+                partial(_forge_couple_mask_reset, lang=lang),
+                inputs=[],
+                outputs=[mask_layers, mapping, mask_gallery, mask_selected, mask_canvas.foreground, mask_weight],
+                show_progress=False,
+                queue=False,
+            )
+        )
+        region["mask_background_upload"].upload(
+            _forge_couple_mask_background_uploaded,
+            inputs=[region["mask_background_upload"], width, height],
+            outputs=[mask_canvas.background, region["mask_background_upload"]],
+            show_progress=False,
+            queue=False,
+        )
+        region["mask_image_upload"].upload(
+            _forge_couple_mask_image_uploaded,
+            inputs=[region["mask_image_upload"], width, height],
+            outputs=[mask_canvas.foreground, region["mask_image_upload"]],
+            show_progress=False,
+            queue=False,
+        )
+
+        for dimension in (width, height):
+            dimension.release(
+                _forge_couple_advanced_preview,
+                inputs=[prompt, separator, mapping, width, height, reference_image],
+                outputs=[advanced_preview],
+                show_progress=False,
+                queue=False,
+            )
+            dimension.release(
+                _forge_couple_mask_preview,
+                inputs=[mask_layers, width, height],
+                outputs=[mask_preview],
+                show_progress=False,
+                queue=False,
+            )
+
+        if bridge is not None:
+            key = "img2img" if is_img2img else "txt2img"
+            opposite_key = "txt2img" if is_img2img else "img2img"
+            bridge[key] = {
+                "lang": lang,
+                "prompt": prompt,
+                "separator": separator,
+                "width": width,
+                "height": height,
+                "mapping": mapping,
+                "advanced_mapping": advanced_mapping,
+                "reference_image": reference_image,
+                "advanced_newline": advanced_newline,
+                "advanced_preview": advanced_preview,
+                "advanced_pull": region["advanced_pull"],
+                "mask_layers": mask_layers,
+                "mask_selected": mask_selected,
+                "mask_gallery": mask_gallery,
+                "mask_foreground": mask_canvas.foreground,
+                "mask_weight": mask_weight,
+                "mask_preview": mask_preview,
+                "mask_pull": region["mask_pull"],
+            }
+
+            def wire_pull(target: dict[str, object], source: dict[str, object]) -> None:
+                target["advanced_pull"].click(
+                    _forge_couple_pull_advanced,
+                    inputs=[
+                        source["advanced_mapping"],
+                        target["prompt"],
+                        target["separator"],
+                        target["width"],
+                        target["height"],
+                        target["reference_image"],
+                        target["advanced_newline"],
+                    ],
+                    outputs=[target["advanced_mapping"], target["mapping"], target["advanced_preview"]],
+                    show_progress=False,
+                    queue=False,
+                )
+                target["mask_pull"].click(
+                    partial(_forge_couple_pull_masks, lang=target["lang"]),
+                    inputs=[source["mask_layers"], target["width"], target["height"]],
+                    outputs=[
+                        target["mask_layers"],
+                        target["mapping"],
+                        target["mask_gallery"],
+                        target["mask_selected"],
+                        target["mask_foreground"],
+                        target["mask_weight"],
+                        target["mask_preview"],
+                    ],
+                    show_progress=False,
+                    queue=False,
+                )
+
+            if opposite_key in bridge:
+                wire_pull(bridge[key], bridge[opposite_key])
+                wire_pull(bridge[opposite_key], bridge[key])
+
+
 REGIONAL_PROMPTER_GUIDE_URL = "https://github.com/hako-mikan/sd-webui-regional-prompter"
 REGIONAL_PROMPTER_MATRIX_URL = REGIONAL_PROMPTER_GUIDE_URL + "#2d-region-assignment"
 REGIONAL_PROMPTER_MASK_URL = REGIONAL_PROMPTER_GUIDE_URL + "#mask-regions-aka-inpaint-experimental-function"
@@ -10000,7 +11550,18 @@ def _create_regional_prompter_controls(controls: dict[str, gr.components.Compone
         )
 
 
-def _create_integrated_controls(prefix: str, *, is_img2img: bool) -> dict[str, gr.components.Component]:
+def _create_integrated_controls(
+    prefix: str,
+    *,
+    is_img2img: bool,
+    state_value: Mapping[str, object],
+    prompt: gr.components.Component,
+    width: gr.components.Component,
+    height: gr.components.Component,
+    settings_value: Mapping[str, object] | None = None,
+    forge_couple_bridge: dict[str, dict[str, object]] | None = None,
+    forge_couple_source_image: gr.components.Component | None = None,
+) -> dict[str, gr.components.Component]:
     controls: dict[str, gr.components.Component] = {}
     model_choices = initial_model_choices("klein")
     controlnet_models = _controlnet_model_choices(model_choices)
@@ -10016,6 +11577,18 @@ def _create_integrated_controls(prefix: str, *, is_img2img: bool) -> dict[str, g
     _create_adetailer_controls(controls, prefix, is_img2img=is_img2img, model_choices=model_choices)
     _create_dynamic_prompts_controls(controls, prefix)
     _create_regional_prompter_controls(controls, prefix)
+    _create_forge_couple_controls(
+        controls,
+        prefix,
+        is_img2img=is_img2img,
+        state_value=state_value,
+        prompt=prompt,
+        width=width,
+        height=height,
+        settings_value=settings_value,
+        source_image=forge_couple_source_image,
+        bridge=forge_couple_bridge,
+    )
     with gr.Accordion(_label("ControlNet Integrated", "ControlNet 集成"), open=False, visible=controlnet_visible, elem_id=_forge_elem(prefix, "controlnet"), elem_classes=["forge-neo-integrated-accordion"]):
         with gr.Tabs(elem_id=_forge_elem(prefix, "controlnet_tabs"), elem_classes=["forge-neo-mode-tabs", "forge-neo-controlnet-tabs"]):
             controlnet_units = []
@@ -11061,6 +12634,7 @@ def create_app() -> gr.Blocks:
     textual_inversion_choices = _names_for_extra_kind(model_choices, "textual_inversion")
     checkpoint_browser_choices = _names_for_extra_kind(model_choices, "checkpoints")
     lora_browser_choices = _names_for_extra_kind(model_choices, "lora")
+    forge_couple_bridge: dict[str, dict[str, object]] = {}
 
     app = create_root_blocks(title="Forge Neo", concurrency_count=3)
     with app:
@@ -11338,7 +12912,16 @@ def create_app() -> gr.Blocks:
                                             scale=1,
                                             min_width=72,
                                         )
-                                    txt_integrated = _create_integrated_controls("", is_img2img=False)
+                                    txt_integrated = _create_integrated_controls(
+                                        "",
+                                        is_img2img=False,
+                                        state_value=state_value,
+                                        prompt=prompt,
+                                        width=width,
+                                        height=height,
+                                        settings_value=settings_initial,
+                                        forge_couple_bridge=forge_couple_bridge,
+                                    )
                                     script = gr.Dropdown(
                                         _script_dropdown_choices(),
                                         value="None",
@@ -11961,7 +13544,17 @@ def create_app() -> gr.Blocks:
                                             scale=1,
                                             min_width=72,
                                         )
-                                    img_integrated = _create_integrated_controls("img2img", is_img2img=True)
+                                    img_integrated = _create_integrated_controls(
+                                        "img2img",
+                                        is_img2img=True,
+                                        state_value=state_value,
+                                        prompt=img_prompt,
+                                        width=img_width,
+                                        height=img_height,
+                                        settings_value=settings_initial,
+                                        forge_couple_bridge=forge_couple_bridge,
+                                        forge_couple_source_image=img_input,
+                                    )
                                     img_script = gr.Dropdown(
                                         _script_dropdown_choices(is_img2img=True),
                                         value="None",
@@ -14767,6 +16360,11 @@ def create_app() -> gr.Blocks:
                                 )
                         with gr.Tab(_label("Tag Autocomplete", "标签补全"), elem_id="forge_neo_settings_tagcomplete", render_children=True):
                             settings_tagcomplete_components = _create_tagcomplete_settings_page(settings_initial)
+                        settings_forge_couple_components = _create_forge_couple_settings_tab(
+                            settings_initial,
+                            state_value=state_value,
+                            bridge=forge_couple_bridge,
+                        )
                         with gr.Tab(_label("Settings in UI", "UI 内设置"), elem_id="forge_neo_settings_settings_in_ui", render_children=True):
                             with gr.Column(elem_classes=["forge-neo-settings-panel"]):
                                 gr.HTML(
@@ -15721,6 +17319,7 @@ def create_app() -> gr.Blocks:
                         settings_svdq_attention,
                         settings_svdq_use_pin_memory,
                         settings_svdq_num_blocks_on_gpu,
+                        *settings_forge_couple_components,
                         *settings_preset_components,
                     ]
                     settings_sd_unet_refresh.click(

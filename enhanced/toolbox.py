@@ -1040,6 +1040,7 @@ def reset_params_by_image_meta(metadata, state_params, is_generating, inpaint_mo
         is_generating,
         inpaint_mode,
         use_resolution_override=True,
+        state_params=state_params,
     )
 
     engine_name = parsed_parameters.get("Backend Engine", parsed_parameters.get("backend_engine", "SDXL-Fooocus"))

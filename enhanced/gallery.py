@@ -478,7 +478,7 @@ def _empty_gallery_welcome_update(state_params):
     try:
         preset = state_params.get("__preset") or state_params.get("preset")
         is_mobile = bool(state_params.get("__is_mobile") or state_params.get("is_mobile"))
-        return gr_update(value=meta_parser.get_welcome_image(preset, is_mobile), visible=True)
+        return gr_update(value=meta_parser.get_welcome_image(preset, is_mobile, state_params=state_params), visible=True)
     except Exception as e:
         logger.exception("Failed to restore welcome preview for empty gallery: %s", e)
         return gr_update(visible=True)

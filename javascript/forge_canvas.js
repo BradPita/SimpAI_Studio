@@ -684,6 +684,9 @@ class ForgeCanvas {
     drawImage() {
         const image = document.getElementById(`image_${this.uuid}`);
         const drawingCanvas = document.getElementById(`drawingCanvas_${this.uuid}`);
+        if (!image || !drawingCanvas) {
+            return;
+        }
         if (this.img) {
             const scaledWidth = this.orgWidth * this.imgScale;
             const scaledHeight = this.orgHeight * this.imgScale;

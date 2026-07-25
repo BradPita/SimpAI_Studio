@@ -1766,5 +1766,9 @@
   "Video settings changed. Regenerate the camera-motion reference before generation to avoid degraded motion control.": "视频参数已变化。生成视频前请重新生成参考运镜，否则可能影响运镜效果。",
   "Uni3C control strength": "Uni3C 控制强度",
   "Uni3C control start [0-1]": "Uni3C 生效起点 [0-1]",
-  "Uni3C control end [0-1]": "Uni3C 生效终点 [0-1]"
+  "Uni3C control end [0-1]": "Uni3C 生效终点 [0-1]",
+  "Replace title image": "替换标题图片",
+  "Replace generation waiting image": "替换生成等待图片",
+  "Restore default title image": "恢复默认标题图片",
+  "Restore default generation waiting image": "恢复默认生成等待图片"
 }

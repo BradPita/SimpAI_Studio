@@ -9,6 +9,7 @@ from typing import Any
 
 import args_manager
 from forge_neo.bootstrap import ensure_config
+from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_DEFAULTS
 from forge_neo.models import SOURCE_BRANCH, SOURCE_COMMIT, SOURCE_LICENSE, SOURCE_PROJECT
 
 
@@ -345,6 +346,38 @@ TAGCOMPLETE_SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
     ForgeNeoSettingInfo("tac_colormap", TAGCOMPLETE_COLORMAP_DEFAULT, "tag_complete", "Configure colors", "颜色 JSON"),
 )
 TAGCOMPLETE_SETTING_KEYS: tuple[str, ...] = tuple(info.key for info in TAGCOMPLETE_SETTINGS_SCHEMA)
+
+FORGE_COUPLE_SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
+    ForgeNeoSettingInfo(
+        "fc_do_interrupt",
+        FORGE_COUPLE_SETTING_DEFAULTS["fc_do_interrupt"],
+        "forge_couple",
+        "Interrupt on Error",
+        "发生错误时中断生成",
+    ),
+    ForgeNeoSettingInfo(
+        "fc_no_presets",
+        FORGE_COUPLE_SETTING_DEFAULTS["fc_no_presets"],
+        "forge_couple",
+        "Disable the Presets feature in Advanced mode",
+        "禁用 Advanced 模式的预设功能",
+    ),
+    ForgeNeoSettingInfo(
+        "fc_no_tile",
+        FORGE_COUPLE_SETTING_DEFAULTS["fc_no_tile"],
+        "forge_couple",
+        "Disable the Tile mode in img2img",
+        "禁用 img2img 的 Tile 模式",
+    ),
+    ForgeNeoSettingInfo(
+        "fc_adv_newline",
+        FORGE_COUPLE_SETTING_DEFAULTS["fc_adv_newline"],
+        "forge_couple",
+        "Keep newline characters in Advanced mode dataframe",
+        "在 Advanced 表格中保留换行符",
+    ),
+)
+FORGE_COUPLE_SETTING_KEYS: tuple[str, ...] = tuple(info.key for info in FORGE_COUPLE_SETTINGS_SCHEMA)
 
 
 SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
@@ -893,7 +926,7 @@ SETTINGS_SCHEMA: tuple[ForgeNeoSettingInfo, ...] = (
     ForgeNeoSettingInfo("svdq_attention", "nunchaku-fp16", "nunchaku", "Attention", "Attention"),
     ForgeNeoSettingInfo("svdq_use_pin_memory", False, "nunchaku", "Use Pinned Memory", "使用 Pinned Memory"),
     ForgeNeoSettingInfo("svdq_num_blocks_on_gpu", 60, "nunchaku", "Blocks on GPU", "GPU 上的 Blocks 数量"),
-) + PRESET_SETTINGS_SCHEMA
+) + FORGE_COUPLE_SETTINGS_SCHEMA + PRESET_SETTINGS_SCHEMA
 
 DEFAULT_SETTINGS: dict[str, Any] = {item.key: item.default for item in SETTINGS_SCHEMA}
 
@@ -916,6 +949,7 @@ SECTION_LABELS: dict[str, tuple[str, str]] = {
     "infotext": ("Infotext", "生成信息"),
     "ui_prompt_editing": ("Prompt Editing", "提示词编辑"),
     "tag_complete": ("Tag Autocomplete", "标签补全"),
+    "forge_couple": ("Forge Couple", "Forge Couple"),
     "settings_in_ui": ("Settings in UI", "UI 内设置"),
     "ui_alternatives": ("UI Alternatives", "UI Alternatives"),
     "preview": ("Live Previews", "实时预览"),

@@ -26,6 +26,10 @@ from PIL import Image, PngImagePlugin
 
 from forge_neo.adetailer_compat import adetailer_default_args, adetailer_model_names
 from forge_neo.dynamic_prompts_compat import dynamic_prompts_arg_dict, dynamic_prompts_script_arg_specs, dynamic_prompts_script_name_matches
+from forge_neo.forge_couple_compat import (
+    forge_couple_args_active,
+    forge_couple_script_arg_specs,
+)
 from forge_neo.regional_prompter_compat import (
     regional_prompter_args_active,
     regional_prompter_script_arg_specs,
@@ -1606,6 +1610,7 @@ _TXT2IMG_SCRIPT_FALLBACKS = [
     "controlnet",
     "adetailer",
     "regional prompter",
+    "forge couple",
     "differential regional prompter",
     "多图拼接参考",
     "调制引导控制",
@@ -1627,6 +1632,7 @@ _IMG2IMG_SCRIPT_FALLBACKS = [
     "controlnet",
     "adetailer",
     "regional prompter",
+    "forge couple",
     "differential regional prompter",
     "多图拼接参考",
     "调制引导控制",
@@ -1645,6 +1651,7 @@ _ALWAYSON_SCRIPT_NAMES = {
     "controlnet",
     "adetailer",
     "regional prompter",
+    "forge couple",
     "多图拼接参考",
     "调制引导控制",
     "multidiffusion integrated",
@@ -1978,6 +1985,18 @@ def _known_script_args(name: str, *, is_img2img: bool = False) -> list[dict[str,
                 choices=spec.get("choices"),
             )
             for spec in regional_prompter_script_arg_specs()
+        ]
+    if name == "forge couple":
+        return [
+            _script_arg(
+                spec["label"],
+                spec["value"],
+                minimum=spec.get("minimum"),
+                maximum=spec.get("maximum"),
+                step=spec.get("step"),
+                choices=spec.get("choices"),
+            )
+            for spec in forge_couple_script_arg_specs(is_img2img=is_img2img)
         ]
     if name == "differential regional prompter":
         return [
@@ -2725,6 +2744,7 @@ def _runtime_extensions_payload() -> list[dict[str, Any]] | None:
 _SDAPI_PROFILE_EXTENSION_NAMES = (
     "Auto-Photoshop-StableDiffusion-Plugin",
     "adetailer",
+    "sd-forge-couple",
     "sd-webui-prompt-all-in-one-forgeneo",
     "stable-diffusion-webui-wd14-tagger",
 )
@@ -3136,6 +3156,17 @@ def _request_from_generation_payload(values: dict[str, Any], *, mode: str, sourc
         payload.get("regional_prompter_enabled"),
         regional_prompter_args_active(regional_prompter_args),
     )
+    forge_couple_payload = payload.get("forge_couple_args")
+    if isinstance(forge_couple_payload, dict):
+        forge_couple_args: object = dict(forge_couple_payload)
+    elif isinstance(forge_couple_payload, list):
+        forge_couple_args = list(forge_couple_payload)
+    else:
+        forge_couple_args = {}
+    forge_couple_enabled = _to_bool(
+        payload.get("forge_couple_enabled"),
+        forge_couple_args_active(forge_couple_args),
+    )
     dynamic_prompts_payload = payload.get("dynamic_prompts_args")
     if isinstance(dynamic_prompts_payload, dict):
         dynamic_prompts_args: object = dict(dynamic_prompts_payload)
@@ -3260,6 +3291,8 @@ def _request_from_generation_payload(values: dict[str, Any], *, mode: str, sourc
         adetailer_args=adetailer_args,
         regional_prompter_enabled=regional_prompter_enabled,
         regional_prompter_args=regional_prompter_args,
+        forge_couple_enabled=forge_couple_enabled,
+        forge_couple_args=forge_couple_args,
         dynamic_prompts_enabled=dynamic_prompts_enabled,
         dynamic_prompts_args=dynamic_prompts_args,
         script=str(payload.get("script_name") or payload.get("script") or "None"),

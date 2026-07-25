@@ -183,6 +183,8 @@ class ForgeNeoRequest:
     adetailer_args: list[dict[str, object]] = field(default_factory=list)
     regional_prompter_enabled: bool = False
     regional_prompter_args: object = field(default_factory=dict)
+    forge_couple_enabled: bool = False
+    forge_couple_args: object = field(default_factory=dict)
     dynamic_prompts_enabled: bool = False
     dynamic_prompts_args: object = field(default_factory=dict)
     seed_variance_enabled: bool = False
@@ -210,7 +212,7 @@ class ForgeNeoRequest:
 
 @dataclass
 class ForgeNeoResult:
-    images: list[Image.Image] = field(default_factory=list)
+    images: list[object] = field(default_factory=list)
     infotext: str = ""
     seed: int = -1
     status: str = "finished"
@@ -699,6 +701,17 @@ def build_infotext(request: ForgeNeoRequest, seed: int) -> str:
         regional_mode = str(regional_args.get("mode") or regional_args.get("rp_selected_tab") or "Matrix")
         regional_ratios = str(regional_args.get("ratios") or regional_args.get("aratios") or "1,1")
         integrated_params += f", Regional Prompter: True, mode={regional_mode}, ratios={regional_ratios}"
+    if request.forge_couple_enabled:
+        couple_args = request.forge_couple_args if isinstance(request.forge_couple_args, dict) else {}
+        couple_mode = str(couple_args.get("mode") or "Basic")
+        couple_mapping = couple_args.get("mapping")
+        couple_regions = len(couple_mapping) if isinstance(couple_mapping, (list, tuple)) else 0
+        integrated_params += f", Forge Couple: True, mode={couple_mode}, regions={couple_regions}"
+        if bool(couple_args.get("tile_enabled")):
+            integrated_params += (
+                f", Forge Couple Tile: {couple_args.get('tile_columns', -1)}x{couple_args.get('tile_rows', -1)}, "
+                f"threshold={couple_args.get('tile_threshold', 0.1)}"
+            )
     if request.seed_variance_enabled:
         integrated_params += (
             f", SeedVarianceEnhancer: delta={request.seed_variance_delta}, strength={request.seed_variance_strength}"
@@ -987,7 +1000,7 @@ def _directory_images(path: str) -> list[Path]:
     if not root.is_dir():
         return []
     allowed = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-    return [item for item in sorted(root.iterdir()) if item.suffix.lower() in allowed][:64]
+    return [item for item in sorted(root.iterdir()) if item.is_file() and item.suffix.lower() in allowed]
 
 
 def _batch_edit_image_paths(input_dir: str, formats: list[str], sort_method: str) -> list[Path]:
@@ -1649,6 +1662,85 @@ def _extras_item_progress_callback(
     return callback
 
 
+def _extras_source_metadata(image: Image.Image) -> dict[str, object]:
+    source_info = dict(getattr(image, "info", {}) or {})
+    text: dict[str, str] = {}
+    structured_keys = {"exif", "icc_profile", "dpi", "transparency"}
+    for key, value in source_info.items():
+        name = str(key or "")
+        if not name or name in structured_keys:
+            continue
+        if isinstance(value, str):
+            text[name] = value
+            continue
+        if isinstance(value, (bytes, bytearray)) and ("comment" in name.casefold() or "xmp" in name.casefold()):
+            try:
+                text[name] = bytes(value).decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+
+    exif_value = source_info.get("exif")
+    if hasattr(exif_value, "tobytes"):
+        try:
+            exif_value = exif_value.tobytes()
+        except Exception:
+            exif_value = None
+    if not isinstance(exif_value, (bytes, bytearray)) or not exif_value:
+        try:
+            source_exif = image.getexif()
+            exif_value = source_exif.tobytes() if source_exif else None
+        except Exception:
+            exif_value = None
+
+    icc_profile = source_info.get("icc_profile")
+    if not isinstance(icc_profile, (bytes, bytearray)) or not icc_profile:
+        icc_profile = None
+
+    dpi = source_info.get("dpi")
+    if not isinstance(dpi, (tuple, list)) or len(dpi) < 2:
+        dpi = None
+
+    return {
+        "text": text,
+        "exif": bytes(exif_value) if isinstance(exif_value, (bytes, bytearray)) else None,
+        "icc_profile": bytes(icc_profile) if isinstance(icc_profile, (bytes, bytearray)) else None,
+        "dpi": tuple(dpi[:2]) if dpi is not None else None,
+    }
+
+
+def _save_extras_image(
+    image: Image.Image,
+    path: Path,
+    source_metadata: dict[str, object],
+    postprocessing_info: str,
+) -> None:
+    text = dict(source_metadata.get("text") or {})
+    previous_postprocessing = str(text.pop("postprocessing", "") or "").strip()
+    current_postprocessing = str(postprocessing_info or "").strip()
+    combined_postprocessing = "\n".join(item for item in (previous_postprocessing, current_postprocessing) if item)
+
+    pnginfo = PngImagePlugin.PngInfo()
+    for key, value in text.items():
+        try:
+            pnginfo.add_text(str(key), str(value))
+        except (TypeError, ValueError, UnicodeError):
+            continue
+    if combined_postprocessing:
+        pnginfo.add_text("postprocessing", combined_postprocessing)
+
+    save_kwargs: dict[str, object] = {"format": "PNG", "pnginfo": pnginfo}
+    exif_value = source_metadata.get("exif")
+    if isinstance(exif_value, bytes) and exif_value:
+        save_kwargs["exif"] = exif_value
+    icc_profile = source_metadata.get("icc_profile")
+    if isinstance(icc_profile, bytes) and icc_profile:
+        save_kwargs["icc_profile"] = icc_profile
+    dpi = source_metadata.get("dpi")
+    if isinstance(dpi, tuple) and len(dpi) >= 2:
+        save_kwargs["dpi"] = (float(dpi[0]), float(dpi[1]))
+    image.save(path, **save_kwargs)
+
+
 def _run_extras_video(
     request: ForgeNeoExtrasRequest,
     start: float,
@@ -1819,8 +1911,9 @@ def run_extras(
     else:
         values = [request.image] if request.image is not None else []
 
-    images: list[Image.Image] = []
+    images: list[object] = []
     paths: list[str] = []
+    processed_count = 0
     output_dir = extras_outputs_dir(request)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     total = max(1, len(values))
@@ -1840,15 +1933,15 @@ def run_extras(
         image = _image_from_value(value)
         if image is None:
             continue
+        source_metadata = _extras_source_metadata(image)
         try:
             item_progress_callback = _extras_item_progress_callback(progress_callback, index=index, total=total)
             resized = _resize_image(image, request, item_progress_callback, control_callback)
-            images.append(resized)
         except Exception as exc:
             _emit(progress_callback, "finish", index / total, "error")
             return ForgeNeoResult(
                 images=images if request.show_results else [],
-                infotext=build_extras_infotext(request, len(images)),
+                infotext=build_extras_infotext(request, processed_count),
                 seed=-1,
                 status="error",
                 error=f"Upscale failed: {type(exc).__name__}: {exc}",
@@ -1856,17 +1949,31 @@ def run_extras(
                 elapsed_seconds=time.time() - start,
             )
         label = _file_label(value, f"extras-{index}")
-        metadata = PngImagePlugin.PngInfo()
-        metadata.add_text("parameters", build_extras_infotext(request, len(images)))
         name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in label)[:80]
-        path = output_dir / f"{timestamp}-{index}-{name}.png"
-        resized.save(path, pnginfo=metadata)
+        path = _unique_path(output_dir / f"{timestamp}-{index}-{name}.png")
+        item_infotext = build_extras_infotext(request, processed_count + 1)
+        try:
+            _save_extras_image(resized, path, source_metadata, item_infotext)
+        except Exception as exc:
+            _emit(progress_callback, "finish", index / total, "error")
+            return ForgeNeoResult(
+                images=images if request.show_results else [],
+                infotext=build_extras_infotext(request, processed_count),
+                seed=-1,
+                status="error",
+                error=f"Save failed: {type(exc).__name__}: {exc}",
+                output_paths=paths,
+                elapsed_seconds=time.time() - start,
+            )
         paths.append(str(path))
+        processed_count += 1
+        if request.show_results:
+            images.append(str(path) if request.mode in {"batch", "directory"} else resized)
         _emit(progress_callback, "progress", (index + 1) / total, f"extras {index + 1}")
 
-    infotext = build_extras_infotext(request, len(images))
-    status = "finished" if images else "error"
-    error = "" if images else "No input image found."
+    infotext = build_extras_infotext(request, processed_count)
+    status = "finished" if processed_count else "error"
+    error = "" if processed_count else "No input image found."
     _emit(progress_callback, "finish", 1.0, status)
     return ForgeNeoResult(
         images=images if request.show_results else [],
@@ -1876,6 +1983,7 @@ def run_extras(
         error=error,
         output_paths=paths,
         elapsed_seconds=time.time() - start,
+        debug_info={"processed_count": processed_count, "gallery_count": len(images)},
     )
 
 

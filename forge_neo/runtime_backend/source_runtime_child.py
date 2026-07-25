@@ -1623,6 +1623,33 @@ def _source_regional_prompter_extension_roots() -> list[Path]:
     return roots
 
 
+def _source_forge_couple_extension_roots() -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add(value: str | os.PathLike[str] | None) -> None:
+        if value is None:
+            return
+        text = str(value or "").strip()
+        if not text:
+            return
+        path = Path(text).expanduser()
+        key = _source_path_key(path)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(path)
+
+    add(os.environ.get("FORGE_NEO_SOURCE_BACKEND_FORGE_COUPLE_ROOT"))
+    backend_root = _SOURCE_BACKEND_ROOT or _LOCAL_SOURCE_WEBUI_ROOT
+    add(backend_root / "extensions" / "sd-forge-couple")
+    if _SOURCE_DATA_ROOT is not None:
+        add(_SOURCE_DATA_ROOT / "extensions" / "sd-forge-couple")
+    if _SOURCE_ROOT is not None:
+        add(_SOURCE_ROOT / "extensions" / "sd-forge-couple")
+    return roots
+
+
 def _source_style_grid_extension_roots() -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
@@ -2015,6 +2042,156 @@ def _ensure_source_regional_prompter_scripts() -> dict[str, Any]:
             "extension_root": str(extension_root),
             "errors": errors,
         }
+
+    return {
+        "loaded": False,
+        "missing": True,
+        "searched": searched,
+        "errors": errors,
+    }
+
+
+def _patch_source_forge_couple_class(module: types.ModuleType) -> bool:
+    script_class = getattr(module, "ForgeCouple", None)
+    if script_class is None or bool(getattr(script_class, "_forge_neo_source_patched", False)):
+        return False
+
+    original_setup = script_class.setup
+    calculate_tiles = getattr(original_setup, "__globals__", {}).get("calculate_tiles")
+    if callable(calculate_tiles):
+        try:
+            from PIL import Image
+
+            calculate_tiles.__globals__.setdefault("Image", Image)
+        except Exception:
+            pass
+
+    def mask_mapping(value: object) -> list[dict[str, object]]:
+        from PIL import Image
+
+        normalized: list[dict[str, object]] = []
+        for item in list(value or []):
+            if not isinstance(item, dict):
+                continue
+            mask = item.get("mask")
+            if isinstance(mask, Image.Image):
+                image = mask.convert("L")
+            else:
+                try:
+                    image = _decode_source_image(mask).convert("L")
+                except Exception:
+                    continue
+            try:
+                weight = float(item.get("weight", 1.0) or 1.0)
+            except (TypeError, ValueError):
+                weight = 1.0
+            normalized.append({"mask": image, "weight": weight})
+        return normalized
+
+    def setup(self, p, *args, **kwargs):
+        mode = str(args[2] if len(args) > 2 else "")
+        mapping = args[7] if len(args) > 7 else None
+        self._forge_neo_mask_mapping = mask_mapping(mapping) if mode == "Mask" else None
+        return original_setup(self, p, *args, **kwargs)
+
+    def get_mask(self):
+        return getattr(self, "_forge_neo_mask_mapping", None)
+
+    script_class.setup = setup
+    script_class.get_mask = get_mask
+    script_class._forge_neo_source_patched = True
+    return True
+
+
+def _ensure_source_forge_couple_opts() -> None:
+    try:
+        from modules import shared
+        from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_DEFAULTS
+
+        data = getattr(getattr(shared, "opts", None), "data", None)
+        for key, value in FORGE_COUPLE_SETTING_DEFAULTS.items():
+            if data is not None and hasattr(data, "setdefault"):
+                data.setdefault(key, value)
+            if not hasattr(shared.opts, key):
+                setattr(shared.opts, key, value)
+    except Exception:
+        pass
+
+
+def _apply_source_forge_couple_settings(payload: dict[str, Any], shared_module: object | None = None) -> dict[str, bool]:
+    from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_DEFAULTS
+
+    if shared_module is None:
+        from modules import shared as shared_module
+
+    settings = payload.get("override_settings") if isinstance(payload.get("override_settings"), dict) else {}
+    opts = getattr(shared_module, "opts", None)
+    if opts is None:
+        return {}
+    data = getattr(opts, "data", None)
+    applied: dict[str, bool] = {}
+    for key, default in FORGE_COUPLE_SETTING_DEFAULTS.items():
+        if key not in settings:
+            continue
+        raw = settings.get(key)
+        if isinstance(raw, str):
+            value = raw.strip().casefold() not in _SOURCE_BACKEND_DISABLED_VALUES
+        else:
+            value = bool(default if raw is None else raw)
+        setattr(opts, key, value)
+        if data is not None and hasattr(data, "__setitem__"):
+            data[key] = value
+        applied[key] = value
+    return applied
+
+
+def _ensure_source_forge_couple_script() -> dict[str, Any]:
+    from modules import scripts
+
+    searched: list[str] = []
+    errors: list[str] = []
+    for extension_root in _source_forge_couple_extension_roots():
+        script_path = extension_root / "scripts" / "forge_couple.py"
+        searched.append(str(script_path))
+        if not script_path.is_file():
+            continue
+        if _source_script_data_has_path(scripts, script_path):
+            target = _source_path_key(script_path)
+            patched = False
+            for script_data in list(getattr(scripts, "scripts_data", []) or []):
+                if _source_path_key(str(getattr(script_data, "path", "") or "")) != target:
+                    continue
+                module = getattr(script_data, "module", None)
+                if module is not None:
+                    patched = _patch_source_forge_couple_class(module) or patched
+            _ensure_source_forge_couple_opts()
+            return {
+                "loaded": False,
+                "already_loaded": True,
+                "path": str(script_path),
+                "mask_mapping_patch": patched,
+            }
+
+        module_name = "_forge_neo_source_adapter_forge_couple"
+        try:
+            _ensure_source_forge_couple_opts()
+            module = _import_source_file(module_name, script_path)
+            patched = _patch_source_forge_couple_class(module)
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+            sys.modules.pop(module_name, None)
+            continue
+        registered = _register_source_script_classes(module, script_path, extension_root)
+        if registered:
+            _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
+            return {
+                "loaded": True,
+                "registered": registered,
+                "path": str(script_path),
+                "extension_root": str(extension_root),
+                "mask_mapping_patch": patched,
+                "errors": errors,
+            }
 
     return {
         "loaded": False,
@@ -2527,6 +2704,8 @@ def _ensure_source_adapter_scripts(requested_names: set[str], runner: object) ->
     regional_names = {"regional prompter", "differential regional prompter"} & requested_names
     if regional_names and not _source_runner_has_requested_scripts(runner, regional_names):
         adapter_scripts["regional_prompter"] = _ensure_source_regional_prompter_scripts()
+    if "forge couple" in requested_names and not _source_runner_has_requested_scripts(runner, {"forge couple"}):
+        adapter_scripts["forge_couple"] = _ensure_source_forge_couple_script()
     if "style grid" in requested_names and not _source_runner_has_requested_scripts(runner, {"style grid"}):
         adapter_scripts["style_grid"] = _ensure_source_style_grid_script()
     return adapter_scripts
@@ -2687,6 +2866,13 @@ def _source_script_api_defaults(script: object) -> list[Any]:
             return regional_prompter_default_args()
         except Exception:
             return [False, False, "Matrix", "Columns", "Mask", "Prompt", "1,1", "0.2", False, False, False, "Attention", [], "0", "0", "0.4", "", "0", "0", False]
+    if title == "forge couple":
+        try:
+            from forge_neo.forge_couple_compat import forge_couple_default_args
+
+            return forge_couple_default_args(is_img2img=bool(getattr(script, "is_img2img", False)))
+        except Exception:
+            return [False, True, "Basic", "", "Horizontal", "None", 0.5, [[0.0, 0.5, 0.0, 1.0, 1.0], [0.5, 1.0, 0.0, 1.0, 1.0]], "{ }", False, True, False, -1, -1, 0.1, "", False]
     if title == "differential regional prompter":
         return [[], 30, "", 4, [], 1, "", "", "", "", ""]
     if title == "style grid":
@@ -3129,6 +3315,7 @@ def _run_txt2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
         resolved_module_count=len(resolved_modules),
     )
     model_settings = _apply_source_model_settings(payload, main_entry)
+    forge_couple_settings = _apply_source_forge_couple_settings(payload)
 
     payload = dict(payload)
     source_debug_initial_payload = _source_jsonable(payload)
@@ -3212,6 +3399,7 @@ def _run_txt2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
         "source_module_choices": modules,
         "resolved_source_modules": resolved_modules,
         "source_model_settings": model_settings,
+        "source_forge_couple_settings": forge_couple_settings,
         "source_script_setup": script_setup,
         "source_lora_registry": lora_registry,
         "source_extra_networks": context.get("source_extra_networks"),
@@ -3240,6 +3428,7 @@ def _run_img2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
         resolved_module_count=len(resolved_modules),
     )
     model_settings = _apply_source_model_settings(payload, main_entry)
+    forge_couple_settings = _apply_source_forge_couple_settings(payload)
 
     payload = dict(payload)
     source_debug_initial_payload = _source_jsonable(payload)
@@ -3324,6 +3513,7 @@ def _run_img2img(payload: dict[str, Any], data_root: Path) -> dict[str, Any]:
         "source_module_choices": modules,
         "resolved_source_modules": resolved_modules,
         "source_model_settings": model_settings,
+        "source_forge_couple_settings": forge_couple_settings,
         "source_script_setup": script_setup,
         "source_lora_registry": lora_registry,
         "source_extra_networks": context.get("source_extra_networks"),

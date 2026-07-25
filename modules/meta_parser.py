@@ -1345,16 +1345,26 @@ def _get_welcome_preset_asset_names(preset):
     return names
 
 
-def get_welcome_image(preset=None, is_mobile=False, is_change=False, no_welcome=False):
-    if no_welcome:  # 新增参数控制是否显示欢迎图
+def get_welcome_image(preset=None, is_mobile=False, is_change=False, no_welcome=False, state_params=None):
+    if no_welcome:
         return None
+    try:
+        from modules import welcome_media
+
+        custom_kind = welcome_media.WAITING_KIND if is_change else welcome_media.TITLE_KIND
+        custom_path = welcome_media.resolve_custom_media(state_params, custom_kind, is_mobile)
+        if custom_path:
+            return custom_path
+    except Exception:
+        pass
     path_welcome = os.path.abspath(f'./presets/welcome/')
     if preset:
         suffix = 'w' if not is_mobile else 'm'
         for preset_asset_name in _get_welcome_preset_asset_names(preset):
-            file_welcome = os.path.join(path_welcome, f'welcome_{preset_asset_name}_{suffix}.jpg')
-            if os.path.exists(file_welcome):
-                return file_welcome
+            for extension in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+                file_welcome = os.path.join(path_welcome, f'welcome_{preset_asset_name}_{suffix}{extension}')
+                if os.path.exists(file_welcome):
+                    return file_welcome
     if is_change:
         if is_mobile:
             file_welcome = os.path.join(path_welcome, 'welcome_0_m.jpg')
@@ -1363,13 +1373,13 @@ def get_welcome_image(preset=None, is_mobile=False, is_change=False, no_welcome=
         return file_welcome
     file_welcome = os.path.join(path_welcome, 'welcome.png')
     file_suffix = 'welcome_w' if not is_mobile else 'welcome_m'
-    welcomes = [p for p in get_files_from_folder(path_welcome, ['.jpg', '.jpeg', 'png'], file_suffix, None) if not p.startswith('.')]
+    welcomes = [p for p in get_files_from_folder(path_welcome, ['.jpg', '.jpeg', '.png', '.gif', '.webp'], file_suffix, None) if not p.startswith('.')]
     if len(welcomes)>0:
         file_welcome = os.path.join(path_welcome, random.choice(welcomes))
     return file_welcome
 
 
-def load_parameter_button_click(raw_metadata: dict | str, is_generating: bool, inpaint_mode: str, use_resolution_override: bool = False, no_welcome=False, defer_preview_reset=False):
+def load_parameter_button_click(raw_metadata: dict | str, is_generating: bool, inpaint_mode: str, use_resolution_override: bool = False, no_welcome=False, defer_preview_reset=False, state_params=None):
     loaded_parameter_dict = raw_metadata
     if isinstance(raw_metadata, str):
         loaded_parameter_dict = json.loads(raw_metadata)
@@ -1382,7 +1392,7 @@ def load_parameter_button_click(raw_metadata: dict | str, is_generating: bool, i
     elif no_welcome:
         results = [gr_update(value=None, visible=True), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), None]
     else:
-        results = [gr_update(value=get_welcome_image(preset, is_mobile, no_welcome=no_welcome), visible=True), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), None]
+        results = [gr_update(value=get_welcome_image(preset, is_mobile, no_welcome=no_welcome, state_params=state_params), visible=True), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), None]
 
     get_image_number('image_number', 'Image Number', loaded_parameter_dict, results)
     get_str('prompt', 'Prompt', loaded_parameter_dict, results)

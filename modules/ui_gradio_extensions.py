@@ -165,6 +165,7 @@ def javascript_html():
     context_menus_js_path = webpath('javascript/contextMenus.js')
     localization_js_path = webpath('javascript/localization.js')
     gradio_media_replacement_js_path = webpath('javascript/gradio_media_replacement.js')
+    welcome_media_js_path = webpath('javascript/welcome_media.js')
     metadata_media_input_js_path = webpath('javascript/metadata_media_input.js')
     scene_director_js_path = webpath('javascript/scene_director.js')
     zoom_js_path = webpath('javascript/zoom.js')
@@ -356,6 +357,7 @@ def javascript_html():
     head += f'<script type="text/javascript" src="{context_menus_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{localization_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{gradio_media_replacement_js_path}"></script>\n'
+    head += f'<script type="text/javascript" src="{welcome_media_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{metadata_media_input_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{scene_director_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{zoom_js_path}"></script>\n'

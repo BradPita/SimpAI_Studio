@@ -30,6 +30,7 @@ import modules.constants as constants
 import modules.flags as flags
 import modules.style_sorter as style_sorter
 import modules.meta_parser
+import modules.welcome_media as welcome_media
 import modules.batch_utils as batch_utils
 import modules.canvas_danbooru_preflight as canvas_danbooru_preflight
 import modules.canvas_danbooru_service as canvas_danbooru_service
@@ -1121,11 +1122,12 @@ def generate_clicked(task: worker.AsyncTask, state):
         logger.warning(f"[Generate] permission check failed, continuing for compatibility: {e}")
     is_mobile = state["__is_mobile"]
     preset_name = state.get("__preset") if isinstance(state, dict) else None
-    waiting_welcome_image = get_welcome_image(is_mobile=is_mobile, is_change=True)
+    waiting_welcome_image = get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)
     main_welcome_image = get_welcome_image(
         preset_name,
         is_mobile,
         no_welcome=ads.get_admin_default("no_welcome_checkbox"),
+        state_params=state,
     )
     is_fooocus = state["engine"] == 'Fooocus'
     task_meta = f"task_id={getattr(task, 'task_id', None)}, user_did={user_did}, task_class={getattr(task, 'task_class', None)}, task_name={getattr(task, 'task_name', None)}, task_method={getattr(task, 'task_method', None)}"
@@ -2679,6 +2681,73 @@ _initial_preview_welcome_image = get_welcome_image(
     False,
     no_welcome=ads.get_admin_default("no_welcome_checkbox"),
 )
+_initial_waiting_welcome_image = get_welcome_image(is_mobile=False, is_change=True)
+
+
+def _resolved_welcome_media_for_state(state_params):
+    state_params = state_params if isinstance(state_params, dict) else {}
+    is_mobile = bool(state_params.get("__is_mobile", False))
+    preset = state_params.get("__preset", modules.config.preset)
+    title_path = get_welcome_image(
+        preset,
+        is_mobile,
+        no_welcome=ads.get_admin_default("no_welcome_checkbox"),
+        state_params=state_params,
+    )
+    waiting_path = get_welcome_image(
+        is_mobile=is_mobile,
+        is_change=True,
+        state_params=state_params,
+    )
+    return title_path, waiting_path
+
+
+def load_welcome_media_sources_ui(state_params):
+    title_path, waiting_path = _resolved_welcome_media_for_state(state_params)
+    return gr_update(value=title_path), gr_update(value=waiting_path)
+
+
+def load_welcome_media_ui(state_params, is_generating=False):
+    title_path, waiting_path = _resolved_welcome_media_for_state(state_params)
+    progress_update = skip_component_update() if bool(is_generating) else gr_update(value=title_path)
+    return gr_update(value=title_path), gr_update(value=waiting_path), progress_update
+
+
+def replace_welcome_media_file(file_value, kind, state_params, is_generating):
+    if not file_value:
+        return skip_component_update(), skip_component_update(), skip_component_update(), skip_component_update()
+    try:
+        welcome_media.replace_media(file_value, kind, state_params)
+        gr.Info(welcome_media.localized_message(state_params, welcome_media.saved_message_key(kind)), duration=3)
+        title_path, waiting_path = _resolved_welcome_media_for_state(state_params)
+        progress_update = skip_component_update()
+        if kind == welcome_media.TITLE_KIND and not bool(is_generating):
+            progress_update = gr_update(value=title_path, visible=True)
+        return (
+            gr_update(value=title_path),
+            gr_update(value=waiting_path),
+            progress_update,
+            gr_update(value=None),
+        )
+    except Exception as error:
+        logger.warning("Welcome media replacement failed: %s", error)
+        gr.Warning(welcome_media.error_message(state_params, error), duration=5)
+        return skip_component_update(), skip_component_update(), skip_component_update(), gr_update(value=None)
+
+
+def restore_welcome_media_default(kind, state_params, is_generating):
+    try:
+        welcome_media.restore_default(kind, state_params)
+        gr.Info(welcome_media.localized_message(state_params, welcome_media.restored_message_key(kind)), duration=3)
+        title_path, waiting_path = _resolved_welcome_media_for_state(state_params)
+        progress_update = skip_component_update()
+        if kind == welcome_media.TITLE_KIND and not bool(is_generating):
+            progress_update = gr_update(value=title_path, visible=True)
+        return gr_update(value=title_path), gr_update(value=waiting_path), progress_update
+    except Exception as error:
+        logger.warning("Welcome media restore failed: %s", error)
+        gr.Warning(welcome_media.error_message(state_params, error), duration=5)
+        return skip_component_update(), skip_component_update(), skip_component_update()
 
 with shared.gradio_root:
     state_topbar = gr.State({})
@@ -3758,6 +3827,84 @@ with shared.gradio_root:
                                         elem_classes=['resizable_area', 'main_view', 'final_gallery', 'image_gallery'],
                                         elem_id='final_gallery', allow_preview=True, preview=True, selected_index=None,
                                         columns=4, interactive=False, fit_columns=False )
+                        welcome_media_target = gr.Textbox(
+                            value=welcome_media.TITLE_KIND,
+                            visible="hidden",
+                            elem_id="welcome_media_target",
+                            elem_classes=["sai-gradio-hidden-bridge"],
+                        )
+                        welcome_media_upload = gr.File(
+                            label="Replace welcome image",
+                            file_count="single",
+                            file_types=[".jpg", ".jpeg", ".png", ".apng", ".gif", ".webp"],
+                            type="filepath",
+                            visible="hidden",
+                            elem_id="welcome_media_upload",
+                            elem_classes=["sai-gradio-hidden-bridge"],
+                        )
+                        welcome_media_restore_bridge = gr.Button(
+                            "Restore default welcome image",
+                            visible="hidden",
+                            elem_id="welcome_media_restore_bridge",
+                            elem_classes=["sai-gradio-hidden-bridge"],
+                        )
+                        welcome_media_title_source = gr.Image(
+                            value=_initial_preview_welcome_image,
+                            show_label=False,
+                            interactive=False,
+                            visible="hidden",
+                            elem_id="welcome_media_title_source",
+                            elem_classes=["sai-gradio-hidden-bridge"],
+                        )
+                        welcome_media_waiting_source = gr.Image(
+                            value=_initial_waiting_welcome_image,
+                            show_label=False,
+                            interactive=False,
+                            visible="hidden",
+                            elem_id="welcome_media_waiting_source",
+                            elem_classes=["sai-gradio-hidden-bridge"],
+                        )
+
+                        welcome_media_state_event = state_topbar.change(
+                            load_welcome_media_sources_ui,
+                            inputs=[state_topbar],
+                            outputs=[welcome_media_title_source, welcome_media_waiting_source],
+                            queue=False,
+                            show_progress=False,
+                        )
+                        welcome_media_state_event.then(
+                            fn=None,
+                            js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
+                            queue=False,
+                            show_progress=False,
+                        )
+                        welcome_media_upload_event = welcome_media_upload.change(
+                            replace_welcome_media_file,
+                            inputs=[welcome_media_upload, welcome_media_target, state_topbar, state_is_generating],
+                            outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window, welcome_media_upload],
+                            js="(file,kind,state,isGenerating)=>{try{if(file&&window.SimpAIWelcomeMedia) window.SimpAIWelcomeMedia.begin(kind);}catch(e){} return [file,kind,state,isGenerating];}",
+                            queue=False,
+                            show_progress=False,
+                        )
+                        welcome_media_upload_event.then(
+                            fn=None,
+                            js="()=>{try{window.SimpAIWelcomeMedia?.finish();}catch(e){}}",
+                            queue=False,
+                            show_progress=False,
+                        )
+                        welcome_media_restore_event = welcome_media_restore_bridge.click(
+                            restore_welcome_media_default,
+                            inputs=[welcome_media_target, state_topbar, state_is_generating],
+                            outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
+                            queue=False,
+                            show_progress=False,
+                        )
+                        welcome_media_restore_event.then(
+                            fn=None,
+                            js="()=>{try{window.SimpAIWelcomeMedia?.finish();}catch(e){}}",
+                            queue=False,
+                            show_progress=False,
+                        )
                         gr.HTML(
                             '<div class="simpleai-result-surface-guard-frame"></div>',
                             elem_id='simpleai_result_surface_guard',
@@ -10590,6 +10737,9 @@ with shared.gradio_root:
         admin_access_outputs=admin_access_outputs,
         identity_admin_surface_refresh_fn=_refresh_identity_admin_surface,
         identity_admin_surface_outputs=[local_system_tab, user_access_tab, admin_panel, admin_link, system_params],
+        welcome_media_load_fn=load_welcome_media_ui,
+        welcome_media_load_inputs=[state_topbar, state_is_generating],
+        welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
     )
 
     reset_layout_ui_outputs = nav_bars + reset_preset_layout + reset_preset_func + scene_frontend_ctrls
@@ -11155,6 +11305,9 @@ with shared.gradio_root:
         missing_model_total_progress=missing_model_total_progress,
         missing_model_btn=missing_model_btn,
         comfyd_active_checkbox=comfyd_active_checkbox,
+        welcome_media_load_fn=load_welcome_media_ui,
+        welcome_media_load_inputs=[state_topbar, state_is_generating],
+        welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
     )
     bind_topbar_load_chain(
         root_blocks=shared.gradio_root,
@@ -11225,6 +11378,9 @@ with shared.gradio_root:
         admin_access_refresh_fn=_admin_access_refresh,
         admin_access_user_select=admin_access_user_select,
         admin_access_outputs=admin_access_outputs,
+        welcome_media_load_fn=load_welcome_media_ui,
+        welcome_media_load_inputs=[state_topbar, state_is_generating],
+        welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
     )
 
 def dump_default_english_config():

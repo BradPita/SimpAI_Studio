@@ -623,5 +623,9 @@
     "Camera-motion reference generation failed.": "Camera-motion reference generation failed.",
     "Uni3C control strength": "Uni3C control strength",
     "Uni3C control start [0-1]": "Uni3C control start [0-1]",
-    "Uni3C control end [0-1]": "Uni3C control end [0-1]"
+    "Uni3C control end [0-1]": "Uni3C control end [0-1]",
+    "Replace title image": "Replace title image",
+    "Replace generation waiting image": "Replace generation waiting image",
+    "Restore default title image": "Restore default title image",
+    "Restore default generation waiting image": "Restore default generation waiting image"
 }

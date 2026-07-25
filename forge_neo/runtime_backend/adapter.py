@@ -18,6 +18,7 @@ from PIL import Image
 from forge_neo.adetailer_compat import adetailer_default_args, adetailer_normalized_args
 from forge_neo.bootstrap import ensure_shared_token
 from forge_neo.dynamic_prompts_compat import DYNAMIC_PROMPTS_SCRIPT_BASE_NAME, dynamic_prompts_arg_dict, dynamic_prompts_arg_list
+from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_KEYS, forge_couple_arg_dict, forge_couple_arg_list
 from forge_neo.regional_prompter_compat import regional_prompter_arg_dict, regional_prompter_arg_list
 
 
@@ -45,6 +46,7 @@ SOURCE_SAVED_OVERRIDE_SETTING_KEYS = (
     "token_merging_stride",
     "token_merging_downsample",
     "token_merging_no_rand",
+    *FORGE_COUPLE_SETTING_KEYS,
 )
 _XYZ_COMMON_AXIS_CHOICES = [
     "Nothing",
@@ -1332,6 +1334,42 @@ def _source_regional_prompter_args(request: object) -> list[object]:
     return regional_prompter_arg_list(normalized_args, enabled=True)
 
 
+def _source_forge_couple_mask_value(value: object) -> str:
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("data:") and "," in text:
+            text = text.split(",", 1)[1]
+        if text:
+            try:
+                base64.b64decode(text, validate=True)
+                return text
+            except Exception:
+                pass
+    image = _image_from_any_value(value)
+    if image is None:
+        return ""
+    return _encode_api_image(image.convert("L"))
+
+
+def _source_forge_couple_args(request: object) -> list[object]:
+    if not bool(getattr(request, "forge_couple_enabled", False)):
+        return []
+    raw_args = getattr(request, "forge_couple_args", None)
+    is_img2img = _source_backend_mode(request) == "img2img"
+    normalized_args = forge_couple_arg_dict(raw_args, enabled=True, is_img2img=is_img2img)
+    if normalized_args.get("mode") == "Mask":
+        mappings: list[dict[str, object]] = []
+        for item in list(normalized_args.get("mapping") or []):
+            if not isinstance(item, dict):
+                continue
+            mask = _source_forge_couple_mask_value(item.get("mask"))
+            if not mask:
+                continue
+            mappings.append({"mask": mask, "weight": float(item.get("weight", 1.0) or 1.0)})
+        normalized_args["mapping"] = mappings
+    return forge_couple_arg_list(normalized_args, enabled=True, is_img2img=is_img2img)
+
+
 def _source_dynamic_prompts_args(request: object) -> list[object]:
     if not bool(getattr(request, "dynamic_prompts_enabled", False)):
         return []
@@ -1419,6 +1457,9 @@ def _source_integrated_alwayson_scripts(request: object) -> dict[str, Any]:
     regional_prompter_args = _source_regional_prompter_args(request)
     if regional_prompter_args:
         scripts["Regional Prompter"] = {"args": regional_prompter_args}
+    forge_couple_args = _source_forge_couple_args(request)
+    if forge_couple_args:
+        scripts["Forge Couple"] = {"args": forge_couple_args}
     dynamic_prompts_args = _source_dynamic_prompts_args(request)
     if dynamic_prompts_args:
         scripts[DYNAMIC_PROMPTS_SCRIPT_BASE_NAME] = {"args": dynamic_prompts_args}

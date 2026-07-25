@@ -504,7 +504,7 @@ def batch_run_uov(folder_path, upload_files, seed_random, *args, get_task_with_r
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
         yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
-            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
             gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
         return
 
@@ -575,7 +575,7 @@ def batch_run_enhance(folder_path, upload_files, seed_random, *args, get_task_wi
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
         yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
-            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
             gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
         return
 
@@ -676,7 +676,7 @@ def batch_run_scene(folder_path, upload_files, target, seed_random, image_seed, 
     files = get_files(folder_path, upload_files)
     if len(files) == 0:
         yield gr_update(visible=True, value=html.make_progress_html(1, "Batch: folder is empty or invalid.")), \
-            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
+            gr_update(visible=True, value=get_welcome_image(is_mobile=is_mobile, is_change=True, state_params=state)), gr_update(visible=False), gr_update(visible=False), gr_update(visible=False), False, gr_update(visible=False), gr_update(visible=False, size="sm"), gr_update(), gr_update(), \
             gr_update(interactive=True), False, "Batch: folder is empty or invalid.", ""
         return
 

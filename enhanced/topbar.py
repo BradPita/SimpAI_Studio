@@ -1087,7 +1087,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     }
     state_params['__preset_output_format'] = initial_config_preset.get('default_output_format', None) if isinstance(initial_config_preset, dict) else None
     state_params['__preset_output_format_loaded'] = True
-    results = [gr.update(value=get_welcome_image(state_params["__preset"],state_params["__is_mobile"],no_welcome=ads.get_admin_default("no_welcome_checkbox")))]
+    results = [gr.update(value=get_welcome_image(state_params["__preset"],state_params["__is_mobile"],no_welcome=ads.get_admin_default("no_welcome_checkbox"),state_params=state_params))]
     results += [gr.update(value=modules.flags.language_radio(state_params["__lang"])), gr.update(value=state_params["__theme"])]
     preset = state_params.get("__preset", initial_preset)
     preset_url = get_preset_inc_url(preset, state_params.get("__lang"))
@@ -2845,7 +2845,7 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
         results = results[:reset_layout_ui_outputs_len]
 
     # comparison_state, comparison_box, progress_gallery, compare_btn, progress_window
-    comparison_outputs = [False, gr.update(visible=False), gr.update(visible=False), gr.update(value="🔍", visible=True, variant="secondary"), gr.update(visible=True, value=get_welcome_image(preset, state_params["__is_mobile"], no_welcome=ads.get_admin_default("no_welcome_checkbox")))]
+    comparison_outputs = [False, gr.update(visible=False), gr.update(visible=False), gr.update(value="🔍", visible=True, variant="secondary"), gr.update(visible=True, value=get_welcome_image(preset, state_params["__is_mobile"], no_welcome=ads.get_admin_default("no_welcome_checkbox"), state_params=state_params))]
     
     return results + [state_params] + comparison_outputs
 
@@ -2937,6 +2937,7 @@ def reset_layout_values(state_params, is_generating, inpaint_mode, use_resolutio
         use_resolution_override,
         no_welcome=ads.get_admin_default("no_welcome_checkbox"),
         defer_preview_reset=defer_preview_reset,
+        state_params=state_params,
     )
     engine_data = preset_prepared.get("engine", {}) if isinstance(preset_prepared, dict) else {}
     if not isinstance(engine_data, dict):

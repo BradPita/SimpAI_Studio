@@ -6801,13 +6801,28 @@ function getFinishedGalleryPreviewImageSource(preview) {
 function isFinishedGalleryWelcomeSource(src) {
     const raw = String(src || "");
     if (!raw) return false;
+    try {
+        if (typeof window.isStudioWelcomeMediaSource === "function" && window.isStudioWelcomeMediaSource(raw, "title")) return true;
+    } catch (e) {}
     let text = raw.toLowerCase();
     try { text = decodeURIComponent(text); } catch (e) {}
-    return text.indexOf("welcome") !== -1 && text.indexOf("welcome_0_") === -1;
+    text = text.replace(/\\/g, "/").split("#", 1)[0].split("?", 1)[0];
+    if (text.indexOf("/studio_ui/welcome/waiting-") !== -1) return false;
+    if (/(?:^|\/)(?:\d+_)?welcome_0_[wm]\.(?:jpe?g|png|gif|webp)$/.test(text)) return false;
+    return text.indexOf("/presets/welcome/") !== -1
+        || text.indexOf("/studio_ui/welcome/title-") !== -1
+        || /(?:^|\/)title-(?:desktop|mobile)-[0-9a-f]{16}\.webp$/.test(text)
+        || /(?:^|\/)(?:\d+_)?welcome(?:_(?:[^/]+_)?[wm])?\.(?:jpe?g|png|gif|webp)$/.test(text);
 }
 
 function getFinishedGalleryWelcomeFallbackSource() {
-    return finishedGalleryWelcomeGuardLastSrc || "/file=presets/welcome/1_welcome_w.jpg";
+    let configuredSource = "";
+    try {
+        configuredSource = typeof window.getStudioWelcomeMediaSource === "function"
+            ? window.getStudioWelcomeMediaSource("title")
+            : "";
+    } catch (e) {}
+    return configuredSource || finishedGalleryWelcomeGuardLastSrc || "/file=presets/welcome/1_welcome_w.jpg";
 }
 
 function shouldRestoreFinishedGalleryWelcomeImageForReason(reason) {
@@ -7032,6 +7047,7 @@ function ensureFinishedGalleryWelcomePlaceholder() {
         if (existingImage && fallbackSrc && existingSrc !== fallbackSrc) {
             try { existingImage.src = fallbackSrc; } catch (e) {}
         }
+        try { window.SimpAIWelcomeMedia?.sync(); } catch (e) {}
         return existing;
     }
     const surfaceRow = getFinishedGallerySurfaceRow();
@@ -7062,11 +7078,17 @@ function ensureFinishedGalleryWelcomePlaceholder() {
     const image = document.createElement("img");
     image.alt = "";
     image.draggable = false;
-    const src = rememberedSrc || fallbackSrc || "";
+    const src = fallbackSrc || rememberedSrc || "";
     if (src) {
         image.src = src;
     } else {
-        image.src = "/file=presets/welcome/welcome.png";
+        let configuredSource = "";
+        try {
+            configuredSource = typeof window.getStudioWelcomeMediaSource === "function"
+                ? window.getStudioWelcomeMediaSource("title")
+                : "";
+        } catch (e) {}
+        image.src = configuredSource || "/file=presets/welcome/welcome.png";
     }
     placeholder.appendChild(image);
     try {
@@ -7081,8 +7103,10 @@ function ensureFinishedGalleryWelcomePlaceholder() {
     } catch (e) {
         try { parent.appendChild(placeholder); } catch (_e) {}
     }
+    try { window.SimpAIWelcomeMedia?.sync(); } catch (e) {}
     return placeholder;
 }
+window.ensureFinishedGalleryWelcomePlaceholder = ensureFinishedGalleryWelcomePlaceholder;
 
 function markWelcomePreviewGuardNode(el) {
     if (!el) return false;

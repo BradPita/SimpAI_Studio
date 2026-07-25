@@ -175,6 +175,9 @@ def bind_topbar_navigation_events(
     comfyd_active_checkbox,
     scene_control_visibility_fn=None,
     scene_control_visibility_outputs=None,
+    welcome_media_load_fn=None,
+    welcome_media_load_inputs=None,
+    welcome_media_load_outputs=None,
 ) -> None:
     def _debug_nav_trace(event_name, *values):
         if not _simpai_ui_trace_enabled():
@@ -252,6 +255,8 @@ def bind_topbar_navigation_events(
         reset_layout_main_tail_outputs = reset_layout_apply_main_outputs[reset_layout_main_head_count:]
     reset_layout_main_head_outputs = reset_layout_apply_main_outputs[:reset_layout_main_head_count]
     split_reset_layout_main = bool(reset_layout_deferred_ui_state is not None and reset_layout_main_tail_outputs)
+    welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
+    welcome_media_outputs = list(welcome_media_load_outputs or [])
     reset_layout_tail_output_count = 6
     reset_layout_nav_tail_pairs = [
         (0, state_topbar),
@@ -786,10 +791,24 @@ def bind_topbar_navigation_events(
                 queue=False,
                 show_progress=False,
             )
-            chain.then(
+            chain = chain.then(
                 fn=None,
                 inputs=system_params,
                 js="(x)=>{try{if(typeof scheduleScenePanelVisibilityRepair==='function') scheduleScenePanelVisibilityRepair(x,'preset_nav_after_mount_scene_refresh'); if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh'); if(typeof refresh_scene_localization==='function') refresh_scene_localization(); setTimeout(()=>{try{if(window.syncGradio6MountedDynamicVisibility) window.syncGradio6MountedDynamicVisibility('preset_nav_after_mount_scene_refresh+120ms');}catch(e){}},120);}catch(e){console.warn('[UI-TRACE] preset_nav_after_mount_scene_refresh_failed', e);}}",
+                queue=False,
+                show_progress=False,
+            )
+        if welcome_media_load_fn is not None and welcome_media_outputs:
+            chain = chain.then(
+                welcome_media_load_fn,
+                inputs=welcome_media_inputs,
+                outputs=welcome_media_outputs,
+                queue=False,
+                show_progress=False,
+            )
+            chain.then(
+                fn=None,
+                js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
                 queue=False,
                 show_progress=False,
             )
@@ -867,6 +886,9 @@ def bind_topbar_load_chain(
     admin_access_refresh_fn=None,
     admin_access_user_select=None,
     admin_access_outputs=None,
+    welcome_media_load_fn=None,
+    welcome_media_load_inputs=None,
+    welcome_media_load_outputs=None,
 ) -> None:
     def _debug_load_trace(event_name, *values):
         if not _simpai_ui_trace_enabled():
@@ -983,6 +1005,8 @@ def bind_topbar_load_chain(
 
     scene_visibility_output_count = len(scene_control_visibility_outputs or [])
     admin_access_refresh_outputs = list(admin_access_outputs or [])
+    welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
+    welcome_media_outputs = list(welcome_media_load_outputs or [])
 
     def _load_scene_control_visibility(sp):
         if not _is_scene_state(sp) or not scene_control_visibility_fn or not scene_visibility_output_count:
@@ -1258,6 +1282,20 @@ def bind_topbar_load_chain(
         show_progress=False,
     )
 
+    if welcome_media_load_fn is not None and welcome_media_outputs:
+        load_chain = load_chain.then(
+            welcome_media_load_fn,
+            inputs=welcome_media_inputs,
+            outputs=welcome_media_outputs,
+            queue=False,
+            show_progress=False,
+        ).then(
+            fn=None,
+            js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
+            queue=False,
+            show_progress=False,
+        )
+
     if admin_access_refresh_fn is not None and admin_access_user_select is not None and admin_access_refresh_outputs:
         load_chain.then(
             admin_access_refresh_fn,
@@ -1304,9 +1342,14 @@ def bind_topbar_identity_events(
     admin_access_outputs=None,
     identity_admin_surface_refresh_fn=None,
     identity_admin_surface_outputs=None,
+    welcome_media_load_fn=None,
+    welcome_media_load_inputs=None,
+    welcome_media_load_outputs=None,
 ) -> None:
     admin_access_refresh_outputs = list(admin_access_outputs or [])
     identity_admin_surface_outputs = list(identity_admin_surface_outputs or [])
+    welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
+    welcome_media_outputs = list(welcome_media_load_outputs or [])
 
     def _identity_stage_from_base(base):
         def is_visible(index):
@@ -1390,7 +1433,21 @@ def bind_topbar_identity_events(
             outputs=[qwen_design_style_preset_choices, qwen_custom_style_preset_choices],
             queue=False,
             show_progress=False,
-        ).then(
+        )
+        if welcome_media_load_fn is not None and welcome_media_outputs:
+            chain = chain.then(
+                welcome_media_load_fn,
+                inputs=welcome_media_inputs,
+                outputs=welcome_media_outputs,
+                queue=False,
+                show_progress=False,
+            ).then(
+                fn=None,
+                js="()=>{try{window.SimpAIWelcomeMedia?.sync();}catch(e){}}",
+                queue=False,
+                show_progress=False,
+            )
+        chain = chain.then(
             fn=lambda x: None,
             inputs=system_params,
             js="(x)=>{refresh_topbar_status_js(x);}",
