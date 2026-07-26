@@ -160,6 +160,7 @@ def style_transfer_catalog_js():
 
 def javascript_html():
     simpleai_i18n_js_path = webpath('javascript/simpleai_i18n.js')
+    studio_performance_js_path = webpath('javascript/studio_performance.js')
     script_js_path = webpath('javascript/script.js')
     model_browser_js_path = webpath('javascript/model_browser.js')
     context_menus_js_path = webpath('javascript/contextMenus.js')
@@ -352,6 +353,12 @@ def javascript_html():
     head += f'<script type="text/javascript">{style_transfer_catalog_js()}</script>\n'
     head += f'<script type="text/javascript">window.SimpAIDefaultEnhanceMaskModel={json.dumps(modules.config.default_enhance_inpaint_mask_model)};</script>\n'
     head += f'<script type="text/javascript" src="{simpleai_i18n_js_path}"></script>\n'
+    from ui.studio_performance import studio_performance_frontend_config
+    studio_performance_config = studio_performance_frontend_config()
+    if studio_performance_config is not None:
+        config_json = json.dumps(studio_performance_config, ensure_ascii=False).replace("</", "<\\/")
+        head += f'<script type="text/javascript">window.SimpAIStudioPerformanceConfig={config_json};</script>\n'
+        head += f'<script type="text/javascript" src="{studio_performance_js_path}"></script>\n'
     head += f'<script type="text/javascript">window.SimpAILazyAssets={lazy_assets_json};</script>\n'
     head += f'<script type="text/javascript" src="{script_js_path}"></script>\n'
     head += f'<script type="text/javascript" src="{context_menus_js_path}"></script>\n'

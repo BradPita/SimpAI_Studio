@@ -11506,6 +11506,9 @@ import ui.services.pose_studio as pose_studio_service
 import ui.services.gaussian_studio as gaussian_studio_service
 import ui.services.liveportrait_expression as liveportrait_expression_service
 from modules.ui_gradio_extensions import ensure_tag_cart_custom_tags_path, webpath
+from ui.studio_performance import install_studio_performance_logging
+
+install_studio_performance_logging(app)
 
 _matting_lock = threading.Lock()
 _openpose_lock = threading.Lock()

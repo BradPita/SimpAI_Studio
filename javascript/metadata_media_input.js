@@ -145,32 +145,60 @@
     }
 
     async function replaceMetadataFile(file) {
-        if (!setCurrentFile(file)) return false;
+        const perf = window.SimpAIStudioPerformance;
+        const startedAt = perf ? performance.now() : 0;
+        perf?.mark('metadata_replacement.begin', { file, replacement_active: replacementInProgress });
+        if (!setCurrentFile(file)) {
+            perf?.mark('metadata_replacement.rejected', { reason: 'unsupported-file', file });
+            return false;
+        }
         const root = getRoot();
-        if (!root) return false;
+        if (!root) {
+            perf?.mark('metadata_replacement.rejected', { reason: 'root-missing' });
+            return false;
+        }
         let input = root.querySelector('input[type="file"]');
+        let outcome = 'failed';
         try {
             if (!input) {
                 const clearButton = root.querySelector('.icon-button-wrapper button:last-of-type');
-                if (!clearButton) return false;
+                if (!clearButton) {
+                    outcome = 'clear-button-missing';
+                    return false;
+                }
                 replacementInProgress = true;
+                perf?.mark('metadata_replacement.clear', {});
                 clearButton.click();
                 input = await waitForFileInput(root);
+                perf?.mark('metadata_replacement.input_wait_complete', {
+                    input_found: Boolean(input),
+                    elapsed_ms: performance.now() - startedAt,
+                });
             }
             if (!input) {
+                outcome = 'file-input-missing';
                 clearCurrentPreview();
                 return false;
             }
             const transfer = new DataTransfer();
             transfer.items.add(file);
             input.files = transfer.files;
+            perf?.mark('metadata_replacement.submit', { file });
             input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            outcome = 'submitted';
             return true;
         } catch (error) {
+            outcome = 'error';
+            perf?.mark('metadata_replacement.error', { error }, { urgent: true });
             console.warn('[SimpAI] Failed to replace metadata media input.', error);
             return false;
         } finally {
             replacementInProgress = false;
+            perf?.mark('metadata_replacement.finish', {
+                outcome,
+                elapsed_ms: performance.now() - startedAt,
+                replacement_active: replacementInProgress,
+            }, { urgent: outcome !== 'submitted' });
         }
     }
 
@@ -250,6 +278,10 @@
         event.stopPropagation();
         clearDragState();
         const mediaFile = files.find(isMediaFile);
+        window.SimpAIStudioPerformance?.mark('metadata_replacement.drop_claimed', {
+            matching_file_found: Boolean(mediaFile),
+            file: mediaFile,
+        }, { urgent: true });
         if (mediaFile) void replaceMetadataFile(mediaFile);
     }, true);
 

@@ -108,28 +108,70 @@
     }
 
     async function replaceFile(componentId, file) {
+        const perf = window.SimpAIStudioPerformance;
+        const startedAt = perf ? performance.now() : 0;
         const config = TARGETS.get(String(componentId || ''));
         const root = document.getElementById(componentId);
-        if (!config || !root || !fileMatchesKind(file, config.kind)) return false;
-        if (activeReplacements.has(componentId)) return false;
+        perf?.mark('media_replacement.begin', {
+            component_id: componentId,
+            kind: config?.kind || '',
+            file,
+            root_found: Boolean(root),
+            active_before: activeReplacements.has(componentId),
+        });
+        if (!config || !root || !fileMatchesKind(file, config.kind)) {
+            perf?.mark('media_replacement.rejected', {
+                component_id: componentId,
+                reason: !config ? 'unsupported' : !root ? 'root-missing' : 'file-kind-mismatch',
+            });
+            return false;
+        }
+        if (activeReplacements.has(componentId)) {
+            perf?.mark('media_replacement.rejected', { component_id: componentId, reason: 'already-active' }, { urgent: true });
+            return false;
+        }
 
         activeReplacements.add(componentId);
+        let outcome = 'failed';
         try {
             let input = root.querySelector('input[type="file"]');
             if (!input) {
                 const clearButton = findClearButton(root);
-                if (!clearButton) return false;
+                if (!clearButton) {
+                    outcome = 'clear-button-missing';
+                    return false;
+                }
+                perf?.mark('media_replacement.clear', { component_id: componentId });
                 clearButton.click();
                 input = await waitForFileInput(root);
+                perf?.mark('media_replacement.input_wait_complete', {
+                    component_id: componentId,
+                    input_found: Boolean(input),
+                    elapsed_ms: performance.now() - startedAt,
+                });
             }
-            if (!input) return false;
+            if (!input) {
+                outcome = 'file-input-missing';
+                return false;
+            }
+            perf?.mark('media_replacement.submit', { component_id: componentId, file });
             submitFile(input, file);
+            outcome = 'submitted';
             return true;
         } catch (error) {
+            outcome = 'error';
+            perf?.mark('media_replacement.error', { component_id: componentId, error }, { urgent: true });
             console.warn('[SimpAI] Media replacement upload failed.', componentId, error);
             return false;
         } finally {
             activeReplacements.delete(componentId);
+            perf?.mark('media_replacement.finish', {
+                component_id: componentId,
+                outcome,
+                elapsed_ms: performance.now() - startedAt,
+                active_after: activeReplacements.has(componentId),
+                active_count: activeReplacements.size,
+            }, { urgent: outcome !== 'submitted' });
         }
     }
 
@@ -167,6 +209,12 @@
         clearDragStates();
         const file = transferFiles(event.dataTransfer)
             .find((candidate) => fileMatchesKind(candidate, target.config.kind));
+        window.SimpAIStudioPerformance?.mark('media_replacement.drop_claimed', {
+            component_id: target.componentId,
+            kind: target.config.kind,
+            matching_file_found: Boolean(file),
+            file,
+        }, { urgent: true });
         if (file) void replaceFile(target.componentId, file);
     }, true);
     document.addEventListener('dragend', clearDragStates, true);
