@@ -845,6 +845,17 @@ def ensure_identity_state_defaults(state):
     return state
 
 
+def _apply_identity_context(state, context, close_preset_store=False):
+    state["user"] = context
+    state["sys_did"] = context.get_sys_did()
+    state["sstoken"] = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
+    state["__session"] = state["sstoken"]
+    state["__identity_session_seq"] = int(state.get("__identity_session_seq", 0) or 0) + 1
+    state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
+    if close_preset_store:
+        state["preset_store"] = False
+
+
 def get_bound_identity_note(context, lang=None):
     user_did = context.get_did() if context is not None and hasattr(context, "get_did") else ""
     status = get_identity_access_status(user_did)
@@ -1034,10 +1045,7 @@ def set_phrases(input_id_info, state, phrase, steps):
             nick, tele = inputs[0].strip(), inputs[1].strip()
             context = shared.token.set_phrase_and_get_context(nick, tele, phrase)
             if not shared.token.is_guest(context.get_did()):
-                state["user"] = context
-                state["sys_did"] = context.get_sys_did()
-                state["sstoken"] = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
-                state["__session"] = state["sstoken"]
+                _apply_identity_context(state, context)
                 note = get_bound_identity_note(context, state.get("__lang"))
                 phrase_note = f'请牢记身份口令: `{phrase}` ，解除绑定或再次绑定都需要，建议抄写到私人笔记，仅限自己可见。及时导出身份二维码，方便再次绑定，导出后妥善保存。'
                 if note == note3:
@@ -1064,10 +1072,7 @@ def confirm_identity(input_id_info, state, phrase):
         if shared.token.is_guest(context.get_did()): # 口令不对, 绑定失败, 重新输入口令, 再次绑定
             result = [note3_1] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
         else: # 绑定成功, 转解绑输入
-            state["user"] = context
-            state["sys_did"] = context.get_sys_did()
-            state["sstoken"] = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
-            state["__session"] = state["sstoken"]
+            _apply_identity_context(state, context)
             result = [get_bound_identity_note(context, state.get("__lang"))] + [gr_update(visible=False)]*4 + [gr_update(visible=True, value="")] + [gr_update(visible=False)]*3 + [gr_update(visible=True)]
     else: # 口令格式不对, 重新输入口令, 再次绑定
         result = [note3_2] + [gr_update(visible=False)] + [gr_update(visible=True)] + [gr_update(visible=False)]*2 + [gr_update(visible=True, value='')] + [gr_update(visible=False)]*2 +[gr_update(visible=True)] + [gr_update(visible=False)]
@@ -1081,11 +1086,7 @@ def unbind_identity(input_id_info, state, phrase):
     if check_phrase(phrase):
         context = shared.token.unbind_and_return_guest(state["user"].get_did(), phrase)
         if shared.token.is_guest(context.get_did()):
-            state["user"] = context
-            state["sys_did"] = context.get_sys_did()
-            state["sstoken"] = shared.token.get_user_sstoken(context.get_did(), state["ua_hash"])
-            state["__session"] = state["sstoken"]
-            state["preset_store"] = False
+            _apply_identity_context(state, context, close_preset_store=True)
             result = [note4, gr_update(visible=True)] + [gr_update(visible=False)]*8 + ['', '86-CN-中国', '', None]
         else: # 口令不对, 解绑失败, 重新输入口令, 再次解绑
             result = [note4_1] + [gr_update(visible=False)]*4 + [gr_update(visible=True, value="")] + [gr_update(visible=False)]*3 + [gr_update(visible=True)] + ['', '86-CN-中国', '', None]

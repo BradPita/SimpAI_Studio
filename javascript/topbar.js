@@ -49,6 +49,8 @@ let topbarLastSystemParams = null;
 let topbarOptimisticTimer = null;
 let topbarPendingPreset = null;
 let topbarPendingPresetUntil = 0;
+let topbarLastIdentitySessionSeq = -1;
+let topbarLastIdentitySessionRank = -1;
 let topbarLastPresetStoreSeq = 0;
 let topbarLastUiAction = "init";
 let topbarUiActionTrace = [];
@@ -3383,11 +3385,31 @@ function setCookie(name, value, days) {
     document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
 }
 
-function checkAndUpdateSession(sstoken, days) {
-    if (sstoken) {
-	setCookie('aitoken', `${sstoken}`, days);
-	localStorage.setItem('aitoken', sstoken); 
+function checkAndUpdateSession(sstoken, days, identitySessionSeq, userRole) {
+    const incomingSeq = Number(identitySessionSeq);
+    const incomingRank = userRole && userRole !== "guest" ? 1 : 0;
+    if (
+        Number.isFinite(incomingSeq)
+        && (
+            incomingSeq < topbarLastIdentitySessionSeq
+            || (incomingSeq === topbarLastIdentitySessionSeq && incomingRank < topbarLastIdentitySessionRank)
+        )
+    ) return;
+    if (Number.isFinite(incomingSeq)) {
+        if (incomingSeq > topbarLastIdentitySessionSeq) {
+            topbarLastIdentitySessionSeq = incomingSeq;
+            topbarLastIdentitySessionRank = incomingRank;
+        } else {
+            topbarLastIdentitySessionRank = Math.max(topbarLastIdentitySessionRank, incomingRank);
+        }
     }
+    if (!sstoken) return;
+    try {
+        setCookie("aitoken", `${sstoken}`, days);
+    } catch (e) {}
+    try {
+        localStorage.setItem("aitoken", sstoken);
+    } catch (e) {}
 }
 
 function setLinkColor(theme) {
@@ -4163,6 +4185,12 @@ function refresh_topbar_status_js(system_params) {
     if (!system_params || typeof system_params !== "object") {
         return;
     }
+    checkAndUpdateSession(
+        system_params["sstoken"],
+        90,
+        system_params["__identity_session_seq"],
+        system_params["user_role"]
+    );
     const previousSystemParams = topbarLastSystemParams || window.simpleaiTopbarSystemParams || {};
     if (isStaleSystemParamsForPreset(system_params)) {
         try {
@@ -4210,7 +4238,6 @@ function refresh_topbar_status_js(system_params) {
     const theme=system_params["__theme"];
     const is_scene_frontend = !!system_params["__is_scene_frontend"];
     let nav_name_list_str = system_params["__nav_name_list"];
-    checkAndUpdateSession(system_params["sstoken"], 90);
     if (!preset || !theme) {
         scheduleMissingModelCheckHintSync(system_params, "refresh_topbar_status_js.incomplete");
         return;

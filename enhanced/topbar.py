@@ -985,6 +985,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     ua_session = gen_ua_session(client_host, client_port, user_agent)
     state_params.update({"ua_hash": ua_hash})
     state_params.update({"ua_session": ua_session})
+    state_params.update({"__identity_session_seq": int(state_params.get("__identity_session_seq", 0) or 0)})
     if "__session" not in state_params.keys():
         sstoken = shared.token.get_guest_sstoken(ua_hash)
         state_params.update({"sstoken": sstoken})
@@ -1002,6 +1003,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
             user_did = shared.token.get_guest_did()
             user_session = sstoken
             state_params.update({"__session": user_session})
+            state_params["__identity_session_seq"] += 1
             logger.debug(f'user-agent:{user_agent}, cookie:{request_cookie}')
             logger.info(f'Reset request/重置请求(无效身份): {client_host}:{client_port} --> {request_host}, session({user_session})')
             user = shared.token.get_user_context(user_did)
@@ -3899,6 +3901,7 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         __preset_missing=current_preset_missing,
         __preset_switched=bool(state.get("__preset_switched", False)),
         __regen_preset_restore=regen_preset_restore,
+        __identity_session_seq=int(state.get("__identity_session_seq", 0) or 0),
         __preset_store_seq=int(state.get("__preset_store_seq", 0) or 0),
         __theme=state.get("__theme"),
         __is_scene_frontend=("scene_frontend" in state),

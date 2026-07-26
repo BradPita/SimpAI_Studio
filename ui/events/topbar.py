@@ -880,6 +880,9 @@ def bind_topbar_load_chain(
     inpaint_respective_field,
     aspect_ratios_selections,
     aspect_ratios_selection,
+    main_vlm_load_fn,
+    main_vlm_load_inputs,
+    main_vlm_load_outputs,
     scene_control_visibility_fn=None,
     scene_control_visibility_outputs=None,
     reset_layout_ui_fn=None,
@@ -1005,6 +1008,8 @@ def bind_topbar_load_chain(
 
     scene_visibility_output_count = len(scene_control_visibility_outputs or [])
     admin_access_refresh_outputs = list(admin_access_outputs or [])
+    main_vlm_inputs = list(main_vlm_load_inputs or [state_topbar])
+    main_vlm_outputs = list(main_vlm_load_outputs or [])
     welcome_media_inputs = list(welcome_media_load_inputs or [state_topbar])
     welcome_media_outputs = list(welcome_media_load_outputs or [])
 
@@ -1049,6 +1054,12 @@ def bind_topbar_load_chain(
         outputs=[progress_window, language_ui, background_theme, preset_instruction] + user_app_ctrls + admin_ctrls,
         show_progress=False,
         queue=False,
+    ).then(
+        main_vlm_load_fn,
+        inputs=main_vlm_inputs,
+        outputs=main_vlm_outputs,
+        queue=False,
+        show_progress=False,
     ).then(
         fn=lambda: None,
         js="()=>{try{if (typeof notify_style_state_changed === 'function') { notify_style_state_changed('load_rehydrate'); } else { refresh_style_localization(); refresh_style_layout(); setTimeout(refresh_style_layout,120); setTimeout(refresh_style_layout,500); setTimeout(refresh_style_layout,1000); }}catch(e){console.warn('[UI-TRACE] style_load_rehydrate_failed', e);}}",
@@ -1398,6 +1409,12 @@ def bind_topbar_identity_events(
             outputs=nav_bars + after_identity + user_app_ctrls,
             show_progress=False,
             queue=False,
+        ).then(
+            fn=None,
+            inputs=system_params,
+            js="(x)=>{refresh_topbar_status_js(x);}",
+            queue=False,
+            show_progress=False,
         )
         if admin_access_refresh_fn is not None and admin_access_user_select is not None and admin_access_refresh_outputs:
             chain = chain.then(
@@ -1447,13 +1464,6 @@ def bind_topbar_identity_events(
                 queue=False,
                 show_progress=False,
             )
-        chain = chain.then(
-            fn=lambda x: None,
-            inputs=system_params,
-            js="(x)=>{refresh_topbar_status_js(x);}",
-            queue=False,
-            show_progress=False,
-        )
         return chain
 
     def _toggle_identity_dialog_reset(state):

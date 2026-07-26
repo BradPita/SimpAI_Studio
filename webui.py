@@ -8438,7 +8438,7 @@ with shared.gradio_root:
                     describe_vlm_custom_api_key,
                     describe_vlm_custom_supports_images,
                 ]
-                describe_vlm_model.change(
+                describe_vlm_model.input(
                     set_describe_vlm_version,
                     inputs=[describe_vlm_model, state_topbar] + main_vlm_custom_inputs,
                     outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_panel, describe_vlm_custom_message, vlm_version],
@@ -8452,22 +8452,31 @@ with shared.gradio_root:
                     queue=False,
                     show_progress=False,
                 )
-                vlm_version.change(
+                vlm_version.input(
                     set_admin_vlm_version,
                     inputs=[vlm_version, state_topbar],
                     outputs=[vlm_status_info, describe_vlm_model, describe_vlm_custom_panel, describe_vlm_custom_message],
                     queue=False,
                     show_progress=False,
                 )
-                for custom_vlm_control in [
+                for custom_vlm_text_control in [
                     describe_vlm_custom_api_name,
-                    describe_vlm_custom_api_format,
                     describe_vlm_custom_base_url,
-                    describe_vlm_custom_model,
                     describe_vlm_custom_api_key,
+                ]:
+                    custom_vlm_text_control.blur(
+                        sync_main_vlm_custom_settings,
+                        inputs=main_vlm_custom_inputs + [describe_vlm_model, state_topbar],
+                        outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_message],
+                        queue=False,
+                        show_progress=False,
+                    )
+                for custom_vlm_choice_control in [
+                    describe_vlm_custom_api_format,
+                    describe_vlm_custom_model,
                     describe_vlm_custom_supports_images,
                 ]:
-                    custom_vlm_control.change(
+                    custom_vlm_choice_control.input(
                         sync_main_vlm_custom_settings,
                         inputs=main_vlm_custom_inputs + [describe_vlm_model, state_topbar],
                         outputs=[describe_vlm_model, vlm_status_info, describe_vlm_custom_message],
@@ -8503,30 +8512,23 @@ with shared.gradio_root:
                     queue=True,
                     show_progress=True,
                 )
-                shared.gradio_root.load(
-                    load_main_vlm_user_settings,
-                    inputs=[state_topbar],
-                    outputs=[
-                        describe_vlm_model,
-                        vlm_status_info,
-                        describe_vlm_custom_panel,
-                        describe_vlm_custom_help,
-                        describe_vlm_custom_api_name,
-                        describe_vlm_custom_provider,
-                        describe_vlm_custom_api_format,
-                        describe_vlm_custom_base_url,
-                        describe_vlm_custom_model,
-                        describe_vlm_custom_api_key,
-                        describe_vlm_custom_supports_images,
-                        describe_vlm_custom_fetch_models,
-                        describe_vlm_custom_test,
-                        describe_vlm_custom_message,
-                        vlm_version,
-                    ],
-                    js=topbar.get_system_params_js,
-                    queue=False,
-                    show_progress=False,
-                )
+                main_vlm_load_outputs = [
+                    describe_vlm_model,
+                    vlm_status_info,
+                    describe_vlm_custom_panel,
+                    describe_vlm_custom_help,
+                    describe_vlm_custom_api_name,
+                    describe_vlm_custom_provider,
+                    describe_vlm_custom_api_format,
+                    describe_vlm_custom_base_url,
+                    describe_vlm_custom_model,
+                    describe_vlm_custom_api_key,
+                    describe_vlm_custom_supports_images,
+                    describe_vlm_custom_fetch_models,
+                    describe_vlm_custom_test,
+                    describe_vlm_custom_message,
+                    vlm_version,
+                ]
                 reserved_vram.change(lambda x,y: ads.set_admin_default_value('reserved_vram',x,y), inputs=[reserved_vram, state_topbar])
                 cache_ram_enable.change(lambda x,y: [ads.set_admin_default_value('cache_ram_enable',x,y), gr_update(interactive=x)][-1], inputs=[cache_ram_enable, state_topbar], outputs=cache_ram)
                 cache_ram.change(lambda x,y: ads.set_admin_default_value('cache_ram',x,y), inputs=[cache_ram, state_topbar])
@@ -11378,6 +11380,9 @@ with shared.gradio_root:
         admin_access_refresh_fn=_admin_access_refresh,
         admin_access_user_select=admin_access_user_select,
         admin_access_outputs=admin_access_outputs,
+        main_vlm_load_fn=load_main_vlm_user_settings,
+        main_vlm_load_inputs=[state_topbar],
+        main_vlm_load_outputs=main_vlm_load_outputs,
         welcome_media_load_fn=load_welcome_media_ui,
         welcome_media_load_inputs=[state_topbar, state_is_generating],
         welcome_media_load_outputs=[welcome_media_title_source, welcome_media_waiting_source, progress_window],
