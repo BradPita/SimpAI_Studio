@@ -128,16 +128,23 @@
     }
 
     function setBusy(value) {
-        state.busy = !!value;
+        const busy = !!value;
+        state.busy = busy;
         document.querySelectorAll(".simpleai-welcome-media-actions").forEach((actions) => {
-            actions.classList.toggle("is-busy", state.busy);
+            if (actions.classList.contains("is-busy") !== busy) {
+                actions.classList.toggle("is-busy", busy);
+            }
             actions.querySelectorAll("button").forEach((button) => {
-                button.disabled = state.busy;
-                button.setAttribute("aria-busy", state.busy ? "true" : "false");
+                if (button.disabled !== busy) button.disabled = busy;
+                const ariaBusy = busy ? "true" : "false";
+                if (button.getAttribute("aria-busy") !== ariaBusy) {
+                    button.setAttribute("aria-busy", ariaBusy);
+                }
             });
             const icon = actions.querySelector("[data-welcome-media-action='replace'] i");
             if (icon) {
-                icon.className = state.busy ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-image";
+                const iconClass = busy ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-image";
+                if (icon.className !== iconClass) icon.className = iconClass;
             }
         });
     }
@@ -222,24 +229,34 @@
 
         const surfaceSource = imageSource(surface);
         const kind = surfaceName === "preview" ? currentKind() : classifySource(surfaceSource);
-        actions.classList.toggle("is-active", !!kind);
-        actions.dataset.welcomeMediaKind = kind;
-        surface.dataset.simpleaiWelcomeMediaKind = kind;
+        const active = !!kind;
+        if (actions.classList.contains("is-active") !== active) {
+            actions.classList.toggle("is-active", active);
+        }
+        if (actions.dataset.welcomeMediaKind !== kind) actions.dataset.welcomeMediaKind = kind;
+        if (surface.dataset.simpleaiWelcomeMediaKind !== kind) {
+            surface.dataset.simpleaiWelcomeMediaKind = kind;
+        }
 
         const labels = actionLabels(kind);
         const replaceButton = actions.querySelector("[data-welcome-media-action='replace']");
         const restoreButton = actions.querySelector("[data-welcome-media-action='restore']");
         if (replaceButton) {
-            replaceButton.title = labels.replace;
-            replaceButton.setAttribute("aria-label", labels.replace);
+            if (replaceButton.title !== labels.replace) replaceButton.title = labels.replace;
+            if (replaceButton.getAttribute("aria-label") !== labels.replace) {
+                replaceButton.setAttribute("aria-label", labels.replace);
+            }
         }
         if (restoreButton) {
-            restoreButton.title = labels.restore;
-            restoreButton.setAttribute("aria-label", labels.restore);
-            restoreButton.hidden = !kind || !(
+            if (restoreButton.title !== labels.restore) restoreButton.title = labels.restore;
+            if (restoreButton.getAttribute("aria-label") !== labels.restore) {
+                restoreButton.setAttribute("aria-label", labels.restore);
+            }
+            const hidden = !kind || !(
                 isCustomSource(surfaceSource, kind)
                 || isCustomSource(bridgeSource(kind), kind)
             );
+            if (restoreButton.hidden !== hidden) restoreButton.hidden = hidden;
         }
     }
 
@@ -261,16 +278,29 @@
 
     function ensureObserver() {
         const preview = byId("preview_generating");
-        if (!preview || preview === state.observedPreview) return;
+        if (!preview) {
+            if (state.observer) state.observer.disconnect();
+            state.observer = null;
+            state.observedPreview = null;
+            return;
+        }
+        if (preview === state.observedPreview && state.observer) return;
         if (state.observer) state.observer.disconnect();
         state.observedPreview = preview;
         if (typeof MutationObserver !== "function") return;
-        state.observer = new MutationObserver(scheduleSync);
+        state.observer = new MutationObserver((mutations) => {
+            const hasExternalMutation = mutations.some((mutation) => {
+                const target = mutation && mutation.target;
+                return !(target && target.nodeType === 1 && target.closest
+                    && target.closest(".simpleai-welcome-media-actions"));
+            });
+            if (hasExternalMutation) scheduleSync();
+        });
         state.observer.observe(preview, {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ["src", "class", "style"],
+            attributeFilter: ["src"],
         });
     }
 
