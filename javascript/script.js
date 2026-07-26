@@ -803,11 +803,17 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }
 
     function isLayerForgeLazySystemImage(container, img) {
-        const src = String(img?.getAttribute?.('src') || img?.src || '').toLowerCase().replace(/\\/g, '/');
+        const rawSrc = String(img?.getAttribute?.('src') || img?.src || '');
+        const sourcePrefix = rawSrc.slice(0, 64).trimStart().toLowerCase();
+        if (sourcePrefix.startsWith('data:')) {
+            return sourcePrefix === 'data:,'
+                || !sourcePrefix.startsWith('data:image/')
+                || sourcePrefix.startsWith('data:image/svg');
+        }
+        if (sourcePrefix.startsWith('blob:')) return false;
+        const src = rawSrc.toLowerCase().replace(/\\/g, '/');
         return !src
             || src === 'about:blank'
-            || src === 'data:,'
-            || src.startsWith('data:image/svg')
             || /presets\/welcome\//.test(src)
             || /studio_ui\/welcome\/(?:title|waiting)-/.test(src)
             || /\/welcome[^/]*\.png(?:[?#].*)?$/.test(src)
@@ -815,6 +821,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }
 
     function layerForgeLazyCandidateContainer(target) {
+        if (window.SimpAILayerForgeAdapter || isSimpleAILazyAssetGroupLoaded('layerForge')) return null;
         const container = target?.closest?.(LAYERFORGE_LAZY_CONTAINER_SELECTOR);
         if (!container) return null;
         const img = container.matches?.('[data-simpai-sketch="1"]')

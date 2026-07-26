@@ -1805,6 +1805,19 @@
             });
     }
 
+    const LAYERFORGE_CONTAINER_SELECTOR = [
+        '[data-simpai-sketch="1"]',
+        '.gradio-image',
+        '.image-container',
+        'div[data-testid="image"]',
+        '.image-frame'
+    ].join(',');
+    const LAYERFORGE_OWNED_NODE_SELECTOR = [
+        '.layerforge-edit-btn',
+        'canvas[data-layerforge-overlay="1"]',
+        'canvas[data-layerforge-overlay-display="1"]'
+    ].join(',');
+
     function getLayerForgeElementDepth(el) {
         let depth = 0;
         let node = el;
@@ -1855,42 +1868,57 @@
         }
     }
 
+    function isLayerForgeInlineImageReference(src) {
+        try {
+            const prefix = String(src || '').slice(0, 64).trimStart().toLowerCase();
+            return prefix.startsWith('data:') || prefix.startsWith('blob:');
+        } catch {
+            return false;
+        }
+    }
+
     function isLayerForgeWelcomeMedia(container, src) {
         try {
             if (container?.closest?.('.sai-gradio-hidden-bridge'))
                 return true;
             if (container?.closest?.('[data-simpleai-welcome-media-kind="title"], [data-simpleai-welcome-media-kind="waiting"]'))
                 return true;
+            if (isLayerForgeInlineImageReference(src))
+                return false;
+            const normalizedSrc = String(src || '').toLowerCase().replace(/\\/g, '/');
             if (typeof window.isStudioWelcomeMediaSource === 'function') {
-                if (window.isStudioWelcomeMediaSource(src, 'title') || window.isStudioWelcomeMediaSource(src, 'waiting'))
+                if (window.isStudioWelcomeMediaSource(normalizedSrc, 'title') || window.isStudioWelcomeMediaSource(normalizedSrc, 'waiting'))
                     return true;
             }
+            return /presets\/welcome\//.test(normalizedSrc)
+                || /studio_ui\/welcome\/(?:title|waiting)-/.test(normalizedSrc)
+                || /(?:^|\/)(?:title|waiting)-(?:desktop|mobile)-[0-9a-f]{16}\.webp(?:[?#].*)?$/.test(normalizedSrc)
+                || /(?:^|\/)(?:\d+_welcome_[wm]|welcome_[^/?#]+_[wm])\.(?:jpe?g|png|gif|webp)(?:[?#].*)?$/.test(normalizedSrc)
+                || /(?:^|\/)welcome[^/]*\.png(?:[?#].*)?$/.test(normalizedSrc);
         } catch {
+            return false;
         }
-        return /presets\/welcome\//.test(src)
-            || /studio_ui\/welcome\/(?:title|waiting)-/.test(src)
-            || /(?:^|\/)(?:title|waiting)-(?:desktop|mobile)-[0-9a-f]{16}\.webp(?:[?#].*)?$/.test(src)
-            || /(?:^|\/)(?:\d+_welcome_[wm]|welcome_[^/?#]+_[wm])\.(?:jpe?g|png|gif|webp)(?:[?#].*)?$/.test(src);
     }
 
     function isLayerForgeSystemImage(container, img) {
         try {
-            const src = String(img?.getAttribute?.('src') || img?.src || '').toLowerCase().replace(/\\/g, '/');
-            if (isLayerForgeWelcomeMedia(container, src) || /(?:^|\/)welcome[^/]*\.png(?:[?#].*)?$/.test(src))
-                return true;
             if (container?.closest?.('#missing_model_welcome_hint'))
                 return true;
+            const rawSrc = String(img?.getAttribute?.('src') || img?.src || '');
+            return isLayerForgeWelcomeMedia(container, rawSrc);
         } catch {
         }
         return false;
     }
 
-    function isLayerForgeSystemContainer(container) {
+    function isLayerForgeSystemContainer(container, checkedImage = null) {
         try {
             if (!container)
                 return false;
             const images = container.querySelectorAll?.('img') || [];
             for (const img of images) {
+                if (img === checkedImage)
+                    continue;
                 if (isLayerForgeSystemImage(container, img))
                     return true;
             }
@@ -1903,9 +1931,9 @@
         try {
             if (!img)
                 return false;
-            if (isLayerForgeSystemContainer(container))
-                return false;
             if (isLayerForgeSystemImage(container, img))
+                return false;
+            if (isLayerForgeSystemContainer(container, img))
                 return false;
             const src = String(img.getAttribute('src') || img.src || '');
             if (!src)
@@ -1929,29 +1957,24 @@
         }
     }
 
-    function scanAndInject() {
-        const selectors = [
-            '[data-simpai-sketch="1"]',
-            '.gradio-image', 
-            '.image-container',
-            'div[data-testid="image"]',
-            '.image-frame'
-        ];
-        const selectorText = selectors.join(',');
-
-        document.querySelectorAll('.layerforge-edit-btn').forEach((btn) => {
-            try {
-                const parent = btn.parentElement;
-                if (!parent || !parent.matches?.(selectorText)) {
-                    btn.remove();
+    function scanAndInject(containers = null) {
+        if (containers == null) {
+            document.querySelectorAll('.layerforge-edit-btn').forEach((btn) => {
+                try {
+                    const parent = btn.parentElement;
+                    if (!parent || !parent.matches?.(LAYERFORGE_CONTAINER_SELECTOR)) {
+                        btn.remove();
+                    }
+                } catch {
                 }
-            } catch {
-            }
-        });
+            });
+        }
         
-        const potentialContainers = Array.from(document.querySelectorAll(selectorText))
+        const potentialContainers = (containers == null
+            ? Array.from(document.querySelectorAll(LAYERFORGE_CONTAINER_SELECTOR))
+            : Array.from(containers))
             .map(resolveLayerForgeCandidate)
-            .filter(Boolean)
+            .filter((container) => container?.isConnected && container.matches?.(LAYERFORGE_CONTAINER_SELECTOR))
             .sort((a, b) => getLayerForgeElementDepth(a) - getLayerForgeElementDepth(b));
         const seenContainers = new Set();
         const seenImages = new WeakSet();
@@ -2087,14 +2110,75 @@
         });
     }
 
+    function addLayerForgeCandidateAncestors(node, candidates) {
+        try {
+            let element = node instanceof Element ? node : node?.parentElement;
+            while (element) {
+                if (element.matches?.(LAYERFORGE_CONTAINER_SELECTOR)) {
+                    const candidate = resolveLayerForgeCandidate(element);
+                    if (candidate)
+                        candidates.add(candidate);
+                }
+                element = element.parentElement;
+            }
+        } catch {
+        }
+    }
+
+    function addLayerForgeCandidateTree(node, candidates) {
+        try {
+            if (!(node instanceof Element))
+                return;
+            addLayerForgeCandidateAncestors(node, candidates);
+            node.querySelectorAll?.(LAYERFORGE_CONTAINER_SELECTOR).forEach((element) => {
+                const candidate = resolveLayerForgeCandidate(element);
+                if (candidate)
+                    candidates.add(candidate);
+            });
+        } catch {
+        }
+    }
+
+    function mutationOnlyAddsLayerForgeNodes(mutation) {
+        try {
+            const added = Array.from(mutation?.addedNodes || []);
+            if (!added.length || (mutation?.removedNodes?.length || 0) > 0)
+                return false;
+            return added.every((node) => node instanceof Element && node.matches?.(LAYERFORGE_OWNED_NODE_SELECTOR));
+        } catch {
+            return false;
+        }
+    }
+
+    function collectLayerForgeMutationCandidates(mutations) {
+        const candidates = new Set();
+        for (const mutation of mutations || []) {
+            if (mutationOnlyAddsLayerForgeNodes(mutation))
+                continue;
+            addLayerForgeCandidateAncestors(mutation?.target, candidates);
+            for (const node of mutation?.addedNodes || []) {
+                addLayerForgeCandidateTree(node, candidates);
+            }
+        }
+        return candidates;
+    }
+
     let scanAndInjectTimer = 0;
     let scanAndInjectFrame = 0;
-    function scheduleScanAndInject(delay = 80) {
+    const pendingScanAndInjectContainers = new Set();
+    function scheduleScanAndInject(containers, delay = 80) {
+        for (const container of containers || []) {
+            if (container?.isConnected)
+                pendingScanAndInjectContainers.add(container);
+        }
+        if (!pendingScanAndInjectContainers.size) return;
         if (scanAndInjectTimer || scanAndInjectFrame) return;
         const run = () => {
             scanAndInjectTimer = 0;
             scanAndInjectFrame = 0;
-            scanAndInject();
+            const pendingContainers = Array.from(pendingScanAndInjectContainers);
+            pendingScanAndInjectContainers.clear();
+            scanAndInject(pendingContainers);
         };
         if (delay <= 0 && typeof requestAnimationFrame === 'function') {
             scanAndInjectFrame = requestAnimationFrame(run);
@@ -3107,10 +3191,16 @@
         }, true);
 
         const observer = new MutationObserver((mutations) => {
-            scheduleScanAndInject(80);
+            const candidates = collectLayerForgeMutationCandidates(mutations);
+            scheduleScanAndInject(candidates, 80);
         });
 
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['src']
+        });
 
         scanAndInject();
     }
