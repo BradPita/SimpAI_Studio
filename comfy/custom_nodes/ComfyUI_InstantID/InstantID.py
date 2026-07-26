@@ -214,7 +214,40 @@ class InstantIDFaceAnalysis:
     CATEGORY = "InstantID"
 
     def load_insight_face(self, provider):
-        model = FaceAnalysis(name="antelopev2", root=INSIGHTFACE_DIR, providers=[provider + 'ExecutionProvider',]) # alternative to buffalo_l
+        model_name = "antelopev2"
+        model_dir = os.path.join(INSIGHTFACE_DIR, "models", model_name)
+        nested_model_name = os.path.join(model_name, model_name)
+        nested_model_dir = os.path.join(INSIGHTFACE_DIR, "models", nested_model_name)
+        model_files = []
+        resolved_model_name = model_name
+        resolved_model_dir = model_dir
+        if os.path.isdir(model_dir):
+            model_files = [f for f in os.listdir(model_dir) if f.lower().endswith(".onnx")]
+
+        # insightface's antelopev2 zip commonly extracts to models/antelopev2/antelopev2/*.onnx
+        if not model_files and os.path.isdir(nested_model_dir):
+            nested_model_files = [f for f in os.listdir(nested_model_dir) if f.lower().endswith(".onnx")]
+            if nested_model_files:
+                resolved_model_name = nested_model_name
+                resolved_model_dir = nested_model_dir
+                model_files = nested_model_files
+
+        if not model_files:
+            raise FileNotFoundError(
+                "InstantID InsightFace model files not found.\n"
+                f"Expected directory: {model_dir}\n"
+                f"Also checked nested directory: {nested_model_dir}\n"
+                "Please extract the antelopev2 package so one of these folders contains the .onnx files."
+            )
+
+        try:
+            model = FaceAnalysis(name=resolved_model_name, root=INSIGHTFACE_DIR, providers=[provider + 'ExecutionProvider',]) # alternative to buffalo_l
+        except AssertionError as e:
+            raise RuntimeError(
+                "InsightFace antelopev2 model is incomplete or has the wrong folder structure.\n"
+                f"Expected directory: {resolved_model_dir}\n"
+                f"Found files: {', '.join(sorted(model_files))}"
+            ) from e
         model.prepare(ctx_id=0, det_size=(640, 640))
 
         return (model,)

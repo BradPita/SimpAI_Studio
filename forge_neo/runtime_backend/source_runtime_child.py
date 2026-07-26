@@ -2103,17 +2103,30 @@ def _patch_source_forge_couple_class(module: types.ModuleType) -> bool:
     return True
 
 
-def _ensure_source_forge_couple_opts() -> None:
+def _ensure_source_forge_couple_opts(shared_module: object | None = None) -> None:
     try:
-        from modules import shared
+        if shared_module is None:
+            from modules import shared as shared_module
         from forge_neo.forge_couple_compat import FORGE_COUPLE_SETTING_DEFAULTS
 
-        data = getattr(getattr(shared, "opts", None), "data", None)
+        opts = getattr(shared_module, "opts", None)
+        if opts is None:
+            return
+        data_labels = getattr(opts, "data_labels", None)
+        add_option = getattr(opts, "add_option", None)
+        option_info = getattr(shared_module, "OptionInfo", None)
+        if isinstance(data_labels, dict) and callable(add_option) and callable(option_info):
+            for key, value in FORGE_COUPLE_SETTING_DEFAULTS.items():
+                if key not in data_labels:
+                    add_option(
+                        key,
+                        option_info(value, key, section=("forge_couple", "Forge Couple")),
+                    )
+
+        data = getattr(opts, "data", None)
         for key, value in FORGE_COUPLE_SETTING_DEFAULTS.items():
             if data is not None and hasattr(data, "setdefault"):
                 data.setdefault(key, value)
-            if not hasattr(shared.opts, key):
-                setattr(shared.opts, key, value)
     except Exception:
         pass
 
@@ -2128,7 +2141,9 @@ def _apply_source_forge_couple_settings(payload: dict[str, Any], shared_module: 
     opts = getattr(shared_module, "opts", None)
     if opts is None:
         return {}
+    _ensure_source_forge_couple_opts(shared_module)
     data = getattr(opts, "data", None)
+    data_labels = getattr(opts, "data_labels", None)
     applied: dict[str, bool] = {}
     for key, default in FORGE_COUPLE_SETTING_DEFAULTS.items():
         if key not in settings:
@@ -2138,9 +2153,10 @@ def _apply_source_forge_couple_settings(payload: dict[str, Any], shared_module: 
             value = raw.strip().casefold() not in _SOURCE_BACKEND_DISABLED_VALUES
         else:
             value = bool(default if raw is None else raw)
-        setattr(opts, key, value)
         if data is not None and hasattr(data, "__setitem__"):
             data[key] = value
+        if not isinstance(data_labels, dict) or key in data_labels:
+            setattr(opts, key, value)
         applied[key] = value
     return applied
 
