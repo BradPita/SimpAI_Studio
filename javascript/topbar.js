@@ -30,6 +30,7 @@ let presetStoreFilterState = {
     engine: "all",
     scene: "all",
 };
+let presetStoreTouchPoint = null;
 let presetStoreDraftState = {
     list: [],
     dirty: false,
@@ -3084,7 +3085,11 @@ function localizePresetStoreUi() {
             ? "Scene"
             : sceneFilter === "classic"
                 ? "Classic"
-                : "All";
+                : sceneFilter === "image"
+                    ? "Image"
+                    : sceneFilter === "video"
+                        ? "Video"
+                        : "All";
         topbarApplyLocalizedText(button, englishText);
     });
 
@@ -9283,7 +9288,8 @@ function ensurePresetStoreResize(presetStoreEl) {
         modal: presetStoreEl,
         minWidth: 560,
         minHeight: 320,
-        margin: window.innerWidth <= 860 ? 12 : 24,
+        margin: window.innerWidth <= 860 ? 6 : 24,
+        disabled: () => window.innerWidth <= 860,
         isHidden: () => {
             const style = window.getComputedStyle ? window.getComputedStyle(presetStoreEl) : null;
             return !!(
@@ -9298,13 +9304,14 @@ function ensurePresetStoreResize(presetStoreEl) {
 }
 
 function getPresetStoreViewportMargin() {
-    return window.innerWidth <= 860 ? 12 : 24;
+    return window.innerWidth <= 860 ? 6 : 24;
 }
 
 function getPresetStoreDefaultTop() {
     const margin = getPresetStoreViewportMargin();
-    const preferredTop = window.innerWidth <= 860 ? 74 : 118;
-    const viewportScaledTop = Math.round(window.innerHeight * (window.innerWidth <= 860 ? 0.09 : 0.12));
+    if (window.innerWidth <= 860) return margin;
+    const preferredTop = 118;
+    const viewportScaledTop = Math.round(window.innerHeight * 0.12);
     return Math.max(margin, Math.min(preferredTop, viewportScaledTop));
 }
 
@@ -9452,6 +9459,7 @@ function resetPresetStoreSearchFilter(applyFilters = false) {
 function setPresetStoreOpen(presetStoreEl, isOpen) {
     if (!presetStoreEl) return;
     const wasOpen = presetStoreEl.style.display !== "none" && !presetStoreEl.hidden;
+    document.documentElement.classList.toggle("preset-store-open", !!isOpen);
     if (isOpen) {
         if (!wasOpen) {
             resetPresetStoreSearchFilter(false);
@@ -9481,11 +9489,34 @@ function setPresetStoreOpen(presetStoreEl, isOpen) {
         presetStoreEl.style.setProperty("top", `${getPresetStoreDefaultTop()}px`, "important");
         presetStoreEl.style.setProperty("transform", "translateX(-50%)", "important");
     }
+    if (wasOpen !== !!isOpen) {
+        window.dispatchEvent(new CustomEvent(isOpen ? "simpai:preset-store-opened" : "simpai:preset-store-closed"));
+    }
 }
 
 function ensurePresetStoreInViewport(presetStoreEl) {
     if (!presetStoreEl) return;
     const margin = getPresetStoreViewportMargin();
+    if (window.innerWidth <= 860) {
+        const viewport = window.visualViewport;
+        const left = Number(viewport?.offsetLeft || 0) + margin;
+        const top = Number(viewport?.offsetTop || 0) + margin;
+        const width = Math.max(280, Number(viewport?.width || window.innerWidth) - margin * 2);
+        const height = Math.max(220, Number(viewport?.height || window.innerHeight) - margin * 2);
+        presetStoreEl.dataset.saiMobileFrame = "1";
+        presetStoreEl.style.setProperty("left", `${Math.round(left)}px`, "important");
+        presetStoreEl.style.setProperty("top", `${Math.round(top)}px`, "important");
+        presetStoreEl.style.setProperty("transform", "none", "important");
+        presetStoreEl.style.setProperty("width", `${Math.round(width)}px`, "important");
+        presetStoreEl.style.setProperty("height", `${Math.round(height)}px`, "important");
+        presetStoreEl.style.setProperty("max-width", `${Math.round(width)}px`, "important");
+        presetStoreEl.style.setProperty("max-height", `${Math.round(height)}px`, "important");
+        return;
+    }
+    if (presetStoreEl.dataset.saiMobileFrame === "1") {
+        delete presetStoreEl.dataset.saiMobileFrame;
+        ["width", "height", "max-width", "max-height"].forEach((name) => presetStoreEl.style.removeProperty(name));
+    }
     const defaultTop = getPresetStoreDefaultTop();
     if (presetStoreEl.dataset.saiDragged !== "1") {
         presetStoreEl.style.setProperty("left", "50%", "important");
@@ -9569,6 +9600,26 @@ function bindPresetStoreWheelContainment(presetStoreEl) {
         }
         event.stopPropagation();
     }, { passive: false, capture: true });
+    presetStoreEl.addEventListener("touchstart", (event) => {
+        const touch = event.touches && event.touches[0];
+        presetStoreTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+        event.stopPropagation();
+    }, { passive: true, capture: true });
+    presetStoreEl.addEventListener("touchmove", (event) => {
+        const touch = event.touches && event.touches[0];
+        const deltaX = presetStoreTouchPoint && touch ? presetStoreTouchPoint.x - touch.clientX : 0;
+        const deltaY = presetStoreTouchPoint && touch ? presetStoreTouchPoint.y - touch.clientY : 0;
+        presetStoreTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : presetStoreTouchPoint;
+        const scroller = findPresetStoreWheelScroller(event.target, presetStoreEl, deltaX, deltaY);
+        if (!scroller && event.cancelable) event.preventDefault();
+        event.stopPropagation();
+    }, { passive: false, capture: true });
+    const resetTouchPoint = (event) => {
+        presetStoreTouchPoint = null;
+        event.stopPropagation();
+    };
+    presetStoreEl.addEventListener("touchend", resetTouchPoint, true);
+    presetStoreEl.addEventListener("touchcancel", resetTouchPoint, true);
 }
 
 let presetStoreResizeTimer = 0;
@@ -9598,6 +9649,14 @@ function inferPresetStoreEngine(name) {
     if (text.includes("ltx")) return "LTX";
     if (text.includes("sdxl") || text.includes("illustrious") || text.includes("noob")) return "SDXL";
     return "Other";
+}
+
+function inferPresetStoreMediaType(engineType, taskMethod) {
+    const engine = String(engineType || "").trim().toLowerCase();
+    const task = String(taskMethod || "").trim().toLowerCase();
+    if (engine.includes("video")) return "video";
+    if (/(?:^|[_-])(t2v|i2v|v2v|ta2v|ia2v|av2v)(?:$|[_-])/.test(task)) return "video";
+    return "image";
 }
 
 function getPresetStoreMeta(name) {
@@ -10362,6 +10421,7 @@ function getPresetStoreCandidateEntries() {
                 scene: !!item.scene,
                 engineType: String(item.engine_type || ""),
                 taskMethod: String(item.task_method || ""),
+                mediaType: inferPresetStoreMediaType(item.engine_type, item.task_method),
                 missing: !!item.missing,
                 order: Number.isFinite(orderValue) ? orderValue : index,
                 source,
@@ -10390,11 +10450,13 @@ function createPresetStoreCandidateElement(entry) {
     button.dataset.presetBaseName = entry.name;
     button.dataset.saiEngine = entry.engine;
     button.dataset.saiScene = entry.scene ? "scene" : "classic";
+    button.dataset.saiMedia = entry.mediaType || "image";
     button.dataset.saiSource = entry.source || "base";
     button.dataset.saiSearchBase = [
         entry.name,
         entry.engine,
         entry.scene ? "scene" : "classic",
+        entry.mediaType || "image",
         entry.engineType,
         entry.taskMethod,
         entry.source === "user" ? "user personal" : "system",
@@ -10671,6 +10733,7 @@ function initPresetStoreDrag(presetStoreEl) {
     };
     const onDown = (event) => {
         if (event.button !== undefined && event.button !== 0) return;
+        if (window.innerWidth <= 860) return;
         if (event.target && event.target.closest && event.target.closest('button, input')) return;
         const point = event.touches && event.touches.length ? event.touches[0] : event;
         const rect = presetStoreEl.getBoundingClientRect();
@@ -10876,15 +10939,19 @@ function applyPresetStoreFilters() {
         const text = String(button.dataset.saiSearch || button.textContent || "").toLowerCase();
         const engine = button.dataset.saiEngine || "Other";
         const sceneType = button.dataset.saiScene || "classic";
+        const mediaType = button.dataset.saiMedia || "image";
         const matchesQuery = !query || text.includes(query);
         const matchesEngine = engineFilter === "all" || engine === engineFilter;
-        const matchesScene = sceneFilter === "all" || sceneType === sceneFilter;
+        const matchesScene = sceneFilter === "all"
+            || (sceneFilter === "image" || sceneFilter === "video"
+                ? mediaType === sceneFilter
+                : sceneType === sceneFilter);
         const visible = matchesQuery && matchesEngine && matchesScene;
         button.style.display = visible ? "" : "none";
         button.classList.toggle("sai-store-filter-hidden", !visible);
         if (visible) visibleCount += 1;
     });
-    if (visibleCount === 0 && !query && engineFilter === "all") {
+    if (visibleCount === 0 && !query && engineFilter === "all" && sceneFilter === "all") {
         buttons.forEach((button) => {
             button.style.display = "";
             button.classList.remove("sai-store-filter-hidden");
@@ -13322,6 +13389,10 @@ document.addEventListener("DOMContentLoaded", function() {
         ro.observe(topbar_row);
         window.addEventListener("resize", syncPresetStorePosition);
         window.addEventListener("resize", schedulePresetStoreViewportRefresh);
+        if (window.visualViewport && window.visualViewport.addEventListener) {
+            window.visualViewport.addEventListener("resize", schedulePresetStoreViewportRefresh);
+            window.visualViewport.addEventListener("scroll", schedulePresetStoreViewportRefresh);
+        }
         window.addEventListener("resize", () => syncScenePanelMaxHeight("window.resize"));
         syncPresetStorePosition();
     };

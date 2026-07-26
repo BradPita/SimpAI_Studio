@@ -76,6 +76,8 @@
 
     const savedChatSettings = loadChatSettings();
     let modalBackdropPointerStarted = false;
+    let modalTouchPoint = null;
+    let describeViewportSyncFrame = 0;
 
     const state = {
         conversationId: '',
@@ -827,6 +829,45 @@
         el.style.setProperty(name, value, 'important');
     }
 
+    function describeCompactViewport() {
+        const viewportWidth = Number(window.visualViewport?.width || window.innerWidth || 0);
+        return window.innerWidth <= 640 || (viewportWidth > 0 && viewportWidth <= 640);
+    }
+
+    function describeViewportRect() {
+        const viewport = window.visualViewport;
+        return {
+            left: Number(viewport?.offsetLeft || 0),
+            top: Number(viewport?.offsetTop || 0),
+            width: Math.max(1, Number(viewport?.width || window.innerWidth || 1)),
+            height: Math.max(1, Number(viewport?.height || window.innerHeight || 1))
+        };
+    }
+
+    function applyCompactFloatingPanelLayout(panel) {
+        if (!panel || !describeCompactViewport()) return false;
+        const viewport = describeViewportRect();
+        panel.dataset.describeVlmChatCompactFrame = '1';
+        setImportantStyle(panel, 'transform', 'none');
+        setImportantStyle(panel, 'left', `${Math.round(viewport.left)}px`);
+        setImportantStyle(panel, 'top', `${Math.round(viewport.top)}px`);
+        setImportantStyle(panel, 'right', 'auto');
+        setImportantStyle(panel, 'bottom', 'auto');
+        setImportantStyle(panel, 'width', `${Math.round(viewport.width)}px`);
+        setImportantStyle(panel, 'height', `${Math.round(viewport.height)}px`);
+        setImportantStyle(panel, 'max-width', `${Math.round(viewport.width)}px`);
+        setImportantStyle(panel, 'max-height', `${Math.round(viewport.height)}px`);
+        return true;
+    }
+
+    function clearCompactFloatingPanelLayout(panel) {
+        if (!panel || panel.dataset.describeVlmChatCompactFrame !== '1') return false;
+        delete panel.dataset.describeVlmChatCompactFrame;
+        ['transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
+            .forEach((name) => panel.style.removeProperty(name));
+        return true;
+    }
+
     function isFloatingModalHidden(modal) {
         if (!modal) return true;
         const style = window.getComputedStyle(modal);
@@ -839,6 +880,11 @@
 
     function keepFloatingPanelInViewport(panel, margin = 12) {
         if (!panel) return;
+        if (applyCompactFloatingPanelLayout(panel)) return;
+        if (panel.dataset.describeVlmChatMaximized === '1') {
+            applyMaximizedFloatingPanelLayout(panel);
+            return;
+        }
         const rect = panel.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
@@ -891,6 +937,11 @@
 
     function clampFloatingPanelSizeToViewport(panel, margin = 12) {
         if (!panel) return;
+        if (applyCompactFloatingPanelLayout(panel)) return;
+        if (panel.dataset.describeVlmChatMaximized === '1') {
+            applyMaximizedFloatingPanelLayout(panel);
+            return;
+        }
         const rect = panel.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         applyFloatingPanelSize(panel, rect.width, rect.height, floatingResizeViewportBounds(margin), false);
@@ -898,6 +949,7 @@
 
     function saveFloatingPanelLayout(panel) {
         if (!panel) return;
+        if (describeCompactViewport() || panel.dataset.describeVlmChatMaximized === '1') return;
         const rect = panel.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         state.windowLayout = {
@@ -912,6 +964,7 @@
     }
 
     function applySavedFloatingPanelLayout(panel, margin = 12) {
+        if (applyCompactFloatingPanelLayout(panel)) return true;
         const layout = state.windowLayout;
         if (!panel || !layout) return false;
         const bounds = floatingResizeViewportBounds(margin);
@@ -934,6 +987,112 @@
             setImportantStyle(panel, 'bottom', 'auto');
         }
         return true;
+    }
+
+    function syncFloatingMaximizeControl(panel) {
+        const button = panel?.querySelector?.('[data-describe-vlm-chat-maximize]');
+        if (!button) return;
+        const maximized = panel.dataset.describeVlmChatMaximized === '1';
+        const label = maximized ? t('Restore window', '还原窗口') : t('Maximize window', '最大化窗口');
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.setAttribute('aria-pressed', maximized ? 'true' : 'false');
+        const icon = button.querySelector('i');
+        if (icon) icon.className = maximized ? 'fa-solid fa-window-restore' : 'fa-solid fa-maximize';
+    }
+
+    function applyMaximizedFloatingPanelLayout(panel, margin = 8) {
+        if (!panel) return;
+        if (applyCompactFloatingPanelLayout(panel)) return;
+        const width = Math.max(1, window.innerWidth - margin * 2);
+        const height = Math.max(1, window.innerHeight - margin * 2);
+        setImportantStyle(panel, 'transform', 'none');
+        setImportantStyle(panel, 'left', `${margin}px`);
+        setImportantStyle(panel, 'top', `${margin}px`);
+        setImportantStyle(panel, 'right', 'auto');
+        setImportantStyle(panel, 'bottom', 'auto');
+        setImportantStyle(panel, 'width', `${Math.round(width)}px`);
+        setImportantStyle(panel, 'height', `${Math.round(height)}px`);
+        setImportantStyle(panel, 'max-width', `${Math.round(width)}px`);
+        setImportantStyle(panel, 'max-height', `${Math.round(height)}px`);
+    }
+
+    function toggleFloatingPanelMaximize(panel) {
+        if (!panel || describeCompactViewport()) return;
+        if (panel.dataset.describeVlmChatMaximized === '1') {
+            delete panel.dataset.describeVlmChatMaximized;
+            const restore = panel.__describeVlmChatRestoreLayout || null;
+            panel.__describeVlmChatRestoreLayout = null;
+            if (restore) {
+                const bounds = floatingResizeViewportBounds(12);
+                applyFloatingPanelSize(panel, restore.width, restore.height, bounds, false);
+                const rect = panel.getBoundingClientRect();
+                const left = Math.max(12, Math.min(restore.left, window.innerWidth - 12 - rect.width));
+                const top = Math.max(12, Math.min(restore.top, window.innerHeight - 12 - rect.height));
+                setImportantStyle(panel, 'transform', 'none');
+                setImportantStyle(panel, 'left', `${Math.round(left)}px`);
+                setImportantStyle(panel, 'top', `${Math.round(top)}px`);
+                setImportantStyle(panel, 'right', 'auto');
+                setImportantStyle(panel, 'bottom', 'auto');
+                panel.dataset.describeVlmChatMoved = restore.moved ? '1' : '';
+                panel.dataset.describeVlmChatResized = restore.resized ? '1' : '';
+                if (!restore.moved) delete panel.dataset.describeVlmChatMoved;
+                if (!restore.resized) delete panel.dataset.describeVlmChatResized;
+            } else {
+                ['transform', 'left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']
+                    .forEach((name) => panel.style.removeProperty(name));
+                applySavedFloatingPanelLayout(panel);
+            }
+            saveFloatingPanelLayout(panel);
+        } else {
+            const rect = panel.getBoundingClientRect();
+            panel.__describeVlmChatRestoreLayout = {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+                moved: panel.dataset.describeVlmChatMoved === '1',
+                resized: panel.dataset.describeVlmChatResized === '1'
+            };
+            panel.dataset.describeVlmChatMaximized = '1';
+            applyMaximizedFloatingPanelLayout(panel);
+        }
+        syncFloatingMaximizeControl(panel);
+    }
+
+    function syncFloatingPanelViewportMode(modal, panel) {
+        if (!modal || !panel || isFloatingModalHidden(modal)) return;
+        if (applyCompactFloatingPanelLayout(panel)) {
+            syncFloatingMaximizeControl(panel);
+            return;
+        }
+        const leftCompactMode = clearCompactFloatingPanelLayout(panel);
+        if (panel.dataset.describeVlmChatMaximized === '1') {
+            applyMaximizedFloatingPanelLayout(panel);
+        } else if (leftCompactMode) {
+            applySavedFloatingPanelLayout(panel);
+        } else if (panel.dataset.describeVlmChatMoved === '1' || panel.dataset.describeVlmChatResized === '1') {
+            clampFloatingPanelSizeToViewport(panel);
+            keepFloatingPanelInViewport(panel);
+        }
+        syncFloatingMaximizeControl(panel);
+    }
+
+    function scheduleFloatingPanelViewportSync(modal, panel) {
+        if (describeViewportSyncFrame) window.cancelAnimationFrame(describeViewportSyncFrame);
+        describeViewportSyncFrame = window.requestAnimationFrame(() => {
+            describeViewportSyncFrame = 0;
+            syncFloatingPanelViewportMode(modal, panel);
+        });
+    }
+
+    function installDescribeViewportSync(modal, panel) {
+        if (!modal || !panel || modal.dataset.describeVlmViewportSyncBound === '1') return;
+        modal.dataset.describeVlmViewportSyncBound = '1';
+        const schedule = () => scheduleFloatingPanelViewportSync(modal, panel);
+        window.addEventListener('resize', schedule);
+        window.visualViewport?.addEventListener?.('resize', schedule);
+        window.visualViewport?.addEventListener?.('scroll', schedule);
     }
 
     function installDescribeFloatingDrag(modal, panel) {
@@ -981,7 +1140,8 @@
         };
 
         handle.addEventListener('pointerdown', (evt) => {
-            if (evt.button !== 0 || isFloatingModalHidden(modal)) return;
+            if (evt.button !== 0 || isFloatingModalHidden(modal) || describeCompactViewport()) return;
+            if (panel.dataset.describeVlmChatMaximized === '1') return;
             if (evt.target?.closest?.('button, input, textarea, select, [role="button"]')) return;
             const rect = panel.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
@@ -995,6 +1155,10 @@
         }, { passive: false });
 
         window.addEventListener('resize', () => {
+            if (describeCompactViewport() || panel.dataset.describeVlmChatMaximized === '1') {
+                scheduleFloatingPanelViewportSync(modal, panel);
+                return;
+            }
             if (panel.dataset.describeVlmChatMoved === '1') keepFloatingPanelInViewport(panel, margin);
         });
     }
@@ -1044,7 +1208,8 @@
         };
 
         handle.addEventListener('pointerdown', (evt) => {
-            if (evt.button !== 0 || isFloatingModalHidden(modal)) return;
+            if (evt.button !== 0 || isFloatingModalHidden(modal) || describeCompactViewport()) return;
+            if (panel.dataset.describeVlmChatMaximized === '1') return;
             const rect = panel.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
             resizeState = {
@@ -1066,6 +1231,10 @@
         }, { passive: false });
 
         window.addEventListener('resize', () => {
+            if (describeCompactViewport() || panel.dataset.describeVlmChatMaximized === '1') {
+                scheduleFloatingPanelViewportSync(modal, panel);
+                return;
+            }
             if (panel.dataset.describeVlmChatResized === '1' && !isFloatingModalHidden(modal)) {
                 clampFloatingPanelSizeToViewport(panel, margin);
                 keepFloatingPanelInViewport(panel, margin);
@@ -1085,7 +1254,10 @@
             panel.classList.add('sai-floating-card', 'modal-content', 'simpleai-resizable-popup');
             installDescribeFloatingDrag(modal, panel);
             installDescribeFloatingResize(modal, panel);
-            if (!isFloatingModalHidden(modal)) {
+            installDescribeViewportSync(modal, panel);
+            if (!isFloatingModalHidden(modal) && describeCompactViewport()) {
+                applyCompactFloatingPanelLayout(panel);
+            } else if (!isFloatingModalHidden(modal)) {
                 applySavedFloatingPanelLayout(panel);
             }
             if (panel.dataset.describeVlmChatResized === '1' && !isFloatingModalHidden(modal)) {
@@ -1094,6 +1266,7 @@
             if ((panel.dataset.describeVlmChatMoved === '1' || panel.dataset.describeVlmChatResized === '1') && !isFloatingModalHidden(modal)) {
                 keepFloatingPanelInViewport(panel);
             }
+            syncFloatingMaximizeControl(panel);
         }
         return modal;
     }
@@ -1118,6 +1291,7 @@
       <b data-describe-vlm-chat-model-value hidden>${escapeHtml(t('Detecting', '检测中'))}</b>
     </div>
     <span class="describe-vlm-chat-head-actions">
+      <button type="button" data-describe-vlm-chat-maximize title="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-label="${escapeHtml(t('Maximize window', '最大化窗口'))}" aria-pressed="false"><i class="fa-solid fa-maximize"></i></button>
       <button type="button" data-describe-vlm-chat-close title="${escapeHtml(t('Close', '关闭'))}" aria-label="${escapeHtml(t('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
     </span>
   </div>
@@ -1135,15 +1309,17 @@
   <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
   <div class="describe-vlm-chat-status" data-describe-vlm-chat-status></div>
   <div class="describe-vlm-chat-compose">
-    <div class="describe-vlm-chat-compose-tools" aria-label="${escapeHtml(t('Chat tools', '对话工具'))}">
-      <button type="button" data-describe-vlm-chat-import-prompt title="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}" aria-label="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}"><i class="fa-solid fa-file-import"></i></button>
-      <button type="button" data-describe-vlm-chat-save title="${escapeHtml(t('Save conversation', '保存对话'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
-      <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
-      <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
+    <div class="describe-vlm-chat-compose-toolbar">
+      <div class="describe-vlm-chat-compose-tools" aria-label="${escapeHtml(t('Chat tools', '对话工具'))}">
+        <button type="button" data-describe-vlm-chat-import-prompt title="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}" aria-label="${escapeHtml(t('Import main prompt to input', '导入主提示词到输入框'))}"><i class="fa-solid fa-file-import"></i></button>
+        <button type="button" data-describe-vlm-chat-save title="${escapeHtml(t('Save conversation', '保存对话'))}" aria-label="${escapeHtml(t('Save conversation', '保存对话'))}"><i class="fa-solid fa-download"></i></button>
+        <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
+        <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
+      </div>
+      <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Use image', '使用图片'))}</span></label>
+      <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
+      <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image', '添加引用图片'))}" aria-label="${escapeHtml(t('Attach reference image', '添加引用图片'))}"><i class="fa-solid fa-image"></i></button>
     </div>
-    <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Use image', '使用图片'))}</span></label>
-    <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
-    <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image', '添加引用图片'))}" aria-label="${escapeHtml(t('Attach reference image', '添加引用图片'))}"><i class="fa-solid fa-image"></i></button>
     <div class="describe-vlm-chat-attachments" data-describe-vlm-chat-attachments hidden></div>
     <textarea data-describe-vlm-chat-input rows="2" placeholder="${escapeHtml(chatInputPlaceholder(state.chatMode))}"></textarea>
     <button type="button" data-describe-vlm-chat-stop title="${escapeHtml(t('Stop reply', '停止回答'))}" aria-label="${escapeHtml(t('Stop reply', '停止回答'))}" hidden><i class="fa-solid fa-stop"></i></button>
@@ -1173,6 +1349,14 @@
         document.documentElement.classList.add('describe-vlm-chat-open');
         window.requestAnimationFrame(() => {
             const panel = modal.querySelector('.describe-vlm-chat-panel');
+            if (describeCompactViewport()) {
+                applyCompactFloatingPanelLayout(panel);
+                return;
+            }
+            if (panel?.dataset.describeVlmChatMaximized === '1') {
+                applyMaximizedFloatingPanelLayout(panel);
+                return;
+            }
             if (applySavedFloatingPanelLayout(panel)) return;
             if (panel?.dataset.describeVlmChatResized === '1') clampFloatingPanelSizeToViewport(panel);
             if (panel?.dataset.describeVlmChatMoved === '1' || panel?.dataset.describeVlmChatResized === '1') keepFloatingPanelInViewport(panel);
@@ -1900,6 +2084,35 @@
         evt.stopPropagation();
     }
 
+    function containModalTouchStart(evt) {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal || modal.hidden || !modal.contains(evt.target)) return;
+        const touch = evt.touches?.[0] || null;
+        modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+        evt.stopPropagation();
+    }
+
+    function containModalTouchMove(evt) {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (!modal || modal.hidden || !modal.contains(evt.target)) return;
+        const touch = evt.touches?.[0] || null;
+        const deltaX = modalTouchPoint && touch ? modalTouchPoint.x - touch.clientX : 0;
+        const deltaY = modalTouchPoint && touch ? modalTouchPoint.y - touch.clientY : 0;
+        modalTouchPoint = touch ? { x: touch.clientX, y: touch.clientY } : modalTouchPoint;
+        const insidePanel = targetInsideChatPanel(evt.target, modal);
+        const scroller = insidePanel
+            ? closestScrollableForWheel(evt.target, modal, { deltaX, deltaY })
+            : null;
+        if (!insidePanel || !scroller) evt.preventDefault();
+        evt.stopPropagation();
+    }
+
+    function resetModalTouchPoint(evt) {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        if (modal && !modal.hidden && modal.contains(evt.target)) evt.stopPropagation();
+        modalTouchPoint = null;
+    }
+
     async function sendMessage() {
         if (state.busy) return;
         const requestToken = state.requestToken + 1;
@@ -2068,6 +2281,10 @@
             closeModal();
             return;
         }
+        if (evt.target.closest('[data-describe-vlm-chat-maximize]')) {
+            toggleFloatingPanelMaximize(modal.querySelector('.describe-vlm-chat-panel'));
+            return;
+        }
         if (evt.target.closest('[data-describe-vlm-chat-clear]')) {
             if (confirmClearConversation()) clearConversation();
             return;
@@ -2202,6 +2419,10 @@
     document.addEventListener('pointerup', handleModalPointerUp, true);
     document.addEventListener('pointercancel', resetModalPointerState, true);
     document.addEventListener('wheel', containModalWheel, { capture: true, passive: false });
+    document.addEventListener('touchstart', containModalTouchStart, { capture: true, passive: true });
+    document.addEventListener('touchmove', containModalTouchMove, { capture: true, passive: false });
+    document.addEventListener('touchend', resetModalTouchPoint, true);
+    document.addEventListener('touchcancel', resetModalTouchPoint, true);
 
     document.addEventListener('paste', (evt) => {
         if (!modalIsOpen() || !eventInsideModal(evt)) return;
