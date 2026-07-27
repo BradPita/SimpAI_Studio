@@ -878,5 +878,5 @@ onUiLoaded(async() => {
     }
 
     initializeZoomTargets();
-    setInterval(initializeZoomTargets, 1000);
+    if (typeof onAfterUiUpdate === "function") onAfterUiUpdate(initializeZoomTargets);
 });

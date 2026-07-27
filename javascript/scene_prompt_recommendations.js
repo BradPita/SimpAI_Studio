@@ -275,5 +275,4 @@
 
     if (typeof onUiLoaded === "function") onUiLoaded(bindButton);
     if (typeof onAfterUiUpdate === "function") onAfterUiUpdate(bindButton);
-    window.setInterval(setPromptButtonLabel, 1000);
 })();

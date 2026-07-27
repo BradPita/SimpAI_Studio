@@ -24,6 +24,10 @@ let presetStoreUiState = {
     expand_flag: false,
     theme: "dark",
     meta: {},
+    meta_revision: "",
+    owner_key: "",
+    optimistic_seq: 0,
+    optimistic_timer: 0,
 };
 let presetStoreFilterState = {
     query: "",
@@ -3500,6 +3504,53 @@ function refreshPresetStoreDisplayNames(root) {
     });
 }
 
+function applyPresetStoreMissingStatusUpdates(systemParams) {
+    const updates = systemParams?.__preset_store_missing_updates;
+    if (!updates || typeof updates !== "object" || Array.isArray(updates)) return false;
+
+    const meta = presetStoreUiState.meta && typeof presetStoreUiState.meta === "object"
+        ? presetStoreUiState.meta
+        : {};
+    const normalizedUpdates = new Map();
+    Object.entries(updates).forEach(([name, missing]) => {
+        const normalized = normalizePresetName(name);
+        if (normalized) normalizedUpdates.set(normalized, !!missing);
+    });
+    if (!normalizedUpdates.size) return false;
+
+    let changed = false;
+    Object.keys(meta).forEach((key) => {
+        const normalized = normalizePresetName(key);
+        if (!normalizedUpdates.has(normalized) || !meta[key] || typeof meta[key] !== "object") return;
+        const missing = normalizedUpdates.get(normalized);
+        if (!!meta[key].missing !== missing) {
+            meta[key].missing = missing;
+            changed = true;
+        }
+    });
+
+    const store = getPresetStoreElement();
+    store?.querySelectorAll?.(".preset-store-draft-name, .preset-store-candidate-name").forEach((label) => {
+        const name = label.getAttribute("data-preset-store-name")
+            || label.getAttribute("data-original-text")
+            || label.textContent
+            || "";
+        const normalized = normalizePresetName(name);
+        if (!normalizedUpdates.has(normalized)) return;
+        const missing = normalizedUpdates.get(normalized);
+        const previousMissing = label.getAttribute("data-preset-store-missing") === "1";
+        applyPresetStoreDisplayName(label, normalized, missing);
+        const button = label.closest?.(".preset-store-candidate");
+        if (button) {
+            button.classList.toggle("preset-missing", missing);
+            const baseSearch = button.dataset.saiSearchBase || "";
+            button.dataset.saiSearch = `${baseSearch} ${label.textContent || ""}`.trim().toLowerCase();
+        }
+        if (previousMissing !== missing) changed = true;
+    });
+    return changed;
+}
+
 function getTopbarNavButtonOriginalText(button) {
     if (!button) return "";
     const own = button.getAttribute ? button.getAttribute("data-original-text") : "";
@@ -4213,6 +4264,21 @@ function refresh_topbar_status_js(system_params) {
     if (!Object.prototype.hasOwnProperty.call(system_params, "__canvas_preset_catalog") && previousSystemParams.__canvas_preset_catalog) {
         system_params.__canvas_preset_catalog = previousSystemParams.__canvas_preset_catalog;
     }
+    const samePresetStoreOwner = getPresetStoreOwnerKey(previousSystemParams) === getPresetStoreOwnerKey(system_params);
+    if (
+        samePresetStoreOwner
+        && !Object.prototype.hasOwnProperty.call(system_params, "__preset_store_meta")
+        && previousSystemParams.__preset_store_meta
+    ) {
+        system_params.__preset_store_meta = previousSystemParams.__preset_store_meta;
+    }
+    if (
+        samePresetStoreOwner
+        && !Object.prototype.hasOwnProperty.call(system_params, "__preset_store_meta_revision")
+        && previousSystemParams.__preset_store_meta_revision
+    ) {
+        system_params.__preset_store_meta_revision = previousSystemParams.__preset_store_meta_revision;
+    }
     preserveFinishedGalleryBrowserFolderInParams(system_params, "refresh_topbar_status_js");
     topbarLastSystemParams = system_params;
     window.simpleaiTopbarSystemParams = system_params;
@@ -4269,9 +4335,19 @@ function refresh_topbar_status_js(system_params) {
     const shouldApplyPresetStore = incomingPresetStoreSeq >= topbarLastPresetStoreSeq;
     if (shouldApplyPresetStore) {
         topbarLastPresetStoreSeq = incomingPresetStoreSeq;
+        if (presetStoreUiState.optimistic_seq && incomingPresetStoreSeq >= presetStoreUiState.optimistic_seq) {
+            clearPresetStoreOptimisticIntent();
+        }
     } else if (topbarLastNavNameList && topbarLastNavNameList.length) {
         nav_name_list = topbarLastNavNameList.slice();
         system_params["__nav_name_list"] = nav_name_list.join(",");
+    }
+    const incomingPresetStoreOwner = getPresetStoreOwnerKey(system_params);
+    if (shouldApplyPresetStore && presetStoreUiState.owner_key && presetStoreUiState.owner_key !== incomingPresetStoreOwner) {
+        presetStoreUiState.meta = {};
+        presetStoreUiState.meta_revision = "";
+        presetStoreUiState.owner_key = "";
+        invalidatePresetStoreReusableContent();
     }
     presetStoreUiState.nav_name_list = nav_name_list;
     presetStoreUiState.role = system_params["user_role"];
@@ -4280,7 +4356,13 @@ function refresh_topbar_status_js(system_params) {
     }
     if (shouldApplyPresetStore && system_params["__preset_store_meta"] && typeof system_params["__preset_store_meta"] === "object") {
         presetStoreUiState.meta = system_params["__preset_store_meta"];
+        presetStoreUiState.owner_key = incomingPresetStoreOwner;
     }
+    if (shouldApplyPresetStore && Object.prototype.hasOwnProperty.call(system_params, "__preset_store_meta_revision")) {
+        presetStoreUiState.meta_revision = String(system_params["__preset_store_meta_revision"] || "");
+    }
+    applyPresetStoreMissingStatusUpdates(system_params);
+    delete system_params.__preset_store_missing_updates;
     presetStoreUiState.theme = theme;
     try {
         reconcileSceneVisibilityForPreset(system_params);
@@ -9355,6 +9437,95 @@ function getPresetStoreElement() {
     }
 }
 
+function getPresetStoreOwnerKey(systemParams = null) {
+    const params = systemParams && typeof systemParams === "object"
+        ? systemParams
+        : (window.simpleaiTopbarSystemParams || {});
+    const userDid = String(params.user_did || "").trim();
+    const role = String(params.user_role || presetStoreUiState.role || "guest").trim().toLowerCase();
+    const accessMode = String(params.access_mode || "").trim().toLowerCase();
+    return `${accessMode}|${role}|${userDid}`;
+}
+
+function isPresetStoreGuestIdentity(systemParams = null) {
+    if (systemParams && typeof systemParams === "object") {
+        return String(systemParams.user_role || "").toLowerCase() === "guest"
+            && String(systemParams.access_mode || "").toLowerCase() === "multi-user";
+    }
+    const params = window.simpleaiTopbarSystemParams || {};
+    return String(params.user_role || "").toLowerCase() === "guest"
+        && String(params.access_mode || "").toLowerCase() === "multi-user";
+}
+
+function isPresetStoreElementOpen(presetStoreEl) {
+    if (!presetStoreEl || presetStoreEl.hidden) return false;
+    if (presetStoreEl.classList?.contains("hidden") || presetStoreEl.classList?.contains("hide")) return false;
+    return presetStoreEl.style.display !== "none";
+}
+
+function invalidatePresetStoreReusableContent(presetStoreEl = getPresetStoreElement()) {
+    if (!presetStoreEl?.dataset) return;
+    delete presetStoreEl.dataset.simpleaiPresetStoreReady;
+    delete presetStoreEl.dataset.simpleaiPresetStoreRevision;
+    delete presetStoreEl.dataset.simpleaiPresetStoreOwner;
+}
+
+function presetStoreHasReusableContent(presetStoreEl = getPresetStoreElement()) {
+    if (!presetStoreEl || isPresetStoreGuestIdentity()) return false;
+    if (presetStoreEl.dataset.simpleaiPresetStoreReady !== "1") return false;
+    if (presetStoreEl.dataset.simpleaiPresetStoreOwner !== getPresetStoreOwnerKey()) return false;
+    return !!presetStoreEl.querySelector(".preset-store-candidate");
+}
+
+function clearPresetStoreOptimisticIntent() {
+    if (presetStoreUiState.optimistic_timer) {
+        window.clearTimeout(presetStoreUiState.optimistic_timer);
+    }
+    presetStoreUiState.optimistic_timer = 0;
+    presetStoreUiState.optimistic_seq = 0;
+    window.__simpleaiPresetStoreOptimisticIntent = null;
+}
+
+function recordPresetStoreOptimisticIntent(isOpen) {
+    const previousSeq = Math.max(0, Number(topbarLastPresetStoreSeq) || 0);
+    const expectedSeq = previousSeq + 1;
+    clearPresetStoreOptimisticIntent();
+    topbarLastPresetStoreSeq = expectedSeq;
+    presetStoreUiState.optimistic_seq = expectedSeq;
+    presetStoreUiState.expand_flag = !!isOpen;
+    window.__simpleaiPresetStoreOptimisticIntent = {
+        isOpen: !!isOpen,
+        seq: expectedSeq,
+        startedAt: Date.now(),
+    };
+    presetStoreUiState.optimistic_timer = window.setTimeout(() => {
+        if (presetStoreUiState.optimistic_seq !== expectedSeq) return;
+        clearPresetStoreOptimisticIntent();
+        if (topbarLastPresetStoreSeq === expectedSeq) {
+            topbarLastPresetStoreSeq = previousSeq;
+        }
+    }, 15000);
+    return expectedSeq;
+}
+
+function applyCachedPresetStoreToggle(target) {
+    const storeRoot = target?.closest?.("#bar_store");
+    if (!storeRoot) return false;
+    const storeButton = storeRoot.matches("button") ? storeRoot : storeRoot.querySelector("button");
+    if (storeButton?.disabled || storeButton?.getAttribute("aria-disabled") === "true") return false;
+    const presetStoreEl = getPresetStoreElement();
+    if (!presetStoreHasReusableContent(presetStoreEl)) return false;
+    const nextOpen = !isPresetStoreElementOpen(presetStoreEl);
+    recordPresetStoreOptimisticIntent(nextOpen);
+    setPresetStoreOpen(presetStoreEl, nextOpen);
+    if (nextOpen) {
+        ensurePresetStoreInViewport(presetStoreEl);
+        const resizeState = ensurePresetStoreResize(presetStoreEl);
+        if (resizeState?.ensureWithinViewport) resizeState.ensureWithinViewport(false);
+    }
+    return true;
+}
+
 function triggerBarStoreToggleOnce() {
     let root = null;
     try {
@@ -9457,8 +9628,8 @@ function resetPresetStoreSearchFilter(applyFilters = false) {
 }
 
 function setPresetStoreOpen(presetStoreEl, isOpen) {
-    if (!presetStoreEl) return;
-    const wasOpen = presetStoreEl.style.display !== "none" && !presetStoreEl.hidden;
+    if (!presetStoreEl) return false;
+    const wasOpen = isPresetStoreElementOpen(presetStoreEl);
     document.documentElement.classList.toggle("preset-store-open", !!isOpen);
     if (isOpen) {
         if (!wasOpen) {
@@ -9483,15 +9654,18 @@ function setPresetStoreOpen(presetStoreEl, isOpen) {
                 presetStoreEl.classList.add("hide");
             }
         } catch (e) {}
-        resetPresetStoreSearchFilter(true);
-        delete presetStoreEl.dataset.saiDragged;
-        presetStoreEl.style.setProperty("left", "50%", "important");
-        presetStoreEl.style.setProperty("top", `${getPresetStoreDefaultTop()}px`, "important");
-        presetStoreEl.style.setProperty("transform", "translateX(-50%)", "important");
+        if (wasOpen) {
+            resetPresetStoreSearchFilter(true);
+            delete presetStoreEl.dataset.saiDragged;
+            presetStoreEl.style.setProperty("left", "50%", "important");
+            presetStoreEl.style.setProperty("top", `${getPresetStoreDefaultTop()}px`, "important");
+            presetStoreEl.style.setProperty("transform", "translateX(-50%)", "important");
+        }
     }
     if (wasOpen !== !!isOpen) {
         window.dispatchEvent(new CustomEvent(isOpen ? "simpai:preset-store-opened" : "simpai:preset-store-closed"));
     }
+    return wasOpen !== !!isOpen;
 }
 
 function ensurePresetStoreInViewport(presetStoreEl) {
@@ -9819,6 +9993,12 @@ function setPresetStoreDraftFromNav(navList, force = false) {
     presetStoreDraftState.list = cleanPresetStoreNameList(navList, getPresetStoreDraftLimit());
     presetStoreDraftState.list = ensurePresetStoreNavListMinimum(presetStoreDraftState.list);
     presetStoreDraftState.dirty = false;
+}
+
+function getPresetStoreDraftRenderRevision() {
+    return presetStoreDraftState.list
+        .map((name) => normalizePresetName(name))
+        .join("\u001f");
 }
 
 function removePresetStoreDraftItemAt(index) {
@@ -10391,6 +10571,7 @@ function renderPresetStoreDraft() {
     if (!presetStoreDraftState.pointerDrag) {
         clearPresetStoreDraftDragState();
     }
+    host.dataset.simpleaiPresetStoreDraftRevision = getPresetStoreDraftRenderRevision();
     localizePresetStoreUi();
 }
 
@@ -10440,6 +10621,25 @@ function getPresetStoreCandidateEntries() {
             .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
     }
     return [];
+}
+
+function getPresetStoreCandidateRenderRevision(entries = null) {
+    const owner = presetStoreUiState.owner_key || getPresetStoreOwnerKey();
+    const metaCount = Object.keys(presetStoreUiState.meta || {}).length;
+    if (presetStoreUiState.meta_revision) {
+        return `${owner}|${presetStoreUiState.meta_revision}|${metaCount}`;
+    }
+    const source = Array.isArray(entries) ? entries : getPresetStoreCandidateEntries();
+    const fallback = source.map((entry) => [
+        entry.name,
+        entry.engine,
+        entry.scene ? 1 : 0,
+        entry.mediaType,
+        entry.missing ? 1 : 0,
+        entry.order,
+        entry.source,
+    ]);
+    return `${owner}|${JSON.stringify(fallback)}`;
 }
 
 function createPresetStoreCandidateElement(entry) {
@@ -10507,8 +10707,8 @@ function renderPresetStoreCandidateGroup(poolSelector, countSelector, entries) {
     return Array.from(pool.querySelectorAll(".preset-store-candidate"));
 }
 
-function renderPresetStoreCandidatePool() {
-    const entries = getPresetStoreCandidateEntries();
+function renderPresetStoreCandidatePool(candidateEntries = null) {
+    const entries = Array.isArray(candidateEntries) ? candidateEntries : getPresetStoreCandidateEntries();
     const mainEntries = entries.filter((entry) => entry.source !== "user");
     const userEntries = entries.filter((entry) => entry.source === "user");
     const mainButtons = renderPresetStoreCandidateGroup(
@@ -10837,6 +11037,7 @@ function bindPresetStoreControls() {
         close.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            recordPresetStoreOptimisticIntent(false);
             presetStoreUiState.expand_flag = false;
             setPresetStoreOpen(getPresetStoreElement(), false);
             triggerBarStoreToggleOnce();
@@ -10977,25 +11178,46 @@ function updatePresetStore(nav_name_list, role, expand_flag, theme) {
     bindPresetStoreControls();
     initPresetStoreDrag(preset_store);
     setPresetStoreDraftFromNav(navList);
-    renderPresetStoreDraft();
+    const draftHost = getPresetStoreControl("#preset_store_nav_draft");
+    const draftRevision = getPresetStoreDraftRenderRevision();
+    const draftNeedsRender = !draftHost
+        || draftHost.dataset.simpleaiPresetStoreDraftRevision !== draftRevision;
+    if (draftNeedsRender) {
+        renderPresetStoreDraft();
+    }
 
     if (expand_flag) {
         if (preset_store.dataset.optimisticCollapsed === "1") {
             delete preset_store.dataset.optimisticCollapsed;
         }
-        setPresetStoreOpen(preset_store, true);
-        ensurePresetStoreInViewport(preset_store);
-        if (resizeState && resizeState.ensureWithinViewport) {
-            resizeState.ensureWithinViewport(false);
+        const didOpen = setPresetStoreOpen(preset_store, true);
+        if (didOpen) {
+            ensurePresetStoreInViewport(preset_store);
+            if (resizeState && resizeState.ensureWithinViewport) {
+                resizeState.ensureWithinViewport(false);
+            }
         }
     } else {
         setPresetStoreOpen(preset_store, false);
     }
-    const candidateButtons = renderPresetStoreCandidatePool();
-    renderPresetStoreEngineFilters(candidateButtons);
-    syncPresetStoreCandidatePinnedState();
-    applyPresetStoreFilters();
-    localizePresetStoreUi();
+    let candidateEntries = presetStoreUiState.meta_revision ? null : getPresetStoreCandidateEntries();
+    const candidateRevision = getPresetStoreCandidateRenderRevision(candidateEntries);
+    const candidatePool = getPresetStoreControl("#preset_store_candidate_pool");
+    const candidateNeedsRender = !candidatePool
+        || preset_store.dataset.simpleaiPresetStoreRevision !== candidateRevision;
+    if (candidateNeedsRender) {
+        if (!candidateEntries) candidateEntries = getPresetStoreCandidateEntries();
+        const candidateButtons = renderPresetStoreCandidatePool(candidateEntries);
+        renderPresetStoreEngineFilters(candidateButtons);
+        syncPresetStoreCandidatePinnedState();
+        applyPresetStoreFilters();
+        localizePresetStoreUi();
+        preset_store.dataset.simpleaiPresetStoreRevision = candidateRevision;
+        preset_store.dataset.simpleaiPresetStoreOwner = presetStoreUiState.owner_key || getPresetStoreOwnerKey();
+        preset_store.dataset.simpleaiPresetStoreReady = candidateButtons.length > 0 ? "1" : "0";
+    } else if (draftNeedsRender) {
+        syncPresetStoreCandidatePinnedState();
+    }
 }
 
 function refreshTopbarStoreIdentityLabel(systemParams = {}) {
@@ -11003,8 +11225,7 @@ function refreshTopbarStoreIdentityLabel(systemParams = {}) {
     const storeButton = storeRoot && (storeRoot.matches("button") ? storeRoot : storeRoot.querySelector("button"));
     if (!storeButton) return;
 
-    const isGuest = String(systemParams.user_role || "").toLowerCase() === "guest"
-        && String(systemParams.access_mode || "").toLowerCase() === "multi-user";
+    const isGuest = isPresetStoreGuestIdentity(systemParams);
     storeRoot.classList.toggle("simpleai-guest-identity", isGuest);
     storeButton.classList.toggle("simpleai-guest-identity", isGuest);
     const englishText = isGuest ? "Guest identity" : "PresetStore";
@@ -11022,7 +11243,10 @@ function refreshTopbarStoreIdentityLabel(systemParams = {}) {
 
     if (isGuest) {
         const presetStore = getPresetStoreElement();
-        if (presetStore) setPresetStoreOpen(presetStore, false);
+        if (presetStore) {
+            invalidatePresetStoreReusableContent(presetStore);
+            setPresetStoreOpen(presetStore, false);
+        }
         presetStoreUiState.expand_flag = false;
     }
 }
@@ -12603,6 +12827,7 @@ function simpleAIPreviewFitHeightVar() {
 function setSimpleAIPreviewFitHeightVariable(target) {
     const column = target || document.querySelector("#main_layout_row > .preview_column") || document.querySelector(".preview_column");
     if (!column || !column.style) return false;
+    if (column.style.getPropertyValue("--simpai-preview-fit-height") === SIMPLEAI_PREVIEW_FIT_HEIGHT_CSS) return false;
     column.style.setProperty("--simpai-preview-fit-height", SIMPLEAI_PREVIEW_FIT_HEIGHT_CSS);
     return true;
 }
@@ -12618,13 +12843,12 @@ function syncPostGenerationGalleryResponsiveFit(reason) {
         const row = gallery.closest(".row");
         const form = gallery.closest(".form, .block");
         if (row && (row.dataset?.simpleaiPostGenerationSurface === "1" || row.contains(gallery))) {
-            try { row.style.setProperty("min-height", simpleAIPreviewFitHeightVar(), "important"); } catch (e) {}
-            try { row.style.setProperty("height", simpleAIPreviewFitHeightVar(), "important"); } catch (e) {}
-            changed = true;
+            try { changed = setPreviewGeneratingFitStyle(row, "min-height", simpleAIPreviewFitHeightVar()) || changed; } catch (e) {}
+            try { changed = setPreviewGeneratingFitStyle(row, "height", simpleAIPreviewFitHeightVar()) || changed; } catch (e) {}
         }
         if (form && form !== gallery) {
-            try { form.style.setProperty("height", "100%", "important"); } catch (e) {}
-            try { form.style.setProperty("min-height", "0px", "important"); } catch (e) {}
+            try { changed = setPreviewGeneratingFitStyle(form, "height", "100%") || changed; } catch (e) {}
+            try { changed = setPreviewGeneratingFitStyle(form, "min-height", "0px") || changed; } catch (e) {}
         }
     });
     if (changed) {
@@ -12651,6 +12875,76 @@ function getPreviewGeneratingFitHeight(root) {
     );
     const target = viewportHeight > 0 ? viewportHeight - 260 : 512;
     return Math.min(768, Math.max(320, Math.floor(target)));
+}
+
+function normalizePreviewGeneratingFitStyleValue(value) {
+    return String(value || "")
+        .trim()
+        .replace(/(^|[\s,(])-?0(?:px|%)(?=$|[\s,)])/g, (_match, prefix) => `${prefix}0`);
+}
+
+function setPreviewGeneratingFitStyle(node, name, value, priority = "important") {
+    if (!node || !node.style) return false;
+    const currentValue = node.style.getPropertyValue(name);
+    const currentPriority = node.style.getPropertyPriority(name);
+    const sameValue = currentValue === value
+        || normalizePreviewGeneratingFitStyleValue(currentValue) === normalizePreviewGeneratingFitStyleValue(value);
+    if (sameValue && currentPriority === priority) return false;
+    node.style.setProperty(name, value, priority);
+    return true;
+}
+
+function getPreviewGeneratingFitHiddenOwner(root) {
+    if (!root || !root.closest) return null;
+    const boundary = root.closest(".row") || root;
+    let node = root;
+    while (node) {
+        const data = node.dataset || {};
+        const classes = node.classList;
+        const fitOwnedHidden = node === root && data.simpleaiPreviewFitHidden === "1";
+        const hiddenByState = data.simpleaiPostGenerationCollapsed === "1"
+            || data.simpleaiGalleryWelcomeHiddenForGallery === "1"
+            || data.simpleaiPresetSwitchGalleryHidden === "1"
+            || data.simpleaiCatalogLinkedGalleryHidden === "1";
+        const hiddenByDom = !!node.hidden
+            || node.hasAttribute?.("hidden")
+            || node.getAttribute?.("aria-hidden") === "true"
+            || classes?.contains("hidden")
+            || classes?.contains("hide")
+            || classes?.contains("simpai-mounted-hidden")
+            || classes?.contains("simpai-gallery-browser-welcome-hidden")
+            || classes?.contains("simpai-preset-switch-gallery-hidden")
+            || classes?.contains("simpai-catalog-linked-gallery-hidden");
+        const hiddenByInlineStyle = !fitOwnedHidden && !!node.style && (
+            node.style.getPropertyValue("display") === "none"
+            || node.style.getPropertyValue("visibility") === "hidden"
+        );
+        if (hiddenByState || hiddenByDom || hiddenByInlineStyle) return node;
+        if (node === boundary) break;
+        node = node.parentElement;
+    }
+    return null;
+}
+
+function applyPreviewGeneratingFitHiddenState(root, hiddenOwner) {
+    if (!root || !hiddenOwner) return false;
+    const newlyHidden = root.dataset?.simpleaiPreviewFitHidden !== "1";
+    try { root.dataset.simpleaiPreviewFitHidden = "1"; } catch (e) {}
+    setPreviewGeneratingFitStyle(root, "display", "none");
+    setPreviewGeneratingFitStyle(root, "flex", "0 0 auto");
+    setPreviewGeneratingFitStyle(root, "min-height", "0px");
+    setPreviewGeneratingFitStyle(root, "height", "0px");
+    setPreviewGeneratingFitStyle(root, "max-height", "0px");
+    if (newlyHidden) {
+        try {
+            simpaiUiTrace("log", "[UI-TRACE] preview_fit.hidden_state", {
+                ownerId: hiddenOwner.id || "",
+                ownerClass: String(hiddenOwner.className || ""),
+                postGenerationCollapsed: hiddenOwner.dataset?.simpleaiPostGenerationCollapsed === "1",
+            });
+        } catch (e) {}
+    }
+    return true;
 }
 
 function isPreviewGeneratingSplitResultRow(root) {
@@ -12761,20 +13055,26 @@ function syncPreviewGeneratingImageFit() {
     if (!root) return;
     try { syncGenerationResultGallerySurface("preview_fit_sync"); } catch (e) {}
     try { syncPostGenerationGalleryResponsiveFit("preview_fit_sync"); } catch (e) {}
+    const hiddenOwner = getPreviewGeneratingFitHiddenOwner(root);
+    if (hiddenOwner) {
+        applyPreviewGeneratingFitHiddenState(root, hiddenOwner);
+        return;
+    }
+    try { delete root.dataset.simpleaiPreviewFitHidden; } catch (e) {}
     const targetHeight = getPreviewGeneratingFitHeight(root) + "px";
     const splitResultRow = isPreviewGeneratingSplitResultRow(root);
     const previewColumn = root.closest ? root.closest(".preview_column") : null;
     if (previewColumn && previewColumn.style) setSimpleAIPreviewFitHeightVariable(previewColumn);
-    root.style.setProperty("--simpai-preview-fit-height", SIMPLEAI_PREVIEW_FIT_HEIGHT_CSS);
-    root.style.setProperty("width", splitResultRow ? "auto" : "100%", "important");
-    root.style.setProperty("flex", splitResultRow ? "1 1 0" : "0 1 auto", "important");
-    root.style.setProperty("min-width", "0px", "important");
-    root.style.setProperty("max-width", "none", "important");
-    root.style.setProperty("height", targetHeight, "important");
-    root.style.setProperty("min-height", "0px", "important");
-    root.style.setProperty("max-height", targetHeight, "important");
-    root.style.setProperty("box-sizing", "border-box", "important");
-    root.style.setProperty("overflow", "hidden", "important");
+    setPreviewGeneratingFitStyle(root, "--simpai-preview-fit-height", SIMPLEAI_PREVIEW_FIT_HEIGHT_CSS, "");
+    setPreviewGeneratingFitStyle(root, "width", splitResultRow ? "auto" : "100%");
+    setPreviewGeneratingFitStyle(root, "flex", splitResultRow ? "1 1 0" : "0 1 auto");
+    setPreviewGeneratingFitStyle(root, "min-width", "0px");
+    setPreviewGeneratingFitStyle(root, "max-width", "none");
+    setPreviewGeneratingFitStyle(root, "height", targetHeight);
+    setPreviewGeneratingFitStyle(root, "min-height", "0px");
+    setPreviewGeneratingFitStyle(root, "max-height", targetHeight);
+    setPreviewGeneratingFitStyle(root, "box-sizing", "border-box");
+    setPreviewGeneratingFitStyle(root, "overflow", "hidden");
 
     const images = Array.from(root.querySelectorAll("img"));
     for (const img of images) {
@@ -12782,31 +13082,31 @@ function syncPreviewGeneratingImageFit() {
         while (node && node !== root.parentElement) {
             if (node.style) {
                 const nodeIsRoot = node === root;
-                node.style.setProperty("width", nodeIsRoot && splitResultRow ? "auto" : "100%", "important");
+                setPreviewGeneratingFitStyle(node, "width", nodeIsRoot && splitResultRow ? "auto" : "100%");
                 if (nodeIsRoot) {
-                    node.style.setProperty("flex", splitResultRow ? "1 1 0" : "0 1 auto", "important");
+                    setPreviewGeneratingFitStyle(node, "flex", splitResultRow ? "1 1 0" : "0 1 auto");
                 }
-                node.style.setProperty("max-width", "none", "important");
-                node.style.setProperty("height", targetHeight, "important");
-                node.style.setProperty("min-height", "0px", "important");
-                node.style.setProperty("max-height", targetHeight, "important");
-                node.style.setProperty("display", "flex", "important");
-                node.style.setProperty("align-items", "center", "important");
-                node.style.setProperty("justify-content", "center", "important");
-                node.style.setProperty("box-sizing", "border-box", "important");
-                node.style.setProperty("overflow", "hidden", "important");
+                setPreviewGeneratingFitStyle(node, "max-width", "none");
+                setPreviewGeneratingFitStyle(node, "height", targetHeight);
+                setPreviewGeneratingFitStyle(node, "min-height", "0px");
+                setPreviewGeneratingFitStyle(node, "max-height", targetHeight);
+                setPreviewGeneratingFitStyle(node, "display", "flex");
+                setPreviewGeneratingFitStyle(node, "align-items", "center");
+                setPreviewGeneratingFitStyle(node, "justify-content", "center");
+                setPreviewGeneratingFitStyle(node, "box-sizing", "border-box");
+                setPreviewGeneratingFitStyle(node, "overflow", "hidden");
             }
             if (node === root) break;
             node = node.parentElement;
         }
 
-        img.style.setProperty("width", "100%", "important");
-        img.style.setProperty("height", "100%", "important");
-        img.style.setProperty("max-width", "100%", "important");
-        img.style.setProperty("max-height", targetHeight, "important");
-        img.style.setProperty("object-fit", "contain", "important");
-        img.style.setProperty("object-position", "center center", "important");
-        img.style.setProperty("display", "block", "important");
+        setPreviewGeneratingFitStyle(img, "width", "100%");
+        setPreviewGeneratingFitStyle(img, "height", "100%");
+        setPreviewGeneratingFitStyle(img, "max-width", "100%");
+        setPreviewGeneratingFitStyle(img, "max-height", targetHeight);
+        setPreviewGeneratingFitStyle(img, "object-fit", "contain");
+        setPreviewGeneratingFitStyle(img, "object-position", "center center");
+        setPreviewGeneratingFitStyle(img, "display", "block");
     }
 }
 window.syncPreviewGeneratingImageFit = syncPreviewGeneratingImageFit;
@@ -12842,6 +13142,11 @@ function ensurePreviewGeneratingFitObserver() {
     if (typeof MutationObserver === "function") {
         previewGeneratingFitObserver = new MutationObserver(() => {
             try { syncGenerationResultGallerySurface("preview_fit_mutation"); } catch (e) {}
+            const hiddenOwner = getPreviewGeneratingFitHiddenOwner(root);
+            if (hiddenOwner) {
+                applyPreviewGeneratingFitHiddenState(root, hiddenOwner);
+                return;
+            }
             schedulePreviewGeneratingImageFit(0);
         });
         try {
@@ -13466,6 +13771,14 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
         topbarOptimisticInstalled = true;
+        const cachedStorePointerHandler = (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            applyCachedPresetStoreToggle(e.target);
+        };
+        const cachedStoreKeyboardHandler = (e) => {
+            if (e.repeat || (e.key !== "Enter" && e.key !== " ")) return;
+            applyCachedPresetStoreToggle(e.target);
+        };
         const optimisticHandler = (e) => {
             const target = e && e.target ? e.target : null;
             if (!target || !target.closest) return;
@@ -13481,6 +13794,8 @@ document.addEventListener("DOMContentLoaded", function() {
             topbarLastOptimisticTs = now;
             applyOptimisticBarHighlight(barButton);
         };
+        app.addEventListener("pointerdown", cachedStorePointerHandler, true);
+        app.addEventListener("keydown", cachedStoreKeyboardHandler, true);
         // Single-channel binding only; avoid duplicate optimistic applies.
         app.addEventListener("click", optimisticHandler, false);
     };

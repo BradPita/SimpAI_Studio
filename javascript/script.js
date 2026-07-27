@@ -1309,6 +1309,16 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     let activeModelsSelectMenu = null;
     let suppressNextModelsSelectDocumentClick = false;
+    let modelsSelectPositionFrame = 0;
+
+    function shouldAutoFocusModelsSelectSearch(event) {
+        if (event?.type === 'keydown') return true;
+        const coarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches;
+        if (coarsePointer) return false;
+        const pointerType = String(event?.pointerType || '').toLowerCase();
+        if (pointerType) return pointerType === 'mouse';
+        return Number(navigator.maxTouchPoints || 0) === 0;
+    }
 
     function clearModelsSelectOpeningGesture(menuState = activeModelsSelectMenu) {
         suppressNextModelsSelectDocumentClick = false;
@@ -1350,8 +1360,11 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const panelRect = select.closest?.('.simpai-models-js-panel')?.getBoundingClientRect?.();
         const preferredWidth = readModelsPanelPxVar(select, '--models-select-menu-width', 440);
         const configuredMaxWidth = readModelsPanelPxVar(select, '--models-select-menu-max-width', 560);
+        const visualViewport = window.visualViewport;
+        const viewportWidth = Math.min(window.innerWidth, visualViewport?.width || window.innerWidth);
+        const viewportHeight = Math.min(window.innerHeight, visualViewport?.height || window.innerHeight);
         const viewportLeft = margin;
-        const viewportRight = window.innerWidth - margin;
+        const viewportRight = viewportWidth - margin;
         const panelLeft = panelRect ? Math.max(viewportLeft, panelRect.left + margin) : viewportLeft;
         const panelRight = panelRect ? Math.min(viewportRight, panelRect.right - margin) : viewportRight;
         const leftLimit = Math.min(panelLeft, panelRight - Math.min(rect.width, configuredMaxWidth));
@@ -1360,16 +1373,26 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const availableWidth = Math.max(rect.width, rightLimit - anchoredLeft);
         const width = Math.min(availableWidth, Math.max(rect.width, Math.min(preferredWidth, configuredMaxWidth)));
         const left = Math.min(rightLimit - width, Math.max(leftLimit, rect.left));
-        const below = window.innerHeight - rect.bottom - margin;
+        const below = viewportHeight - rect.bottom - margin;
         const above = rect.top - margin;
         const maxHeight = Math.max(160, Math.min(360, Math.max(below, above)));
         const top = below >= 180 || below >= above
-            ? Math.min(window.innerHeight - margin - maxHeight, rect.bottom + 3)
+            ? Math.min(viewportHeight - margin - maxHeight, rect.bottom + 3)
             : Math.max(margin, rect.top - maxHeight - 3);
         menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         menu.style.width = `${width}px`;
         menu.style.maxHeight = `${maxHeight}px`;
+    }
+
+    function scheduleActiveModelsSelectMenuPosition() {
+        if (modelsSelectPositionFrame || !activeModelsSelectMenu) return;
+        modelsSelectPositionFrame = window.requestAnimationFrame(() => {
+            modelsSelectPositionFrame = 0;
+            const menuState = activeModelsSelectMenu;
+            if (!menuState?.select?.isConnected || !menuState.menu?.isConnected) return;
+            positionModelsSelectMenu(menuState.select, menuState.menu);
+        });
     }
 
     function dispatchModelsSelectOptionPreview(select, option, value) {
@@ -1452,9 +1475,11 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function openModelsSelectMenu(select) {
         if (!select || select.disabled) return;
+        const openOptions = arguments[1] && typeof arguments[1] === 'object' ? arguments[1] : {};
+        const focusSearch = openOptions.focusSearch ?? shouldAutoFocusModelsSelectSearch();
         if (activeModelsSelectMenu?.select === select) {
             positionModelsSelectMenu(select, activeModelsSelectMenu.menu);
-            activeModelsSelectMenu.search?.focus({ preventScroll: true });
+            if (focusSearch) activeModelsSelectMenu.search?.focus({ preventScroll: true });
             return;
         }
         closeModelsSelectMenu();
@@ -1479,6 +1504,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             menu.dataset.simpaiSelectQuery = search.value || '';
             renderModelsSelectMenuOptions(select, menu);
         });
+        search.addEventListener('focus', scheduleActiveModelsSelectMenuPosition);
         search.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
@@ -1497,7 +1523,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         renderModelsSelectMenuOptions(select, menu);
         const selected = options.querySelector('.is-selected');
         if (selected) selected.scrollIntoView({ block: 'nearest' });
-        search.focus({ preventScroll: true });
+        if (focusSearch) search.focus({ preventScroll: true });
         if (!currentModelsPanelCatalog()) {
             refreshModelsPanelCatalog().then((catalog) => {
                 if (!catalog || activeModelsSelectMenu?.select !== select) return;
@@ -1515,13 +1541,6 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         if (activeModelsSelectMenu?.select && document.contains(activeModelsSelectMenu.select)) {
             renderModelsSelectMenuOptions(activeModelsSelectMenu.select, activeModelsSelectMenu.menu);
         }
-    }
-
-    function ensureModelsPanelCatalog() {
-        if (currentModelsPanelCatalog()) return;
-        refreshModelsPanelCatalog().then((catalog) => {
-            if (catalog) updateModelsPanelSelectsFromCatalog();
-        });
     }
 
     function syncSliderPair(field) {
@@ -1584,7 +1603,6 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 
     function syncModelsPanelControls(panel) {
         if (!panel) return;
-        ensureModelsPanelCatalog();
         panel.querySelectorAll('[data-simpai-model-range], [data-simpai-model-field], [data-simpai-lora-weight]').forEach(syncSliderPair);
         panel.querySelectorAll('[data-simpai-lora-enabled]').forEach(syncLoraRowInteractivity);
         syncModelsPanelRefinerAvailability(panel);
@@ -1873,7 +1891,9 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         event.stopPropagation();
         suppressNextModelsSelectDocumentClick = true;
         localizeModelsJsPanel(select.closest('[data-simpai-models-js-root]'));
-        openModelsSelectMenu(select);
+        openModelsSelectMenu(select, {
+            focusSearch: shouldAutoFocusModelsSelectSearch(event),
+        });
         if (activeModelsSelectMenu?.select === select) {
             activeModelsSelectMenu.openingPointerId = event.pointerId;
             activeModelsSelectMenu.ignoreOpeningClick = true;
@@ -1884,12 +1904,6 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 }
             }, 500);
         }
-    }, true);
-
-    document.addEventListener('pointerover', (event) => {
-        const select = event.target?.closest?.('.simpai-models-js-select');
-        if (!select || select.disabled) return;
-        ensureModelsPanelCatalog();
     }, true);
 
     document.addEventListener('focusin', (event) => {
@@ -1912,12 +1926,12 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         if (!select) return;
         if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
             event.preventDefault();
-            openModelsSelectMenu(select);
+            openModelsSelectMenu(select, { focusSearch: true });
         } else if (event.key === 'Escape') {
             closeModelsSelectMenu();
         } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
             event.preventDefault();
-            openModelsSelectMenu(select);
+            openModelsSelectMenu(select, { focusSearch: true });
             const search = activeModelsSelectMenu?.select === select ? activeModelsSelectMenu.search : null;
             if (search) {
                 search.value = event.key;
@@ -1927,6 +1941,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             }
         }
     }, true);
+
+    window.addEventListener('resize', scheduleActiveModelsSelectMenuPosition, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleActiveModelsSelectMenuPosition, { passive: true });
+    window.visualViewport?.addEventListener('scroll', scheduleActiveModelsSelectMenuPosition, { passive: true });
 
     document.addEventListener('click', (event) => {
         if (suppressNextModelsSelectDocumentClick) {
@@ -2001,7 +2019,6 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         syncModelsJsPanelLocalization();
         lastLanguageKey = modelsPanelLanguageKey();
         syncAllModelsPanelControls();
-        ensureModelsPanelCatalog();
     });
     if (window.MutationObserver) {
         const observer = new MutationObserver((mutations) => {
@@ -2020,9 +2037,13 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const classObserver = new MutationObserver(syncAllModelsPanelControls);
         classObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     }
-    window.addEventListener('resize', closeModelsSelectMenu);
     window.addEventListener('scroll', (event) => {
         if (event.target?.closest?.('.simpai-models-js-select-menu')) return;
+        const activeSearch = activeModelsSelectMenu?.search;
+        if (activeSearch && document.activeElement === activeSearch) {
+            scheduleActiveModelsSelectMenuPosition();
+            return;
+        }
         closeModelsSelectMenu();
     }, true);
     setInterval(syncModelsJsPanelLocalizationIfLanguageChanged, 800);
@@ -2150,6 +2171,315 @@ document.addEventListener("DOMContentLoaded", function() {
     initStylePreviewOverlay();
     initBatchPreviewGeneratingOverlay();
 });
+
+(function initInteractionWaitFeedback() {
+    if (window.__simpleaiInteractionWaitFeedbackStarted) return;
+    window.__simpleaiInteractionWaitFeedbackStarted = true;
+
+    const STORE_KIND = 'preset-store';
+    const MODELS_KIND = 'models';
+    const state = {
+        element: null,
+        text: null,
+        activeKind: '',
+        token: 0,
+        committed: false,
+        pendingTimer: 0,
+        pollTimer: 0,
+        longWaitTimer: 0,
+        maxWaitTimer: 0,
+        hideFrameOne: 0,
+        hideFrameTwo: 0,
+    };
+
+    function queryInteractionNode(selector) {
+        const direct = document.querySelector(selector);
+        if (direct) return direct;
+        try {
+            const app = gradioApp();
+            return app?.querySelector?.(selector) || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function currentInteractionLanguage() {
+        let lang = String(window.simpleaiTopbarSystemParams?.__lang || '').trim().toLowerCase();
+        if (!lang) {
+            try { lang = String(new URLSearchParams(window.location.search).get('__lang') || '').trim().toLowerCase(); } catch (e) {}
+        }
+        if (!lang) {
+            try { lang = String(window.localStorage.getItem('ailang') || '').trim().toLowerCase(); } catch (e) {}
+        }
+        if (!lang) lang = String(document.documentElement.lang || navigator.language || '').trim().toLowerCase();
+        return lang.startsWith('en') ? 'en' : 'cn';
+    }
+
+    function interactionWaitText(kind, longWait = false) {
+        const english = currentInteractionLanguage() === 'en';
+        if (kind === MODELS_KIND) {
+            if (longWait) return english ? 'Models is still opening. Please wait...' : 'Models 打开时间较长，请稍候...';
+            return english ? 'Opening Models...' : '正在打开 Models...';
+        }
+        if (longWait) return english ? 'Preset Store is still opening. Please wait...' : 'Preset Store 打开时间较长，请稍候...';
+        return english ? 'Opening Preset Store...' : '正在打开 Preset Store...';
+    }
+
+    function ensureInteractionWaitFeedback() {
+        if (state.element?.isConnected) return state.element;
+        const feedback = document.createElement('div');
+        feedback.id = 'simpleai_interaction_wait_feedback';
+        feedback.className = 'simpleai-interaction-wait-feedback';
+        feedback.setAttribute('role', 'status');
+        feedback.setAttribute('aria-live', 'polite');
+        feedback.setAttribute('aria-hidden', 'true');
+
+        const spinner = document.createElement('span');
+        spinner.className = 'simpleai-interaction-wait-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'simpleai-interaction-wait-text';
+        feedback.append(spinner, text);
+        document.body.appendChild(feedback);
+        state.element = feedback;
+        state.text = text;
+        return feedback;
+    }
+
+    function clearInteractionWaitTimers() {
+        window.clearTimeout(state.pendingTimer);
+        window.clearTimeout(state.pollTimer);
+        window.clearTimeout(state.longWaitTimer);
+        window.clearTimeout(state.maxWaitTimer);
+        state.pendingTimer = 0;
+        state.pollTimer = 0;
+        state.longWaitTimer = 0;
+        state.maxWaitTimer = 0;
+        if (state.hideFrameOne) window.cancelAnimationFrame(state.hideFrameOne);
+        if (state.hideFrameTwo) window.cancelAnimationFrame(state.hideFrameTwo);
+        state.hideFrameOne = 0;
+        state.hideFrameTwo = 0;
+    }
+
+    function hideInteractionWaitFeedback(kind, token = state.token) {
+        if (!state.activeKind || token !== state.token) return;
+        if (kind && state.activeKind !== kind) return;
+        clearInteractionWaitTimers();
+        state.element?.classList.remove('is-visible');
+        state.element?.setAttribute('aria-hidden', 'true');
+        if (state.element?.dataset) delete state.element.dataset.kind;
+        state.activeKind = '';
+        state.committed = false;
+    }
+
+    function showInteractionWaitFeedback(kind) {
+        const feedback = ensureInteractionWaitFeedback();
+        if (state.activeKind === kind && feedback.classList.contains('is-visible')) return state.token;
+        clearInteractionWaitTimers();
+        state.token += 1;
+        state.activeKind = kind;
+        state.committed = false;
+        feedback.dataset.kind = kind;
+        state.text.textContent = interactionWaitText(kind, false);
+        feedback.setAttribute('aria-hidden', 'false');
+        feedback.classList.add('is-visible');
+        const token = state.token;
+        state.longWaitTimer = window.setTimeout(() => {
+            if (state.activeKind === kind && state.token === token) {
+                state.text.textContent = interactionWaitText(kind, true);
+            }
+        }, 8000);
+        state.maxWaitTimer = window.setTimeout(() => hideInteractionWaitFeedback(kind, token), 30000);
+        return token;
+    }
+
+    function hideInteractionWaitFeedbackAfterPaint(kind) {
+        if (state.activeKind !== kind || state.hideFrameOne || state.hideFrameTwo) return;
+        const token = state.token;
+        window.clearTimeout(state.pollTimer);
+        state.pollTimer = 0;
+        state.hideFrameOne = window.requestAnimationFrame(() => {
+            state.hideFrameOne = 0;
+            if (state.activeKind !== kind || state.token !== token) return;
+            state.hideFrameTwo = window.requestAnimationFrame(() => {
+                state.hideFrameTwo = 0;
+                hideInteractionWaitFeedback(kind, token);
+            });
+        });
+    }
+
+    function interactionNodeVisible(node) {
+        if (!node || !node.isConnected || node.hidden) return false;
+        if (node.classList?.contains('hidden') || node.classList?.contains('hide')) return false;
+        try {
+            return node.getClientRects().length > 0;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function presetStoreIsOpen() {
+        if (document.documentElement.classList.contains('preset-store-open')) return true;
+        const store = queryInteractionNode('.preset_store');
+        return interactionNodeVisible(store);
+    }
+
+    function identityDialogIsOpen() {
+        return interactionNodeVisible(queryInteractionNode('#identity_dialog_content'));
+    }
+
+    function modelsTabButton() {
+        const tabs = queryInteractionNode('#advanced_tabs');
+        if (!tabs) return null;
+        return Array.from(tabs.querySelectorAll('button, [role="tab"]')).find((button) => {
+            const label = [
+                button.getAttribute?.('data-original-text'),
+                button.getAttribute?.('aria-label'),
+                button.textContent,
+            ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+            return label === 'models' || label === '模型' || /(^|\s)models?(\s|$)/.test(label);
+        }) || null;
+    }
+
+    function tabButtonSelected(button) {
+        return !!button && (
+            button.getAttribute?.('aria-selected') === 'true'
+            || button.dataset?.selected === 'true'
+            || button.classList?.contains('selected')
+        );
+    }
+
+    function modelsPanelIsOpen() {
+        const selector = '#models_js_panel [data-simpai-models-js-root], #models_js_panel .simpai-models-js-panel';
+        const panels = Array.from(document.querySelectorAll(selector));
+        try {
+            const app = gradioApp();
+            if (app && app !== document && app.querySelectorAll) {
+                app.querySelectorAll(selector).forEach((panel) => {
+                    if (!panels.includes(panel)) panels.push(panel);
+                });
+            }
+        } catch (e) {}
+        return panels.some(interactionNodeVisible);
+    }
+
+    function interactionReady(kind) {
+        if (kind === STORE_KIND) return presetStoreIsOpen() || identityDialogIsOpen();
+        if (kind === MODELS_KIND) return modelsPanelIsOpen();
+        return true;
+    }
+
+    function scheduleInteractionReadyCheck(kind, token) {
+        if (state.pollTimer || state.activeKind !== kind || state.token !== token) return;
+        const check = () => {
+            state.pollTimer = 0;
+            if (state.activeKind !== kind || state.token !== token) return;
+            if (interactionReady(kind)) {
+                hideInteractionWaitFeedbackAfterPaint(kind);
+                return;
+            }
+            state.pollTimer = window.setTimeout(check, 180);
+        };
+        state.pollTimer = window.setTimeout(check, 100);
+    }
+
+    function interactionKindFromTarget(target) {
+        if (!target?.closest) return '';
+        if (target.closest('#bar_store')) return STORE_KIND;
+        const button = target.closest('button, [role="tab"]');
+        if (!button || !button.closest('#advanced_tabs')) return '';
+        const label = [
+            button.getAttribute?.('data-original-text'),
+            button.getAttribute?.('aria-label'),
+            button.textContent,
+        ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        return label === 'models' || label === '模型' || /(^|\s)models?(\s|$)/.test(label)
+            ? MODELS_KIND
+            : '';
+    }
+
+    function interactionShouldWait(kind) {
+        if (kind === STORE_KIND) {
+            const storeIntent = window.__simpleaiPresetStoreOptimisticIntent;
+            if (
+                storeIntent
+                && storeIntent.isOpen === false
+                && (Date.now() - Number(storeIntent.startedAt || 0)) < 15000
+            ) {
+                return false;
+            }
+            return !presetStoreIsOpen();
+        }
+        if (kind === MODELS_KIND) return !tabButtonSelected(modelsTabButton());
+        return false;
+    }
+
+    function primeInteractionWait(kind) {
+        if (!kind || !interactionShouldWait(kind)) return;
+        if (state.activeKind && state.committed) return;
+        const token = showInteractionWaitFeedback(kind);
+        window.clearTimeout(state.pendingTimer);
+        state.pendingTimer = window.setTimeout(() => {
+            if (state.activeKind === kind && state.token === token && !state.committed) {
+                hideInteractionWaitFeedback(kind, token);
+            }
+        }, 1200);
+    }
+
+    function commitInteractionWait(kind) {
+        if (!kind || !interactionShouldWait(kind)) {
+            if (state.activeKind === kind) hideInteractionWaitFeedback(kind);
+            return;
+        }
+        const token = showInteractionWaitFeedback(kind);
+        state.committed = true;
+        window.clearTimeout(state.pendingTimer);
+        state.pendingTimer = 0;
+        scheduleInteractionReadyCheck(kind, token);
+    }
+
+    function bindInteractionWaitFeedback() {
+        ensureInteractionWaitFeedback();
+        let eventRoot = document;
+        try { eventRoot = gradioApp() || document; } catch (e) {}
+        eventRoot.addEventListener('pointerdown', (event) => {
+            if (event.button !== undefined && event.button !== 0) return;
+            primeInteractionWait(interactionKindFromTarget(event.target));
+        }, true);
+        eventRoot.addEventListener('keydown', (event) => {
+            if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
+            primeInteractionWait(interactionKindFromTarget(event.target));
+        }, true);
+        eventRoot.addEventListener('click', (event) => {
+            commitInteractionWait(interactionKindFromTarget(event.target));
+        }, true);
+    }
+
+    window.addEventListener('simpai:preset-store-opened', () => {
+        hideInteractionWaitFeedbackAfterPaint(STORE_KIND);
+    });
+    window.addEventListener('simpai:preset-store-closed', () => {
+        hideInteractionWaitFeedback(STORE_KIND);
+    });
+    window.addEventListener('simpai:system-params-updated', () => {
+        if (state.activeKind && interactionReady(state.activeKind)) {
+            hideInteractionWaitFeedbackAfterPaint(state.activeKind);
+        }
+    });
+    onAfterUiUpdate(() => {
+        if (state.activeKind && interactionReady(state.activeKind)) {
+            hideInteractionWaitFeedbackAfterPaint(state.activeKind);
+        }
+    });
+
+    window.simpleaiShowInteractionWaitFeedback = showInteractionWaitFeedback;
+    window.simpleaiHideInteractionWaitFeedback = hideInteractionWaitFeedback;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindInteractionWaitFeedback, { once: true });
+    } else {
+        bindInteractionWaitFeedback();
+    }
+})();
 
 (function initGradioFullscreenButtonDomBridge() {
     if (window.__simpaiGradioFullscreenButtonDomBridgeStarted) return;
@@ -2317,7 +2647,6 @@ document.addEventListener("DOMContentLoaded", function() {
     onUiLoaded(scheduleRangeFillSync);
     onAfterUiUpdate(scheduleRangeFillSync);
     onUiTabChange(scheduleRangeFillSync);
-    setInterval(scheduleRangeFillSync, 1000);
     scheduleRangeFillSync();
 })();
 
@@ -3747,6 +4076,12 @@ onAfterUiUpdate(initPositivePromptMetaSync);
 
 function initBatchPreviewGeneratingOverlay() {
     const statusIds = ["uov_batch_status", "enhance_batch_status", "scene_batch_status"];
+    const statusSelector = statusIds.map((id) => `#${id}`).join(", ");
+    const FALLBACK_SYNC_MS = 1500;
+    let forcedTarget = null;
+    let syncQueued = false;
+    let fallbackTimer = 0;
+    const observedStatusRoots = new WeakSet();
     const isRunningText = function(text) {
         if (!text) return false;
         const t = String(text).trim().toLowerCase();
@@ -3790,10 +4125,13 @@ function initBatchPreviewGeneratingOverlay() {
     }
     window.SimpleAI.findBatchPreviewGeneratingTarget = findPreviewGeneratingTarget;
 
-    window.setInterval(function() {
-        const target = findPreviewGeneratingTarget();
-        if (!target || !target.classList) return;
+    const syncGeneratingOverlay = function() {
+        if (document.hidden) return;
+        if (forcedTarget && !forcedTarget.isConnected) forcedTarget = null;
         const running = statusIds.some((id) => isRunningText(getStatusValue(id)));
+        if (!running && !forcedTarget) return;
+        const target = forcedTarget || findPreviewGeneratingTarget();
+        if (!target || !target.classList) return;
         if (running) {
             if (target.dataset.simpleaiForcedGenerating !== "1") {
                 target.dataset.simpleaiForcedGenerating = "1";
@@ -3803,6 +4141,7 @@ function initBatchPreviewGeneratingOverlay() {
             target.classList.remove("hide");
             target.classList.remove("hidden");
             target.classList.add("generating");
+            forcedTarget = target;
         } else {
             if (target.dataset.simpleaiForcedGenerating === "1") {
                 const restoreHide = target.dataset.simpleaiPrevHadHide === "1";
@@ -3814,8 +4153,64 @@ function initBatchPreviewGeneratingOverlay() {
                 if (restoreHide) target.classList.add("hide");
                 if (restoreHidden) target.classList.add("hidden");
             }
+            forcedTarget = null;
         }
-    }, 250);
+    };
+
+    const scheduleSync = function() {
+        if (syncQueued || document.hidden) return;
+        syncQueued = true;
+        requestAnimationFrame(() => {
+            syncQueued = false;
+            syncGeneratingOverlay();
+        });
+    };
+
+    const statusObserver = new MutationObserver(scheduleSync);
+    const observeStatusRoots = function() {
+        statusIds.forEach((id) => {
+            const root = gradioApp().getElementById(id);
+            if (!root || observedStatusRoots.has(root)) return;
+            observedStatusRoots.add(root);
+            statusObserver.observe(root, {
+                attributes: true,
+                childList: true,
+                subtree: true,
+                characterData: true,
+                attributeFilter: ["value", "class", "hidden", "style"]
+            });
+        });
+    };
+
+    const scheduleFallback = function(delay = FALLBACK_SYNC_MS) {
+        if (document.hidden || fallbackTimer) return;
+        fallbackTimer = window.setTimeout(() => {
+            fallbackTimer = 0;
+            observeStatusRoots();
+            syncGeneratingOverlay();
+            scheduleFallback();
+        }, delay);
+    };
+
+    const handleStatusInput = function(event) {
+        if (!event.target?.closest?.(statusSelector)) return;
+        scheduleSync();
+    };
+    document.addEventListener("input", handleStatusInput, true);
+    document.addEventListener("change", handleStatusInput, true);
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            if (fallbackTimer) window.clearTimeout(fallbackTimer);
+            fallbackTimer = 0;
+            return;
+        }
+        observeStatusRoots();
+        syncGeneratingOverlay();
+        scheduleFallback();
+    });
+    observeStatusRoots();
+    syncGeneratingOverlay();
+    scheduleFallback();
 }
 const style = document.createElement('style');
 style.textContent = `
@@ -8358,11 +8753,18 @@ function mergeMissingModelNavSystemParams(systemParams) {
         ? window.simpleaiTopbarSystemParams
         : {};
     const merged = Object.assign({}, current);
+    delete merged.__preset_store_missing_updates;
     if (Object.prototype.hasOwnProperty.call(systemParams, '__nav_name_list')) {
         merged.__nav_name_list = systemParams.__nav_name_list;
     }
     if (Object.prototype.hasOwnProperty.call(systemParams, '__preset_store_meta')) {
         merged.__preset_store_meta = systemParams.__preset_store_meta;
+    }
+    if (Object.prototype.hasOwnProperty.call(systemParams, '__preset_store_meta_revision')) {
+        merged.__preset_store_meta_revision = systemParams.__preset_store_meta_revision;
+    }
+    if (Object.prototype.hasOwnProperty.call(systemParams, '__preset_store_missing_updates')) {
+        merged.__preset_store_missing_updates = systemParams.__preset_store_missing_updates;
     }
     if (Object.prototype.hasOwnProperty.call(systemParams, '__missing_model_download_active')) {
         merged.__missing_model_download_active = systemParams.__missing_model_download_active;

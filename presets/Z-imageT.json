@@ -68,6 +68,7 @@
     "model_list": [
         "diffusion_models,z_image_turbo_int8_convrot.safetensors,6201001296,0,https://modelscope.cn/models/Comfy-Org/z_image_turbo/resolve/master/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
         "text_encoders,qwen_3_4b.safetensors,8044982048,0,https://modelscope.cn/models/VerStella/z_image_turbo_comfyui/resolve/master/split_files/text_encoders/qwen_3_4b.safetensors",
+        "model_patches,Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2601-8steps.safetensors,2016627488,0,https://www.modelscope.cn/models/PAI/Z-Image-Turbo-Fun-Controlnet-Union-2.1/resolve/master/Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2601-8steps.safetensors",
         "controlnet,lllyasviel/Annotators/ZoeD_M12_N.pt,1443406099,0,",
         "controlnet,parsing_bisenet.pth,53289463,0,",
         "vae,ae.safetensors,335304388,0,",

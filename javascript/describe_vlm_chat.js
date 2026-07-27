@@ -1257,6 +1257,8 @@
             installDescribeViewportSync(modal, panel);
             if (!isFloatingModalHidden(modal) && describeCompactViewport()) {
                 applyCompactFloatingPanelLayout(panel);
+            } else if (!isFloatingModalHidden(modal) && panel.dataset.describeVlmChatMaximized === '1') {
+                applyMaximizedFloatingPanelLayout(panel);
             } else if (!isFloatingModalHidden(modal)) {
                 applySavedFloatingPanelLayout(panel);
             }

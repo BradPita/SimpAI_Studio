@@ -11,6 +11,10 @@
     const EVENT_LOOP_INTERVAL_MS = 1000;
     const POST_DRAG_WINDOW_MS = 5000;
     const SLOW_EVENT_THRESHOLD_MS = 50;
+    const PASSIVE_SLOW_EVENT_NAMES = new Set([
+        'pointerover', 'pointerenter', 'pointerout', 'pointerleave',
+        'mouseover', 'mouseenter', 'mouseout', 'mouseleave',
+    ]);
     const sessionId = createSessionId();
     const endpoint = resolveEndpoint(config.endpointPath || '/simpai/studio-performance');
     let sequence = 0;
@@ -31,6 +35,7 @@
     let frameProbeLastAt = 0;
     let frameProbeReportAt = 0;
     let frameProbeStats = newFrameStats();
+    const ignoredPassiveSlowEvents = Object.create(null);
     const privateFileNames = new Set();
 
     function createSessionId() {
@@ -145,6 +150,7 @@
             return {
                 error_type: String(value.name || 'Error').slice(0, 100),
                 message: cleanErrorText(value.message),
+                stack: cleanErrorText(value.stack),
             };
         }
         if (typeof value !== 'object') return String(typeof value);
@@ -359,6 +365,7 @@
             ui: currentUiState(),
             drag: activeDrag ? dragSummary() : null,
             drag_visuals: dragVisualSnapshot(),
+            ignored_passive_slow_events: { ...ignoredPassiveSlowEvents },
         };
     }
 
@@ -677,12 +684,18 @@
             event: observe('event', (entries) => {
                 for (const entry of entries) {
                     if (entry.duration < SLOW_EVENT_THRESHOLD_MS) continue;
+                    const name = String(entry.name || '').slice(0, 80);
+                    const interactionId = Number(entry.interactionId || 0);
+                    if (!interactionId && PASSIVE_SLOW_EVENT_NAMES.has(name)) {
+                        ignoredPassiveSlowEvents[name] = (ignoredPassiveSlowEvents[name] || 0) + 1;
+                        continue;
+                    }
                     mark('performance.slow_event', {
-                        name: String(entry.name || '').slice(0, 80),
+                        name,
                         duration_ms: round(entry.duration, 1),
                         processing_delay_ms: round(entry.processingStart - entry.startTime, 1),
                         processing_time_ms: round(entry.processingEnd - entry.processingStart, 1),
-                        interaction_id: Number(entry.interactionId || 0),
+                        interaction_id: interactionId,
                         target: describeElement(entry.target),
                     });
                 }
@@ -813,6 +826,7 @@
                 line: Number(event.lineno || 0),
                 column: Number(event.colno || 0),
                 target: describeElement(event.target),
+                stack: cleanErrorText(event.error?.stack),
             }, { urgent: isDiagnosticWindowActive() });
         }, true);
         window.addEventListener('unhandledrejection', (event) => {
@@ -820,6 +834,7 @@
             mark('page.unhandled_rejection', {
                 error_type: String(reason?.name || typeof reason).slice(0, 100),
                 message: cleanErrorText(reason?.message || reason),
+                stack: cleanErrorText(reason?.stack),
             }, { urgent: isDiagnosticWindowActive() });
         });
         window.addEventListener('pagehide', (event) => {

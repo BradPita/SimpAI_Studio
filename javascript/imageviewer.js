@@ -173,17 +173,19 @@ function simpleaiGalleryDisplayPreviewOriginalSrc(src) {
     return `${url.origin}${basePath}/gradio_api/file=${encodedPath}`;
 }
 
-function simpleaiOriginalNativeImageDragSrc(img) {
+function simpleaiOriginalGalleryImageSrc(img) {
     const src = simpleaiMediaSrc(img);
     return simpleaiGalleryDisplayPreviewOriginalSrc(src) || src;
 }
 
-const SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR = [
+const SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR = [
     '#preview_generating img',
     '#finished_gallery img',
     '#final_gallery img',
     '#finished_gallery .gallery-container img',
     '#final_gallery .gallery-container img',
+    '#comparison_box img',
+    '#lightboxModal img',
     '#scene_input_images img',
     '#scene_input_image1 img',
     '#scene_input_image2 img',
@@ -200,10 +202,12 @@ const SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR = [
     '#ip_image_3 img',
     '#ip_image_4 img'
 ].join(', ');
-const SIMPLEAI_NATIVE_IMAGE_DRAG_CONTAINER_SELECTOR = [
+const SIMPLEAI_GALLERY_NATIVE_DRAG_CONTAINER_SELECTOR = [
     '#preview_generating',
     '#finished_gallery',
     '#final_gallery',
+    '#comparison_box',
+    '#lightboxModal',
     '#scene_input_images',
     '#scene_input_image1',
     '#scene_input_image2',
@@ -220,44 +224,39 @@ const SIMPLEAI_NATIVE_IMAGE_DRAG_CONTAINER_SELECTOR = [
     '#ip_image_3',
     '#ip_image_4'
 ].join(', ');
-const SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PROXY_PIXEL_LIMIT = 2000000;
-const SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PROXY_EDGE_LIMIT = 2048;
-const SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PRESTART_RESTORE_MS = 1200;
-const SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_ACTIVE_RESTORE_MS = 3500;
-const SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PLACEHOLDER_SRC = 'data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%3Crect%20width%3D%22120%22%20height%3D%22120%22%20rx%3D%2210%22%20fill%3D%22%23111827%22/%3E%3Cpath%20d%3D%22M25%2085l22-27%2015%2017%2012-14%2021%2024H25z%22%20fill%3D%22%239ca3af%22/%3E%3Ccircle%20cx%3D%2282%22%20cy%3D%2238%22%20r%3D%2210%22%20fill%3D%22%23d1d5db%22/%3E%3C/svg%3E';
 const SIMPLEAI_GALLERY_ORIGINAL_CONTEXT_RESTORE_MS = 30000;
 const SIMPLEAI_GALLERY_PREVIEW_OPEN_PENDING_MS = 10;
 const SIMPLEAI_GALLERY_PREVIEW_STABLE_MS = 150;
 const SIMPLEAI_GALLERY_PREVIEW_THUMBNAIL_SWITCH_MS = 1200;
-let simpleaiLargeNativeImageDragState = null;
+let simpleaiGalleryNativeDragSyncFrame = 0;
+let simpleaiGalleryNativeDragVersion = 0;
+let simpleaiGalleryOriginalDragClearTimer = 0;
 let simpleaiGalleryOriginalContextState = null;
 let simpleaiGalleryOriginalCopyImage = null;
 let simpleaiGalleryPreviewDeferredRevealTimer = null;
 let simpleaiGalleryPreviewWasOpen = false;
-let simpleaiManagedNativeImageDragSource = null;
 
-function simpleaiNativeImageDragPreviewImageFromEvent(event) {
+function simpleaiGalleryNativeDragImageFromEvent(event) {
     const target = event?.target;
     if (!target) return null;
     let img = null;
-    if (target.matches?.(SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR)) {
+    if (target.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) {
         img = target;
     }
     if (!img && target.closest) {
         const closestImage = target.closest('img');
-        if (closestImage?.matches?.(SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR)) img = closestImage;
+        if (closestImage?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) img = closestImage;
     }
     if (!img && target.querySelector) {
         const nestedImage = target.querySelector('img');
-        if (nestedImage?.matches?.(SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR)) img = nestedImage;
+        if (nestedImage?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) img = nestedImage;
     }
     if (!img && target.closest) {
-        const container = target.closest(SIMPLEAI_NATIVE_IMAGE_DRAG_CONTAINER_SELECTOR);
+        const container = target.closest(SIMPLEAI_GALLERY_NATIVE_DRAG_CONTAINER_SELECTOR);
         const containerImage = container?.querySelector?.('img');
-        if (containerImage?.matches?.(SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR)) img = containerImage;
+        if (containerImage?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) img = containerImage;
     }
     if (!img || img.tagName !== 'IMG') return null;
-    if (simpleaiLargeNativeImageDragState?.img === img) return img;
     const src = simpleaiMediaSrc(img);
     if (!src || src.startsWith('data:image/svg+xml')) return null;
     const naturalWidth = Number(img.naturalWidth || 0);
@@ -266,105 +265,61 @@ function simpleaiNativeImageDragPreviewImageFromEvent(event) {
     return img;
 }
 
-function simpleaiShouldPreventLargeNativeImageDrag(img) {
-    const naturalWidth = Number(img?.naturalWidth || 0);
-    const naturalHeight = Number(img?.naturalHeight || 0);
-    if (!naturalWidth || !naturalHeight) return false;
-    return naturalWidth * naturalHeight >= SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PROXY_PIXEL_LIMIT
-        || Math.max(naturalWidth, naturalHeight) >= SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_PROXY_EDGE_LIMIT;
-}
+function simpleaiEnableNativeGalleryImageDrag(img) {
+    if (!img?.matches?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR)) return;
+    try { if (!img.draggable) img.draggable = true; } catch (e) {}
+    try { if (img.getAttribute('draggable') !== 'true') img.setAttribute('draggable', 'true'); } catch (e) {}
+    try { if (img.dataset.simpleaiGalleryNativeDragImage !== '1') img.dataset.simpleaiGalleryNativeDragImage = '1'; } catch (e) {}
+    try {
+        if (img.dataset.simpleaiGalleryPointerDragImage !== undefined) delete img.dataset.simpleaiGalleryPointerDragImage;
+    } catch (e) {}
 
-function simpleaiShouldUseManagedNativeImageDrag(img) {
-    if (!img) return false;
-    if (simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img))) return true;
-    if (img.closest?.('#preview_generating')) return true;
-    return simpleaiShouldPreventLargeNativeImageDrag(img);
-}
-
-function simpleaiManagedNativeImageDragSourceFromImage(img) {
-    if (!img) return null;
-    return img.closest?.('.thumbnail-item, .gallery-item, .image-container, .image-frame, .preview, button')
-        || img.parentElement
-        || null;
-}
-
-function simpleaiResetManagedNativeImageDragSource(img, source) {
-    if (source?.dataset?.simpleaiManagedNativeImageDragSource === '1') {
-        try { source.removeAttribute('draggable'); } catch (e) {}
-        try { source.draggable = false; } catch (e) {}
-        try { delete source.dataset.simpleaiManagedNativeImageDragSource; } catch (e) {}
+    const oldManagedSource = img.closest?.('.thumbnail-item, .gallery-item, .image-container, .image-frame, .preview, button');
+    if (oldManagedSource?.dataset?.simpleaiManagedNativeImageDragSource === '1') {
+        try { oldManagedSource.draggable = false; } catch (e) {}
+        try { oldManagedSource.setAttribute('draggable', 'false'); } catch (e) {}
+        try { delete oldManagedSource.dataset.simpleaiManagedNativeImageDragSource; } catch (e) {}
     }
-    if (img?.dataset?.simpleaiManagedNativeImageDragImage === '1') {
-        try { img.removeAttribute('draggable'); } catch (e) {}
-        try { img.draggable = true; } catch (e) {}
-        try { delete img.dataset.simpleaiManagedNativeImageDragImage; } catch (e) {}
-    }
+    try { delete img.dataset.simpleaiManagedNativeImageDragImage; } catch (e) {}
 }
 
-function simpleaiClearManagedNativeImageDragSource(expectedImg = null) {
-    const state = simpleaiManagedNativeImageDragSource;
-    if (!state) return;
-    if (expectedImg && state.img && state.img !== expectedImg) return;
-    simpleaiResetManagedNativeImageDragSource(state.img, state.source);
-    simpleaiManagedNativeImageDragSource = null;
+function simpleaiSyncGalleryNativeDragImages() {
+    simpleaiGalleryNativeDragSyncFrame = 0;
+    let scope = document;
+    try { scope = typeof gradioApp === 'function' ? (gradioApp() || document) : document; } catch (e) {}
+    scope.querySelectorAll?.('.simpleai-gallery-external-drag-handle').forEach((handle) => handle.remove());
+    document.getElementById('simpleai-gallery-external-drag-style')?.remove();
+    scope.querySelectorAll?.(SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR).forEach(simpleaiEnableNativeGalleryImageDrag);
 }
 
-function simpleaiPrepareManagedNativeImageDragSource(img) {
-    if (!img) return null;
-    const source = simpleaiManagedNativeImageDragSourceFromImage(img);
-    if (!source || source === img) return null;
-    if (!simpleaiShouldUseManagedNativeImageDrag(img)) {
-        simpleaiResetManagedNativeImageDragSource(img, source);
-        return null;
-    }
-    try { img.draggable = false; } catch (e) {}
-    try { img.setAttribute('draggable', 'false'); } catch (e) {}
-    try { img.dataset.simpleaiManagedNativeImageDragImage = '1'; } catch (e) {}
-    try { source.draggable = true; } catch (e) {}
-    try { source.setAttribute('draggable', 'true'); } catch (e) {}
-    try { source.dataset.simpleaiManagedNativeImageDragSource = '1'; } catch (e) {}
-    return source;
+function simpleaiScheduleGalleryNativeDragImageSync() {
+    if (simpleaiGalleryNativeDragSyncFrame) return;
+    simpleaiGalleryNativeDragSyncFrame = requestAnimationFrame(simpleaiSyncGalleryNativeDragImages);
 }
 
-function simpleaiPrepareManagedNativeImageDrag(event) {
-    const img = simpleaiNativeImageDragPreviewImageFromEvent(event);
-    const source = simpleaiPrepareManagedNativeImageDragSource(img);
-    if (source) simpleaiManagedNativeImageDragSource = { source, img };
-}
-
-function simpleaiPreparedManagedNativeImageDragImage(target) {
-    const state = simpleaiManagedNativeImageDragSource;
-    const source = state?.source;
-    const img = state?.img;
-    if (!source || !img || !source.isConnected || !img.isConnected) return null;
-    const elem = target instanceof Element ? target : target?.parentElement || null;
-    if (!elem) return img;
-    if (elem === source || source.contains?.(elem) || elem.contains?.(source)) return img;
-    return null;
-}
-
-function simpleaiCreateLargeNativeImageDragState(img) {
-    if (!img) return null;
+function simpleaiHandleGalleryNativeDragStart(event) {
+    const img = simpleaiGalleryNativeDragImageFromEvent(event);
+    if (!img) return;
+    const transfer = event.dataTransfer;
     const displaySrc = simpleaiMediaSrc(img);
     const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
-    const originalSrc = previewOriginalSrc || simpleaiOriginalNativeImageDragSrc(img);
-    if (!originalSrc || originalSrc.startsWith('data:image/svg+xml') || displaySrc.startsWith('data:image/svg+xml')) return null;
-    simpleaiRestoreLargeNativeImageDragSource();
-    const state = {
-        img,
-        originalSrc,
-        attrSrc: img.getAttribute?.('src') ?? null,
-        attrSrcset: img.getAttribute?.('srcset') ?? null,
-        attrSizes: img.getAttribute?.('sizes') ?? null,
-        started: false,
-        restoreTimer: null,
-    };
-    simpleaiLargeNativeImageDragState = state;
-    img.dataset.simpleaiLargeNativeDragProxy = '1';
-    return state;
+    const originalSrc = simpleaiOriginalGalleryImageSrc(img);
+    if (!transfer || !originalSrc) return;
+    const url = simpleaiAbsoluteGalleryImageSrc(originalSrc);
+    const dragVersion = ++simpleaiGalleryNativeDragVersion;
+    try { window.__simpleaiGalleryOriginalDragUrl = url; } catch (e) {}
+    try { transfer.setData(SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url); } catch (e) {}
+    try { transfer.setData('text/uri-list', url); } catch (e) {}
+    try { transfer.setData('text/plain', url); } catch (e) {}
+    if (previewOriginalSrc) simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    simpleaiClearGalleryOriginalDragUrl(30000, dragVersion);
 }
 
-function simpleaiAbsoluteNativeImageDragSrc(src) {
+function simpleaiHandleGalleryNativeDragEnd() {
+    simpleaiClearGalleryOriginalDragUrl(200);
+}
+
+function simpleaiAbsoluteGalleryImageSrc(src) {
     const value = String(src || '');
     if (!value) return '';
     try {
@@ -374,7 +329,16 @@ function simpleaiAbsoluteNativeImageDragSrc(src) {
     }
 }
 
-function simpleaiLargeNativeImageDragFileName(src) {
+function simpleaiGalleryImageMimeType(src) {
+    const path = String(src || '').split('?', 1)[0].toLowerCase();
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+    if (path.endsWith('.webp')) return 'image/webp';
+    if (path.endsWith('.gif')) return 'image/gif';
+    if (path.endsWith('.bmp')) return 'image/bmp';
+    return 'image/png';
+}
+
+function simpleaiGalleryImageFileName(src) {
     try {
         const url = new URL(src, document.baseURI || window.location?.href || location.href);
         const rawName = url.pathname.split('/').filter(Boolean).pop() || 'image.png';
@@ -384,30 +348,18 @@ function simpleaiLargeNativeImageDragFileName(src) {
     }
 }
 
-function simpleaiLargeNativeImageDragMimeType(src) {
-    const path = String(src || '').split('?', 1)[0].toLowerCase();
-    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
-    if (path.endsWith('.webp')) return 'image/webp';
-    if (path.endsWith('.gif')) return 'image/gif';
-    if (path.endsWith('.bmp')) return 'image/bmp';
-    return 'image/png';
-}
-
-function simpleaiSetLargeNativeImageDragData(transfer, originalSrc) {
+function simpleaiSetGalleryPreviewOriginalDownload(transfer, originalSrc) {
     if (!transfer || !originalSrc) return;
-    const url = simpleaiAbsoluteNativeImageDragSrc(originalSrc);
-    const fileName = simpleaiLargeNativeImageDragFileName(url);
-    const mimeType = simpleaiLargeNativeImageDragMimeType(url);
-    try { window.__simpleaiGalleryOriginalDragUrl = url; } catch (e) {}
-    try { transfer.clearData(); } catch (e) {}
-    try { transfer.setData(SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url); } catch (e) {}
-    try { transfer.setData('text/uri-list', url); } catch (e) {}
-    try { transfer.setData('text/plain', url); } catch (e) {}
-    try { transfer.setData('DownloadURL', `${mimeType}:${fileName}:${url}`); } catch (e) {}
+    const fileName = simpleaiGalleryImageFileName(originalSrc);
+    const mimeType = simpleaiGalleryImageMimeType(originalSrc);
+    try { transfer.setData('DownloadURL', `${mimeType}:${fileName}:${originalSrc}`); } catch (e) {}
 }
 
-function simpleaiClearGalleryOriginalDragUrl(delay = 0) {
-    setTimeout(() => {
+function simpleaiClearGalleryOriginalDragUrl(delay = 0, expectedVersion = simpleaiGalleryNativeDragVersion) {
+    if (simpleaiGalleryOriginalDragClearTimer) clearTimeout(simpleaiGalleryOriginalDragClearTimer);
+    simpleaiGalleryOriginalDragClearTimer = setTimeout(() => {
+        simpleaiGalleryOriginalDragClearTimer = 0;
+        if (simpleaiGalleryNativeDragVersion !== expectedVersion) return;
         try { delete window.__simpleaiGalleryOriginalDragUrl; } catch (e) {}
     }, delay);
 }
@@ -471,10 +423,10 @@ async function simpleaiConvertBlobToPngForClipboard(blob) {
     }
 }
 
-function simpleaiCopyLargeNativeImageForPaste(originalSrc) {
-    const url = simpleaiAbsoluteNativeImageDragSrc(originalSrc);
+function simpleaiCopyGalleryImageForPaste(originalSrc) {
+    const url = simpleaiAbsoluteGalleryImageSrc(originalSrc);
     if (!url || !navigator.clipboard || !navigator.clipboard.write || !window.ClipboardItem) return Promise.resolve(false);
-    const type = simpleaiLargeNativeImageDragMimeType(url);
+    const type = simpleaiGalleryImageMimeType(url);
     try {
         if (simpleaiClipboardItemSupports(type)) {
             return navigator.clipboard.write([
@@ -490,29 +442,6 @@ function simpleaiCopyLargeNativeImageForPaste(originalSrc) {
     } catch (e) {
         return Promise.resolve(false);
     }
-}
-
-function simpleaiScheduleLargeNativeImageDragRestore(state, delay, options = {}) {
-    if (!state) return;
-    if (state.restoreTimer) clearTimeout(state.restoreTimer);
-    state.restoreTimer = setTimeout(() => {
-        if (options.onlyIfNotStarted && state.started) return;
-        simpleaiRestoreLargeNativeImageDragSource(state);
-        if (options.clearManagedDrag) simpleaiClearManagedNativeImageDragSource(state.img);
-        simpleaiRemoveNativeImageDragPreview();
-        if (options.clearOriginalDragUrl) simpleaiClearGalleryOriginalDragUrl(200);
-    }, delay);
-}
-
-function simpleaiRestoreLargeNativeImageDragSource(state = simpleaiLargeNativeImageDragState) {
-    if (!state || !state.img) return;
-    if (state.restoreTimer) {
-        clearTimeout(state.restoreTimer);
-        state.restoreTimer = null;
-    }
-    const img = state.img;
-    delete img.dataset.simpleaiLargeNativeDragProxy;
-    if (simpleaiLargeNativeImageDragState === state) simpleaiLargeNativeImageDragState = null;
 }
 
 function simpleaiRestoreGalleryOriginalContextImage(state = simpleaiGalleryOriginalContextState) {
@@ -539,7 +468,7 @@ function simpleaiRestoreGalleryOriginalContextImage(state = simpleaiGalleryOrigi
 }
 
 function simpleaiPrepareGalleryOriginalContextMenu(event) {
-    const img = simpleaiNativeImageDragPreviewImageFromEvent(event);
+    const img = simpleaiGalleryNativeDragImageFromEvent(event);
     if (!img) return;
     const previewSrc = simpleaiMediaSrc(img);
     const originalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(previewSrc);
@@ -566,109 +495,6 @@ function simpleaiPrepareGalleryOriginalContextMenu(event) {
     }, SIMPLEAI_GALLERY_ORIGINAL_CONTEXT_RESTORE_MS);
 }
 
-function simpleaiPrepareLargeNativeImageDrag(event) {
-    if (event.button !== undefined && event.button !== 0) return;
-    const img = simpleaiNativeImageDragPreviewImageFromEvent(event);
-    const source = simpleaiPrepareManagedNativeImageDragSource(img);
-    if (source) simpleaiManagedNativeImageDragSource = { source, img };
-}
-
-function simpleaiRemoveNativeImageDragPreview() {
-    document.getElementById('simpleai-native-image-drag-preview')?.remove();
-}
-
-function simpleaiCreateNativeImageDragPreview(img) {
-    simpleaiRemoveNativeImageDragPreview();
-    const activeState = simpleaiLargeNativeImageDragState?.img === img ? simpleaiLargeNativeImageDragState : null;
-    const src = activeState?.attrSrc || simpleaiMediaSrc(img);
-    if (!src) return null;
-    const preview = document.createElement('div');
-    preview.id = 'simpleai-native-image-drag-preview';
-    const width = 120;
-    const naturalWidth = Number(img?.naturalWidth || 0);
-    const naturalHeight = Number(img?.naturalHeight || 0);
-    const ratio = naturalWidth > 0 && naturalHeight > 0 ? naturalHeight / naturalWidth : 1;
-    const height = Math.max(48, Math.min(160, Math.round(width * ratio)));
-    preview.style.position = 'fixed';
-    preview.style.left = '-10000px';
-    preview.style.top = '-10000px';
-    preview.style.width = `${width}px`;
-    preview.style.height = `${height}px`;
-    preview.style.pointerEvents = 'none';
-    preview.style.opacity = '0.95';
-    preview.style.borderRadius = '8px';
-    preview.style.backgroundColor = '#111827';
-    preview.style.backgroundImage = `url("${String(src).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
-    preview.style.backgroundPosition = 'center';
-    preview.style.backgroundRepeat = 'no-repeat';
-    preview.style.backgroundSize = 'cover';
-    preview.style.boxShadow = '0 10px 28px rgba(0, 0, 0, 0.35)';
-    preview.style.zIndex = '2147483647';
-    document.body.appendChild(preview);
-    return preview;
-}
-
-function simpleaiHandleNativeImageDragStart(event) {
-    const img = simpleaiNativeImageDragPreviewImageFromEvent(event)
-        || simpleaiPreparedManagedNativeImageDragImage(event?.target);
-    const transfer = event?.dataTransfer;
-    if (!img) return;
-    const source = simpleaiPrepareManagedNativeImageDragSource(img);
-    if (source) simpleaiManagedNativeImageDragSource = { source, img };
-    let largeDragState = simpleaiLargeNativeImageDragState?.img === img ? simpleaiLargeNativeImageDragState : null;
-    if (!largeDragState && simpleaiShouldUseManagedNativeImageDrag(img)) {
-        largeDragState = simpleaiCreateLargeNativeImageDragState(img);
-    }
-    if (largeDragState) {
-        largeDragState.started = true;
-        if (largeDragState.restoreTimer) {
-            clearTimeout(largeDragState.restoreTimer);
-            largeDragState.restoreTimer = null;
-        }
-        simpleaiSetLargeNativeImageDragData(transfer, largeDragState.originalSrc);
-        simpleaiScheduleLargeNativeImageDragRestore(
-            largeDragState,
-            SIMPLEAI_LARGE_NATIVE_IMAGE_DRAG_ACTIVE_RESTORE_MS,
-            { clearManagedDrag: true, clearOriginalDragUrl: true }
-        );
-    }
-    if (!transfer) return;
-    const preview = simpleaiCreateNativeImageDragPreview(img);
-    if (!preview) return;
-    try {
-        transfer.setDragImage(preview, Math.round(preview.offsetWidth / 2), Math.round(preview.offsetHeight / 2));
-    } catch (e) {}
-    setTimeout(simpleaiRemoveNativeImageDragPreview, 0);
-}
-
-function simpleaiHandleNativeImageDragEnd() {
-    const state = simpleaiLargeNativeImageDragState;
-    simpleaiRemoveNativeImageDragPreview();
-    simpleaiRestoreLargeNativeImageDragSource(state);
-    simpleaiClearManagedNativeImageDragSource(state?.img || null);
-    if (!state) simpleaiClearManagedNativeImageDragSource();
-    simpleaiClearGalleryOriginalDragUrl(200);
-}
-
-function simpleaiHandleLargeNativeImageDragPointerDone() {
-    if (simpleaiLargeNativeImageDragState) {
-        simpleaiHandleNativeImageDragEnd();
-        return;
-    }
-    simpleaiClearManagedNativeImageDragSource();
-}
-
-function simpleaiHandleLargeNativeImageDragPointerCancel() {
-    const state = simpleaiLargeNativeImageDragState;
-    if (!state) return;
-    // Chrome emits pointercancel when native HTML drag takes over; dragend/drop is the real end.
-    if (state.started) {
-        simpleaiRemoveNativeImageDragPreview();
-        return;
-    }
-    simpleaiHandleNativeImageDragEnd();
-}
-
 function simpleaiHandleGalleryOriginalContextPointerDown() {
     if (simpleaiGalleryOriginalContextState) simpleaiRestoreGalleryOriginalContextImage();
 }
@@ -679,7 +505,7 @@ function simpleaiPrepareGalleryOriginalContextPointerDown(event) {
 }
 
 function simpleaiTrackGalleryOriginalCopyImage(event) {
-    const img = simpleaiNativeImageDragPreviewImageFromEvent(event);
+    const img = simpleaiGalleryNativeDragImageFromEvent(event);
     if (img && simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img))) {
         simpleaiGalleryOriginalCopyImage = img;
     }
@@ -708,19 +534,11 @@ function simpleaiHandleGalleryOriginalCopyKeyDown(event) {
     const originalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img));
     if (!originalSrc) return;
     event.preventDefault();
-    simpleaiCopyLargeNativeImageForPaste(originalSrc);
-}
-
-function simpleaiHandleLargeNativeImageDragKeyUp(event) {
-    if (event?.key === 'Escape') simpleaiHandleNativeImageDragEnd();
+    simpleaiCopyGalleryImageForPaste(originalSrc);
 }
 
 function simpleaiHandleGalleryOriginalContextKeyUp(event) {
     if (event?.key === 'Escape') simpleaiRestoreGalleryOriginalContextImage();
-}
-
-function simpleaiHandleLargeNativeImageDragVisibilityChange() {
-    if (!document.hidden) simpleaiHandleLargeNativeImageDragPointerDone();
 }
 
 function simpleaiHandleGalleryOriginalContextVisibilityChange() {
@@ -1518,24 +1336,14 @@ document.addEventListener('pointerdown', simpleaiHandleGalleryOriginalContextPoi
 document.addEventListener('pointerdown', simpleaiPrepareGalleryOriginalContextPointerDown, true);
 document.addEventListener('mousedown', simpleaiPrepareGalleryOriginalContextPointerDown, true);
 document.addEventListener('pointerover', simpleaiTrackGalleryOriginalCopyImage, true);
-document.addEventListener('pointerover', simpleaiPrepareManagedNativeImageDrag, true);
-document.addEventListener('mousedown', simpleaiPrepareManagedNativeImageDrag, true);
 document.addEventListener('pointerdown', simpleaiTrackGalleryOriginalCopyImage, true);
-document.addEventListener('pointerdown', simpleaiPrepareLargeNativeImageDrag, true);
-document.addEventListener('pointerup', simpleaiHandleLargeNativeImageDragPointerDone, true);
-document.addEventListener('pointercancel', simpleaiHandleLargeNativeImageDragPointerCancel, true);
-document.addEventListener('mouseup', simpleaiHandleLargeNativeImageDragPointerDone, true);
-document.addEventListener('dragstart', simpleaiHandleNativeImageDragStart, true);
-document.addEventListener('dragend', simpleaiHandleNativeImageDragEnd, true);
-document.addEventListener('drop', simpleaiHandleNativeImageDragEnd, true);
+document.addEventListener('dragstart', simpleaiHandleGalleryNativeDragStart, true);
+document.addEventListener('dragend', simpleaiHandleGalleryNativeDragEnd, true);
+document.addEventListener('drop', simpleaiHandleGalleryNativeDragEnd, true);
 document.addEventListener('keydown', simpleaiHandleGalleryOriginalCopyKeyDown, true);
 document.addEventListener('keyup', simpleaiHandleGalleryOriginalContextKeyUp, true);
-document.addEventListener('keyup', simpleaiHandleLargeNativeImageDragKeyUp, true);
 document.addEventListener('visibilitychange', simpleaiHandleGalleryOriginalContextVisibilityChange, true);
-document.addEventListener('visibilitychange', simpleaiHandleLargeNativeImageDragVisibilityChange, true);
-window.addEventListener('blur', simpleaiHandleLargeNativeImageDragPointerDone, true);
-window.addEventListener('focus', simpleaiHandleLargeNativeImageDragPointerDone, true);
-window.addEventListener('pageshow', simpleaiHandleLargeNativeImageDragPointerDone, true);
+window.addEventListener('pageshow', simpleaiScheduleGalleryNativeDragImageSync, true);
 window.addEventListener('pagehide', simpleaiRestoreGalleryOriginalContextImage, true);
 window.addEventListener("resize", () => {
     const scope = simpleaiComparisonSliderScope();
@@ -1544,12 +1352,17 @@ window.addEventListener("resize", () => {
 
 if (typeof onUiLoaded === "function") {
     onUiLoaded(async () => {
+        simpleaiSyncGalleryNativeDragImages();
         simpleaiSyncComparisonSliders();
         setTimeout(simpleaiSyncComparisonSliders, 100);
         setTimeout(simpleaiSyncComparisonSliders, 600);
     });
 }
-setInterval(simpleaiSyncComparisonSliders, 1500);
+if (typeof onAfterUiUpdate === "function") {
+    onAfterUiUpdate(simpleaiScheduleGalleryNativeDragImageSync);
+    onAfterUiUpdate(simpleaiSyncComparisonSliders);
+}
+simpleaiScheduleGalleryNativeDragImageSync();
 window.simpleaiSyncComparisonSliders = simpleaiSyncComparisonSliders;
 
 document.addEventListener('click', function(event) {

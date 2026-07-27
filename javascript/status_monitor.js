@@ -1,6 +1,7 @@
 (function() {
     // ==================== 配置常量 ====================
     const CHECK_INTERVAL = 2000;         // 检测间隔毫秒
+    const MOBILE_CHECK_INTERVAL = 5000;
     const MAX_RETRY_COUNT = 3;
     const STATUS_DRAG_SAFE_MARGIN = 3;
     const STATUS_EDGE_DOCK_THRESHOLD = 6;
@@ -81,10 +82,9 @@
         return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
     }
 
-    // 如果是移动设备，则直接退出，不执行后续逻辑
-    if (isMobileDevice()) {
+    const mobileDevice = isMobileDevice();
+    if (mobileDevice) {
         console.log(t("Mobile device detected; status monitor is hidden.", "当前设备为移动设备，状态监控组件不显示。"));
-        // return;
     }
 
     // ==================== DOM 元素创建 ====================
@@ -705,7 +705,18 @@
         transferToggleBtn.setAttribute('aria-label', `${t('imgTransfer', '图片中转站')}: ${count}`);
     }
 
+    let lastLocalizedStaticKey = '';
     function refreshLocalizedStaticText() {
+        const staticKey = JSON.stringify([
+            getStatusMonitorLang(),
+            !!canvasWorkbenchLazyState.loadingPromise,
+            isCanvasWorkbenchStandaloneActive(),
+            !!transferState.expanded,
+            transferState.items.length,
+            transferState.hintOverride || ''
+        ]);
+        if (staticKey === lastLocalizedStaticKey) return;
+        lastLocalizedStaticKey = staticKey;
         backToAdminBtn.textContent = t('Back to Admin', '返回管理窗口');
         reconnectBtn.textContent = ` ${t('Reconnect', '重连')}`;
         canvasWorkbenchLabel.textContent = canvasWorkbenchLazyState.loadingPromise ? t('Loading', '加载中') : t('iCanvas', '无限画布');
@@ -1908,6 +1919,7 @@
         }
     }
 
+    let lastStatusRenderKey = '';
     function updateStatusUI(statusType, queueSize, ramUsed, ramTotal, vramUsed, vramTotal, onlineUsers, onlineDomainUsers, onlineNodes, pendingAccessCount, isAdmin) {
         refreshLocalizedStaticText();
         pendingAccessCount = Number.isFinite(Number(pendingAccessCount)) ? Number(pendingAccessCount) : 0;
@@ -1956,12 +1968,7 @@
             updatedAt: Date.now()
         };
         window.dispatchEvent(new CustomEvent('simpai:status-monitor-updated', { detail: window.SimpAIStatusMonitorData }));
-        statusContent.innerHTML = '';
         state.isReconnectVisible = (statusType === 'exception' || statusType === 'disconnected');
-        
-        if (state.hasAdminAPI) {
-            statusContent.appendChild(backToAdminBtn);
-        }
 
         const statusMap = {
             connected: { text: t('Connected', '连接'), shortText: 'OK', class: 'status-connected' },
@@ -1969,7 +1976,7 @@
             exception: { text: t('Error', '异常'), shortText: 'ERR', class: 'status-exception' }
         };
         const { text, shortText, class: statusClass } = statusMap[statusType];
-        statusContent.title = [
+        const nextStatusTitle = [
             text,
             `${t('Queue', '队列')}: ${queueNumber}`,
             `${t('VRAM', '显存')}: ${vramPercentText}`,
@@ -1980,6 +1987,31 @@
             onlineNodesNumber ? `${t('Nodes', '节点')}: ${onlineNodesNumber}` : '',
             `${t('Permission Requests', '权限申请')}: ${pendingAccessCount}`
         ].filter(Boolean).join('\n');
+        if (statusContent.title !== nextStatusTitle) statusContent.title = nextStatusTitle;
+
+        const renderKey = JSON.stringify([
+            getStatusMonitorLang(),
+            statusType,
+            queueNumber,
+            state.hasAdminAPI,
+            statusType === 'disconnected' ? state.retryCount : 0,
+            mobileDevice ? null : [
+                vramPercentText,
+                ramPercentText,
+                onlineUsersNumber,
+                onlineDomainUsersNumber,
+                onlineNodesNumber,
+                pendingAccessCount,
+                isAdmin
+            ]
+        ]);
+        if (renderKey === lastStatusRenderKey) return;
+        lastStatusRenderKey = renderKey;
+        statusContent.replaceChildren();
+
+        if (state.hasAdminAPI) {
+            statusContent.appendChild(backToAdminBtn);
+        }
 
         // 构建状态指示
         const statusEl = document.createElement('span');
@@ -2002,7 +2034,7 @@
             firstRow.appendChild(reconnectBtn);
             if (statusType === 'disconnected') {
                 const retryText = document.createElement('span');
-                retryText.textContent = ` (${state.retryCount * CHECK_INTERVAL / 1000}s)`;
+                retryText.textContent = ` (${state.retryCount * healthCheckInterval() / 1000}s)`;
                 firstRow.appendChild(retryText);
             }
         }
@@ -2010,7 +2042,7 @@
         statusContent.appendChild(firstRow);
 
         // 添加附加信息
-        if (statusType === 'connected' && !isMobileDevice()) {
+        if (statusType === 'connected' && !mobileDevice) {
 	    // 显示 VRAM 使用情况
             vramUsage.textContent = `V:${vramPercentShort}%`;
             vramUsage.title = `${t('VRAM', '显存')}: ${vramPercentText}`;
@@ -2222,6 +2254,45 @@
                 document.removeEventListener('touchcancel', stopTouchDrag);
             }
         }
+    }
+
+    let healthCheckTimer = 0;
+    let healthCheckRunning = false;
+    let healthSchedulerStarted = false;
+
+    function healthCheckInterval() {
+        return mobileDevice ? MOBILE_CHECK_INTERVAL : CHECK_INTERVAL;
+    }
+
+    function scheduleHealthCheck(delay = healthCheckInterval()) {
+        if (document.hidden || healthCheckTimer) return;
+        healthCheckTimer = window.setTimeout(runHealthCheck, Math.max(0, delay));
+    }
+
+    async function runHealthCheck() {
+        healthCheckTimer = 0;
+        if (document.hidden || healthCheckRunning) return;
+        healthCheckRunning = true;
+        try {
+            await performHealthCheck();
+        } finally {
+            healthCheckRunning = false;
+            scheduleHealthCheck();
+        }
+    }
+
+    function startHealthChecks() {
+        if (healthSchedulerStarted) return;
+        healthSchedulerStarted = true;
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (healthCheckTimer) window.clearTimeout(healthCheckTimer);
+                healthCheckTimer = 0;
+                return;
+            }
+            scheduleHealthCheck(0);
+        });
+        scheduleHealthCheck(0);
     }
 
     function finishStatusMonitorDrag() {
@@ -3493,18 +3564,12 @@
 
     function initMobileStatusPresetStoreVisibility() {
         syncMobileStatusPresetStoreVisibility();
-        const observerRoot = document.body || document.documentElement;
-        if (observerRoot && typeof MutationObserver !== 'undefined') {
-            const observer = new MutationObserver(scheduleMobileStatusPresetStoreVisibility);
-            observer.observe(observerRoot, {
-                subtree: true,
-                childList: true,
-                attributes: true,
-                attributeFilter: ['class', 'hidden', 'style']
-            });
+        if (typeof onAfterUiUpdate === 'function') {
+            onAfterUiUpdate(scheduleMobileStatusPresetStoreVisibility);
         }
         window.addEventListener('resize', scheduleMobileStatusPresetStoreVisibility);
         window.addEventListener('scroll', scheduleMobileStatusPresetStoreVisibility, { passive: true });
+        window.addEventListener('simpai:system-params-updated', scheduleMobileStatusPresetStoreVisibility);
         window.addEventListener('simpai:preset-store-opened', scheduleMobileStatusPresetStoreVisibility);
         window.addEventListener('simpai:preset-store-closed', scheduleMobileStatusPresetStoreVisibility);
     }
@@ -3538,7 +3603,7 @@
         // 检测并应用主题
         state.currentTheme = detectTheme();
         applyTheme();
-        const enableTransferStation = !isMobileDevice();
+        const enableTransferStation = !mobileDevice;
 
         // 注入样式
         document.head.appendChild(style);
@@ -3578,8 +3643,7 @@
             initMobileStatusPresetStoreVisibility();
         }
         // 启动检测
-        setInterval(performHealthCheck, CHECK_INTERVAL);
-        performHealthCheck();
+        startHealthChecks();
     }
 
     // 启动监控

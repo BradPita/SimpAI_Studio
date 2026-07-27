@@ -5,9 +5,12 @@
     const MAX_BRUSH_SIZE = 512;
     const DOCK_OPEN_DELAY_MS = 35;
     const DOCK_HIDE_DELAY_MS = 260;
+    const INPUT_FALLBACK_SYNC_MS = 2000;
     const IMAGE_FILE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp|bmp|avif|tiff?|ico)$/i;
     const SKETCH_CACHE_ENDPOINT = "/simpai/sketch-cache";
     let activeSketchApi = null;
+    let fallbackSyncTimer = 0;
+    let rootObserver = null;
 
     function ensureSimpAISketchNamespace() {
         window.SimpAISketch = window.SimpAISketch || {};
@@ -75,6 +78,39 @@
             sketch.releaseTransientState?.();
         }
         clearActiveSketch(null);
+    }
+
+    function syncVisibleSketchInputs() {
+        if (document.hidden) return;
+        const namespace = ensureSimpAISketchNamespace();
+        for (const sketch of Array.from(namespace.instances || [])) {
+            if (!sketch?.editor?.isConnected) {
+                namespace.instances.delete(sketch);
+                if (namespace.active === sketch) clearActiveSketch(sketch);
+                continue;
+            }
+            if (sketch.isVisible?.() === false) {
+                sketch.releaseTransientState?.();
+                if (namespace.active === sketch) clearActiveSketch(sketch);
+                continue;
+            }
+            sketch.syncExternalInput?.();
+        }
+    }
+
+    function scheduleFallbackSync(delay = INPUT_FALLBACK_SYNC_MS) {
+        if (document.hidden || fallbackSyncTimer) return;
+        fallbackSyncTimer = window.setTimeout(() => {
+            fallbackSyncTimer = 0;
+            syncVisibleSketchInputs();
+            scheduleFallbackSync();
+        }, delay);
+    }
+
+    function stopFallbackSync() {
+        if (!fallbackSyncTimer) return;
+        window.clearTimeout(fallbackSyncTimer);
+        fallbackSyncTimer = 0;
     }
 
     function ensureStyle() {
@@ -1851,7 +1887,6 @@
 
         let internalWrite = false;
         let lastExternalValue = input.value || "";
-        let lastWrittenValue = input.value || "";
         let payloadSequence = 0;
         let payloadCacheSnapshot = null;
         let payloadCacheTask = null;
@@ -1933,7 +1968,6 @@
             internalWrite = true;
             setInputValue(input, text, options);
             lastExternalValue = text;
-            lastWrittenValue = text;
             internalWrite = false;
         }
 
@@ -2011,7 +2045,6 @@
                 internalWrite = true;
                 setInputValue(input, "", options);
                 lastExternalValue = "";
-                lastWrittenValue = "";
                 internalWrite = false;
                 return;
             }
@@ -2076,7 +2109,6 @@
                 if (!hasImage) {
                     lastPayload = null;
                     lastExternalValue = "";
-                    lastWrittenValue = "";
                     return false;
                 }
                 clearImage({ change: false });
@@ -2601,23 +2633,18 @@
         });
         maskDisabledObserver.observe(root, { attributes: true, attributeFilter: ["data-simpai-mask-disabled"] });
 
-        const observer = new MutationObserver(() => {
-            if (internalWrite) return;
-            if (input.value === lastWrittenValue || input.value === lastExternalValue) return;
-            setPayload(input.value);
-        });
+        const syncExternalInput = () => {
+            if (internalWrite || !input.isConnected) return false;
+            const nextValue = input.value || "";
+            if (nextValue === lastExternalValue) return false;
+            lastExternalValue = nextValue;
+            setPayload(nextValue);
+            return true;
+        };
+        const observer = new MutationObserver(syncExternalInput);
         observer.observe(input, { attributes: true, attributeFilter: ["value"] });
-        input.addEventListener("change", () => {
-            if (internalWrite) return;
-            if (input.value === lastWrittenValue || input.value === lastExternalValue) return;
-            setPayload(input.value);
-        });
-        setInterval(() => {
-            if (internalWrite) return;
-            if (input.value === lastExternalValue) return;
-            lastExternalValue = input.value || "";
-            setPayload(input.value);
-        }, 500);
+        input.addEventListener("input", syncExternalInput);
+        input.addEventListener("change", syncExternalInput);
         setPayload(input.value);
 
         if (typeof ResizeObserver !== "undefined") {
@@ -2809,6 +2836,7 @@
             toggleUi,
             isUiHidden: () => uiHidden,
             isVisible: isSketchVisible,
+            syncExternalInput,
             releaseTransientState,
             setPointerInside(value) {
                 pointerInsideEditor = !!value;
@@ -2903,14 +2931,52 @@
         }, true);
     }
 
+    function scanNode(node) {
+        if (!node?.querySelectorAll) return;
+        if (node.nodeType === Node.ELEMENT_NODE && node.matches?.(`.${SOURCE_CLASS}`)) {
+            initRoot(node);
+        }
+        node.querySelectorAll(`.${SOURCE_CLASS}`).forEach(initRoot);
+    }
+
     function scan() {
         ensureStyle();
         installFlushHooks();
-        document.querySelectorAll(`.${SOURCE_CLASS}`).forEach(initRoot);
+        scanNode(document);
         releaseHiddenSketches();
     }
 
-    setInterval(scan, 800);
-    document.addEventListener("DOMContentLoaded", scan);
-    window.addEventListener("load", scan);
+    function handleRootMutations(mutations) {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes || []) {
+                scanNode(node);
+            }
+        }
+    }
+
+    function boot() {
+        scan();
+        if (!rootObserver && document.body) {
+            rootObserver = new MutationObserver(handleRootMutations);
+            rootObserver.observe(document.body, { childList: true, subtree: true });
+        }
+        scheduleFallbackSync();
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            stopFallbackSync();
+            releaseAllSketchTransientState();
+            return;
+        }
+        scan();
+        syncVisibleSketchInputs();
+        scheduleFallbackSync();
+    });
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot, { once: true });
+    } else {
+        boot();
+    }
 })();

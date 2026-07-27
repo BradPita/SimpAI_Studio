@@ -1045,6 +1045,7 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
     state_params.update({"bar_button": state_params.get("__preset", initial_preset)})
     state_params.update({"preset_store": False})
     state_params.update({"__preset_store_seq": state_params.get("__preset_store_seq", 0)})
+    state_params.update({"__preset_store_mounted": False})
     state_params.update({"__layout_initialized": False})
     initial_user_did = _state_user_did(state_params)
     resolved_initial_preset = _resolve_preset_storage_name(state_params.get("__preset", initial_preset), initial_user_did)
@@ -1589,7 +1590,7 @@ def _build_canvas_lora_defaults(preset_content, backend_params=None):
     return loras
 
 
-def _build_preset_store_meta(state):
+def _build_preset_store_meta(state, copy_cached=True):
     user_did = None
     try:
         if isinstance(state, dict) and state.get("user"):
@@ -1620,7 +1621,8 @@ def _build_preset_store_meta(state):
         and preset_store_meta_base_mtime.get(cache_key, -2) == current_base_mtime
         and preset_store_meta_samples_sig.get(cache_key) == sample_signature
     ):
-        return copy.deepcopy(preset_store_meta_cache[cache_key])
+        cached_meta = preset_store_meta_cache[cache_key]
+        return copy.deepcopy(cached_meta) if copy_cached else cached_meta
 
     meta = {}
     for order, item in enumerate(samples):
@@ -1773,6 +1775,20 @@ def _build_preset_store_meta(state):
     preset_store_meta_base_mtime[cache_key] = current_base_mtime
     preset_store_meta_samples_sig[cache_key] = sample_signature
     return meta
+
+
+def _get_preset_store_meta_revision(state):
+    user_did = _state_user_did(state)
+    cache_key = user_did if user_did else 'guest'
+    signature = (
+        str(cache_key),
+        preset_store_meta_user_mtime.get(cache_key, -1),
+        preset_store_meta_base_mtime.get(cache_key, -1),
+        preset_store_meta_samples_sig.get(cache_key, ()),
+    )
+    serialized = json.dumps(signature, ensure_ascii=True, separators=(',', ':'), default=str)
+    return hashlib.sha1(serialized.encode('utf-8')).hexdigest()
+
 
 def wait_for_vlm_completion(check_interval=0.5):
     try:
@@ -3196,9 +3212,13 @@ def toggle_preset_store(state):
             state['preset_store'] = False
             flag = False
         state['preset_store'] = not flag
+        store_was_mounted = bool(state.get("__preset_store_mounted", False))
+        preset_store_update = skip_update() if store_was_mounted else gr.update(visible=not flag)
+        if not flag:
+            state["__preset_store_mounted"] = True
         state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
         state['identity_dialog'] = False
-        return [gr.update(visible=not flag), store_update] + update_topbar_js_params(state) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
+        return [preset_store_update, store_update] + update_topbar_js_params(state, include_canvas_catalogs=False) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
     else:
         if is_local_mode():
             if 'preset_store' in state:
@@ -3207,9 +3227,13 @@ def toggle_preset_store(state):
                 state['preset_store'] = False
                 flag = False
             state['preset_store'] = not flag
+            store_was_mounted = bool(state.get("__preset_store_mounted", False))
+            preset_store_update = skip_update() if store_was_mounted else gr.update(visible=not flag)
+            if not flag:
+                state["__preset_store_mounted"] = True
             state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
             state['identity_dialog'] = False
-            return [gr.update(visible=not flag), store_update] + update_topbar_js_params(state) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
+            return [preset_store_update, store_update] + update_topbar_js_params(state, include_canvas_catalogs=False) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
         else:
             state['preset_store'] = False
             state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
@@ -3845,9 +3869,11 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
     include_canvas_catalogs = bool(include_canvas_catalogs)
     canvas_preset_catalog = {}
     canvas_model_catalog = {}
+    preset_store_meta_revision = ""
     if include_canvas_catalogs or state.get("preset_store"):
         try:
-            canvas_preset_catalog = _build_preset_store_meta(state)
+            canvas_preset_catalog = _build_preset_store_meta(state, copy_cached=include_canvas_catalogs)
+            preset_store_meta_revision = _get_preset_store_meta_revision(state)
         except Exception:
             canvas_preset_catalog = {}
     if include_canvas_catalogs:
@@ -3951,6 +3977,10 @@ def update_topbar_js_params(state, include_canvas_catalogs=True):
         system_params["__canvas_preset_catalog"] = canvas_preset_catalog
         system_params["__canvas_model_catalog"] = canvas_model_catalog
     if state.get("preset_store"):
+        system_params["__preset_store_meta_revision"] = preset_store_meta_revision
+        # The component visibility update and the JS status callback are separate
+        # browser updates. Always include the catalog while opening the store so a
+        # delayed or discarded earlier callback cannot leave an empty pool.
         system_params["__preset_store_meta"] = copy.deepcopy(canvas_preset_catalog)
     return [system_params]
 

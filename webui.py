@@ -935,8 +935,8 @@ def refresh_files_clicked(state_params, use_model_filter: bool = True, show_info
             pass
     if defer_choice_updates:
         # Preset navigation only needs the preset values/layout immediately.
-        # Large dropdown choices are refreshed when Models is opened or the
-        # user explicitly refreshes files.
+        # Large dropdown choices are requested when a model selector is used
+        # or the user explicitly refreshes files.
         model_filenames = list(getattr(modules.config, 'model_filenames', []) or [])
         lora_filenames = list(getattr(modules.config, 'lora_filenames', []) or [])
         vae_filenames = list(getattr(modules.config, 'vae_filenames', []) or [])
@@ -3699,23 +3699,45 @@ with shared.gradio_root:
                         gr_update(visible=progress_visible, value=progress_html),
                     ] + empty_buttons_update + empty_system_update
 
+                def _missing_model_download_system_update(state_params, active, user_did=None):
+                    preset_status_updates = {}
+                    if not active:
+                        active_context = _get_missing_model_active_context(state_params, user_did=user_did)
+                        if active_context.get("kind") == "preset":
+                            preset_name = str(active_context.get("preset") or "").strip()
+                            preset_name = topbar._strip_preset_marker(preset_name).strip()
+                            if preset_name:
+                                topbar._invalidate_preset_store_cache(user_did)
+                                marked_name = topbar._append_status_marker(preset_name, user_did)
+                                preset_status_updates[preset_name] = bool(
+                                    isinstance(marked_name, str)
+                                    and marked_name.endswith(topbar.PRESET_MISSING_MARKER)
+                                )
+
+                    system_update = topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)
+                    if system_update and isinstance(system_update[0], dict):
+                        system_update[0]["__missing_model_download_active"] = bool(active)
+                        if preset_status_updates:
+                            system_update[0]["__preset_store_missing_updates"] = preset_status_updates
+                    return system_update
+
                 def refresh_missing_model_modal(state_params):
                     empty_buttons_update = [skip_component_update() for _ in range(len(bar_buttons))]
                     empty_system_update = [skip_component_update()]
                     user_did = _get_state_user_did(state_params)
                     modal_updates = _render_active_missing_model_modal_updates(state_params, user_did=user_did)
-                    if model_loader.has_active_download_tasks():
+                    active = model_loader.has_active_download_tasks()
+                    if active:
                         return modal_updates + empty_buttons_update + empty_system_update
                     nav_updates = topbar.refresh_nav_bars(state_params)
                     button_updates = nav_updates[1 : 1 + len(bar_buttons)]
-                    system_update = topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)
+                    system_update = _missing_model_download_system_update(state_params, active, user_did=user_did)
                     return modal_updates + button_updates + system_update
 
                 def refresh_missing_model_nav_state(state_params):
                     active = model_loader.has_active_download_tasks()
-                    system_update = topbar.update_topbar_js_params(state_params, include_canvas_catalogs=False)
-                    if system_update and isinstance(system_update[0], dict):
-                        system_update[0]["__missing_model_download_active"] = active
+                    user_did = _get_state_user_did(state_params)
+                    system_update = _missing_model_download_system_update(state_params, active, user_did=user_did)
                     if active:
                         return [skip_component_update() for _ in range(len(bar_buttons))] + system_update
                     nav_updates = topbar.refresh_nav_bars(state_params)
@@ -7765,8 +7787,7 @@ with shared.gradio_root:
                     def _refresh_files_clicked_without_info(state_params, use_model_filter):
                         return refresh_files_clicked(state_params, use_model_filter, False)
 
-                    def _rehydrate_models_tab_from_state(state_params, current_model_params_state, use_model_filter):
-                        refresh_files_clicked(state_params, use_model_filter, False)
+                    def _rehydrate_models_tab_from_state(state_params, current_model_params_state):
                         model_state = current_model_params_state if isinstance(current_model_params_state, dict) and current_model_params_state.get("__model_params_state") else _model_params_state_from_state_params(state_params)
                         return (
                             _model_bridge_updates_from_model_state(model_state, include_refiner_switch=True)
@@ -7888,7 +7909,7 @@ with shared.gradio_root:
                     )
                     models_tab.select(
                         _rehydrate_models_tab_from_state,
-                        [state_topbar, model_params_state, model_filter_state],
+                        [state_topbar, model_params_state],
                         model_bridge_rehydrate_targets + [models_js_panel],
                         queue=True,
                         show_progress=False,

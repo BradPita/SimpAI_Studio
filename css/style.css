@@ -1452,6 +1452,86 @@ html.simpai-scene-director-mode-enabled #positive_prompt.scene-director-prompt-r
   display: none;
 }
 
+.simpleai-interaction-wait-feedback {
+  position: fixed;
+  top: max(72px, 10vh);
+  left: 50%;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 24px));
+  min-height: 44px;
+  padding: 9px 13px;
+  border: 1px solid var(--border-color-primary, #4b5563);
+  border-radius: 7px;
+  color: var(--body-text-color, #f8fafc);
+  background: #24262b;
+  background: color-mix(in srgb, var(--block-background-fill, #24262b) 96%, #000 4%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  opacity: 0;
+  transform: translate3d(-50%, -6px, 0);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+  contain: layout paint style;
+  will-change: opacity, transform;
+}
+
+.simpleai-interaction-wait-feedback.is-visible {
+  opacity: 1;
+  transform: translate3d(-50%, 0, 0);
+}
+
+.simpleai-interaction-wait-spinner {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--body-text-color, #f8fafc) 26%, transparent);
+  border-top-color: var(--button-primary-background-fill, #f97316);
+  border-radius: 50%;
+  animation: simpleai-interaction-wait-spin 720ms linear infinite;
+  animation-play-state: paused;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.simpleai-interaction-wait-feedback.is-visible .simpleai-interaction-wait-spinner {
+  animation-play-state: running;
+}
+
+.simpleai-interaction-wait-text {
+  min-width: 0;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes simpleai-interaction-wait-spin {
+  to { transform: rotate(360deg) translateZ(0); }
+}
+
+@media (max-width: 640px) {
+  .simpleai-interaction-wait-feedback {
+    top: max(calc(env(safe-area-inset-top) + 56px), 9vh);
+    max-width: calc(100vw - 20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .simpleai-interaction-wait-feedback {
+    transition: none;
+  }
+
+  .simpleai-interaction-wait-spinner {
+    animation: none;
+  }
+}
+
 .sai-webui-danbooru-autocomplete-item {
   display: grid;
   grid-template-columns: minmax(110px, 0.48fr) minmax(120px, 0.52fr);
