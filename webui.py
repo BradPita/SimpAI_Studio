@@ -11777,7 +11777,7 @@ async def simpleai_gallery_preview(preview_name: str):
             content=payload.get("data") or b"",
             media_type=payload.get("mime") or "image/jpeg",
             headers={
-                "Cache-Control": "no-store",
+                "Cache-Control": "private, max-age=31536000, immutable",
                 "X-Content-Type-Options": "nosniff",
             },
         )
@@ -12323,6 +12323,7 @@ async def simpleai_random_prompt(payload: dict = Body(...)):
             seed=payload.get("seed"),
             source_mode=payload.get("tag_source") or payload.get("tag_source_mode") or "all",
             prompt_text=payload.get("prompt_head") or payload.get("prompt") or payload.get("positive_prompt") or payload.get("source_prompt") or "",
+            recent_history=payload.get("recent_history"),
         ))
         return JSONResponse(result)
     except Exception as e:

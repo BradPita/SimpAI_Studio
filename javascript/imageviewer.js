@@ -178,6 +178,103 @@ function simpleaiOriginalGalleryImageSrc(img) {
     return simpleaiGalleryDisplayPreviewOriginalSrc(src) || src;
 }
 
+function simpleaiGalleryOriginalSourceIsVideo(src) {
+    const value = String(src || '').split(/[?#]/, 1)[0].toLowerCase();
+    return value.endsWith('.mp4') || value.endsWith('.webm');
+}
+
+function simpleaiReleaseCachedGalleryVideo(video, remove = true) {
+    if (!video) return;
+    const host = video.closest?.('.simpleai-cached-gallery-video-host') || null;
+    try { video.pause(); } catch (e) {}
+    if (remove) {
+        try { video.removeAttribute('src'); } catch (e) {}
+        try { video.load?.(); } catch (e) {}
+        try { video.remove(); } catch (e) {}
+        if (host?.dataset?.simpleaiCachedVideoHost === '1') {
+            try { host.remove(); } catch (e) {}
+        }
+    }
+}
+
+function simpleaiSyncCachedGalleryVideoPreviewRoot(root) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('.gallery-container > .preview').forEach((preview) => {
+        const poster = Array.from(preview.querySelectorAll('.media-button img')).find((img) => {
+            const original = simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img));
+            return simpleaiGalleryOriginalSourceIsVideo(original);
+        }) || null;
+        const originalSrc = poster ? simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(poster)) : '';
+        const posterSrc = poster ? simpleaiMediaSrc(poster) : '';
+        const videos = Array.from(preview.querySelectorAll('video.simpleai-cached-gallery-video-preview'));
+
+        preview.querySelectorAll('img.simpleai-cached-gallery-video-poster-source').forEach((img) => {
+            if (img !== poster) img.classList.remove('simpleai-cached-gallery-video-poster-source');
+        });
+        if (!poster || !originalSrc) {
+            videos.forEach((video) => simpleaiReleaseCachedGalleryVideo(video));
+            preview.classList.remove('simpleai-cached-gallery-video-active');
+            return;
+        }
+
+        let video = videos.find((item) => item.dataset.simpleaiOriginalSrc === originalSrc) || null;
+        videos.forEach((item) => {
+            if (item !== video) simpleaiReleaseCachedGalleryVideo(item);
+        });
+        let host = video?.closest?.('.simpleai-cached-gallery-video-host') || null;
+        if (!host) {
+            host = document.createElement('div');
+            host.className = 'simpleai-cached-gallery-video-host';
+            host.dataset.simpleaiCachedVideoHost = '1';
+            preview.appendChild(host);
+        }
+        if (!video) {
+            video = document.createElement('video');
+            video.className = 'simpleai-cached-gallery-video-preview';
+            video.dataset.simpleaiOriginalSrc = originalSrc;
+            video.controls = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            video.autoplay = false;
+            video.loop = false;
+            video.src = originalSrc;
+            video.addEventListener('click', (event) => event.stopPropagation());
+            video.addEventListener('pointerdown', (event) => event.stopPropagation());
+            video.addEventListener('play', () => {
+                document.querySelectorAll('video.simpleai-cached-gallery-video-preview').forEach((other) => {
+                    if (other !== video) {
+                        try { other.pause(); } catch (e) {}
+                    }
+                });
+            });
+            host.appendChild(video);
+        }
+        if (video.poster !== posterSrc) video.poster = posterSrc;
+        poster.classList.add('simpleai-cached-gallery-video-poster-source');
+        preview.classList.add('simpleai-cached-gallery-video-active');
+    });
+}
+
+function simpleaiApplyMobileGalleryVideoPolicy() {
+    if (!window.simpleaiDisableHoverPreviewsForInput?.()) return;
+    document.querySelectorAll('#finished_gallery video, #final_gallery video').forEach((video) => {
+        video.autoplay = false;
+        video.loop = false;
+        video.removeAttribute('autoplay');
+        const cachedPreview = video.classList.contains('simpleai-cached-gallery-video-preview');
+        const insidePreview = !!video.closest('.gallery-container > .preview');
+        video.preload = cachedPreview || insidePreview ? 'metadata' : 'none';
+        if (document.hidden || !insidePreview) {
+            try { video.pause(); } catch (e) {}
+        }
+    });
+}
+
+function simpleaiSyncCachedGalleryVideoPreviews() {
+    document.querySelectorAll('#finished_gallery, #final_gallery').forEach(simpleaiSyncCachedGalleryVideoPreviewRoot);
+    simpleaiApplyMobileGalleryVideoPolicy();
+}
+
 const SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR = [
     '#preview_generating img',
     '#finished_gallery img',
@@ -331,6 +428,8 @@ function simpleaiAbsoluteGalleryImageSrc(src) {
 
 function simpleaiGalleryImageMimeType(src) {
     const path = String(src || '').split('?', 1)[0].toLowerCase();
+    if (path.endsWith('.mp4')) return 'video/mp4';
+    if (path.endsWith('.webm')) return 'video/webm';
     if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
     if (path.endsWith('.webp')) return 'image/webp';
     if (path.endsWith('.gif')) return 'image/gif';
@@ -472,7 +571,7 @@ function simpleaiPrepareGalleryOriginalContextMenu(event) {
     if (!img) return;
     const previewSrc = simpleaiMediaSrc(img);
     const originalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(previewSrc);
-    if (!originalSrc) return;
+    if (!originalSrc || simpleaiGalleryOriginalSourceIsVideo(originalSrc)) return;
     simpleaiRestoreGalleryOriginalContextImage();
     const state = {
         img,
@@ -532,7 +631,7 @@ function simpleaiHandleGalleryOriginalCopyKeyDown(event) {
     const img = simpleaiCurrentGalleryOriginalCopyImage();
     if (!img) return;
     const originalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img));
-    if (!originalSrc) return;
+    if (!originalSrc || simpleaiGalleryOriginalSourceIsVideo(originalSrc)) return;
     event.preventDefault();
     simpleaiCopyGalleryImageForPaste(originalSrc);
 }
@@ -654,6 +753,8 @@ function simpleaiIsManagedGalleryGridMedia(elem) {
 
 function simpleaiShouldUseLightboxImage(elem) {
     if (!elem || !elem.closest) return false;
+    const originalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(elem));
+    if (simpleaiGalleryOriginalSourceIsVideo(originalSrc)) return false;
     // Let Gradio 6 keep owning multi-gallery grid clicks so a tile opens the
     // native single-preview/toolbox mode instead of the custom fullscreen viewer.
     if (simpleaiIsManagedGalleryGridMedia(elem)) return false;
@@ -949,13 +1050,16 @@ document.addEventListener('pointerdown', function(event) {
 }, true);
 
 function simpleaiSyncGalleryStateSoon() {
+    simpleaiSyncCachedGalleryVideoPreviews();
     simpleaiSyncGalleryFullscreenState();
     simpleaiSyncGalleryToolboxState();
     setTimeout(() => {
+        simpleaiSyncCachedGalleryVideoPreviews();
         simpleaiSyncGalleryFullscreenState();
         simpleaiSyncGalleryToolboxState();
     }, 60);
     setTimeout(() => {
+        simpleaiSyncCachedGalleryVideoPreviews();
         simpleaiSyncGalleryFullscreenState();
         simpleaiSyncGalleryToolboxState();
     }, 180);
@@ -1343,6 +1447,7 @@ document.addEventListener('drop', simpleaiHandleGalleryNativeDragEnd, true);
 document.addEventListener('keydown', simpleaiHandleGalleryOriginalCopyKeyDown, true);
 document.addEventListener('keyup', simpleaiHandleGalleryOriginalContextKeyUp, true);
 document.addEventListener('visibilitychange', simpleaiHandleGalleryOriginalContextVisibilityChange, true);
+document.addEventListener('visibilitychange', simpleaiSyncCachedGalleryVideoPreviews, true);
 window.addEventListener('pageshow', simpleaiScheduleGalleryNativeDragImageSync, true);
 window.addEventListener('pagehide', simpleaiRestoreGalleryOriginalContextImage, true);
 window.addEventListener("resize", () => {
@@ -1352,6 +1457,7 @@ window.addEventListener("resize", () => {
 
 if (typeof onUiLoaded === "function") {
     onUiLoaded(async () => {
+        simpleaiSyncCachedGalleryVideoPreviews();
         simpleaiSyncGalleryNativeDragImages();
         simpleaiSyncComparisonSliders();
         setTimeout(simpleaiSyncComparisonSliders, 100);
@@ -1360,10 +1466,13 @@ if (typeof onUiLoaded === "function") {
 }
 if (typeof onAfterUiUpdate === "function") {
     onAfterUiUpdate(simpleaiScheduleGalleryNativeDragImageSync);
+    onAfterUiUpdate(simpleaiSyncCachedGalleryVideoPreviews);
     onAfterUiUpdate(simpleaiSyncComparisonSliders);
 }
 simpleaiScheduleGalleryNativeDragImageSync();
+simpleaiSyncCachedGalleryVideoPreviews();
 window.simpleaiSyncComparisonSliders = simpleaiSyncComparisonSliders;
+window.simpleaiSyncCachedGalleryVideoPreviews = simpleaiSyncCachedGalleryVideoPreviews;
 
 document.addEventListener('click', function(event) {
     const target = event.target;

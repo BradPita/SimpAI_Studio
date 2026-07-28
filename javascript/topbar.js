@@ -3217,6 +3217,7 @@ function showSysMsg(message, theme) {
 }
 
 function initPresetPreviewOverlay() {
+    if (window.simpleaiDisableHoverPreviewsForInput?.()) return;
     let overlayVisible = false;
     let activePresetPreviewTarget = null;
     let presetPreviewRequestSeq = 0;

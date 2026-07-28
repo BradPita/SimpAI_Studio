@@ -583,7 +583,7 @@
   "aio_style_transfer": {
     "inputs": {
       "model": [
-        "815",
+        "aio_nag_model",
         0
       ],
       "positive": [
@@ -924,7 +924,7 @@
   "aio_inpaint": {
     "inputs": {
       "model": [
-        "815",
+        "aio_nag_model",
         0
       ],
       "positive": [
@@ -1089,7 +1089,7 @@
         0
       ],
       "model": [
-        "815",
+        "aio_nag_model",
         0
       ],
       "clip": [
@@ -1201,6 +1201,40 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "AIO Preview"
+    }
+  },
+  "aio_cfg_is_one": {
+    "inputs": {
+      "a": [
+        "728",
+        4
+      ],
+      "b": 1.0,
+      "comparison": "a == b"
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "AIO CFG Is One"
+    }
+  },
+  "aio_nag_model": {
+    "inputs": {
+      "boolean": [
+        "aio_cfg_is_one",
+        0
+      ],
+      "on_true": [
+        "815",
+        0
+      ],
+      "on_false": [
+        "804",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "AIO Automatic NAG"
     }
   }
 }

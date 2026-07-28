@@ -21,7 +21,7 @@ from lxml import etree
 import logging
 import threading
 import time
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from enhanced.logger import format_name
 from ui.update_helpers import dropdown_update, gr_update, skip_update
 logger = logging.getLogger(format_name(__name__))
@@ -38,10 +38,13 @@ videos_list = {}
 image_types = ['.png', '.jpg', '.jpeg', '.webp'] 
 video_types = ['.webm', '.mp4']
 output_images_regex = re.compile(r'\d{4}-\d{2}-\d{2}')
-_output_list_cache = {}
-_output_list_cache_lock = threading.Lock()
-_output_list_inflight = set()
+OUTPUT_CATALOG_SNAPSHOT_TTL_SECONDS = 30.0
+_output_catalog_snapshots = {}
+_output_catalog_snapshot_lock = threading.Lock()
+_output_catalog_snapshot_inflight = {}
+_output_catalog_snapshot_versions = {}
 _output_catalog_dir_cache = {}
+_output_catalog_dir_cache_lock = threading.Lock()
 _gallery_media_switch_request_lock = threading.Lock()
 _gallery_media_switch_latest = {}
 _main_gallery_browser_request_lock = threading.Lock()
@@ -52,11 +55,16 @@ GALLERY_DISPLAY_PREVIEW_MAX_EDGE = 1600
 GALLERY_DISPLAY_PREVIEW_PIXEL_LIMIT = 2000000
 GALLERY_DISPLAY_PREVIEW_EDGE_LIMIT = 2048
 GALLERY_DISPLAY_PREVIEW_JPEG_QUALITY = 88
+GALLERY_VIDEO_POSTER_MAX_EDGE = 720
+GALLERY_VIDEO_POSTER_JPEG_QUALITY = 4
+GALLERY_VIDEO_POSTER_PROFILE_VERSION = 1
 GALLERY_DISPLAY_PREVIEW_MEMORY_MAX_ITEMS = 96
 GALLERY_DISPLAY_PREVIEW_MEMORY_MAX_BYTES = 256 * 1024 * 1024
 _gallery_display_preview_memory = OrderedDict()
 _gallery_display_preview_memory_lock = threading.Lock()
 _gallery_display_preview_memory_bytes = 0
+_gallery_display_preview_build_slots = threading.BoundedSemaphore(2)
+_gallery_display_preview_build_inflight = {}
 
 
 def _gallery_display_preview_resample_filter():
@@ -107,8 +115,14 @@ def _gallery_display_preview_name(media_path):
         return ""
     normalized_path = os.path.abspath(str(media_path)).replace("\\", "/")
     encoded = base64.urlsafe_b64encode(normalized_path.encode("utf-8")).decode("ascii").rstrip("=")
+    media_kind = "video" if os.path.splitext(normalized_path)[1].lower() in video_types else "image"
+    preview_profile = (
+        f"video:{GALLERY_VIDEO_POSTER_PROFILE_VERSION}:{GALLERY_VIDEO_POSTER_MAX_EDGE}:{GALLERY_VIDEO_POSTER_JPEG_QUALITY}"
+        if media_kind == "video"
+        else f"image:{GALLERY_DISPLAY_PREVIEW_MAX_EDGE}:{GALLERY_DISPLAY_PREVIEW_JPEG_QUALITY}"
+    )
     signature = hashlib.sha1(
-        f"{normalized_path}|{stat.st_size}|{getattr(stat, 'st_mtime_ns', int(stat.st_mtime * 1000000000))}|{GALLERY_DISPLAY_PREVIEW_MAX_EDGE}".encode("utf-8")
+        f"{normalized_path}|{stat.st_size}|{getattr(stat, 'st_mtime_ns', int(stat.st_mtime * 1000000000))}|{preview_profile}".encode("utf-8")
     ).hexdigest()[:16]
     return f"{GALLERY_DISPLAY_PREVIEW_PREFIX}{encoded}__{signature}.jpg"
 
@@ -207,7 +221,72 @@ def _gallery_image_needs_display_preview(media_path):
     return (width * height) >= GALLERY_DISPLAY_PREVIEW_PIXEL_LIMIT or max(width, height) >= GALLERY_DISPLAY_PREVIEW_EDGE_LIMIT
 
 
+def _gallery_media_needs_display_preview(media_path):
+    extension = os.path.splitext(str(media_path or ""))[1].lower()
+    if extension in video_types:
+        return True
+    if extension in image_types:
+        return _gallery_image_needs_display_preview(media_path)
+    return False
+
+
+def _gallery_create_video_poster_bytes(media_path):
+    ffmpeg_exe = _get_ffmpeg_exe()
+    if not ffmpeg_exe:
+        return b""
+    scale_filter = (
+        f"scale='min({GALLERY_VIDEO_POSTER_MAX_EDGE},iw)':"
+        f"'min({GALLERY_VIDEO_POSTER_MAX_EDGE},ih)':force_original_aspect_ratio=decrease"
+    )
+    run_kwargs = {}
+    if os.name == "nt":
+        run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        proc = subprocess.run(
+            [
+                ffmpeg_exe,
+                "-hide_banner",
+                "-loglevel", "error",
+                "-nostdin",
+                "-i", media_path,
+                "-an",
+                "-sn",
+                "-dn",
+                "-frames:v", "1",
+                "-vf", scale_filter,
+                "-c:v", "mjpeg",
+                "-q:v", str(GALLERY_VIDEO_POSTER_JPEG_QUALITY),
+                "-f", "image2pipe",
+                "pipe:1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+            check=False,
+            **run_kwargs,
+        )
+    except Exception as e:
+        logger.warning("Gallery video poster failed: path=%r, error=%s", media_path, e)
+        return b""
+    if proc.returncode != 0 or not proc.stdout:
+        error = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+        logger.warning("Gallery video poster failed: path=%r, error=%s", media_path, error or proc.returncode)
+        return b""
+    return bytes(proc.stdout)
+
+
+def _gallery_create_video_poster_fallback_bytes():
+    image = Image.new("RGB", (480, 270), (20, 22, 26))
+    draw = ImageDraw.Draw(image)
+    draw.polygon([(207, 88), (207, 182), (289, 135)], fill=(232, 234, 238))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=82, optimize=True)
+    return buffer.getvalue()
+
+
 def _gallery_create_display_preview_bytes(media_path):
+    if os.path.splitext(str(media_path or ""))[1].lower() in video_types:
+        return _gallery_create_video_poster_bytes(media_path) or _gallery_create_video_poster_fallback_bytes()
     try:
         with Image.open(media_path) as image:
             image = ImageOps.exif_transpose(image)
@@ -265,27 +344,53 @@ def _gallery_get_display_preview_entry(preview_name):
         }
 
 
+def _gallery_get_or_create_display_preview(preview_name, media_path):
+    entry = _gallery_get_display_preview_entry(preview_name)
+    if entry:
+        return entry
+    with _gallery_display_preview_memory_lock:
+        build_event = _gallery_display_preview_build_inflight.get(preview_name)
+        owns_build = build_event is None
+        if owns_build:
+            build_event = threading.Event()
+            _gallery_display_preview_build_inflight[preview_name] = build_event
+    if not owns_build:
+        build_event.wait()
+        return _gallery_get_display_preview_entry(preview_name)
+    try:
+        with _gallery_display_preview_build_slots:
+            entry = _gallery_get_display_preview_entry(preview_name)
+            if entry:
+                return entry
+            data = _gallery_create_display_preview_bytes(media_path)
+            if not data:
+                return None
+            _gallery_store_display_preview(preview_name, media_path, data)
+            return _gallery_get_display_preview_entry(preview_name)
+    finally:
+        with _gallery_display_preview_memory_lock:
+            if _gallery_display_preview_build_inflight.get(preview_name) is build_event:
+                _gallery_display_preview_build_inflight.pop(preview_name, None)
+        build_event.set()
+
+
 def _gallery_ensure_display_preview(media_path, user_did=None):
     if not _gallery_display_preview_is_under_outputs(media_path, user_did):
         return ""
-    if not _gallery_image_needs_display_preview(media_path):
+    if not _gallery_media_needs_display_preview(media_path):
         return ""
     preview_name = _gallery_display_preview_name(media_path)
     if not preview_name:
         return ""
-    if _gallery_get_display_preview_entry(preview_name):
-        return preview_name
-    data = _gallery_create_display_preview_bytes(media_path)
-    if not data:
+    if not _gallery_get_or_create_display_preview(preview_name, media_path):
         return ""
-    _gallery_store_display_preview(preview_name, media_path, data)
     return preview_name
 
 
 def _gallery_lazy_display_preview_name(media_path, user_did=None):
     if not _gallery_display_preview_is_under_outputs(media_path, user_did):
         return ""
-    if not _gallery_image_needs_display_preview(media_path):
+    if not _gallery_media_needs_display_preview(media_path):
         return ""
     return _gallery_display_preview_name(media_path)
 
@@ -298,26 +403,23 @@ def get_gallery_display_preview_response(preview_name):
     if not media_path or not _gallery_display_preview_path_allowed(media_path):
         return None
     media_path = os.path.abspath(str(media_path))
-    if not os.path.isfile(media_path) or os.path.splitext(media_path)[1].lower() not in image_types:
+    if not os.path.isfile(media_path) or os.path.splitext(media_path)[1].lower() not in image_types + video_types:
         return None
     if _gallery_display_preview_name(media_path) != str(preview_name or ""):
         return None
-    if not _gallery_image_needs_display_preview(media_path):
+    if not _gallery_media_needs_display_preview(media_path):
         return None
-    data = _gallery_create_display_preview_bytes(media_path)
-    if not data:
-        return None
-    _gallery_store_display_preview(preview_name, media_path, data)
-    return _gallery_get_display_preview_entry(preview_name)
+    return _gallery_get_or_create_display_preview(preview_name, media_path)
 
 
 def gallery_display_path_for_progress(media_path, engine_type="image", user_did=None, state_params=None):
-    if engine_type != "image" or not media_path:
+    if engine_type not in ("image", "video") or not media_path:
         return media_path
     media_path = os.path.abspath(str(media_path))
     if not os.path.isfile(media_path):
         return media_path
-    if os.path.splitext(media_path)[1].lower() not in image_types:
+    expected_extensions = video_types if engine_type == "video" else image_types
+    if os.path.splitext(media_path)[1].lower() not in expected_extensions:
         return media_path
     preview_name = _gallery_lazy_display_preview_name(media_path, user_did)
     if not preview_name:
@@ -326,7 +428,7 @@ def gallery_display_path_for_progress(media_path, engine_type="image", user_did=
 
 
 def gallery_display_paths_for_progress(media_paths, engine_type="image", user_did=None, state_params=None):
-    if engine_type != "image":
+    if engine_type not in ("image", "video"):
         return media_paths
     return [gallery_display_path_for_progress(path, engine_type, user_did, state_params) for path in (media_paths or [])]
 
@@ -664,23 +766,33 @@ def gallery_preview_close(state_params):
 def sync_image_toolbox_visibility(image_tools_checkbox, state_params):
     return gr_update(visible=_should_show_image_toolbox(image_tools_checkbox, state_params))
 
-def invalidate_output_list_cache(user_did=None, engine_type=None):
+def invalidate_output_list_cache(user_did=None, engine_type=None, clear_directory_cache=False):
     user_key = None if user_did is None else str(user_did)
-    engine_key = None if engine_type is None else str(engine_type)
-    with _output_list_cache_lock:
-        if user_key is None and engine_key is None:
-            _output_list_cache.clear()
+    with _output_catalog_snapshot_lock:
+        if user_key is None:
+            invalidated_keys = set(_output_catalog_snapshots) | set(_output_catalog_snapshot_inflight)
+            _output_catalog_snapshots.clear()
         else:
-            for cache_key in list(_output_list_cache.keys()):
-                key_user, key_engine = cache_key[0], cache_key[1]
-                if (user_key is None or key_user == user_key) and (engine_key is None or key_engine == engine_key):
-                    _output_list_cache.pop(cache_key, None)
-    if user_key is None:
-        _output_catalog_dir_cache.clear()
-    else:
-        for cache_key in list(_output_catalog_dir_cache.keys()):
-            if cache_key and cache_key[0] == user_key:
-                _output_catalog_dir_cache.pop(cache_key, None)
+            invalidated_keys = {
+                snapshot_key
+                for snapshot_key in set(_output_catalog_snapshots) | set(_output_catalog_snapshot_inflight)
+                if snapshot_key and snapshot_key[0] == user_key
+            }
+            invalidated_keys.add(_output_catalog_snapshot_key(user_did))
+            for snapshot_key in list(_output_catalog_snapshots.keys()):
+                if snapshot_key and snapshot_key[0] == user_key:
+                    _output_catalog_snapshots.pop(snapshot_key, None)
+        for snapshot_key in invalidated_keys:
+            _output_catalog_snapshot_versions[snapshot_key] = _output_catalog_snapshot_versions.get(snapshot_key, 0) + 1
+
+    if clear_directory_cache:
+        with _output_catalog_dir_cache_lock:
+            if user_key is None:
+                _output_catalog_dir_cache.clear()
+            else:
+                for cache_key in list(_output_catalog_dir_cache.keys()):
+                    if cache_key and cache_key[0] == user_key:
+                        _output_catalog_dir_cache.pop(cache_key, None)
 
 
 def _catalog_choice_from_folder(folder_name):
@@ -706,6 +818,46 @@ def _paginate_catalog_choices(catalogs, max_per_page, max_catalog):
         else:
             output_list.append(choice)
     return output_list[:max_catalog]
+
+
+def _output_catalog_snapshot_key(user_did=None):
+    try:
+        output_root = os.path.normcase(os.path.abspath(config.get_user_path_outputs(user_did)))
+    except Exception:
+        output_root = ""
+    return str(user_did), output_root
+
+
+def _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_catalog):
+    engine_type = "video" if engine_type == "video" else "image"
+    max_per_page = max(1, int(max_per_page))
+    max_catalog = max(0, int(max_catalog))
+
+    if engine_type == "video":
+        video_catalogs = snapshot.get("video_catalogs") or {}
+        output_list = _paginate_catalog_choices(video_catalogs, max_per_page, max_catalog)
+        total_nums = sum(len(items or []) for items in video_catalogs.values())
+        return output_list, total_nums, len(output_list)
+
+    image_catalogs = snapshot.get("image_catalogs") or {}
+    output_list = []
+    total_nums = 0
+    for choice, item_count in image_catalogs.items():
+        item_count = max(0, int(item_count or 0))
+        if item_count <= 0:
+            continue
+        total_nums += item_count
+        folder_name = _folder_from_catalog_choice(choice)
+        if item_count > max_per_page:
+            max_page_no = math.ceil(item_count / max_per_page)
+            width = len(str(max_page_no))
+            for page_no in range(1, max_page_no + 1):
+                output_list.append("{}/{}".format(folder_name, str(page_no).zfill(width)))
+        else:
+            output_list.append(folder_name)
+    output_list = sorted([choice[2:] for choice in output_list], reverse=True)
+    pages = len(output_list)
+    return output_list[:max_catalog], total_nums, pages
 
 
 def _slice_catalog_page(items, choice, max_per_page):
@@ -795,38 +947,7 @@ def _get_video_rel_path_from_gallery_index(choice, selected, max_per_page, user_
     selected = max(0, min(selected, len(rel_paths) - 1))
     return rel_paths[selected]
 
-def refresh_output_list(max_per_page, max_catalog, user_did=None, engine_type='image'):
-    global image_types, images_list, images_list_keys, images_prompt, images_prompt_keys, images_ads, videos_list, _output_catalog_dir_cache
-
-    cache_key = (str(user_did), str(engine_type), int(max_per_page), int(max_catalog))
-    with _output_list_cache_lock:
-        cached = _output_list_cache.get(cache_key)
-        if cache_key in _output_list_inflight:
-            if cached is not None:
-                return cached
-            wait_for_inflight = True
-        else:
-            _output_list_inflight.add(cache_key)
-            wait_for_inflight = False
-
-    if wait_for_inflight:
-        wait_until = time.monotonic() + 3.0
-        while time.monotonic() < wait_until:
-            time.sleep(0.03)
-            with _output_list_cache_lock:
-                cached = _output_list_cache.get(cache_key)
-                if cached is not None:
-                    return cached
-                if cache_key not in _output_list_inflight:
-                    break
-        with _output_list_cache_lock:
-            cached = _output_list_cache.get(cache_key)
-            if cached is not None:
-                return cached
-            if cache_key in _output_list_inflight:
-                return ([], 0, 0)
-            _output_list_inflight.add(cache_key)
-
+def _build_output_catalog_snapshot(user_did=None):
     start_perf = time.perf_counter()
     deadline = time.monotonic() + 2.5
 
@@ -903,135 +1024,216 @@ def refresh_output_list(max_per_page, max_catalog, user_did=None, engine_type='i
         except Exception:
             return False
 
-    try:
-        user_path_outputs = config.get_user_path_outputs(user_did)
-        if not os.path.exists(user_path_outputs):
-            logger.info(f'[Gallery] Makedirs for new user: {user_path_outputs}')
-            os.makedirs(user_path_outputs, exist_ok=True)
+    user_path_outputs = config.get_user_path_outputs(user_did)
+    if not os.path.exists(user_path_outputs):
+        logger.info(f'[Gallery] Makedirs for new user: {user_path_outputs}')
+        os.makedirs(user_path_outputs, exist_ok=True)
 
-        listdirs = []
-        for entry in os.scandir(user_path_outputs):
-            _check_deadline()
-            try:
-                if not entry.is_dir():
-                    continue
-                name = entry.name
-                if output_images_regex.findall(name):
-                    listdirs.append(name)
-            except OSError:
+    listdirs = []
+    for entry in os.scandir(user_path_outputs):
+        _check_deadline()
+        try:
+            if not entry.is_dir():
                 continue
-        if not listdirs:
-            result = ([], 0, 0)
-            with _output_list_cache_lock:
-                _output_list_cache[cache_key] = result
-            return result
+            name = entry.name
+            if output_images_regex.findall(name):
+                listdirs.append(name)
+        except OSError:
+            continue
 
-        listdirs1 = []
-        total_nums = 0
-        video_catalogs = {}
-        scanned_dirs = 0
-        reused_dirs = 0
-        for index in listdirs:
-            _check_deadline()
-            path_gallery = os.path.join(user_path_outputs, index)
-            try:
-                stat = os.stat(path_gallery)
-                dir_signature = (stat.st_mtime_ns, stat.st_size)
-            except OSError:
-                continue
+    image_catalogs = {}
+    video_catalogs = {}
+    snapshot_folders = []
+    scanned_dirs = 0
+    reused_dirs = 0
+    for index in listdirs:
+        _check_deadline()
+        path_gallery = os.path.join(user_path_outputs, index)
+        try:
+            stat = os.stat(path_gallery)
+            dir_signature = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            continue
 
-            dir_cache_key = (str(user_did), os.path.abspath(path_gallery))
+        dir_cache_key = (str(user_did), os.path.abspath(path_gallery))
+        with _output_catalog_dir_cache_lock:
             cached_dir = _output_catalog_dir_cache.get(dir_cache_key)
             if cached_dir and cached_dir.get("signature") == dir_signature:
-                reused_dirs += 1
-                nums = cached_dir.get("image_count", 0)
-                cached_videos = cached_dir.get("videos", [])
-                if isinstance(cached_videos, dict):
-                    cached_videos = list(cached_videos.values())
-            else:
-                scanned_dirs += 1
-                image_files = _list_files_quick(path_gallery, image_types)
-                video_names = _list_files_quick(path_gallery, video_types)
-                nums = len(image_files)
-                cached_videos = [os.path.join(index, v) for v in sorted(video_names, reverse=True)]
+                cached_dir["last_seen"] = time.monotonic()
+        if cached_dir and cached_dir.get("signature") == dir_signature:
+            reused_dirs += 1
+            image_count = cached_dir.get("image_count", 0)
+            cached_videos = cached_dir.get("videos", [])
+            if isinstance(cached_videos, dict):
+                cached_videos = list(cached_videos.values())
+        else:
+            scanned_dirs += 1
+            image_files = _list_files_quick(path_gallery, image_types)
+            video_names = _list_files_quick(path_gallery, video_types)
+            image_count = len(image_files)
+            cached_videos = [os.path.join(index, name) for name in sorted(video_names, reverse=True)]
+            with _output_catalog_dir_cache_lock:
                 _output_catalog_dir_cache[dir_cache_key] = {
                     "signature": dir_signature,
-                    "image_count": nums,
+                    "image_count": image_count,
                     "videos": cached_videos,
                     "last_seen": time.monotonic(),
                 }
 
-            if nums <= 0 and not cached_videos:
-                continue
+        choice = _catalog_choice_from_folder(index)
+        if image_count > 0:
+            image_catalogs[choice] = image_count
+        if cached_videos:
+            video_catalogs[choice] = cached_videos
+        if image_count > 0 or cached_videos:
+            snapshot_folders.append(index)
 
-            total_nums += nums
-            if nums > 0:
-                listdirs1.append(index)
-            if nums > max_per_page:
-                max_page_no = math.ceil(nums/max_per_page)
-                for i in range(1, max_page_no + 1):
-                    _check_deadline()
-                    listdirs1.append("{}/{}".format(index, str(i).zfill(len(str(max_page_no)))))
-                listdirs1.remove(index)
-            if cached_videos:
-                video_catalogs[_catalog_choice_from_folder(index)] = cached_videos
-
-        stale_cutoff = time.monotonic() - 600
+    stale_cutoff = time.monotonic() - 600
+    with _output_catalog_dir_cache_lock:
         if len(_output_catalog_dir_cache) > 256:
             for old_key, old_value in list(_output_catalog_dir_cache.items()):
                 if old_value.get("last_seen", 0) < stale_cutoff:
                     _output_catalog_dir_cache.pop(old_key, None)
 
-        if not listdirs1 and not video_catalogs:
-            result = ([], 0, 0)
-            with _output_list_cache_lock:
-                _output_list_cache[cache_key] = result
-            return result
+    return {
+        "updated_at": time.monotonic(),
+        "build_elapsed_s": time.perf_counter() - start_perf,
+        "user_did": user_did,
+        "folders": sorted(snapshot_folders, reverse=True),
+        "image_catalogs": image_catalogs,
+        "video_catalogs": video_catalogs,
+        "scanned_dirs": scanned_dirs,
+        "reused_dirs": reused_dirs,
+    }
 
-        videos_list[user_did] = video_catalogs
-        if engine_type == 'video':
-            output_list = _paginate_catalog_choices(video_catalogs, max_per_page, max_catalog)
-            total_nums = sum(len(items) for items in video_catalogs.values())
-            output_list = output_list[:max_catalog]
-            result = (output_list, total_nums, len(output_list))
-            with _output_list_cache_lock:
-                _output_list_cache[cache_key] = result
-            elapsed_s = time.perf_counter() - start_perf
-            if elapsed_s >= 0.2:
-                logger.info(f"[Gallery] refresh_output_list elapsed_s={elapsed_s:.2f}, user_did={user_did}, engine_type={engine_type}, total={total_nums}, pages={result[2]}, scanned_dirs={scanned_dirs}, reused_dirs={reused_dirs}")
-            return result
 
-        output_list = sorted([f[2:] for f in listdirs1], reverse=True)
-        pages = len(output_list)
-        display_max_pages = max_catalog
-        logger.info(f'Refresh_output_catalog: A total of {total_nums} images and {pages} pages, displaying the latest {pages if pages<display_max_pages else display_max_pages} pages.')
-        output_list = output_list[:display_max_pages]
+def _complete_output_catalog_snapshot_build(snapshot_key, build_event, generation, snapshot=None):
+    accepted = False
+    with _output_catalog_snapshot_lock:
+        current_build = _output_catalog_snapshot_inflight.get(snapshot_key)
+        if snapshot is not None and generation == _output_catalog_snapshot_versions.get(snapshot_key, 0):
+            _output_catalog_snapshots[snapshot_key] = snapshot
+            user_did = snapshot.get("user_did")
+            videos_list[user_did] = snapshot.get("video_catalogs") or {}
+            images_list.setdefault(user_did, {})
+            images_list_keys.setdefault(user_did, [])
+            images_prompt.setdefault(user_did, {})
+            images_prompt_keys.setdefault(user_did, [])
+            images_ads.setdefault(user_did, {})
+            accepted = True
+        if current_build and current_build[0] is build_event:
+            _output_catalog_snapshot_inflight.pop(snapshot_key, None)
+    build_event.set()
+    return accepted
 
-        if user_did not in images_list:
-            images_list[user_did] = {}
-        if user_did not in images_list_keys:
-            images_list_keys[user_did] = []
-        if user_did not in images_prompt:
-            images_prompt[user_did] = {}
-        if user_did not in images_prompt_keys:
-            images_prompt_keys[user_did] = []
-        if user_did not in images_ads:
-            images_ads[user_did] = {}
 
-        result = (output_list, total_nums, pages)
-        with _output_list_cache_lock:
-            _output_list_cache[cache_key] = result
-        elapsed_s = time.perf_counter() - start_perf
-        if elapsed_s >= 0.2:
-            logger.info(f"[Gallery] refresh_output_list elapsed_s={elapsed_s:.2f}, user_did={user_did}, engine_type={engine_type}, total={total_nums}, pages={pages}, scanned_dirs={scanned_dirs}, reused_dirs={reused_dirs}")
-        return result
+def _log_output_catalog_snapshot(snapshot, background=False):
+    image_total = sum(int(count or 0) for count in (snapshot.get("image_catalogs") or {}).values())
+    video_total = sum(len(items or []) for items in (snapshot.get("video_catalogs") or {}).values())
+    logger.info(
+        "[Gallery] output catalog snapshot rebuilt: elapsed_s=%.2f, user_did=%s, images=%s, videos=%s, folders=%s, scanned_dirs=%s, reused_dirs=%s, background=%s",
+        float(snapshot.get("build_elapsed_s") or 0),
+        snapshot.get("user_did"),
+        image_total,
+        video_total,
+        len(snapshot.get("folders") or []),
+        snapshot.get("scanned_dirs", 0),
+        snapshot.get("reused_dirs", 0),
+        bool(background),
+    )
+
+
+def _refresh_output_catalog_snapshot_in_background(snapshot_key, build_event, generation, user_did):
+    try:
+        snapshot = _build_output_catalog_snapshot(user_did)
     except TimeoutError:
-        elapsed_s = time.perf_counter() - start_perf
-        logger.warning(f"[Gallery] refresh_output_list timeout, returning cached: waited_s={elapsed_s:.2f}, user_did={user_did}, engine_type={engine_type}")
-        return cached if cached is not None else ([], 0, 0)
-    finally:
-        with _output_list_cache_lock:
-            _output_list_inflight.discard(cache_key)
+        logger.warning("[Gallery] output catalog background refresh timed out: user_did=%s", user_did)
+        _complete_output_catalog_snapshot_build(snapshot_key, build_event, generation)
+        return
+    except Exception as e:
+        logger.exception("[Gallery] output catalog background refresh failed: user_did=%s, error=%s", user_did, e)
+        _complete_output_catalog_snapshot_build(snapshot_key, build_event, generation)
+        return
+    if _complete_output_catalog_snapshot_build(snapshot_key, build_event, generation, snapshot):
+        _log_output_catalog_snapshot(snapshot, background=True)
+
+
+def refresh_output_list(max_per_page, max_catalog, user_did=None, engine_type='image'):
+    engine_type = "video" if engine_type == "video" else "image"
+    snapshot_key = _output_catalog_snapshot_key(user_did)
+    build_event = None
+    build_generation = None
+    start_background = False
+    owns_build = False
+
+    with _output_catalog_snapshot_lock:
+        snapshot = _output_catalog_snapshots.get(snapshot_key)
+        if snapshot is not None:
+            snapshot_age = time.monotonic() - float(snapshot.get("updated_at") or 0)
+            if snapshot_age >= OUTPUT_CATALOG_SNAPSHOT_TTL_SECONDS and snapshot_key not in _output_catalog_snapshot_inflight:
+                build_event = threading.Event()
+                build_generation = _output_catalog_snapshot_versions.get(snapshot_key, 0)
+                _output_catalog_snapshot_inflight[snapshot_key] = (build_event, build_generation)
+                start_background = True
+            result = _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_catalog)
+        else:
+            result = None
+            current_build = _output_catalog_snapshot_inflight.get(snapshot_key)
+            if current_build:
+                build_event, build_generation = current_build
+            else:
+                build_event = threading.Event()
+                build_generation = _output_catalog_snapshot_versions.get(snapshot_key, 0)
+                _output_catalog_snapshot_inflight[snapshot_key] = (build_event, build_generation)
+                owns_build = True
+
+    if result is not None:
+        if start_background:
+            try:
+                threading.Thread(
+                    target=_refresh_output_catalog_snapshot_in_background,
+                    args=(snapshot_key, build_event, build_generation, user_did),
+                    name="gallery-catalog-refresh",
+                    daemon=True,
+                ).start()
+            except Exception as e:
+                logger.warning("[Gallery] output catalog background thread failed: user_did=%s, error=%s", user_did, e)
+                _complete_output_catalog_snapshot_build(snapshot_key, build_event, build_generation)
+        return result
+
+    if not owns_build:
+        build_event.wait(3.0)
+        with _output_catalog_snapshot_lock:
+            snapshot = _output_catalog_snapshots.get(snapshot_key)
+            if snapshot is not None:
+                return _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_catalog)
+            current_build = _output_catalog_snapshot_inflight.get(snapshot_key)
+            if current_build:
+                return [], 0, 0
+            build_event = threading.Event()
+            build_generation = _output_catalog_snapshot_versions.get(snapshot_key, 0)
+            _output_catalog_snapshot_inflight[snapshot_key] = (build_event, build_generation)
+
+    try:
+        snapshot = _build_output_catalog_snapshot(user_did)
+    except TimeoutError:
+        logger.warning("[Gallery] output catalog snapshot timed out: user_did=%s", user_did)
+        _complete_output_catalog_snapshot_build(snapshot_key, build_event, build_generation)
+        return [], 0, 0
+    except Exception as e:
+        logger.exception("[Gallery] output catalog snapshot failed: user_did=%s, error=%s", user_did, e)
+        _complete_output_catalog_snapshot_build(snapshot_key, build_event, build_generation)
+        return [], 0, 0
+
+    if _complete_output_catalog_snapshot_build(snapshot_key, build_event, build_generation, snapshot):
+        _log_output_catalog_snapshot(snapshot)
+        return _output_catalog_snapshot_result(snapshot, engine_type, max_per_page, max_catalog)
+
+    with _output_catalog_snapshot_lock:
+        current_snapshot = _output_catalog_snapshots.get(snapshot_key)
+    if current_snapshot is not None:
+        return _output_catalog_snapshot_result(current_snapshot, engine_type, max_per_page, max_catalog)
+    return [], 0, 0
 
 
 def refresh_finished_nums_pages_for_browser(state_params, media_type):
@@ -1469,7 +1671,7 @@ def canvas_refresh_after_run(image_tools_checkbox, state_params):
     clear_post_generation_result_state(state_params)
     state_params.update({"note_box_state": ['', 0, 0]})
 
-    invalidate_output_list_cache(user_did, target_engine_type)
+    invalidate_output_list_cache(user_did, target_engine_type, clear_directory_cache=True)
     output_list, finished_nums, finished_pages = refresh_output_list(
         max_per_page,
         max_catalog,
@@ -2047,6 +2249,7 @@ def refresh_main_gallery_browser(folder, image_tools_checkbox, state_params):
     state_params = state_params or {}
     if _main_gallery_browser_request_ignored(state_params):
         return _gallery_browser_native_noop_response(state_params)
+    invalidate_output_list_cache(_user_did_from_state(state_params), clear_directory_cache=True)
     folder = _main_gallery_browser_request_folder(folder, state_params)
     return _load_main_gallery_browser_native(folder, image_tools_checkbox, state_params, offset=0, reset=True)
 

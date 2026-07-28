@@ -11,6 +11,10 @@
     let modal = null;
     let activeItems = [];
     let clickBoundButton = null;
+    let randomPromptPending = false;
+    let recentRandomHistory = [];
+    const RANDOM_HISTORY_LIMIT = 10;
+    const RANDOM_HISTORY_TAG_LIMIT = 80;
 
     function paramsSource() {
         return window.simpleaiTopbarSystemParams
@@ -203,6 +207,26 @@
         }
     }
 
+    function rememberRandomPrompt(item) {
+        if (item?.source !== "developer_nsfw_random_prompt") return;
+        const recipe = item.recipe && typeof item.recipe === "object" ? item.recipe : {};
+        const axes = recipe.axes && typeof recipe.axes === "object" ? recipe.axes : {};
+        const tags = String(item.prompt || "")
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .slice(0, RANDOM_HISTORY_TAG_LIMIT);
+        recentRandomHistory.push({
+            profile: String(recipe.profile || ""),
+            content_level: String(recipe.content_level || ""),
+            axes: Object.assign({}, axes),
+            tags,
+        });
+        if (recentRandomHistory.length > RANDOM_HISTORY_LIMIT) {
+            recentRandomHistory = recentRandomHistory.slice(-RANDOM_HISTORY_LIMIT);
+        }
+    }
+
     async function openRecommendations() {
         const preset = currentPreset();
         const sceneTheme = selectedSceneTheme();
@@ -225,6 +249,8 @@
     }
 
     async function generateRandomPrompt() {
+        if (randomPromptPending) return;
+        randomPromptPending = true;
         const button = promptButton();
         const previous = button?.textContent || "";
         if (button) button.textContent = text("Working...", "生成中...");
@@ -234,11 +260,16 @@
                 scene_theme: selectedSceneTheme(),
                 __lang: currentLang(),
                 prompt_head: currentTextboxValue("positive_prompt").slice(0, 64),
+                recent_history: recentRandomHistory,
             });
-            if (payload.item) applyPromptItem(payload.item);
+            if (payload.item) {
+                rememberRandomPrompt(payload.item);
+                applyPromptItem(payload.item);
+            }
         } catch (error) {
             console.warn("[UI-TRACE] random_prompt.local_failed", error);
         } finally {
+            randomPromptPending = false;
             if (button) button.textContent = previous || text("Random Prompt", "随机提示词");
             setPromptButtonLabel();
         }

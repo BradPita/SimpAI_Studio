@@ -15,6 +15,24 @@ RANDOM_PROMPT_CHARACTERS_FILE = os.path.join(RECOMMENDATIONS_DIR, "random_prompt
 RANDOM_PROMPT_ADULT_SLOTS_FILE = os.path.join(ROOT_DIR, "docs", "adult_trigger_slots.csv")
 RANDOM_PROMPT_ADULT_NEGATIVE_FILE = os.path.join(ROOT_DIR, "docs", "adult_negative_conflicts.csv")
 RANDOM_PROMPT_NSFW_ENV = "SIMPAI_DEV_RANDOM_PROMPT_NSFW"
+RANDOM_PROMPT_RECENT_HISTORY_LIMIT = 10
+RANDOM_PROMPT_RECENT_TAG_LIMIT = 80
+RANDOM_PROMPT_RECENT_CANDIDATE_COUNT = 5
+
+RANDOM_PROMPT_RECENT_AXIS_SCORES = {
+    "wardrobe_exposure": 5.0,
+    "activity": 4.0,
+    "event": 3.0,
+    "setting": 2.5,
+    "expression": 1.0,
+    "subject": 0.75,
+}
+
+RANDOM_PROMPT_RECENT_TAG_IGNORE = {
+    "nsfw", "1girl", "1boy", "2girls", "2boys", "solo", "couple", "multiple_girls", "multiple_boys",
+}
+
+RANDOM_PROMPT_RECENT_RECENCY = (1.0, 0.78, 0.60, 0.46, 0.34, 0.25, 0.18, 0.13, 0.09, 0.06)
 
 _random_prompt_association_cache = None
 _random_prompt_noise_cache = None
@@ -1046,7 +1064,1124 @@ RANDOM_FALLBACK_CHARACTERS = [
     {"character_tag": "kaito_(vocaloid)", "copyright_tag": "vocaloid", "subject_hint": "1boy", "score": "62"},
 ]
 
-RANDOM_PROMPT_NSFW_PROFILES = [
+RANDOM_PROMPT_NSFW_CONTENT_LEVEL_WEIGHTS = {
+    "suggestive": 62,
+    "nudity": 25,
+    "explicit": 13,
+}
+
+RANDOM_PROMPT_NSFW_SUGGESTIVE_PROFILES = [
+    {
+        "id": "dev_nsfw_lingerie_editorial",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["lingerie", "cleavage", "sideboob"],
+        "tags": ["1girl", "solo", "lingerie", "cleavage"],
+        "setting": [
+            ["photo_studio", "backdrop", "studio_light"],
+            ["hotel_room", "window", "city_lights"],
+            ["boutique", "display_table", "clothes_rack"],
+            ["balcony", "curtains", "night"],
+        ],
+        "pose": [["standing", "hand_on_hip"], ["sitting", "crossed_legs"], ["reclining", "looking_at_viewer"]],
+        "action": [["adjusting_clothes", "bra_strap"], ["leaning_forward", "cleavage"], ["looking_back", "sideboob"]],
+        "expression": [["teasing_smile", "looking_at_viewer"], ["blush", "parted_lips"], ["confident", "half-closed_eyes"]],
+        "body_detail": [["sideboob", "bare_shoulders"], ["cleavage", "thighs"], ["underboob", "midriff"]],
+        "lighting": [["studio_lighting", "soft_shadow"], ["window_light", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_wet_shirt_rain",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.65,
+        "association_max": 0,
+        "trigger_tags": ["wet_clothes", "see-through_shirt", "no_bra"],
+        "tags": ["1girl", "solo", "wet_clothes", "see-through_shirt"],
+        "setting": [
+            ["rain", "city_street", "puddle"],
+            ["bus_stop", "rain", "street_lamp"],
+            ["rooftop", "storm_clouds", "railing"],
+            ["laundromat", "window", "night"],
+        ],
+        "pose": [["standing", "arms_at_sides"], ["leaning_forward", "looking_at_viewer"], ["sitting", "from_side"]],
+        "action": [["wringing_clothes", "wet_shirt"], ["holding_umbrella", "wet_clothes"], ["shirt_clinging", "no_bra"]],
+        "expression": [["embarrassed", "blush"], ["teasing_smile", "looking_at_viewer"], ["surprised", "open_mouth"]],
+        "body_detail": [["nipples", "wet_shirt"], ["erect_nipples", "see-through_clothes"], ["underboob", "wet"]],
+        "lighting": [["neon_lights", "reflection"], ["overcast", "soft_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_bikini_slip",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.65,
+        "association_max": 0,
+        "trigger_tags": ["bikini", "wardrobe_malfunction", "nipples"],
+        "tags": ["1girl", "solo", "bikini", "wardrobe_malfunction"],
+        "setting": [
+            ["beach", "waves", "sunlight"],
+            ["poolside", "deck_chair", "water"],
+            ["yacht", "ocean", "railing"],
+            ["waterfall", "rocks", "mist"],
+        ],
+        "pose": [["standing", "contrapposto"], ["kneeling", "from_above"], ["sitting", "legs_to_the_side"]],
+        "action": [["adjusting_bikini", "bikini_top"], ["bikini_top_lift", "covering_breasts"], ["looking_back", "untied_bikini"]],
+        "expression": [["embarrassed", "blush"], ["playful_smile", "looking_at_viewer"], ["surprised", "parted_lips"]],
+        "body_detail": [["one_nipple", "tan_lines"], ["sideboob", "water_drops"], ["underboob", "midriff"]],
+        "lighting": [["sunlight", "sparkling_water"], ["sunset", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_towel_spa",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["towel", "towel_slip", "sideboob"],
+        "tags": ["1girl", "solo", "towel", "wet"],
+        "setting": [
+            ["spa", "massage_table", "candle"],
+            ["sauna", "wooden_wall", "steam"],
+            ["bathroom", "bathtub", "sink"],
+            ["pool_locker_room", "bench", "locker"],
+        ],
+        "pose": [["standing", "holding_towel"], ["sitting", "crossed_legs"], ["reclining", "from_side"]],
+        "action": [["towel_slip", "covering_breasts"], ["drying_hair", "towel"], ["adjusting_towel", "looking_at_viewer"]],
+        "expression": [["relaxed", "half-closed_eyes"], ["embarrassed", "blush"], ["soft_smile", "looking_at_viewer"]],
+        "body_detail": [["sideboob", "wet_hair"], ["one_nipple", "water_drops"], ["bare_back", "shoulders"]],
+        "lighting": [["candlelight", "soft_shadow"], ["steam", "diffused_light"]],
+    },
+    {
+        "id": "dev_nsfw_fitting_room",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.75,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.55,
+        "association_max": 0,
+        "trigger_tags": ["changing_clothes", "underwear", "wardrobe_malfunction"],
+        "tags": ["1girl", "solo", "changing_clothes", "underwear"],
+        "setting": [
+            ["fitting_room", "mirror", "curtain"],
+            ["dressing_room", "clothes_rack", "chair"],
+            ["walk-in_closet", "wardrobe", "dressing_bench"],
+            ["backstage", "costume_rack", "curtains"],
+        ],
+        "pose": [["standing", "one_leg_raised"], ["sitting", "putting_on_clothes"], ["from_behind", "looking_back"]],
+        "action": [["removing_shirt", "bra"], ["pulling_up_stockings", "panties"], ["dress_lift", "adjusting_clothes"]],
+        "expression": [["caught_in_the_act", "blush"], ["teasing_smile", "looking_at_viewer"], ["concentrating", "parted_lips"]],
+        "body_detail": [["cleavage", "bare_shoulders"], ["sideboob", "thighs"], ["underboob", "midriff"]],
+        "lighting": [["fitting_room_lighting", "soft_shadow"], ["backstage_lighting", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_loose_shirt_morning",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.75,
+        "association_max": 0,
+        "trigger_tags": ["oversized_shirt", "no_bra", "button_gap"],
+        "tags": ["1girl", "solo", "oversized_shirt", "no_bra"],
+        "setting": [
+            ["kitchen", "coffee_mug", "morning"],
+            ["balcony", "curtains", "sunrise"],
+            ["living_room", "couch", "window"],
+            ["hotel_room", "window", "cityscape"],
+        ],
+        "pose": [["stretching", "arms_up"], ["sitting", "crossed_legs"], ["leaning_on_counter", "looking_at_viewer"]],
+        "action": [["shirt_slip", "bare_shoulders"], ["button_gap", "holding_cup"], ["arms_up", "shirt_lift"]],
+        "expression": [["sleepy", "half-closed_eyes"], ["soft_smile", "looking_at_viewer"], ["yawning", "blush"]],
+        "body_detail": [["underboob", "midriff"], ["cleavage", "bare_legs"], ["one_nipple", "loose_clothes"]],
+        "lighting": [["morning_light", "soft_shadow"], ["window_light", "backlighting"]],
+    },
+    {
+        "id": "dev_nsfw_backstage_costume",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.75,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.6,
+        "association_max": 0,
+        "trigger_tags": ["cosplay", "costume_malfunction", "cleavage"],
+        "tags": ["1girl", "solo", "cosplay", "costume_malfunction"],
+        "setting": [
+            ["backstage", "curtains", "costume_rack"],
+            ["convention_center", "empty_hall", "poster"],
+            ["photo_studio", "props", "backdrop"],
+            ["theater_dressing_room", "makeup_table", "light_bulbs"],
+        ],
+        "pose": [["standing", "adjusting_clothes"], ["kneeling", "looking_up"], ["looking_back", "hand_on_hip"]],
+        "action": [["broken_strap", "covering_breasts"], ["zipper_pull", "bare_back"], ["skirt_tug", "thighs"]],
+        "expression": [["nervous_smile", "blush"], ["confident", "looking_at_viewer"], ["surprised", "open_mouth"]],
+        "body_detail": [["sideboob", "bare_shoulders"], ["cleavage", "thighs"], ["one_nipple", "costume"]],
+        "lighting": [["stage_lighting", "rim_lighting"], ["dressing_room_lighting", "soft_shadow"]],
+    },
+    {
+        "id": "dev_nsfw_festival_yukata",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["yukata", "loose_clothes", "no_bra"],
+        "tags": ["1girl", "solo", "yukata", "loose_clothes"],
+        "setting": [
+            ["festival", "lantern", "food_stall"],
+            ["shrine", "torii", "night"],
+            ["fireworks", "riverbank", "summer"],
+            ["traditional_inn", "veranda", "garden"],
+        ],
+        "pose": [["standing", "holding_fan"], ["sitting", "knees_together"], ["looking_back", "from_behind"]],
+        "action": [["adjusting_yukata", "collarbone"], ["loose_collar", "cleavage"], ["wind_lift", "bare_legs"]],
+        "expression": [["shy_smile", "blush"], ["looking_at_viewer", "parted_lips"], ["playful_smile", "wink"]],
+        "body_detail": [["cleavage", "bare_shoulders"], ["sideboob", "loose_clothes"], ["thighs", "bare_legs"]],
+        "lighting": [["lantern_light", "rim_lighting"], ["fireworks", "backlighting"]],
+    },
+    {
+        "id": "dev_nsfw_fantasy_armor_gap",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.65,
+        "association_max": 0,
+        "trigger_tags": ["bikini_armor", "sideboob", "battle_damage"],
+        "tags": ["1girl", "solo", "bikini_armor", "fantasy"],
+        "setting": [
+            ["castle_ruins", "broken_column", "mist"],
+            ["dragon_lair", "treasure", "torch"],
+            ["enchanted_forest", "glowing_mushroom", "moonlight"],
+            ["adventurer_guild", "wooden_table", "fireplace"],
+        ],
+        "pose": [["standing", "holding_sword"], ["kneeling", "catching_breath"], ["sitting", "armor_removed"]],
+        "action": [["adjusting_armor", "broken_strap"], ["battle_damage", "torn_clothes"], ["armor_removed", "covering_breasts"]],
+        "expression": [["determined", "blush"], ["exhausted", "parted_lips"], ["confident", "looking_at_viewer"]],
+        "body_detail": [["sideboob", "midriff"], ["underboob", "scratches"], ["one_nipple", "torn_clothes"]],
+        "lighting": [["torchlight", "dramatic_shadow"], ["moonlight", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_sports_cooldown",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.6,
+        "association_max": 0,
+        "trigger_tags": ["sports_bra", "sweat", "clothes_lift"],
+        "tags": ["1girl", "solo", "sports_bra", "sweat"],
+        "setting": [
+            ["gym", "exercise_machine", "exercise_mat"],
+            ["running_track", "stadium", "sunset"],
+            ["dance_studio", "wooden_floor", "ballet_barre"],
+            ["boxing_gym", "punching_bag", "bench"],
+        ],
+        "pose": [["stretching", "arms_up"], ["sitting", "wiping_sweat"], ["leaning_forward", "hands_on_knees"]],
+        "action": [["lifting_shirt", "wiping_sweat"], ["adjusting_sports_bra", "cleavage"], ["drinking_water", "wet_clothes"]],
+        "expression": [["out_of_breath", "blush"], ["confident", "looking_at_viewer"], ["relieved", "half-closed_eyes"]],
+        "body_detail": [["underboob", "midriff"], ["cleavage", "sweatdrops"], ["sideboob", "toned_body"]],
+        "lighting": [["fluorescent_light", "reflection"], ["sunset", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_office_blouse",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.6,
+        "association_max": 0,
+        "trigger_tags": ["office_lady", "button_gap", "cleavage"],
+        "tags": ["1girl", "solo", "office_lady", "unbuttoned_shirt"],
+        "setting": [
+            ["office", "desk", "computer"],
+            ["meeting_room", "conference_table", "window"],
+            ["archive_room", "bookshelf", "file_box"],
+            ["elevator", "control_panel", "city_lights"],
+        ],
+        "pose": [["sitting", "crossed_legs"], ["leaning_over_desk", "looking_at_viewer"], ["standing", "arms_crossed"]],
+        "action": [["loosening_necktie", "unbuttoned_shirt"], ["leaning_forward", "button_gap"], ["adjusting_skirt", "thighs"]],
+        "expression": [["tired_smile", "half-closed_eyes"], ["confident", "looking_at_viewer"], ["embarrassed", "blush"]],
+        "body_detail": [["cleavage", "button_gap"], ["sideboob", "unbuttoned_shirt"], ["thighs", "pantyhose"]],
+        "lighting": [["office_lighting", "soft_shadow"], ["window_light", "city_lights"]],
+    },
+    {
+        "id": "dev_nsfw_intimate_couple",
+        "content_level": "suggestive",
+        "weight": 2,
+        "subject_id": "duo",
+        "character_chance": 0.5,
+        "copyright_chance": 0.3,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["kissing", "embrace", "disheveled_clothes"],
+        "tags": ["1girl", "1boy", "couple", "intimate"],
+        "setting": [
+            ["hotel_balcony", "city_lights", "curtains"],
+            ["living_room", "couch", "fireplace"],
+            ["kitchen", "counter", "night"],
+            ["car_interior", "rain", "window"],
+        ],
+        "pose": [["embracing", "standing"], ["sitting_on_lap", "close-up"], ["against_wall", "from_side"]],
+        "action": [["kissing", "hand_on_waist"], ["neck_kiss", "embrace"], ["almost_kissing", "holding_hands"]],
+        "expression": [["blush", "half-closed_eyes"], ["soft_smile", "looking_at_another"], ["parted_lips", "heavy_breathing"]],
+        "body_detail": [["cleavage", "disheveled_clothes"], ["bare_shoulders", "loose_clothes"], ["thighs", "shirt_tug"]],
+        "lighting": [["warm_lighting", "soft_shadow"], ["city_lights", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_male_after_shower",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "solo_boy",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.65,
+        "association_max": 0,
+        "trigger_tags": ["shirtless_male", "towel", "wet_hair"],
+        "tags": ["1boy", "solo", "shirtless_male", "towel"],
+        "setting": [
+            ["bathroom", "shower_glass", "steam"],
+            ["locker_room", "bench", "locker"],
+            ["hotel_room", "window", "morning"],
+            ["poolside", "deck_chair", "water"],
+        ],
+        "pose": [["standing", "hand_in_hair"], ["sitting", "leaning_back"], ["from_behind", "looking_back"]],
+        "action": [["drying_hair", "towel"], ["adjusting_towel", "low_towel"], ["stretching", "arms_up"]],
+        "expression": [["relaxed", "half-closed_eyes"], ["confident", "looking_at_viewer"], ["soft_smile", "wet_hair"]],
+        "body_detail": [["male_chest", "water_drops"], ["abs", "low_towel"], ["bare_back", "wet"]],
+        "lighting": [["steam", "diffused_light"], ["window_light", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_yuri_dressing_room",
+        "content_level": "suggestive",
+        "weight": 1,
+        "subject_id": "duo",
+        "character_chance": 0.5,
+        "copyright_chance": 0.3,
+        "lighting_chance": 0.6,
+        "association_max": 0,
+        "trigger_tags": ["2girls", "lingerie", "changing_clothes"],
+        "tags": ["2girls", "lingerie", "changing_clothes"],
+        "setting": [
+            ["dressing_room", "makeup_table", "clothes_rack"],
+            ["boutique", "fitting_room", "curtain"],
+            ["backstage", "costume_rack", "chair"],
+            ["bedroom", "wardrobe", "window"],
+        ],
+        "pose": [["standing", "close_together"], ["sitting", "legs_to_the_side"], ["from_behind", "looking_back"]],
+        "action": [["helping_with_clothes", "bra_strap"], ["adjusting_lingerie", "embrace"], ["almost_kissing", "holding_waist"]],
+        "expression": [["blush", "looking_at_another"], ["teasing_smile", "looking_at_viewer"], ["shy", "parted_lips"]],
+        "body_detail": [["cleavage", "bare_shoulders"], ["sideboob", "thighs"], ["underboob", "midriff"]],
+        "lighting": [["dressing_room_lighting", "soft_shadow"], ["window_light", "depth_of_field"]],
+    },
+    {
+        "id": "dev_nsfw_hosiery_focus",
+        "content_level": "suggestive",
+        "weight": 3,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["hosiery_focus", "legwear"],
+        "tags": ["1girl", "solo", "hosiery_focus", "legwear"],
+        "setting": [
+            ["photo_studio", "seamless_backdrop", "studio_stool"],
+            ["boutique", "display_stand", "shoe_display"],
+            ["office", "desk", "window_blinds"],
+            ["hotel_room", "armchair", "floor_lamp"],
+        ],
+        "pose": [["sitting", "crossed_legs"], ["standing", "one_leg_raised"], ["reclining", "legs_up"]],
+        "action": [["adjusting_legwear", "looking_down"], ["smoothing_stockings", "thighs"], ["pointing_toes", "looking_at_viewer"]],
+        "expression": [["confident", "looking_at_viewer"], ["focused", "parted_lips"], ["teasing_smile", "half-closed_eyes"]],
+        "body_detail": [
+            ["thighhighs", "stocking_tops", "thighs"],
+            ["pantyhose", "sheer_legwear", "feet"],
+            ["stockings", "garter_straps", "thighs"],
+        ],
+        "lighting": [["studio_lighting", "leg_highlight"], ["window_light", "soft_shadow"]],
+    },
+    {
+        "id": "dev_nsfw_barefoot_focus",
+        "content_level": "suggestive",
+        "weight": 3,
+        "subject_id": "solo_girl",
+        "character_chance": 0.7,
+        "copyright_chance": 0.45,
+        "lighting_chance": 0.7,
+        "association_max": 0,
+        "trigger_tags": ["foot_focus", "barefoot"],
+        "tags": ["1girl", "solo", "foot_focus", "barefoot"],
+        "setting": [
+            ["living_room", "soft_rug", "window"],
+            ["spa", "footbath", "towel"],
+            ["dance_studio", "wooden_floor", "ballet_barre"],
+            ["poolside", "deck_chair", "sunlight"],
+        ],
+        "pose": [["sitting", "one_leg_raised"], ["reclining", "feet_up"], ["standing", "on_tiptoes"]],
+        "action": [["removing_shoes", "barefoot"], ["curling_toes", "looking_at_viewer"], ["painting_toenails", "feet"]],
+        "expression": [["relaxed", "soft_smile"], ["playful_smile", "looking_at_viewer"], ["focused", "parted_lips"]],
+        "body_detail": [
+            ["soles", "toes", "feet"],
+            ["barefoot", "ankles", "toenails"],
+            ["feet", "arched_feet", "toes"],
+        ],
+        "lighting": [["window_light", "floor_reflection"], ["soft_lighting", "gentle_shadow"]],
+    },
+]
+
+RANDOM_PROMPT_NSFW_NUDITY_PROFILES = [
+    {
+        "id": "dev_nsfw_art_model_studio",
+        "content_level": "nudity",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.8,
+        "association_max": 0,
+        "trigger_tags": ["nude", "art_model", "fine_art_parody"],
+        "tags": ["1girl", "solo", "nude", "art_model"],
+        "setting": [["art_studio", "easel", "canvas"], ["loft", "large_window", "wooden_floor"], ["gallery", "pedestal", "white_wall"]],
+        "pose": [["contrapposto", "standing"], ["reclining", "from_side"], ["sitting", "knees_together"]],
+        "action": [["posing", "covering_breasts"], ["holding_drapery", "looking_away"], ["arms_up", "looking_at_viewer"]],
+        "expression": [["calm", "looking_away"], ["soft_smile", "looking_at_viewer"], ["serious", "half-closed_eyes"]],
+        "body_detail": [["nipples", "natural_breasts"], ["bare_back", "body_curve"], ["pubic_hair", "thighs"]],
+        "lighting": [["north_light", "soft_shadow"], ["chiaroscuro", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_quiet_onsen",
+        "content_level": "nudity",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.6,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.75,
+        "association_max": 0,
+        "trigger_tags": ["nude", "onsen", "towel"],
+        "tags": ["1girl", "solo", "nude", "onsen"],
+        "setting": [["outdoor_onsen", "rocks", "steam"], ["bathhouse", "wooden_wall", "water"], ["mountain_inn", "snow", "hot_spring"]],
+        "pose": [["sitting", "knees_together"], ["standing", "from_behind"], ["reclining", "arms_on_edge"]],
+        "action": [["entering_water", "covering_breasts"], ["washing_hair", "eyes_closed"], ["holding_towel", "looking_at_viewer"]],
+        "expression": [["relaxed", "eyes_closed"], ["embarrassed", "blush"], ["soft_smile", "looking_at_viewer"]],
+        "body_detail": [["nipples", "water_drops"], ["bare_back", "wet_hair"], ["sideboob", "steam"]],
+        "lighting": [["lantern_light", "steam"], ["moonlight", "diffused_light"]],
+    },
+    {
+        "id": "dev_nsfw_steam_shower",
+        "content_level": "nudity",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.6,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.8,
+        "association_max": 0,
+        "trigger_tags": ["nude", "shower", "steam"],
+        "tags": ["1girl", "solo", "nude", "shower"],
+        "setting": [["glass_shower", "tile_wall", "steam"], ["rain_shower", "bathroom", "mirror"], ["outdoor_shower", "wooden_fence", "plants"]],
+        "pose": [["standing", "from_side"], ["from_behind", "looking_back"], ["leaning_on_wall", "eyes_closed"]],
+        "action": [["washing_hair", "arms_up"], ["hand_on_glass", "looking_at_viewer"], ["holding_shower_head", "wet_hair"]],
+        "expression": [["relaxed", "eyes_closed"], ["blush", "parted_lips"], ["soft_smile", "looking_at_viewer"]],
+        "body_detail": [["nipples", "water_drops"], ["bare_back", "wet"], ["body_curve", "steam"]],
+        "lighting": [["backlighting", "steam"], ["bathroom_light", "reflection"]],
+    },
+    {
+        "id": "dev_nsfw_moonlit_nude_beach",
+        "content_level": "nudity",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.55,
+        "copyright_chance": 0.35,
+        "lighting_chance": 0.8,
+        "association_max": 0,
+        "trigger_tags": ["nude", "beach", "moonlight"],
+        "tags": ["1girl", "solo", "nude", "outdoors"],
+        "setting": [["beach", "waves", "moonlight"], ["secluded_cove", "rocks", "night"], ["lakeshore", "reeds", "stars"]],
+        "pose": [["walking", "from_behind"], ["kneeling", "from_side"], ["standing", "covering_breasts"]],
+        "action": [["entering_water", "looking_back"], ["holding_clothes", "barefoot"], ["covering_breasts", "looking_at_viewer"]],
+        "expression": [["calm", "looking_away"], ["embarrassed", "blush"], ["playful_smile", "looking_at_viewer"]],
+        "body_detail": [["nipples", "wet_skin"], ["bare_back", "body_curve"], ["pubic_hair", "thighs"]],
+        "lighting": [["moonlight", "rim_lighting"], ["starlight", "reflection"]],
+    },
+    {
+        "id": "dev_nsfw_body_paint",
+        "content_level": "nudity",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.6,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.75,
+        "association_max": 0,
+        "trigger_tags": ["nude", "bodypaint", "paint_splatter"],
+        "tags": ["1girl", "solo", "nude", "bodypaint"],
+        "setting": [["photo_studio", "paint_bucket", "backdrop"], ["art_workshop", "canvas", "drop_cloth"], ["festival_stage", "spotlight", "dark_background"]],
+        "pose": [["standing", "arms_out"], ["sitting", "crossed_legs"], ["turning", "looking_back"]],
+        "action": [["painting_body", "paintbrush"], ["handprint", "covering_breasts"], ["posing", "looking_at_viewer"]],
+        "expression": [["playful_smile", "looking_at_viewer"], ["focused", "parted_lips"], ["confident", "half-closed_eyes"]],
+        "body_detail": [["painted_nipples", "paint_splatter"], ["bare_back", "bodypaint"], ["body_curve", "colorful_paint"]],
+        "lighting": [["studio_lighting", "high_contrast"], ["spotlight", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_fantasy_ritual_nude",
+        "content_level": "nudity",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.6,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.85,
+        "association_max": 0,
+        "trigger_tags": ["nude", "magic_circle", "fantasy"],
+        "tags": ["1girl", "solo", "nude", "fantasy"],
+        "setting": [["ancient_temple", "altar", "candle"], ["forest_shrine", "magic_circle", "fireflies"], ["crystal_cave", "glowing_crystal", "water"]],
+        "pose": [["kneeling", "hands_together"], ["standing", "arms_up"], ["floating", "arched_back"]],
+        "action": [["casting_spell", "covering_breasts"], ["ritual", "eyes_closed"], ["holding_crystal", "looking_at_viewer"]],
+        "expression": [["serene", "eyes_closed"], ["entranced", "parted_lips"], ["mysterious_smile", "looking_at_viewer"]],
+        "body_detail": [["nipples", "glowing_markings"], ["bare_back", "magic_runes"], ["body_curve", "floating_hair"]],
+        "lighting": [["candlelight", "chiaroscuro"], ["magic_glow", "rim_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_bedsheet_implied",
+        "content_level": "nudity",
+        "weight": 2,
+        "subject_id": "solo_girl",
+        "character_chance": 0.65,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.8,
+        "association_max": 0,
+        "trigger_tags": ["implied_nude", "bedsheet", "sideboob"],
+        "tags": ["1girl", "solo", "implied_nude", "bedsheet"],
+        "setting": [["hotel_room", "large_window", "morning"], ["loft_bedroom", "brick_wall", "sunlight"], ["cabin", "fireplace", "blanket"]],
+        "pose": [["sitting", "wrapped_in_sheet"], ["reclining", "from_side"], ["standing", "holding_sheet"]],
+        "action": [["sheet_slip", "covering_breasts"], ["stretching", "bare_shoulders"], ["looking_back", "wrapped_in_sheet"]],
+        "expression": [["sleepy", "half-closed_eyes"], ["soft_smile", "looking_at_viewer"], ["embarrassed", "blush"]],
+        "body_detail": [["sideboob", "bare_back"], ["one_nipple", "sheet_slip"], ["body_curve", "bare_shoulders"]],
+        "lighting": [["morning_light", "soft_shadow"], ["firelight", "warm_lighting"]],
+    },
+    {
+        "id": "dev_nsfw_topless_sunbath",
+        "content_level": "nudity",
+        "weight": 1,
+        "subject_id": "solo_girl",
+        "character_chance": 0.6,
+        "copyright_chance": 0.4,
+        "lighting_chance": 0.8,
+        "association_max": 0,
+        "trigger_tags": ["topless", "sunbathing", "tan_lines"],
+        "tags": ["1girl", "solo", "topless", "sunbathing"],
+        "setting": [["private_pool", "deck_chair", "sunlight"], ["rooftop_terrace", "parasol", "cityscape"], ["secluded_beach", "beach_towel", "waves"]],
+        "pose": [["lying_on_back", "arms_up"], ["lying_on_stomach", "looking_back"], ["sitting", "knees_up"]],
+        "action": [["applying_sunscreen", "topless"], ["adjusting_sunglasses", "looking_at_viewer"], ["covering_breasts", "sitting_up"]],
+        "expression": [["relaxed", "eyes_closed"], ["playful_smile", "looking_at_viewer"], ["surprised", "blush"]],
+        "body_detail": [["nipples", "tan_lines"], ["sideboob", "oiled_skin"], ["bare_back", "sunlight"]],
+        "lighting": [["bright_sunlight", "hard_shadow"], ["golden_hour", "rim_lighting"]],
+    },
+]
+
+RANDOM_PROMPT_NSFW_AXIS_CONTEXTS = {
+    "dev_nsfw_lingerie_editorial": {"fashion", "private", "studio"},
+    "dev_nsfw_wet_shirt_rain": {"wet", "urban", "outdoor"},
+    "dev_nsfw_bikini_slip": {"wet", "leisure", "outdoor"},
+    "dev_nsfw_towel_spa": {"wet", "wellness", "private"},
+    "dev_nsfw_fitting_room": {"fashion", "private", "performance"},
+    "dev_nsfw_loose_shirt_morning": {"home", "private", "urban"},
+    "dev_nsfw_backstage_costume": {"fashion", "performance", "studio"},
+    "dev_nsfw_festival_yukata": {"festival", "outdoor", "traditional"},
+    "dev_nsfw_fantasy_armor_gap": {"fantasy", "outdoor", "performance"},
+    "dev_nsfw_sports_cooldown": {"sports", "wet", "public"},
+    "dev_nsfw_office_blouse": {"work", "urban", "indoor"},
+    "dev_nsfw_intimate_couple": {"intimate", "private", "urban"},
+    "dev_nsfw_male_after_shower": {"wet", "wellness", "sports", "private"},
+    "dev_nsfw_yuri_dressing_room": {"intimate", "fashion", "private"},
+    "dev_nsfw_hosiery_focus": {"fashion", "private", "work", "studio"},
+    "dev_nsfw_barefoot_focus": {"home", "private", "leisure", "studio", "wellness"},
+    "dev_nsfw_art_model_studio": {"art", "studio", "private"},
+    "dev_nsfw_quiet_onsen": {"wet", "wellness", "nature"},
+    "dev_nsfw_steam_shower": {"wet", "wellness", "private"},
+    "dev_nsfw_moonlit_nude_beach": {"wet", "nature", "outdoor"},
+    "dev_nsfw_body_paint": {"art", "studio", "performance"},
+    "dev_nsfw_fantasy_ritual_nude": {"fantasy", "ritual", "nature"},
+    "dev_nsfw_bedsheet_implied": {"home", "private", "studio"},
+    "dev_nsfw_topless_sunbath": {"leisure", "outdoor", "nature"},
+}
+
+RANDOM_PROMPT_NSFW_AXIS_SUBJECTS = {
+    "suggestive": [
+        {
+            "id": "solo_girl",
+            "weight": 58,
+            "subject_id": "solo_girl",
+            "tags": ["1girl", "solo"],
+            "exclude_profiles": ["dev_nsfw_intimate_couple", "dev_nsfw_male_after_shower"],
+            "character_chance": 0.65,
+            "copyright_chance": 0.4,
+        },
+        {
+            "id": "two_girls",
+            "weight": 17,
+            "subject_id": "duo",
+            "tags": ["2girls"],
+            "exclude_profiles": ["dev_nsfw_intimate_couple", "dev_nsfw_male_after_shower"],
+            "interaction": [
+                ["close_together", "looking_at_another"],
+                ["helping_with_clothes", "blush"],
+                ["holding_waist", "looking_at_viewer"],
+            ],
+            "interaction_chance": 0.75,
+            "character_chance": 0.5,
+            "copyright_chance": 0.3,
+        },
+        {
+            "id": "couple",
+            "weight": 17,
+            "subject_id": "duo",
+            "tags": ["1girl", "1boy", "couple"],
+            "exclude_profiles": ["dev_nsfw_male_after_shower", "dev_nsfw_yuri_dressing_room"],
+            "interaction": [
+                ["standing_close", "looking_at_another"],
+                ["hand_on_waist", "blush"],
+                ["embrace", "almost_kissing"],
+            ],
+            "interaction_chance": 0.8,
+            "character_chance": 0.45,
+            "copyright_chance": 0.25,
+        },
+        {
+            "id": "solo_boy",
+            "weight": 8,
+            "subject_id": "solo_boy",
+            "tags": ["1boy", "solo"],
+            "include_profiles": ["dev_nsfw_male_after_shower"],
+            "character_chance": 0.5,
+            "copyright_chance": 0.3,
+        },
+    ],
+    "nudity": [
+        {
+            "id": "solo_girl",
+            "weight": 70,
+            "subject_id": "solo_girl",
+            "tags": ["1girl", "solo"],
+            "character_chance": 0.6,
+            "copyright_chance": 0.4,
+        },
+        {
+            "id": "two_girls",
+            "weight": 18,
+            "subject_id": "duo",
+            "tags": ["2girls"],
+            "interaction": [
+                ["standing_close", "looking_at_another"],
+                ["sharing_towel", "blush"],
+                ["back-to-back", "looking_at_viewer"],
+            ],
+            "interaction_chance": 0.7,
+            "character_chance": 0.45,
+            "copyright_chance": 0.25,
+        },
+        {
+            "id": "couple",
+            "weight": 12,
+            "subject_id": "duo",
+            "tags": ["1girl", "1boy", "couple"],
+            "interaction": [
+                ["standing_close", "looking_at_another"],
+                ["covering_each_other", "blush"],
+                ["holding_hands", "looking_away"],
+            ],
+            "interaction_chance": 0.75,
+            "character_chance": 0.4,
+            "copyright_chance": 0.25,
+        },
+    ],
+}
+
+RANDOM_PROMPT_NSFW_AXIS_ACTIVITIES = {
+    "suggestive": [
+        {
+            "id": "editorial_pose",
+            "weight": 3,
+            "contexts": ["fashion", "studio", "private", "performance", "leisure"],
+            "trigger_tags": ["posing"],
+            "pose": [["standing", "hand_on_hip"], ["reclining", "looking_at_viewer"], ["sitting", "crossed_legs"]],
+            "action": [["posing", "looking_at_viewer"], ["turning", "looking_back"], ["leaning_forward", "parted_lips"]],
+        },
+        {
+            "id": "adjusting_outfit",
+            "weight": 3,
+            "contexts": ["fashion", "private", "work", "festival", "performance", "sports"],
+            "trigger_tags": ["adjusting_clothes"],
+            "pose": [["standing", "looking_down"], ["sitting", "knees_together"], ["from_behind", "looking_back"]],
+            "action": [["adjusting_clothes", "looking_down"], ["fixing_strap", "bare_shoulders"], ["smoothing_fabric", "hand_on_hip"]],
+        },
+        {
+            "id": "caught_in_rain",
+            "weight": 2,
+            "contexts": ["wet", "urban", "outdoor"],
+            "trigger_tags": ["rain", "wet_clothes"],
+            "pose": [["standing", "arms_at_sides"], ["walking", "looking_back"], ["leaning_on_wall", "from_side"]],
+            "action": [["holding_umbrella", "wet_clothes"], ["wringing_clothes", "water_drops"], ["brushing_wet_hair", "looking_at_viewer"]],
+        },
+        {
+            "id": "drying_off",
+            "weight": 2,
+            "contexts": ["wet", "wellness", "leisure", "home", "sports"],
+            "trigger_tags": ["drying_off", "wet_hair"],
+            "pose": [["standing", "arms_up"], ["sitting", "leaning_back"], ["from_behind", "looking_back"]],
+            "action": [["drying_hair", "water_drops"], ["wiping_shoulders", "wet_hair"], ["shaking_out_hair", "eyes_closed"]],
+        },
+        {
+            "id": "mirror_check",
+            "weight": 1,
+            "contexts": ["fashion", "work", "studio"],
+            "trigger_tags": ["mirror", "checking_clothes"],
+            "pose": [["standing", "facing_mirror"], ["sitting", "from_side"], ["turning", "looking_back"]],
+            "action": [["checking_clothes", "mirror"], ["touching_hair", "looking_at_reflection"], ["leaning_toward_mirror", "parted_lips"]],
+        },
+        {
+            "id": "stretching_break",
+            "weight": 2,
+            "contexts": ["sports", "home", "work", "wellness", "private"],
+            "trigger_tags": ["stretching"],
+            "pose": [["stretching", "arms_up"], ["leaning_forward", "hands_on_knees"], ["sitting", "one_leg_raised"]],
+            "action": [["stretching", "arms_up"], ["catching_breath", "sweatdrops"], ["reaching_for_water", "looking_at_viewer"]],
+        },
+        {
+            "id": "windy_walk",
+            "weight": 2,
+            "contexts": ["outdoor", "festival", "urban", "leisure", "fantasy"],
+            "trigger_tags": ["wind", "walking"],
+            "pose": [["walking", "from_side"], ["standing", "looking_back"], ["one_leg_raised", "full_body"]],
+            "action": [["holding_clothes", "wind"], ["brushing_hair_aside", "looking_at_viewer"], ["walking", "clothes_fluttering"]],
+        },
+        {
+            "id": "poolside_break",
+            "weight": 2,
+            "contexts": ["wet", "leisure", "outdoor", "sports"],
+            "trigger_tags": ["wet_hair", "water_drops"],
+            "pose": [["sitting", "legs_to_the_side"], ["kneeling", "from_above"], ["standing", "contrapposto"]],
+            "action": [["stepping_out_of_water", "water_drops"], ["sitting_on_edge", "feet_in_water"], ["looking_over_shoulder", "wet_hair"]],
+        },
+        {
+            "id": "backstage_prep",
+            "weight": 2,
+            "contexts": ["performance", "fashion", "studio"],
+            "trigger_tags": ["backstage", "preparing"],
+            "pose": [["standing", "one_leg_raised"], ["sitting", "looking_down"], ["turning", "from_behind"]],
+            "action": [["preparing_for_show", "checking_clothes"], ["walking_between_props", "looking_back"], ["waiting_by_curtain", "parted_lips"]],
+        },
+        {
+            "id": "morning_routine",
+            "weight": 2,
+            "contexts": ["home", "private", "work", "urban"],
+            "trigger_tags": ["morning", "casual"],
+            "pose": [["stretching", "arms_up"], ["leaning_on_counter", "looking_at_viewer"], ["sitting", "crossed_legs"]],
+            "action": [["holding_cup", "sleepy"], ["opening_curtains", "backlighting"], ["reaching_for_clothes", "looking_back"]],
+        },
+        {
+            "id": "dance_rehearsal",
+            "weight": 1,
+            "contexts": ["performance", "sports", "festival", "studio"],
+            "trigger_tags": ["dancing", "rehearsal"],
+            "pose": [["dancing", "one_leg_raised"], ["arms_up", "arched_back"], ["turning", "full_body"]],
+            "action": [["rehearsing", "clothes_fluttering"], ["finishing_pose", "looking_at_viewer"], ["spinning", "hair_flow"]],
+        },
+        {
+            "id": "fantasy_rest",
+            "weight": 1,
+            "contexts": ["fantasy", "outdoor", "performance"],
+            "trigger_tags": ["fantasy", "resting"],
+            "pose": [["kneeling", "catching_breath"], ["sitting", "leaning_back"], ["standing", "looking_at_viewer"]],
+            "action": [["resting_after_battle", "looking_down"], ["holding_accessory", "wind"], ["walking_through_ruins", "looking_back"]],
+        },
+        {
+            "id": "quiet_flirt",
+            "weight": 2,
+            "contexts": ["intimate", "private", "urban", "home"],
+            "subjects": ["two_girls", "couple"],
+            "trigger_tags": ["flirting"],
+            "pose": [["standing_close", "from_side"], ["sitting_together", "close-up"], ["against_wall", "eye_level"]],
+            "action": [["almost_kissing", "looking_at_another"], ["whispering", "hand_on_waist"], ["sharing_a_drink", "blush"]],
+        },
+        {
+            "id": "window_pose",
+            "weight": 2,
+            "contexts": ["private", "urban", "studio", "work", "home"],
+            "trigger_tags": ["window", "backlighting"],
+            "pose": [["standing", "from_behind"], ["sitting_on_windowsill", "from_side"], ["leaning_on_window", "looking_at_viewer"]],
+            "action": [["opening_window", "wind"], ["looking_over_city", "bare_shoulders"], ["touching_glass", "looking_at_viewer"]],
+        },
+    ],
+    "nudity": [
+        {
+            "id": "fine_art_pose",
+            "weight": 3,
+            "contexts": ["art", "studio", "private"],
+            "trigger_tags": ["art_model", "posing"],
+            "pose": [["contrapposto", "standing"], ["reclining", "from_side"], ["sitting", "knees_together"]],
+            "action": [["posing", "looking_away"], ["holding_drapery", "looking_at_viewer"], ["turning", "bare_back"]],
+        },
+        {
+            "id": "quiet_bathing",
+            "weight": 3,
+            "contexts": ["wet", "wellness", "nature"],
+            "trigger_tags": ["bathing", "water"],
+            "pose": [["sitting", "knees_together"], ["reclining", "arms_on_edge"], ["standing", "from_behind"]],
+            "action": [["entering_water", "looking_back"], ["washing_hair", "eyes_closed"], ["resting_in_water", "looking_at_viewer"]],
+        },
+        {
+            "id": "steam_shower",
+            "weight": 2,
+            "contexts": ["wet", "wellness", "private"],
+            "trigger_tags": ["shower", "steam"],
+            "pose": [["standing", "from_side"], ["leaning_on_wall", "eyes_closed"], ["from_behind", "looking_back"]],
+            "action": [["washing_hair", "arms_up"], ["hand_on_glass", "looking_at_viewer"], ["holding_shower_head", "wet_hair"]],
+        },
+        {
+            "id": "waterside_walk",
+            "weight": 2,
+            "contexts": ["wet", "nature", "outdoor", "leisure"],
+            "trigger_tags": ["waterside", "walking"],
+            "pose": [["walking", "from_behind"], ["kneeling", "from_side"], ["standing", "covering_breasts"]],
+            "action": [["entering_water", "looking_back"], ["walking_on_shore", "wind"], ["holding_clothes", "barefoot"]],
+        },
+        {
+            "id": "body_painting",
+            "weight": 2,
+            "contexts": ["art", "studio", "performance"],
+            "trigger_tags": ["bodypaint", "paintbrush"],
+            "pose": [["standing", "arms_out"], ["sitting", "crossed_legs"], ["turning", "looking_back"]],
+            "action": [["painting_body", "paintbrush"], ["posing_with_paint", "looking_at_viewer"], ["holding_paint_palette", "parted_lips"]],
+        },
+        {
+            "id": "fantasy_ritual",
+            "weight": 1,
+            "contexts": ["fantasy", "ritual", "nature"],
+            "trigger_tags": ["ritual", "magic_circle"],
+            "pose": [["kneeling", "hands_together"], ["standing", "arms_up"], ["floating", "arched_back"]],
+            "action": [["casting_spell", "eyes_closed"], ["holding_crystal", "looking_at_viewer"], ["walking_through_magic_circle", "floating_hair"]],
+        },
+        {
+            "id": "wrapped_morning",
+            "weight": 2,
+            "contexts": ["home", "private", "studio"],
+            "trigger_tags": ["bedsheet", "morning"],
+            "pose": [["sitting", "wrapped_in_sheet"], ["reclining", "from_side"], ["standing", "holding_sheet"]],
+            "action": [["stretching", "bare_shoulders"], ["opening_curtains", "backlighting"], ["looking_back", "holding_sheet"]],
+        },
+        {
+            "id": "sunbathing",
+            "weight": 2,
+            "contexts": ["leisure", "outdoor", "nature"],
+            "trigger_tags": ["sunbathing", "sunlight"],
+            "pose": [["lying_on_back", "arms_up"], ["lying_on_stomach", "looking_back"], ["sitting", "knees_up"]],
+            "action": [["applying_sunscreen", "eyes_closed"], ["adjusting_sunglasses", "looking_at_viewer"], ["sitting_up", "wind"]],
+        },
+        {
+            "id": "drying_after_bath",
+            "weight": 2,
+            "contexts": ["wet", "wellness", "private", "home"],
+            "trigger_tags": ["drying_off", "wet_hair"],
+            "pose": [["standing", "arms_up"], ["sitting", "leaning_back"], ["from_behind", "looking_back"]],
+            "action": [["drying_hair", "water_drops"], ["wiping_shoulders", "wet_hair"], ["wiping_neck", "looking_at_viewer"]],
+        },
+    ],
+}
+
+RANDOM_PROMPT_NSFW_AXIS_EVENTS = [
+    {
+        "id": "sudden_weather",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["wet", "outdoor", "urban", "nature", "festival", "fantasy"],
+        "activities": ["caught_in_rain", "windy_walk", "waterside_walk"],
+        "setup": [["sudden_rain", "caught_unprepared"], ["wind_gust", "air_turning_cold"]],
+        "turn": [["reaching_for_cover", "turning_away"], ["holding_clothes", "looking_back"]],
+        "reaction": [["startled", "blush"], ["surprised", "parted_lips"]],
+        "effect": [["water_dripping", "wet_skin"], ["windblown_hair", "goosebumps"]],
+    },
+    {
+        "id": "garment_shift",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["fashion", "private", "performance", "studio", "work"],
+        "activities": ["editorial_pose", "adjusting_outfit", "backstage_prep", "dance_rehearsal"],
+        "subjects": ["solo_girl", "two_girls", "couple"],
+        "setup": [["loose_strap", "wardrobe_malfunction"], ["fabric_caught", "clothes_shift"]],
+        "turn": [["fixing_strap", "covering_breasts"], ["freezing_mid-pose", "reaching_for_clothes"]],
+        "reaction": [["embarrassed", "blush"], ["nervous_smile", "looking_at_viewer"]],
+        "effect": [["bare_shoulders", "sideboob"], ["slipped_fabric", "one_nipple"]],
+    },
+    {
+        "id": "mirror_discovery",
+        "weight": 1,
+        "levels": ["suggestive"],
+        "contexts": ["fashion", "work", "studio"],
+        "activities": ["mirror_check"],
+        "setup": [["mirror_reflection", "door_ajar"], ["checking_clothes", "unnoticed_viewer"]],
+        "turn": [["noticing_reflection", "turning_head"], ["reaching_for_cover", "looking_over_shoulder"]],
+        "reaction": [["caught_in_the_act", "blush"], ["surprised", "open_mouth"]],
+        "effect": [["fabric_slipped", "bare_shoulders"], ["water_drops", "fogged_mirror"]],
+    },
+    {
+        "id": "interrupted_routine",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["home", "private", "work", "urban", "wellness"],
+        "activities": ["morning_routine", "stretching_break", "window_pose", "wrapped_morning", "drying_after_bath"],
+        "setup": [["door_opening", "unexpected_visitor"], ["footsteps_approaching", "caught_off_guard"]],
+        "turn": [["freezing_mid-action", "looking_toward_door"], ["reaching_for_clothes", "turning_away"]],
+        "reaction": [["sleepy_surprise", "blush"], ["startled", "parted_lips"]],
+        "effect": [["loose_fabric", "bare_shoulders"], ["doorway_light", "moving_shadow"]],
+    },
+    {
+        "id": "camera_direction",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["fashion", "studio", "performance", "art", "private"],
+        "activities": ["editorial_pose", "backstage_prep", "dance_rehearsal", "fine_art_pose", "body_painting"],
+        "setup": [["camera_flash", "photographer_cue"], ["studio_silence", "camera_ready"]],
+        "turn": [["changing_pose", "turning_toward_camera"], ["holding_pose", "chin_up"]],
+        "reaction": [["confident_gaze", "parted_lips"], ["shy_smile", "blush"]],
+        "effect": [["hair_movement", "rim_light"], ["body_curve", "cast_shadow"]],
+    },
+    {
+        "id": "water_exit",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["wet", "wellness", "leisure", "nature", "outdoor"],
+        "activities": ["poolside_break", "drying_off", "quiet_bathing", "steam_shower", "waterside_walk", "drying_after_bath"],
+        "wardrobes": [
+            "dev_nsfw_wet_shirt_rain", "dev_nsfw_bikini_slip", "dev_nsfw_towel_spa",
+            "dev_nsfw_sports_cooldown", "dev_nsfw_male_after_shower", "dev_nsfw_quiet_onsen",
+            "dev_nsfw_steam_shower", "dev_nsfw_moonlit_nude_beach", "dev_nsfw_topless_sunbath",
+        ],
+        "setup": [["stepping_out_of_water", "wet_hair"], ["water_surface_breaking", "water_dripping"]],
+        "turn": [["brushing_hair_back", "reaching_for_edge"], ["pausing_mid-step", "looking_up"]],
+        "reaction": [["noticing_viewer", "blush"], ["soft_surprise", "parted_lips"]],
+        "effect": [["water_dripping", "wet_skin"], ["wet_footprints", "reflected_light"]],
+    },
+    {
+        "id": "backstage_countdown",
+        "weight": 2,
+        "levels": ["suggestive"],
+        "contexts": ["performance", "fashion", "studio", "festival"],
+        "activities": ["adjusting_outfit", "backstage_prep", "dance_rehearsal"],
+        "wardrobes": [
+            "dev_nsfw_fitting_room", "dev_nsfw_backstage_costume", "dev_nsfw_festival_yukata",
+            "dev_nsfw_fantasy_armor_gap", "dev_nsfw_yuri_dressing_room",
+        ],
+        "setup": [["stage_call", "curtain_opening"], ["countdown", "audience_noise"]],
+        "turn": [["last_adjustment", "stepping_into_light"], ["holding_curtain", "looking_back"]],
+        "reaction": [["nervous_smile", "blush"], ["focused_gaze", "deep_breath"]],
+        "effect": [["spotlight", "clothes_fluttering"], ["stage_haze", "rim_light"]],
+    },
+    {
+        "id": "exercise_pause",
+        "weight": 2,
+        "levels": ["suggestive"],
+        "contexts": ["sports", "wellness", "studio", "leisure"],
+        "activities": ["stretching_break", "dance_rehearsal", "poolside_break"],
+        "setup": [["exercise_ended", "heavy_breathing"], ["music_stopped", "catching_breath"]],
+        "turn": [["wiping_sweat", "reaching_for_water"], ["leaning_forward", "looking_up"]],
+        "reaction": [["noticing_gaze", "playful_smile"], ["out_of_breath", "blush"]],
+        "effect": [["sweatdrops", "fabric_clinging"], ["flushed_skin", "loose_hair"]],
+    },
+    {
+        "id": "magic_surge",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["fantasy", "ritual", "nature"],
+        "activities": ["fantasy_rest", "fantasy_ritual", "quiet_bathing", "sunbathing"],
+        "setup": [["magic_pulse", "glowing_circle"], ["crystal_flare", "sudden_wind"]],
+        "turn": [["losing_balance", "raising_hands"], ["turning_toward_light", "floating"]],
+        "reaction": [["entranced", "parted_lips"], ["surprised", "wide_eyes"]],
+        "effect": [["floating_hair", "glowing_markings"], ["spark_particles", "rim_light"]],
+    },
+    {
+        "id": "quiet_flirt_event",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["intimate", "private", "urban", "home"],
+        "activities": ["quiet_flirt"],
+        "subjects": ["two_girls", "couple"],
+        "setup": [["private_whisper", "close_distance"], ["shared_glance", "room_quiet"]],
+        "turn": [["leaning_closer", "hand_on_waist"], ["almost_kissing", "holding_breath"]],
+        "reaction": [["shared_blush", "half-closed_eyes"], ["shy_smile", "looking_at_another"]],
+        "effect": [["disheveled_clothes", "curtain_sway"], ["warm_breath", "loose_strap"]],
+    },
+    {
+        "id": "sheet_slip",
+        "weight": 3,
+        "levels": ["nudity"],
+        "contexts": ["home", "private", "studio", "urban"],
+        "activities": ["wrapped_morning"],
+        "wardrobes": ["dev_nsfw_bedsheet_implied"],
+        "setup": [["sheet_loosened", "curtain_opening"], ["fabric_sliding", "morning_breeze"]],
+        "turn": [["clutching_sheet", "sitting_up"], ["reaching_for_edge", "turning_away"]],
+        "reaction": [["sleepy_surprise", "blush"], ["embarrassed_smile", "looking_at_viewer"]],
+        "effect": [["exposed_shoulders", "sideboob"], ["bare_back", "sunlight_on_skin"]],
+    },
+    {
+        "id": "sunbath_interruption",
+        "weight": 2,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["leisure", "outdoor", "nature", "wet"],
+        "activities": ["sunbathing", "poolside_break"],
+        "wardrobes": [
+            "dev_nsfw_bikini_slip", "dev_nsfw_wet_shirt_rain", "dev_nsfw_topless_sunbath",
+            "dev_nsfw_moonlit_nude_beach",
+        ],
+        "setup": [["shadow_falling", "footsteps_nearby"], ["breeze_rising", "parasol_moving"]],
+        "turn": [["sitting_up", "covering_breasts"], ["turning_toward_sound", "reaching_for_cover"]],
+        "reaction": [["surprised", "blush"], ["playful_smile", "looking_at_viewer"]],
+        "effect": [["sunscreen_shine", "tan_lines"], ["windblown_hair", "goosebumps"]],
+    },
+    {
+        "id": "bodypaint_progress",
+        "weight": 3,
+        "levels": ["nudity"],
+        "contexts": ["art", "studio", "performance"],
+        "activities": ["body_painting", "fine_art_pose"],
+        "setup": [["unfinished_bodypaint", "wet_paint"], ["new_color_mixed", "paintbrush_ready"]],
+        "turn": [["brush_across_skin", "changing_stance"], ["holding_still", "looking_down"]],
+        "reaction": [["focused", "parted_lips"], ["playful_smile", "looking_at_viewer"]],
+        "effect": [["paint_drip", "colorful_handprint"], ["paint_splatter", "glossy_skin"]],
+    },
+    {
+        "id": "spa_interruption",
+        "weight": 3,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["wet", "wellness", "private"],
+        "activities": ["drying_off", "quiet_bathing", "steam_shower", "drying_after_bath"],
+        "wardrobes": [
+            "dev_nsfw_wet_shirt_rain", "dev_nsfw_towel_spa", "dev_nsfw_male_after_shower",
+            "dev_nsfw_quiet_onsen", "dev_nsfw_steam_shower", "dev_nsfw_moonlit_nude_beach",
+        ],
+        "setup": [["steam_clearing", "door_sliding_open"], ["unexpected_sound", "fogged_glass"]],
+        "turn": [["turning_away", "reaching_for_cover"], ["pausing_mid-motion", "looking_over_shoulder"]],
+        "reaction": [["startled", "blush"], ["embarrassed", "parted_lips"]],
+        "effect": [["water_drops", "steam_trail"], ["wet_hair", "reflection"]],
+    },
+    {
+        "id": "pose_break",
+        "weight": 2,
+        "levels": ["suggestive", "nudity"],
+        "contexts": ["fashion", "studio", "art", "performance", "private"],
+        "activities": ["editorial_pose", "fine_art_pose", "body_painting"],
+        "setup": [["long_pose", "studio_quiet"], ["lighting_adjustment", "holding_still"]],
+        "turn": [["relaxing_pose", "stretching_arms"], ["changing_stance", "looking_toward_camera"]],
+        "reaction": [["calm_gaze", "half-closed_eyes"], ["soft_smile", "parted_lips"]],
+        "effect": [["body_curve", "soft_shadow"], ["hair_falling_loose", "rim_light"]],
+    },
+    {
+        "id": "accidental_reach",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["home", "private", "work", "fashion", "sports"],
+        "activities": ["stretching_break", "morning_routine", "adjusting_outfit", "window_pose"],
+        "subjects": ["solo_girl", "two_girls", "couple"],
+        "setup": [["object_out_of_reach", "unaware"], ["fabric_caught", "arms_occupied"]],
+        "turn": [["reaching_higher", "arms_up"], ["pulling_free", "looking_down"]],
+        "reaction": [["noticing_exposure", "blush"], ["caught_off_guard", "open_mouth"]],
+        "effect": [["hem_lifted", "underboob"], ["loose_clothes", "bare_midriff"]],
+    },
+    {
+        "id": "festival_moment",
+        "weight": 2,
+        "levels": ["suggestive"],
+        "contexts": ["festival", "outdoor", "performance", "traditional"],
+        "activities": ["windy_walk", "dance_rehearsal", "editorial_pose"],
+        "wardrobes": [
+            "dev_nsfw_backstage_costume", "dev_nsfw_festival_yukata", "dev_nsfw_fantasy_armor_gap",
+        ],
+        "setup": [["fireworks_starting", "crowd_parting"], ["lanterns_swaying", "music_rising"]],
+        "turn": [["turning_toward_light", "holding_clothes"], ["finishing_pose", "looking_back"]],
+        "reaction": [["bright_smile", "blush"], ["surprised", "parted_lips"]],
+        "effect": [["lantern_glow", "windblown_hair"], ["firework_reflection", "clothes_fluttering"]],
+    },
+    {
+        "id": "hosiery_adjustment",
+        "weight": 4,
+        "levels": ["suggestive"],
+        "contexts": ["fashion", "private", "work", "studio"],
+        "wardrobes": ["dev_nsfw_hosiery_focus"],
+        "setup": [["legwear_shifted", "detail_check"], ["sheer_fabric_wrinkled", "mid-pose"]],
+        "turn": [["adjusting_legwear", "balancing_on_one_leg"], ["smoothing_sheer_fabric", "looking_down"]],
+        "reaction": [["focused", "parted_lips"], ["noticing_viewer", "blush"]],
+        "effect": [["legwear_edge_visible", "thighs"], ["sheer_legwear", "leg_highlight"]],
+    },
+    {
+        "id": "barefoot_pause",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["home", "private", "leisure", "studio", "wellness"],
+        "wardrobes": ["dev_nsfw_barefoot_focus"],
+        "setup": [["shoes_set_aside", "cool_floor"], ["pause_between_steps", "barefoot"]],
+        "turn": [["curling_toes", "shifting_weight"], ["lifting_one_foot", "looking_down"]],
+        "reaction": [["relaxed", "soft_smile"], ["noticing_viewer", "blush"]],
+        "effect": [["bare_feet", "floor_reflection"], ["ankle_line", "soft_shadow"]],
+    },
+    {
+        "id": "footcare_moment",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["home", "private", "studio", "wellness"],
+        "wardrobes": ["dev_nsfw_barefoot_focus"],
+        "setup": [["warm_footbath", "towel_nearby"], ["nail_polish_open", "footcare_tools"]],
+        "turn": [["drying_feet", "lifting_one_foot"], ["painting_toenails", "toes_spread"]],
+        "reaction": [["focused", "parted_lips"], ["content_smile", "looking_at_viewer"]],
+        "effect": [["water_drops_on_feet", "soft_skin"], ["painted_toenails", "toe_detail"]],
+    },
+    {
+        "id": "male_towel_adjustment",
+        "weight": 3,
+        "levels": ["suggestive"],
+        "contexts": ["wet", "wellness", "private", "sports"],
+        "activities": ["adjusting_outfit"],
+        "subjects": ["solo_boy"],
+        "wardrobes": ["dev_nsfw_male_after_shower"],
+        "setup": [["towel_loosened", "reaching_for_clothes"], ["locker_door_closing", "caught_mid-change"]],
+        "turn": [["securing_towel", "turning_away"], ["pulling_clothes_on", "looking_over_shoulder"]],
+        "reaction": [["startled", "parted_lips"], ["calm_gaze", "noticing_viewer"]],
+        "effect": [["low_towel", "water_drops"], ["bare_back", "steam_trail"]],
+    },
+]
+
+RANDOM_PROMPT_NSFW_AXIS_CAMERA_GROUPS = [
+    ["cowboy_shot", "eye_level"],
+    ["upper_body", "from_side"],
+    ["full_body", "three-quarter_view"],
+    ["medium_shot", "looking_at_viewer"],
+    ["close-up", "depth_of_field"],
+    ["from_behind", "looking_back"],
+    ["low_angle", "full_body"],
+    ["high_angle", "knees_up"],
+]
+
+RANDOM_PROMPT_NSFW_AXIS_SUBJECT_TAGS = {
+    "1girl", "1boy", "2girls", "2boys", "solo", "couple", "multiple_girls", "multiple_boys",
+}
+
+_RANDOM_PROMPT_NSFW_EXPLICIT_PROFILES = [
     {
         "id": "dev_nsfw_pair_bedroom",
         "weight": 3,
@@ -1520,6 +2655,12 @@ RANDOM_PROMPT_NSFW_PROFILES = [
     },
 ]
 
+RANDOM_PROMPT_NSFW_PROFILES = (
+    RANDOM_PROMPT_NSFW_SUGGESTIVE_PROFILES
+    + RANDOM_PROMPT_NSFW_NUDITY_PROFILES
+    + [{**profile, "content_level": "explicit"} for profile in _RANDOM_PROMPT_NSFW_EXPLICIT_PROFILES]
+)
+
 RANDOM_PROMPT_ADULT_SLOT_MAP = {
     "scene": "setting",
     "camera": "camera",
@@ -1542,7 +2683,9 @@ RANDOM_PROMPT_ADULT_SLOT_ORDER = (
     "lighting",
 )
 
-RANDOM_PROMPT_ADULT_BLOCKED_EXACT_TAGS = set()
+RANDOM_PROMPT_ADULT_BLOCKED_EXACT_TAGS = {
+    "bald",
+}
 
 RANDOM_PROMPT_ADULT_BLOCKED_FRAGMENTS = (
     "child", "children", "loli", "shota", "minor", "kindergarten", "elementary",
@@ -1553,7 +2696,7 @@ RANDOM_PROMPT_ADULT_BLOCKED_FRAGMENTS = (
 RANDOM_PROMPT_ADULT_CHARACTER_BLOCK_FRAGMENTS = (
     "child", "children", "loli", "shota", "minor", "kindergarten",
     "elementary", "klee", "qiqi", "yaoyao", "paimon", "edogawa_conan",
-    "detective_conan", "bald",
+    "detective_conan",
 )
 
 RANDOM_PROMPT_ADULT_NEGATIVE_MIN_SCORE = 2500.0
@@ -2277,6 +3420,102 @@ def _pick_group(rng, groups):
     return list(picked or [])
 
 
+def _normalize_random_prompt_recent_history(value):
+    if not isinstance(value, (list, tuple)):
+        return []
+    output = []
+    axis_keys = set(RANDOM_PROMPT_RECENT_AXIS_SCORES)
+    for row in list(value)[-RANDOM_PROMPT_RECENT_HISTORY_LIMIT:]:
+        if not isinstance(row, dict):
+            continue
+        axes = row.get("axes") if isinstance(row.get("axes"), dict) else {}
+        clean_axes = {
+            key: _clean_text(axes.get(key))
+            for key in axis_keys
+            if _clean_text(axes.get(key))
+        }
+        raw_tags = row.get("tags")
+        if isinstance(raw_tags, str):
+            raw_tags = raw_tags.split(",")
+        clean_tags = []
+        for tag in raw_tags or []:
+            clean = _prompt_lookup_norm(tag)
+            if clean and clean not in clean_tags:
+                clean_tags.append(clean)
+            if len(clean_tags) >= RANDOM_PROMPT_RECENT_TAG_LIMIT:
+                break
+        output.append({
+            "profile": _clean_text(row.get("profile")),
+            "content_level": _prompt_lookup_norm(row.get("content_level")),
+            "axes": clean_axes,
+            "tags": clean_tags,
+        })
+    return output
+
+
+def _random_prompt_recent_candidate_tags(profile):
+    fields = (
+        "tags", "axis_detail", "setting", "camera", "pose", "event_setup", "action", "event_turn",
+        "interaction", "expression", "event_reaction", "body_detail", "event_effect", "finish_detail", "lighting",
+    )
+    output = set()
+
+    def collect(value):
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                collect(item)
+            return
+        clean = _prompt_lookup_norm(value)
+        if clean and clean not in RANDOM_PROMPT_RECENT_TAG_IGNORE:
+            output.add(clean)
+
+    for field in fields:
+        collect(profile.get(field))
+    return output
+
+
+def _random_prompt_recent_candidate_score(profile, recent_history):
+    if not recent_history:
+        return 0.0
+    axes = profile.get("axis_choices") if isinstance(profile.get("axis_choices"), dict) else {}
+    profile_id = _clean_text(profile.get("id"))
+    candidate_tags = _random_prompt_recent_candidate_tags(profile)
+    score = 0.0
+    for age, recent in enumerate(reversed(recent_history)):
+        recency = RANDOM_PROMPT_RECENT_RECENCY[min(age, len(RANDOM_PROMPT_RECENT_RECENCY) - 1)]
+        recent_axes = recent.get("axes") if isinstance(recent.get("axes"), dict) else {}
+        for key, axis_score in RANDOM_PROMPT_RECENT_AXIS_SCORES.items():
+            candidate_value = _clean_text(axes.get(key))
+            if candidate_value and candidate_value == _clean_text(recent_axes.get(key)):
+                score += axis_score * recency
+        if not axes and profile_id and profile_id == _clean_text(recent.get("profile")):
+            score += 6.0 * recency
+        recent_tags = set(recent.get("tags") or ()) - RANDOM_PROMPT_RECENT_TAG_IGNORE
+        overlap = candidate_tags.intersection(recent_tags)
+        score += min(8, len(overlap)) * 0.22 * recency
+    return score
+
+
+def _pick_recent_nsfw_candidate(rng, candidates, recent_history):
+    rows = [profile for profile in candidates or [] if isinstance(profile, dict)]
+    if not rows:
+        return {}
+    if not recent_history or len(rows) == 1:
+        return rows[0]
+    weighted = []
+    total = 0.0
+    for profile in rows:
+        score = _random_prompt_recent_candidate_score(profile, recent_history)
+        weight = 1.0 / ((1.0 + score) ** 2)
+        total += weight
+        weighted.append((total, profile))
+    target = rng.uniform(0.0, total)
+    for upper, profile in weighted:
+        if target <= upper:
+            return profile
+    return weighted[-1][1]
+
+
 def _pick_weighted_profile(rng, profiles):
     rows = [profile for profile in profiles or [] if isinstance(profile, dict)]
     if not rows:
@@ -2292,6 +3531,263 @@ def _pick_weighted_profile(rng, profiles):
         if target <= upper:
             return profile
     return weighted[-1][1]
+
+
+def _random_prompt_nsfw_axis_archetypes(content_level):
+    if content_level == "suggestive":
+        return RANDOM_PROMPT_NSFW_SUGGESTIVE_PROFILES
+    if content_level == "nudity":
+        return RANDOM_PROMPT_NSFW_NUDITY_PROFILES
+    return []
+
+
+def _random_prompt_nsfw_axis_contexts(profile):
+    return set(RANDOM_PROMPT_NSFW_AXIS_CONTEXTS.get(_clean_text(profile.get("id"))) or ())
+
+
+def _random_prompt_nsfw_axis_subject_allows(profile, subject):
+    profile_id = _clean_text(profile.get("id"))
+    included = {_clean_text(item) for item in subject.get("include_profiles") or [] if _clean_text(item)}
+    excluded = {_clean_text(item) for item in subject.get("exclude_profiles") or [] if _clean_text(item)}
+    if included and profile_id not in included:
+        return False
+    return profile_id not in excluded
+
+
+def _random_prompt_nsfw_axis_activity_allows(activity, subject):
+    subject_key = _prompt_lookup_norm(subject.get("id"))
+    allowed = {
+        _prompt_lookup_norm(item) for item in activity.get("subjects") or [] if _prompt_lookup_norm(item)
+    }
+    return not allowed or subject_key in allowed
+
+
+def _random_prompt_nsfw_axis_expression_allows(profile, subject):
+    profile_subject = _prompt_lookup_norm(profile.get("subject_id"))
+    subject_key = _prompt_lookup_norm(subject.get("id"))
+    if subject_key == "solo_girl":
+        return profile_subject == "solo_girl"
+    if subject_key == "solo_boy":
+        return profile_subject == "solo_boy"
+    return profile_subject in {"solo_girl", "duo"}
+
+
+def _random_prompt_nsfw_axis_activity_contexts(activity):
+    return {_prompt_lookup_norm(item) for item in activity.get("contexts") or [] if _prompt_lookup_norm(item)}
+
+
+def _pick_compatible_nsfw_axis_profile(rng, base_profile, profiles):
+    base_contexts = _random_prompt_nsfw_axis_contexts(base_profile)
+    scored = []
+    for profile in profiles or []:
+        overlap = len(base_contexts.intersection(_random_prompt_nsfw_axis_contexts(profile)))
+        if overlap <= 0:
+            continue
+        scored.append((overlap, profile))
+    strong = [(overlap, profile) for overlap, profile in scored if overlap >= 2]
+    pool = strong if len(strong) >= 2 else scored
+    weighted = [
+        {
+            **profile,
+            "weight": max(1, _safe_int(profile.get("weight"), 1)) * (3 if overlap >= 2 else 1),
+        }
+        for overlap, profile in pool
+    ]
+    return _pick_weighted_profile(rng, weighted) or base_profile
+
+
+def _pick_compatible_nsfw_axis_activity(rng, base_profile, activities, subject):
+    base_contexts = _random_prompt_nsfw_axis_contexts(base_profile)
+    scored = []
+    for activity in activities or []:
+        if not _random_prompt_nsfw_axis_activity_allows(activity, subject):
+            continue
+        overlap = len(base_contexts.intersection(_random_prompt_nsfw_axis_activity_contexts(activity)))
+        if overlap <= 0:
+            continue
+        scored.append((overlap, activity))
+    strong = [(overlap, activity) for overlap, activity in scored if overlap >= 2]
+    pool = strong if len(strong) >= 2 else scored
+    weighted = [
+        {
+            **activity,
+            "weight": max(1, _safe_int(activity.get("weight"), 1)) * (3 if overlap >= 2 else 1),
+        }
+        for overlap, activity in pool
+    ]
+    return _pick_weighted_profile(rng, weighted)
+
+
+def _random_prompt_nsfw_axis_event_allows(event, content_level, base_profile, activity, subject):
+    levels = {_prompt_lookup_norm(item) for item in event.get("levels") or [] if _prompt_lookup_norm(item)}
+    activities = {_clean_text(item) for item in event.get("activities") or [] if _clean_text(item)}
+    subjects = {_prompt_lookup_norm(item) for item in event.get("subjects") or [] if _prompt_lookup_norm(item)}
+    wardrobes = {_clean_text(item) for item in event.get("wardrobes") or [] if _clean_text(item)}
+    if levels and content_level not in levels:
+        return False
+    if activities and _clean_text(activity.get("id")) not in activities:
+        return False
+    if subjects and _prompt_lookup_norm(subject.get("id")) not in subjects:
+        return False
+    if wardrobes and _clean_text(base_profile.get("id")) not in wardrobes:
+        return False
+    return True
+
+
+def _pick_compatible_nsfw_axis_event(rng, content_level, base_profile, activity, subject):
+    base_contexts = _random_prompt_nsfw_axis_contexts(base_profile)
+    activity_contexts = _random_prompt_nsfw_axis_activity_contexts(activity)
+    scored = []
+    for event in RANDOM_PROMPT_NSFW_AXIS_EVENTS:
+        if not _random_prompt_nsfw_axis_event_allows(event, content_level, base_profile, activity, subject):
+            continue
+        event_contexts = {
+            _prompt_lookup_norm(item) for item in event.get("contexts") or [] if _prompt_lookup_norm(item)
+        }
+        overlap = len(base_contexts.intersection(event_contexts)) + len(activity_contexts.intersection(event_contexts))
+        if overlap <= 0:
+            continue
+        scored.append((overlap, event))
+    strong = [(overlap, event) for overlap, event in scored if overlap >= 3]
+    pool = strong if len(strong) >= 2 else scored
+    weighted = [
+        {
+            **event,
+            "weight": max(1, _safe_int(event.get("weight"), 1)) * (3 if overlap >= 3 else 1),
+        }
+        for overlap, event in pool
+    ]
+    return _pick_weighted_profile(rng, weighted)
+
+
+def _random_prompt_nsfw_axis_theme_tags(profile):
+    return [
+        tag
+        for tag in profile.get("tags") or []
+        if _prompt_lookup_norm(tag) not in RANDOM_PROMPT_NSFW_AXIS_SUBJECT_TAGS
+    ]
+
+
+def _build_developer_nsfw_axis_profile(rng, content_level):
+    archetypes = [profile for profile in _random_prompt_nsfw_axis_archetypes(content_level) if isinstance(profile, dict)]
+    activities = [
+        activity
+        for activity in RANDOM_PROMPT_NSFW_AXIS_ACTIVITIES.get(content_level) or []
+        if isinstance(activity, dict)
+    ]
+    subject = _pick_weighted_profile(rng, RANDOM_PROMPT_NSFW_AXIS_SUBJECTS.get(content_level))
+    base_candidates = [
+        profile for profile in archetypes if _random_prompt_nsfw_axis_subject_allows(profile, subject)
+    ]
+    base_profile = _pick_weighted_profile(rng, base_candidates or archetypes)
+    activity = _pick_compatible_nsfw_axis_activity(rng, base_profile, activities, subject)
+    event = _pick_compatible_nsfw_axis_event(rng, content_level, base_profile, activity, subject)
+    setting_profile = _pick_compatible_nsfw_axis_profile(rng, base_profile, archetypes)
+    expression_candidates = [
+        profile for profile in archetypes if _random_prompt_nsfw_axis_expression_allows(profile, subject)
+    ]
+    expression_profile = _pick_compatible_nsfw_axis_profile(rng, base_profile, expression_candidates)
+
+    setting_group = _pick_group(rng, setting_profile.get("setting"))
+    pose_group = _pick_group(rng, activity.get("pose"))
+    action_group = _pick_group(rng, activity.get("action"))
+    event_setup_group = _pick_group(rng, event.get("setup"))
+    event_turn_group = _pick_group(rng, event.get("turn"))
+    event_reaction_group = _pick_group(rng, event.get("reaction"))
+    event_effect_group = _pick_group(rng, event.get("effect"))
+    expression_group = _pick_group(rng, expression_profile.get("expression"))
+    body_detail_group = _pick_group(rng, base_profile.get("body_detail"))
+    lighting_group = _pick_group(rng, setting_profile.get("lighting"))
+    camera_group = _pick_group(rng, RANDOM_PROMPT_NSFW_AXIS_CAMERA_GROUPS)
+    interaction_group = []
+    if rng.random() <= max(0.0, min(1.0, _safe_float(subject.get("interaction_chance"), 0.0))):
+        interaction_group = _pick_group(rng, subject.get("interaction"))
+
+    trigger_tags = []
+    for source in (base_profile, activity):
+        for tag in source.get("trigger_tags") or []:
+            clean = _clean_text(tag)
+            if clean and clean not in trigger_tags:
+                trigger_tags.append(clean)
+    detail_candidates = list(trigger_tags)
+    rng.shuffle(detail_candidates)
+    detail_count = rng.choice((1, 2, 2, 3)) if detail_candidates else 0
+    axis_detail_group = detail_candidates[:detail_count]
+
+    return {
+        "id": f"dev_nsfw_axes_{content_level}",
+        "content_level": content_level,
+        "subject_id": subject.get("subject_id"),
+        "character_chance": subject.get("character_chance", 0.6),
+        "copyright_chance": subject.get("copyright_chance", 0.35),
+        "camera_chance": 0.82,
+        "lighting_chance": 0.72 if content_level == "suggestive" else 0.8,
+        "association_max": 0,
+        "trigger_tags": trigger_tags,
+        "tags": list(subject.get("tags") or []) + _random_prompt_nsfw_axis_theme_tags(base_profile),
+        "axis_detail": [axis_detail_group] if axis_detail_group else [],
+        "setting": [setting_group],
+        "camera": [camera_group],
+        "pose": [pose_group],
+        "event_setup": [event_setup_group],
+        "action": [action_group],
+        "event_turn": [event_turn_group],
+        "interaction": [interaction_group] if interaction_group else [],
+        "expression": [expression_group],
+        "event_reaction": [event_reaction_group],
+        "body_detail": [body_detail_group],
+        "event_effect": [event_effect_group],
+        "lighting": [lighting_group],
+        "axis_choices": {
+            "subject": subject.get("id"),
+            "wardrobe_exposure": base_profile.get("id"),
+            "activity": activity.get("id"),
+            "event": event.get("id"),
+            "setting": setting_profile.get("id"),
+            "expression": expression_profile.get("id"),
+        },
+    }
+
+
+def _pick_developer_nsfw_profile(rng, recent_history=None):
+    profiles = [profile for profile in RANDOM_PROMPT_NSFW_PROFILES if isinstance(profile, dict)]
+    profiles_by_level = {}
+    for profile in profiles:
+        level = _prompt_lookup_norm(profile.get("content_level"))
+        if level in RANDOM_PROMPT_NSFW_CONTENT_LEVEL_WEIGHTS:
+            profiles_by_level.setdefault(level, []).append(profile)
+    if not profiles_by_level:
+        return _pick_weighted_profile(rng, profiles)
+    level_profile = _pick_weighted_profile(
+        rng,
+        [
+            {"id": level, "weight": weight}
+            for level, weight in RANDOM_PROMPT_NSFW_CONTENT_LEVEL_WEIGHTS.items()
+            if profiles_by_level.get(level)
+        ],
+    )
+    content_level = level_profile.get("id")
+    level_profiles = profiles_by_level.get(content_level, profiles)
+    axis_profile_ids = {
+        _clean_text(profile.get("id"))
+        for profile in _random_prompt_nsfw_axis_archetypes(content_level)
+        if _clean_text(profile.get("id"))
+    }
+    selected_profile_ids = {
+        _clean_text(profile.get("id")) for profile in level_profiles if _clean_text(profile.get("id"))
+    }
+    candidate_count = RANDOM_PROMPT_RECENT_CANDIDATE_COUNT if recent_history else 1
+    if content_level in {"suggestive", "nudity"} and selected_profile_ids.issubset(axis_profile_ids):
+        candidates = [
+            _build_developer_nsfw_axis_profile(rng, content_level)
+            for _index in range(candidate_count)
+        ]
+        return _pick_recent_nsfw_candidate(rng, candidates, recent_history)
+    candidates = [
+        _pick_weighted_profile(rng, level_profiles)
+        for _index in range(candidate_count)
+    ]
+    return _pick_recent_nsfw_candidate(rng, candidates, recent_history)
 
 
 def _profile_id_matches(value, allowed_values):
@@ -2338,14 +3834,22 @@ def _random_prompt_lookup_terms(rng, subject, scene, theme=None):
     return terms[:3]
 
 
-def _compose_developer_nsfw_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None):
+def _compose_developer_nsfw_random_prompt(
+    preset_name="",
+    scene_theme="",
+    lang="cn",
+    seed=None,
+    recent_history=None,
+):
     rng = random.Random(seed) if seed is not None else random.Random()
-    profile = _pick_weighted_profile(rng, RANDOM_PROMPT_NSFW_PROFILES)
+    recent_history = _normalize_random_prompt_recent_history(recent_history)
+    profile = _pick_developer_nsfw_profile(rng, recent_history=recent_history)
     picked_slots = []
     prompt_tags = []
 
-    _extend_tag_group(prompt_tags, picked_slots, "rating", ["nsfw", "rating_explicit", "adult"])
+    _extend_tag_group(prompt_tags, picked_slots, "rating", ["nsfw"])
     _extend_tag_group(prompt_tags, picked_slots, "subject", profile.get("tags"))
+    _extend_tag_group(prompt_tags, picked_slots, "axis_detail", _pick_group(rng, profile.get("axis_detail")))
     character_tags = _pick_adult_random_character_tags(
         rng,
         profile.get("subject_id"),
@@ -2354,10 +3858,18 @@ def _compose_developer_nsfw_random_prompt(preset_name="", scene_theme="", lang="
     )
     _extend_tag_group(prompt_tags, picked_slots, "character", character_tags)
     _extend_tag_group(prompt_tags, picked_slots, "setting", _pick_group(rng, profile.get("setting")))
+    _extend_tag_group(prompt_tags, picked_slots, "event_setup", _pick_group(rng, profile.get("event_setup")))
+    camera_chance = max(0.0, min(1.0, _safe_float(profile.get("camera_chance"), 0.0)))
+    if camera_chance > 0.0 and rng.random() <= camera_chance:
+        _extend_tag_group(prompt_tags, picked_slots, "camera", _pick_group(rng, profile.get("camera")))
     _extend_tag_group(prompt_tags, picked_slots, "pose", _pick_group(rng, profile.get("pose")))
     _extend_tag_group(prompt_tags, picked_slots, "adult_action", _pick_group(rng, profile.get("action")))
+    _extend_tag_group(prompt_tags, picked_slots, "event_turn", _pick_group(rng, profile.get("event_turn")))
+    _extend_tag_group(prompt_tags, picked_slots, "interaction", _pick_group(rng, profile.get("interaction")))
     _extend_tag_group(prompt_tags, picked_slots, "adult_expression", _pick_group(rng, profile.get("expression")))
+    _extend_tag_group(prompt_tags, picked_slots, "event_reaction", _pick_group(rng, profile.get("event_reaction")))
     _extend_tag_group(prompt_tags, picked_slots, "adult_body_detail", _pick_group(rng, profile.get("body_detail")))
+    _extend_tag_group(prompt_tags, picked_slots, "event_effect", _pick_group(rng, profile.get("event_effect")))
     _extend_tag_group(prompt_tags, picked_slots, "adult_finish_detail", _pick_group(rng, profile.get("finish_detail")))
     if rng.random() <= max(0.0, min(1.0, _safe_float(profile.get("lighting_chance"), 1.0))):
         _extend_tag_group(prompt_tags, picked_slots, "lighting", _pick_group(rng, profile.get("lighting")))
@@ -2387,6 +3899,8 @@ def _compose_developer_nsfw_random_prompt(preset_name="", scene_theme="", lang="
             "recipe": {
                 "mode": "developer_nsfw",
                 "profile": profile.get("id"),
+                "content_level": _prompt_lookup_norm(profile.get("content_level")) or "explicit",
+                "axes": profile.get("axis_choices") or {},
                 "character": character_tags[:1],
                 "stat_triggers": [_safe_danbooru_tag(tag) for tag in profile.get("trigger_tags") or []],
             },
@@ -2395,13 +3909,22 @@ def _compose_developer_nsfw_random_prompt(preset_name="", scene_theme="", lang="
     }
 
 
-def compose_random_prompt(preset_name="", scene_theme="", lang="cn", seed=None, source_mode="all", prompt_text=""):
+def compose_random_prompt(
+    preset_name="",
+    scene_theme="",
+    lang="cn",
+    seed=None,
+    source_mode="all",
+    prompt_text="",
+    recent_history=None,
+):
     if _developer_random_prompt_nsfw_enabled() or _random_prompt_nsfw_requested(prompt_text):
         return _compose_developer_nsfw_random_prompt(
             preset_name=preset_name,
             scene_theme=scene_theme,
             lang=lang,
             seed=seed,
+            recent_history=recent_history,
         )
 
     rng = random.Random(seed) if seed is not None else random.Random()

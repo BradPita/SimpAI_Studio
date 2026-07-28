@@ -46,6 +46,18 @@ function simpaiUiTrace(level, ...args) {
     } catch (e) {}
 }
 
+function simpleaiDisableHoverPreviewsForInput() {
+    try {
+        const coarsePrimary = !!window.matchMedia?.('(pointer: coarse)')?.matches;
+        const noPrimaryHover = !!window.matchMedia?.('(hover: none)')?.matches;
+        const fineHoverAvailable = !!window.matchMedia?.('(any-hover: hover) and (any-pointer: fine)')?.matches;
+        return (coarsePrimary || noPrimaryHover) && !fineHoverAvailable;
+    } catch (e) {
+        return Number(navigator.maxTouchPoints || 0) > 0 && window.innerWidth <= 900;
+    }
+}
+window.simpleaiDisableHoverPreviewsForInput = simpleaiDisableHoverPreviewsForInput;
+
 (function initSimpleAIMediaResolutionBadges() {
     if (window.__simpleaiMediaResolutionBadgesInitialized) return;
     window.__simpleaiMediaResolutionBadgesInitialized = true;
@@ -910,6 +922,14 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
 })();
 
 (function() {
+    const MOBILE_MODELS_SELECT_RENDER_LIMIT = 80;
+    const MOBILE_MODELS_SELECT_ROW_HEIGHT = 30;
+    let modelsSelectScrollFrame = 0;
+
+    function modelsPanelUsesWindowedOptions() {
+        return simpleaiDisableHoverPreviewsForInput();
+    }
+
     function modelsPanelRawLangSource() {
         return window.simpleaiTopbarSystemParams || (typeof topbarLastSystemParams !== 'undefined' ? topbarLastSystemParams : null) || {};
     }
@@ -1277,7 +1297,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         const currentValue = String(select.value || '').trim();
         const type = select.dataset.simpaiSelectType || select.dataset.simpaiBrowserTarget || 'base';
         const hasFreshCatalog = !!currentModelsPanelCatalog();
-        const choices = localCatalogChoices(type, currentValue);
+        const allChoices = localCatalogChoices(type, currentValue);
+        const choices = modelsPanelUsesWindowedOptions()
+            ? (currentValue ? [currentValue] : allChoices.slice(0, 1))
+            : allChoices;
         const fragment = document.createDocumentFragment();
         choices.forEach((choice) => {
             const option = document.createElement('option');
@@ -1422,29 +1445,60 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
     }
 
     function selectModelsSelectOption(select, choice) {
+        if (select && !Array.from(select.options || []).some((option) => option.value === choice)) {
+            const option = document.createElement('option');
+            option.value = choice;
+            option.textContent = choice;
+            select.appendChild(option);
+        }
         setNativeValue(select, choice);
         closeModelsSelectMenu();
         trimLiteModelSelect(select);
     }
 
-    function renderModelsSelectMenuOptions(select, menu) {
+    function renderModelsSelectMenuOptions(select, menu, options = {}) {
         const currentValue = String(select.value || '').trim();
         const type = select.dataset.simpaiSelectType || select.dataset.simpaiBrowserTarget || 'base';
         const choices = filterModelsSelectChoices(localCatalogChoices(type, currentValue), menu?.dataset?.simpaiSelectQuery || '');
         const fragment = document.createDocumentFragment();
         const parts = getModelsSelectMenuParts(menu);
+        const windowed = modelsPanelUsesWindowedOptions() && choices.length > MOBILE_MODELS_SELECT_RENDER_LIMIT;
+        if (options.resetScroll) parts.options.scrollTop = 0;
+        let alignedScrollTop = null;
+        if (windowed && options.alignSelected) {
+            const selectedIndex = choices.indexOf(currentValue);
+            if (selectedIndex > 0) {
+                const visibleRows = Math.max(4, Math.floor((parts.options.clientHeight || 240) / MOBILE_MODELS_SELECT_ROW_HEIGHT));
+                alignedScrollTop = Math.max(0, (selectedIndex - Math.floor(visibleRows / 2)) * MOBILE_MODELS_SELECT_ROW_HEIGHT);
+            }
+        }
+        let startIndex = 0;
+        let endIndex = choices.length;
+        if (windowed) {
+            const renderScrollTop = alignedScrollTop === null ? parts.options.scrollTop : alignedScrollTop;
+            startIndex = Math.max(0, Math.floor(renderScrollTop / MOBILE_MODELS_SELECT_ROW_HEIGHT) - 8);
+            endIndex = Math.min(choices.length, startIndex + MOBILE_MODELS_SELECT_RENDER_LIMIT);
+            const before = document.createElement('div');
+            before.className = 'simpai-models-js-select-spacer';
+            before.style.height = `${startIndex * MOBILE_MODELS_SELECT_ROW_HEIGHT}px`;
+            before.setAttribute('aria-hidden', 'true');
+            fragment.appendChild(before);
+        }
         if (!choices.length) {
             const empty = document.createElement('div');
             empty.className = 'simpai-models-js-select-option is-empty';
             empty.textContent = modelsPanelText('No matches', '没有匹配项');
             fragment.appendChild(empty);
         }
-        choices.forEach((choice, index) => {
+        choices.slice(startIndex, endIndex).forEach((choice, localIndex) => {
+            const index = startIndex + localIndex;
             const option = document.createElement('div');
             option.className = 'simpai-models-js-select-option';
             option.dataset.simpaiSelectOptionValue = choice;
             option.role = 'option';
             option.tabIndex = -1;
+            option.setAttribute('aria-posinset', String(index + 1));
+            option.setAttribute('aria-setsize', String(choices.length));
             option.textContent = choice;
             option.title = choice;
             option.setAttribute('aria-selected', choice === currentValue ? 'true' : 'false');
@@ -1458,8 +1512,10 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 optionCommitted = true;
                 selectModelsSelectOption(select, choice);
             };
-            option.addEventListener('pointerover', () => dispatchModelsSelectOptionPreview(select, option, choice));
-            option.addEventListener('mouseover', () => dispatchModelsSelectOptionPreview(select, option, choice));
+            if (!simpleaiDisableHoverPreviewsForInput()) {
+                option.addEventListener('pointerover', () => dispatchModelsSelectOptionPreview(select, option, choice));
+                option.addEventListener('mouseover', () => dispatchModelsSelectOptionPreview(select, option, choice));
+            }
             option.addEventListener('pointerdown', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1469,7 +1525,16 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             if (index === 0) option.dataset.simpaiFirstMatch = '1';
             fragment.appendChild(option);
         });
+        if (windowed) {
+            const after = document.createElement('div');
+            after.className = 'simpai-models-js-select-spacer';
+            after.style.height = `${Math.max(0, choices.length - endIndex) * MOBILE_MODELS_SELECT_ROW_HEIGHT}px`;
+            after.setAttribute('aria-hidden', 'true');
+            fragment.appendChild(after);
+        }
+        menu.dataset.simpaiSelectWindowed = windowed ? '1' : '0';
         parts.options.replaceChildren(fragment);
+        if (alignedScrollTop !== null) parts.options.scrollTop = alignedScrollTop;
         positionModelsSelectMenu(select, menu);
     }
 
@@ -1502,8 +1567,16 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
         activeModelsSelectMenu = { select, menu, search, options };
         search.addEventListener('input', () => {
             menu.dataset.simpaiSelectQuery = search.value || '';
-            renderModelsSelectMenuOptions(select, menu);
+            renderModelsSelectMenuOptions(select, menu, { resetScroll: true });
         });
+        options.addEventListener('scroll', () => {
+            if (menu.dataset.simpaiSelectWindowed !== '1' || modelsSelectScrollFrame) return;
+            modelsSelectScrollFrame = window.requestAnimationFrame(() => {
+                modelsSelectScrollFrame = 0;
+                if (activeModelsSelectMenu?.menu !== menu) return;
+                renderModelsSelectMenuOptions(select, menu);
+            });
+        }, { passive: true });
         search.addEventListener('focus', scheduleActiveModelsSelectMenuPosition);
         search.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') {
@@ -1520,7 +1593,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
                 }
             }
         });
-        renderModelsSelectMenuOptions(select, menu);
+        renderModelsSelectMenuOptions(select, menu, { alignSelected: true });
         const selected = options.querySelector('.is-selected');
         if (selected) selected.scrollIntoView({ block: 'nearest' });
         if (focusSearch) search.focus({ preventScroll: true });
@@ -1528,7 +1601,7 @@ window.simpleaiRehydrateModelsTabAfterPresetNav = simpleaiRehydrateModelsTabAfte
             refreshModelsPanelCatalog().then((catalog) => {
                 if (!catalog || activeModelsSelectMenu?.select !== select) return;
                 populateLiteModelSelect(select);
-                renderModelsSelectMenuOptions(select, menu);
+                renderModelsSelectMenuOptions(select, menu, { alignSelected: true });
             });
         }
     }
@@ -3540,6 +3613,7 @@ function initGeneratingStateRecovery() {
 }
 
 function initStylePreviewOverlay() {
+    if (simpleaiDisableHoverPreviewsForInput()) return;
     let overlayVisible = false;
     const samplesPath = document.querySelector("meta[name='samples-path']").getAttribute("content")
     const overlay = document.createElement('div');
@@ -4300,6 +4374,7 @@ function htmlDecode(input) {
 }
 
 (function() {
+    if (simpleaiDisableHoverPreviewsForInput()) return;
     let previewOverlay = null;
     let activePreviewFolder = null;
     let autoHideTimer = null;

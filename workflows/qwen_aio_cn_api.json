@@ -537,12 +537,16 @@
   },
   "aio_negative": {
     "inputs": {
-      "conditioning": [
-        "aio_positive",
+      "text": [
+        "728",
+        1
+      ],
+      "clip": [
+        "810",
         0
       ]
     },
-    "class_type": "ConditioningZeroOut",
+    "class_type": "CLIPTextEncode",
     "_meta": {
       "title": "AIO Negative"
     }

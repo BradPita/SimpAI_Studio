@@ -616,7 +616,7 @@
   "aio_reference_1": {
     "inputs": {
       "model": [
-        "781",
+        "aio_nag_model",
         0
       ],
       "positive": [
@@ -1005,7 +1005,7 @@
   "aio_inpaint": {
     "inputs": {
       "model": [
-        "781",
+        "aio_nag_model",
         0
       ],
       "positive": [
@@ -1286,6 +1286,87 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "AIO Preview"
+    }
+  },
+  "aio_nag": {
+    "inputs": {
+      "model": [
+        "781",
+        0
+      ],
+      "nag_scale": 5.0,
+      "nag_alpha": 0.5,
+      "nag_tau": 1.5
+    },
+    "class_type": "NAGuidance",
+    "_meta": {
+      "title": "AIO Normalized Attention Guidance"
+    }
+  },
+  "aio_negative_empty": {
+    "inputs": {
+      "string_a": [
+        "728",
+        1
+      ],
+      "string_b": "",
+      "mode": "Equal",
+      "case_sensitive": true
+    },
+    "class_type": "StringCompare",
+    "_meta": {
+      "title": "AIO Negative Prompt Empty"
+    }
+  },
+  "aio_nag_model": {
+    "inputs": {
+      "boolean": [
+        "aio_cfg_is_one",
+        0
+      ],
+      "on_true": [
+        "aio_nag_if_negative",
+        0
+      ],
+      "on_false": [
+        "781",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "AIO Automatic NAG"
+    }
+  },
+  "aio_nag_if_negative": {
+    "inputs": {
+      "boolean": [
+        "aio_negative_empty",
+        0
+      ],
+      "on_true": [
+        "781",
+        0
+      ],
+      "on_false": [
+        "aio_nag",
+        0
+      ]
+    },
+    "class_type": "easy ifElse",
+    "_meta": {
+      "title": "AIO NAG When Negative Is Present"
+    }
+  },
+  "aio_cfg_is_one": {
+    "inputs": {
+      "a": 1.0,
+      "b": 1.0,
+      "comparison": "a == b"
+    },
+    "class_type": "easy compare",
+    "_meta": {
+      "title": "AIO CFG Is One"
     }
   }
 }

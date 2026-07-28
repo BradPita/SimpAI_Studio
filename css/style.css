@@ -784,8 +784,15 @@ html.simpai-hide-refiner-model .models-grid #model_dropdown_base {
   overflow-x: hidden;
 }
 
+.simpai-models-js-select-spacer {
+  width: 100%;
+  pointer-events: none;
+}
+
 .simpai-models-js-select-option {
+  height: 30px;
   min-height: 30px;
+  max-height: 30px;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -3592,6 +3599,38 @@ html.simpai-gallery-browser-welcome-pending #simpleai_gallery_welcome_guard_plac
     margin: auto !important;
 }
 
+#finished_gallery .preview img.simpleai-cached-gallery-video-poster-source,
+#final_gallery .preview img.simpleai-cached-gallery-video-poster-source {
+    display: none !important;
+}
+
+#finished_gallery .preview .simpleai-cached-gallery-video-host,
+#final_gallery .preview .simpleai-cached-gallery-video-host {
+    position: absolute !important;
+    inset: 0 0 auto 0 !important;
+    z-index: var(--layer-1, 1) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: calc(100% - var(--simpai-gallery-preview-thumbnails-height, 64px)) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: #000 !important;
+}
+
+#finished_gallery .preview video.simpleai-cached-gallery-video-preview,
+#final_gallery .preview video.simpleai-cached-gallery-video-preview {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    object-fit: contain !important;
+    background: #000 !important;
+}
+
 #finished_gallery .preview .thumbnails,
 #final_gallery .preview .thumbnails {
     display: flex !important;
@@ -3694,6 +3733,11 @@ html.simpai-gallery-browser-welcome-pending #simpleai_gallery_welcome_guard_plac
 #final_gallery.simpleai-gallery-fullscreen .preview .media-button {
     height: calc(100vh - 72px) !important;
     background: #000 !important;
+}
+
+#finished_gallery.simpleai-gallery-fullscreen .preview .simpleai-cached-gallery-video-host,
+#final_gallery.simpleai-gallery-fullscreen .preview .simpleai-cached-gallery-video-host {
+    height: calc(100vh - 72px) !important;
 }
 
 #finished_gallery.simpleai-gallery-fullscreen .preview .media-button img,

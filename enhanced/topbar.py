@@ -2630,7 +2630,6 @@ def refresh_finished_catalog_stat_after_generation(state_params):
         engine_type = state_params.get("__gallery_engine_type") or state_params.get("engine_type") or "image"
         engine_type = "video" if engine_type == "video" else "image"
         time.sleep(0.35)
-        gallery_util.invalidate_output_list_cache(user_did, engine_type)
         output_list, finished_nums, finished_pages = gallery_util.refresh_output_list(
             state_params["__max_per_page"],
             state_params["__max_catalog"],
