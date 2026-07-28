@@ -73,8 +73,14 @@
             useModelFilter: true,
             allowTypeSwitch: false,
             onSelect: null,
-            batch: null
+            batch: null,
+            mobileBatchExpanded: false,
+            mobileDetailOpen: false
         };
+    }
+
+    function mobileLayoutActive() {
+        return !!window.matchMedia?.('(max-width: 640px), (pointer: coarse) and (max-width: 900px)')?.matches;
     }
 
     function langSource() {
@@ -270,17 +276,27 @@
         modal.hidden = true;
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'sai-model-browser-title');
         mount.appendChild(modal);
         modal.addEventListener('click', onClick);
         modal.addEventListener('input', onInput);
         modal.addEventListener('change', onChange);
         modal.addEventListener('wheel', containModelBrowserWheel, { passive: false, capture: true });
         modal.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') close();
+            if (event.key === 'Escape') {
+                if (state.mobileDetailOpen && mobileLayoutActive()) {
+                    state.mobileDetailOpen = false;
+                    render({ preserveScroll: true });
+                } else {
+                    close();
+                }
+                return;
+            }
             if ((event.key === 'Enter' || event.key === ' ') && event.target?.closest?.('[data-smb-select]')) {
                 event.preventDefault();
                 const selected = event.target.closest('[data-smb-select]');
                 state.selectedId = selected.getAttribute('data-smb-select');
+                state.mobileDetailOpen = mobileLayoutActive();
                 render({ preserveScroll: true });
             }
         });
@@ -568,7 +584,16 @@
         const batchHint = canRemoteFetch
             ? tr('Analyze missing models using the current type, search, and folder filter.', '分析缺失项会使用当前类型、搜索词和文件夹筛选。')
             : tr('{type} can be browsed and selected; remote preview fetching is disabled.', '{type} 可以浏览和选择；远端预览获取已关闭。').replace('{type}', typeLabel(state.type));
-        return `<div class="sai-model-browser-batchbar">
+        const mobileBatchSummary = totalCheckedCount
+            ? tr('{count} selected', '已选 {count} 个').replace('{count}', totalCheckedCount)
+            : tr('No selection', '未选择');
+        const mobileBatchOpen = state.mobileBatchExpanded || batchBusy;
+        return `<div class="sai-model-browser-batchbar ${mobileBatchOpen ? 'is-mobile-open' : ''}">
+  <button type="button" class="sai-model-browser-batchtoggle" data-smb-batch-toggle aria-expanded="${mobileBatchOpen ? 'true' : 'false'}">
+    <span><i class="fa-solid fa-list-check"></i>${escapeHtml(tr('Batch tools', '批量操作'))}</span>
+    <small>${escapeHtml(mobileBatchSummary)}</small>
+    <i class="fa-solid fa-chevron-${mobileBatchOpen ? 'up' : 'down'}"></i>
+  </button>
   <div class="sai-model-browser-batchcopy">
     <b>${escapeHtml(tr('Batch model information', '批量模型信息'))}</b>
     <span>${escapeHtml(batchHint)}</span>
@@ -666,6 +691,10 @@
         const totalPages = Math.max(1, Math.ceil((state.total || 0) / state.pageSize));
         const canPrev = state.page > 1;
         const canNext = state.hasMore;
+        const mobileDetailOpen = !!state.mobileDetailOpen && mobileLayoutActive();
+        const headerTitle = mobileDetailOpen
+            ? tr('Model details', '模型详情')
+            : knownText(state.title, TYPE_LABELS[state.type] || KNOWN_TEXT['Model Browser']);
         const typeOptions = (state.types.length ? state.types : Object.keys(TYPE_LABELS).map(value => ({ value, label: typeLabel(value) })))
             .map(type => `<option value="${escapeHtml(type.value)}" ${type.value === state.type ? 'selected' : ''}>${escapeHtml(typeLabel(type.value) || localize(type.label, type.label))}</option>`)
             .join('');
@@ -674,27 +703,33 @@
             ? `<label class="sai-model-browser-filter-toggle" title="${escapeHtml(tr('Use architecture filters from Weight Inspector', '使用 Weight Inspector 的模型架构过滤'))}"><input type="checkbox" data-smb-model-filter ${state.useModelFilter ? 'checked' : ''}><span>${escapeHtml(tr('Model filter', '模型过滤'))}</span></label>`
             : `<span class="sai-model-browser-filter-toggle is-disabled">${escapeHtml(tr('No model filter', '无模型过滤'))}</span>`;
         modal.innerHTML = `<div class="sai-model-browser-backdrop" data-smb-close></div>
-<div class="sai-model-browser-panel">
+<div class="sai-model-browser-panel ${mobileDetailOpen ? 'is-mobile-detail-open' : ''}">
   <header class="sai-model-browser-head">
-    <div><i class="fa-solid fa-magnifying-glass"></i><h2>${escapeHtml(knownText(state.title, TYPE_LABELS[state.type] || KNOWN_TEXT['Model Browser']))}</h2></div>
-    <button type="button" data-smb-close title="${escapeHtml(tr('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
+    <div>
+      <button type="button" class="sai-model-browser-mobile-back" data-smb-detail-close aria-label="${escapeHtml(tr('Back to models', '返回模型列表'))}" title="${escapeHtml(tr('Back to models', '返回模型列表'))}"><i class="fa-solid fa-arrow-left"></i></button>
+      <i class="sai-model-browser-head-icon fa-solid fa-magnifying-glass"></i>
+      <h2 id="sai-model-browser-title">${escapeHtml(headerTitle)}</h2>
+    </div>
+    <button type="button" data-smb-close aria-label="${escapeHtml(tr('Close', '关闭'))}" title="${escapeHtml(tr('Close', '关闭'))}"><i class="fa-solid fa-xmark"></i></button>
   </header>
   <div class="sai-model-browser-toolbar">
-    <select data-smb-type ${state.allowTypeSwitch ? '' : 'disabled'}>${typeOptions}</select>
     <input type="search" data-smb-search value="${escapeHtml(state.search)}" placeholder="${escapeHtml(tr('Search name, folder, tags', '搜索名称、文件夹、标签'))}">
-    <select data-smb-folder>${folderOptions}</select>
-    <select data-smb-sort>
-      <option value="name" ${state.sort === 'name' ? 'selected' : ''}>${escapeHtml(tr('Name', '名称'))}</option>
-      <option value="folder" ${state.sort === 'folder' ? 'selected' : ''}>${escapeHtml(tr('Folder', '文件夹'))}</option>
-      <option value="modified_desc" ${state.sort === 'modified_desc' ? 'selected' : ''}>${escapeHtml(tr('Newest', '最新'))}</option>
-      <option value="size_desc" ${state.sort === 'size_desc' ? 'selected' : ''}>${escapeHtml(tr('Size', '大小'))}</option>
-      <option value="preview" ${state.sort === 'preview' ? 'selected' : ''}>${escapeHtml(tr('Preview first', '预览优先'))}</option>
-    </select>
-    ${filterToggle}
-    <button type="button" data-smb-refresh title="${escapeHtml(tr('Refresh', '刷新'))}"><i class="fa-solid fa-rotate"></i></button>
+    <div class="sai-model-browser-filterrail">
+      <select data-smb-type ${state.allowTypeSwitch ? '' : 'disabled'}>${typeOptions}</select>
+      <select data-smb-folder>${folderOptions}</select>
+      <select data-smb-sort>
+        <option value="name" ${state.sort === 'name' ? 'selected' : ''}>${escapeHtml(tr('Name', '名称'))}</option>
+        <option value="folder" ${state.sort === 'folder' ? 'selected' : ''}>${escapeHtml(tr('Folder', '文件夹'))}</option>
+        <option value="modified_desc" ${state.sort === 'modified_desc' ? 'selected' : ''}>${escapeHtml(tr('Newest', '最新'))}</option>
+        <option value="size_desc" ${state.sort === 'size_desc' ? 'selected' : ''}>${escapeHtml(tr('Size', '大小'))}</option>
+        <option value="preview" ${state.sort === 'preview' ? 'selected' : ''}>${escapeHtml(tr('Preview first', '预览优先'))}</option>
+      </select>
+      ${filterToggle}
+    </div>
+    <button type="button" data-smb-refresh aria-label="${escapeHtml(tr('Refresh', '刷新'))}" title="${escapeHtml(tr('Refresh', '刷新'))}"><i class="fa-solid fa-rotate"></i></button>
   </div>
   ${renderBatchBar()}
-  <main class="sai-model-browser-main">
+  <main class="sai-model-browser-main ${mobileDetailOpen ? 'is-mobile-detail-open' : ''}">
     <section class="sai-model-browser-grid">
       ${state.loading ? Array.from({ length: 12 }).map(() => '<div class="sai-model-browser-card is-loading"></div>').join('') : ''}
       ${!state.loading && state.items.length ? state.items.map(renderCard).join('') : ''}
@@ -1314,6 +1349,20 @@
             close();
             return;
         }
+        const detailClose = event.target.closest('[data-smb-detail-close]');
+        if (detailClose) {
+            event.preventDefault();
+            state.mobileDetailOpen = false;
+            render({ preserveScroll: true });
+            return;
+        }
+        const batchToggle = event.target.closest('[data-smb-batch-toggle]');
+        if (batchToggle) {
+            event.preventDefault();
+            state.mobileBatchExpanded = !state.mobileBatchExpanded;
+            render({ preserveScroll: true });
+            return;
+        }
         const refresh = event.target.closest('[data-smb-refresh]');
         if (refresh) {
             event.preventDefault();
@@ -1326,6 +1375,7 @@
             const action = page.getAttribute('data-smb-page');
             state.page = Math.max(1, state.page + (action === 'next' ? 1 : -1));
             state.checkedIds.clear();
+            state.mobileDetailOpen = false;
             query();
             return;
         }
@@ -1423,6 +1473,7 @@
         if (selected) {
             event.preventDefault();
             state.selectedId = selected.getAttribute('data-smb-select');
+            state.mobileDetailOpen = mobileLayoutActive();
             render({ preserveScroll: true });
             return;
         }
@@ -1622,6 +1673,7 @@
             modal.classList.remove('is-open');
         }
         state.open = false;
+        state.mobileDetailOpen = false;
     }
 
     window.SimpAIModelBrowser = {

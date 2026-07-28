@@ -10,6 +10,7 @@ import threading
 import numpy as np
 import modules.config as config
 import modules.flags as flags
+import modules.prompt_actions as prompt_actions
 import enhanced.translator as translator
 import enhanced.superprompter as superprompter
 import ldm_patched.modules.model_management
@@ -95,11 +96,13 @@ def _superprompt_target_key(backend_engine, task_method, target_text):
         "pony", "animagine", "sd15_aio",
     )):
         return "sdxl_danbooru"
-    if "wan" in haystack or "umt5" in haystack or "video" in haystack:
+    if "flux" in haystack:
+        return "flux_t5_en"
+    if "wan" in haystack or "video" in haystack or any(token in haystack for token in ("t2v", "i2v", "v2v", "av2v", "ltx")):
         return "wan_video_cn"
     if "qwen" in haystack:
         return "qwen_natural"
-    if "flux" in haystack or "t5" in haystack:
+    if "t5" in haystack:
         return "flux_t5_en"
     if "_cn" in haystack or "中文" in haystack or "chinese" in haystack:
         return "natural_zh"
@@ -162,14 +165,22 @@ def _superprompt_target_from_state(state):
         "prompt_format": prompt_format,
         "source": "main_webui_superprompt",
     }
+    capability = prompt_actions.prompt_action_capability_from_state(state)
+    if capability:
+        target["director_capability"] = capability
     if model_hint:
         target["model_list"] = [model_hint]
     agent_prompt = _superprompt_scene_value(state, theme, "agent_prompt", "") if scene_frontend else ""
     return target, str(agent_prompt or "").strip()
 
 
-def _superprompt_payload_from_state(state):
+def _superprompt_payload_from_state(state, target_override=None, use_scene_agent_prompt=True):
     target, agent_prompt = _superprompt_target_from_state(state)
+    if isinstance(target_override, dict) and target_override:
+        target = dict(target_override)
+        target.setdefault("source", "main_webui_prompt_action")
+    if not use_scene_agent_prompt:
+        agent_prompt = ""
     return {
         "project_id": "main_webui",
         "node_id": "canvas_agent_prompt_rewrite:main_webui_superprompt",
@@ -186,8 +197,44 @@ def _superprompt_image_input(input_images):
         images = [image for image in input_images if image is not None]
         if not images:
             return None
-        return images if VLM.is_llamacpp and len(images) > 1 else images[0]
+        supports_multiple = VLM.is_llamacpp or VLM.is_custom_version()
+        return images if supports_multiple and len(images) > 1 else images[0]
     return input_images
+
+
+def _superprompt_action_target_override(action, options, state):
+    action = action if isinstance(action, dict) else {}
+    options = options if isinstance(options, dict) else {}
+    target_kind = str(action.get("target_kind") or "").strip().lower()
+    if target_kind == "danbooru":
+        return {
+            "key": "sdxl_danbooru",
+            "label": "Prompt Action / Danbooru Tags",
+            "name": "Prompt Action / Danbooru Tags",
+            "backend_engine": "PromptAction",
+            "task_method": "natural_to_tags",
+            "text_encoder": "clip",
+            "prompt_format": "danbooru_tags_en",
+            "source": "main_webui_prompt_action",
+        }
+    if target_kind == "natural":
+        language = str(options.get("language") or "auto").strip().lower()
+        if language == "auto":
+            state_data = state if isinstance(state, dict) else {}
+            language_hint = str(state_data.get("__lang") or state_data.get("lang") or "cn").lower()
+            language = "en" if language_hint.startswith("en") else "cn"
+        is_english = language in {"en", "eng", "english"}
+        return {
+            "key": "natural_en" if is_english else "natural_zh",
+            "label": "Prompt Action / Natural Language",
+            "name": "Prompt Action / Natural Language",
+            "backend_engine": "PromptAction",
+            "task_method": "tags_to_natural_en" if is_english else "tags_to_natural_cn",
+            "text_encoder": "natural_language",
+            "prompt_format": "natural_en" if is_english else "natural_zh",
+            "source": "main_webui_prompt_action",
+        }
+    return None
 
 
 def _superprompt_prompt_from_json_object(data):
@@ -264,8 +311,6 @@ def _extract_openai_compatible_text(response):
 
 
 def _custom_vlm_image_to_data_url(image):
-    if isinstance(image, (list, tuple)):
-        image = next((item for item in image if item is not None), None)
     if image is None:
         return ""
     if isinstance(image, str) and os.path.exists(image):
@@ -287,6 +332,18 @@ def _custom_vlm_image_to_data_url(image):
     pil_image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
+
+
+def _custom_vlm_image_data_urls(image):
+    images = image if isinstance(image, (list, tuple)) else [image]
+    urls = []
+    for item in images:
+        if item is None:
+            continue
+        url = _custom_vlm_image_to_data_url(item)
+        if url:
+            urls.append(url)
+    return urls
 
 
 class VLM:
@@ -734,13 +791,13 @@ class VLM:
             messages.append({"role": "system", "content": system_prompt})
 
         prompt = str(prompt or "")
-        image_url = _custom_vlm_image_to_data_url(image) if settings["supports_images"] else ""
-        if image_url:
+        image_urls = _custom_vlm_image_data_urls(image) if settings["supports_images"] else []
+        if image_urls:
             messages.append({
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url}},
+                "content": [{"type": "text", "text": prompt}] + [
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                    for image_url in image_urls
                 ],
             })
         else:
@@ -982,7 +1039,17 @@ class VLM:
     def model_exists(self):
         return VLM.model_exists_for_version(VLM.current_version)
 
-    def extended_prompt_with_skills(self, input_text, prompt, input_images, state, translation_methods='Third APIs'):
+    def extended_prompt_with_skills(
+        self,
+        input_text,
+        prompt,
+        input_images,
+        state,
+        translation_methods='Third APIs',
+        action=None,
+        media_context=None,
+        options=None,
+    ):
         input_text = str(input_text or "").strip()
         if not input_text:
             return input_text
@@ -990,7 +1057,17 @@ class VLM:
             return None
         try:
             import modules.canvas_vlm_agent as canvas_vlm_agent
-            payload, preset_agent_prompt = _superprompt_payload_from_state(state)
+            action_data = action if isinstance(action, dict) else {}
+            action_id = str(action_data.get("id") or "smart_expand").strip() or "smart_expand"
+            action_options = options if isinstance(options, dict) else {}
+            target_override = _superprompt_action_target_override(action_data, action_options, state)
+            payload, preset_agent_prompt = _superprompt_payload_from_state(
+                state,
+                target_override=target_override,
+                use_scene_agent_prompt=bool(action_data.get("use_scene_agent_prompt", True)),
+            )
+            if action_id != "smart_expand":
+                payload["node_id"] = f"canvas_agent_prompt_rewrite:main_webui_{action_id}"
             params = {
                 "mode": "chat",
                 "node_id": payload["node_id"],
@@ -1004,21 +1081,52 @@ class VLM:
             system_prompt = canvas_vlm_agent.build_vlm_agent_system_prompt(params, payload, input_text)
             if not str(system_prompt or "").strip():
                 return None
+            resource_contract = prompt_actions.prompt_action_resource_contract_note(media_context)
+            if resource_contract:
+                system_prompt = f"{system_prompt}\n\n{resource_contract}"
             prompt_prefix = str(prompt or "").strip()
-            user_prompt = (
-                f"{prompt_prefix}\n\nUser prompt:\n{input_text}"
-                if prompt_prefix
-                else f"Rewrite this prompt for the current generation target:\n{input_text}"
-            )
+            action_instruction = str(action_data.get("instruction") or "").strip()
+            if str(action_data.get("target_kind") or "").strip().lower() == "natural":
+                target_key = str((target_override or {}).get("key") or "").strip().lower()
+                language_instruction = (
+                    "Write the final prompt in fluent English only."
+                    if target_key == "natural_en"
+                    else "Write the final prompt in fluent Simplified Chinese only."
+                )
+                action_instruction = "\n".join(
+                    part for part in (action_instruction, language_instruction) if part
+                )
+            media_note = prompt_actions.prompt_action_media_note(media_context)
+            text_context_note = prompt_actions.prompt_action_text_context_note(media_context, input_text)
+            if not action_instruction and not media_note and not text_context_note:
+                user_prompt = (
+                    f"{prompt_prefix}\n\nUser prompt:\n{input_text}"
+                    if prompt_prefix
+                    else f"Rewrite this prompt for the current generation target:\n{input_text}"
+                )
+            else:
+                request_parts = []
+                if action_instruction:
+                    request_parts.append(action_instruction)
+                if media_note:
+                    request_parts.append(media_note)
+                if text_context_note:
+                    request_parts.append(text_context_note)
+                if action_data.get("handler") == "smart_expand" and prompt_prefix:
+                    request_parts.append(prompt_prefix)
+                request_parts.append(f"User prompt:\n{input_text}")
+                user_prompt = "\n\n".join(request_parts)
             target = (
                 payload.get("agent_context", {})
                 .get("prompt_generation_targets", {})
                 .get("text_to_image", {})
             )
             logger.info(
-                "Using VLM skill SuperPrompt: target=%s task_method=%s",
+                "Using VLM prompt action: action=%s target=%s task_method=%s video_frames=%s",
+                action_id,
                 target.get("key") if isinstance(target, dict) else "",
                 target.get("task_method") if isinstance(target, dict) else "",
+                int((media_context or {}).get("sampled_frames") or 0) if isinstance(media_context, dict) else 0,
             )
             result = self.inference(
                 _superprompt_image_input(input_images),
@@ -1033,15 +1141,34 @@ class VLM:
             )
             return _superprompt_clean_output(result, fallback=input_text)
         except Exception as exc:
-            logger.warning("VLM skill SuperPrompt failed; falling back to legacy prompt expansion: %s", exc)
+            logger.warning("VLM prompt action failed; falling back to legacy prompt expansion: %s", exc)
             return None
 
-    def extended_prompt(self, input_text, prompt, input_images, state, translation_methods='Third APIs'):
+    def extended_prompt(
+        self,
+        input_text,
+        prompt,
+        input_images,
+        state,
+        translation_methods='Third APIs',
+        action=None,
+        media_context=None,
+        options=None,
+    ):
         input_text = str(input_text or "")
         if not input_text.strip():
             return input_text
         state = state if isinstance(state, dict) else {}
-        skill_result = self.extended_prompt_with_skills(input_text, prompt, input_images, state, translation_methods)
+        skill_result = self.extended_prompt_with_skills(
+            input_text,
+            prompt,
+            input_images,
+            state,
+            translation_methods,
+            action=action,
+            media_context=media_context,
+            options=options,
+        )
         if skill_result:
             return skill_result
 
@@ -1050,14 +1177,211 @@ class VLM:
             prompt_prompt = flags.get_value_by_scene_theme(state, theme, 'agent_prompt', '')
             if prompt_prompt and VLM.get_enable() and self.model_exists():
                 logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for scene extended prompt")
-                return self.interrogate(_superprompt_image_input(input_images), prompt=f'{prompt_prompt}{input_text}')
+                media_note = prompt_actions.prompt_action_media_note(media_context)
+                legacy_prompt = "\n\n".join(part for part in (prompt_prompt, media_note, input_text) if str(part or "").strip())
+                return self.interrogate(_superprompt_image_input(input_images), prompt=legacy_prompt)
 
         if not VLM.get_enable() or not self.model_exists():
             return superprompter.answer(input_text=translator.convert(f'{prompt}{input_text}', translation_methods))
 
         logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for standard extended prompt")
-        result = self.inference(None, prompt=f'{VLM.prompt_extend}{input_text}')
+        media_note = prompt_actions.prompt_action_media_note(media_context)
+        fallback_prompt = "\n\n".join(part for part in (media_note, f'{VLM.prompt_extend}{input_text}') if str(part or "").strip())
+        result = self.inference(_superprompt_image_input(input_images), prompt=fallback_prompt)
         return _superprompt_clean_output(result, fallback=input_text)
+
+    def run_prompt_action(
+        self,
+        action_id,
+        input_text,
+        prompt_prefix,
+        input_images,
+        state,
+        translation_methods='Third APIs',
+        options=None,
+        video_path="",
+        video_first_frame_path="",
+        scene_resources=None,
+    ):
+        original = str(input_text or "")
+        if not original.strip():
+            return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Prompt is empty."}
+
+        action = prompt_actions.get_prompt_action(action_id)
+        if not action:
+            return {"ok": False, "text": original, "action_id": str(action_id or ""), "error": "Unknown prompt action."}
+        state_data = state if isinstance(state, dict) else {}
+        mode = prompt_actions.prompt_action_mode(state_data)
+        if mode not in action.get("modes", []):
+            return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt action is unavailable in this mode."}
+
+        action_options = prompt_actions.normalize_prompt_action_options(options)
+        handler = str(action.get("handler") or "")
+        if handler == "tag_separator_toggle":
+            try:
+                output, direction, changed_tags = prompt_actions.transform_prompt_tag_separators(
+                    original,
+                    action_options.get("direction") or "auto",
+                )
+            except ValueError as exc:
+                return {"ok": False, "text": original, "action_id": action["id"], "error": str(exc)}
+            if not changed_tags:
+                return {
+                    "ok": False,
+                    "text": original,
+                    "action_id": action["id"],
+                    "error": "No convertible tag spaces or underscores were found.",
+                    "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+                }
+            return {
+                "ok": True,
+                "text": output,
+                "action_id": action["id"],
+                "transform": {"direction": direction, "changed_tags": changed_tags},
+                "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+            }
+        if handler == "translate":
+            direction = str(action_options.get("direction") or "auto").strip().lower()
+            if direction == "auto":
+                direction = "to_en" if is_chinese(original) else "to_cn"
+            if direction == "to_en":
+                output = self.translate(original, translation_methods)
+            elif direction == "to_cn":
+                output = self.translate_cn(original, translation_methods)
+            else:
+                return {"ok": False, "text": original, "action_id": action["id"], "error": "Unsupported translation direction."}
+            translated = str(output or "").strip()
+            if not translated or translated == original.strip():
+                return {
+                    "ok": False,
+                    "text": original,
+                    "action_id": action["id"],
+                    "error": "Translation returned unchanged text.",
+                    "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+                }
+            return {
+                "ok": True,
+                "text": translated,
+                "action_id": action["id"],
+                "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+            }
+
+        if handler not in {"smart_expand", "agent_rewrite"}:
+            return {"ok": False, "text": original, "action_id": action["id"], "error": "Prompt action handler is unavailable."}
+
+        requires_vlm = bool(action.get("requires_vlm")) or (mode == "scene" and bool(action.get("requires_vlm_scene")))
+        if requires_vlm and (not VLM.get_enable() or not self.model_exists()):
+            return {
+                "ok": False,
+                "text": original,
+                "action_id": action["id"],
+                "error": "The configured VLM is unavailable.",
+                "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+            }
+
+        media_policy = str(action.get("media_policy") or "none")
+        if media_policy == "none":
+            resource_images, resource_context = [], {}
+        else:
+            resource_values = dict(scene_resources or {})
+            if not scene_resources:
+                resource_values.update({
+                    "video_path": video_path,
+                    "video_first_frame_path": video_first_frame_path,
+                    "legacy_video_direct": True,
+                })
+            resource_images, resource_context = prompt_actions.prepare_prompt_action_resources(
+                state_data,
+                input_images,
+                resource_values,
+                input_text=original,
+            )
+        resolved_video_path = str(resource_context.get("video_path") or "")
+        resolved_first_frame_path = str(resource_context.get("video_first_frame_path") or "")
+        video_sources = [
+            prompt_actions.normalize_media_path(value)
+            for value in (resolved_video_path, resolved_first_frame_path)
+        ]
+        video_source_available = any(path and os.path.exists(path) for path in video_sources)
+        wants_video = (
+            media_policy in {"main_video_auto", "main_video_required"}
+            and prompt_actions.prompt_action_option_bool(action_options, "use_video", True)
+            and video_source_available
+        )
+        wants_images = media_policy != "none" and bool(resource_images)
+        if (wants_video or wants_images) and VLM.is_custom_version() and not bool(VLM.get_custom_settings().get("supports_images")):
+            return {
+                "ok": False,
+                "text": original,
+                "action_id": action["id"],
+                "error": "The configured custom model does not accept image input. Disable video context or choose a vision model.",
+                "media": {"video_requested": True, "video_used": False, "sampled_frames": 0},
+            }
+        prepared_images, media_meta = prompt_actions.prepare_prompt_action_media(
+            action["id"],
+            resource_images,
+            video_path=resolved_video_path,
+            first_frame_path=resolved_first_frame_path,
+            options=action_options,
+            resource_context=resource_context,
+        )
+        public_media = {
+            key: media_meta.get(key)
+            for key in (
+                "video_requested",
+                "video_used",
+                "sampled_frames",
+                "duration_seconds",
+                "used_first_frame_only",
+                "cache_hit",
+                "image_descriptors",
+                "video_source",
+                "target_duration_seconds",
+                "audio_present",
+                "director",
+            )
+            if key in media_meta
+        }
+
+        if handler == "smart_expand":
+            output = self.extended_prompt(
+                original,
+                prompt_prefix,
+                prepared_images,
+                state_data,
+                translation_methods,
+                action=action,
+                media_context=media_meta,
+                options=action_options,
+            )
+        elif handler == "agent_rewrite":
+            output = self.extended_prompt_with_skills(
+                original,
+                prompt_prefix,
+                prepared_images,
+                state_data,
+                translation_methods,
+                action=action,
+                media_context=media_meta,
+                options=action_options,
+            )
+        cleaned = str(output or "").strip()
+        if str(action.get("target_kind") or "").strip().lower() == "danbooru":
+            cleaned = prompt_actions.prompt_tags_with_spaces(cleaned)
+        if not cleaned:
+            return {
+                "ok": False,
+                "text": original,
+                "action_id": action["id"],
+                "error": "Prompt action returned no text.",
+                "media": public_media,
+            }
+        return {
+            "ok": True,
+            "text": cleaned,
+            "action_id": action["id"],
+            "media": public_media,
+        }
 
     def translate(self, input_text, method=None):
         if not input_text:
@@ -1077,7 +1401,7 @@ class VLM:
             logger.debug(f"Using {'LlamaCpp' if VLM.is_llamacpp else 'VLM'} for translation to Chinese")
             return self.inference(None, prompt=f'{VLM.prompt_translator_cn}{input_text}')
         else:
-            return translator.convert(input_text, method)
+            return translator.convert(input_text, method, 'cn')
 
     def expand_tts_style_instruction(self, style_text):
         prompt = f"{VLM.prompt_tts_style_director}\n\nUser Input: {style_text}\n\nOutput:"

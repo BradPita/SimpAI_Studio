@@ -12,6 +12,7 @@
         'enhance_mask_dino_prompt_text'
     ];
     const FALLBACK_ROOT_SELECTOR = FALLBACK_ROOT_IDS.map(id => `#${id}`).join(',');
+    const UNDERSCORE_REPLACEMENT_EXCLUSIONS = '0_0,(o)_(o),+_+,+_-,._.,<o>_<o>,<|>_<|>,=_=,>_<,3_3,6_9,>_o,@_@,^_^,o_o,u_u,x_x,|_|,||_||';
     const state = {
         dropdown: null,
         field: null,
@@ -268,8 +269,27 @@
         return '';
     }
 
+    function underscoreReplacementEnabled() {
+        const input = typeof getGradioCheckboxById === 'function'
+            ? getGradioCheckboxById('forge_neo_setting_tac_replaceUnderscores')
+            : appRoot()?.querySelector?.('#forge_neo_setting_tac_replaceUnderscores input[type="checkbox"]');
+        return input ? !!input.checked : true;
+    }
+
+    function underscoreReplacementExclusions() {
+        const root = typeof getGradioRootById === 'function'
+            ? getGradioRootById('forge_neo_setting_tac_undersocreReplacementExclusionList')
+            : appRoot()?.querySelector?.('#forge_neo_setting_tac_undersocreReplacementExclusionList');
+        const field = root?.querySelector?.('textarea,input');
+        const value = String(field?.value || UNDERSCORE_REPLACEMENT_EXCLUSIONS);
+        return new Set(value.split(',').map(part => part.trim()).filter(Boolean));
+    }
+
     function itemInsertText(item) {
-        return String(item?.insert_text || item?.insertText || item?.completion || item?.value || item?.tag || '').trim();
+        const value = String(item?.insert_text || item?.insertText || item?.completion || item?.value || item?.tag || '').trim();
+        const completionKind = String(item?.completion_kind || item?.completionKind || '').toLowerCase();
+        if (!value || completionKind === 'translation' || !underscoreReplacementEnabled()) return value;
+        return underscoreReplacementExclusions().has(value) ? value : value.replace(/_/g, ' ');
     }
 
     function itemAppendSeparator(item) {

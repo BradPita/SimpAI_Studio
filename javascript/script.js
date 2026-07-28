@@ -4111,13 +4111,19 @@ function syncPositivePromptMetaState() {
 
     const rawPrompt = String(promptInput.value || '');
     const hasPrompt = rawPrompt.length > 0;
+    const promptToolsHasText = typeof window.simpleAIPromptToolsHasText === 'function'
+        ? !!window.simpleAIPromptToolsHasText()
+        : hasPrompt;
     const sceneFrontendActive = isSceneFrontendActiveForPromptMetaSync();
 
     setGradioButtonInteractive('random_prompt_button', true);
     if (typeof refreshSimpleAIPromptRecommendationButton === 'function') {
         try { refreshSimpleAIPromptRecommendationButton(); } catch (e) {}
     }
-    setGradioButtonInteractive('super_prompter_button', sceneFrontendActive ? hasPrompt && isVlmEnabledForPromptMetaSync() : hasPrompt);
+    if (typeof refreshSimpleAIPromptToolsButton === 'function') {
+        try { refreshSimpleAIPromptToolsButton(); } catch (e) {}
+    }
+    setGradioButtonInteractive('super_prompter_button', promptToolsHasText);
 
     const sceneCanvasVisible = elementIsVisible(getGradioRootById('scene_canvas'));
     const shouldShowLoadParameters = !sceneFrontendActive && !hasPrompt && getPromptMetaSyncInputImageReady() && !sceneCanvasVisible;
@@ -6990,7 +6996,29 @@ function clear_resolution_override_values_for_ratio_select() {
 onUiLoaded(initResolutionControlWidgets);
 onAfterUiUpdate(initResolutionControlWidgets);
 
-function portalFloatingShells() {
+function restorePresetStoreToManagedTree(node = null) {
+    const host = document.getElementById('simpleai_floating_host');
+    const target = node || (host ? Array.from(host.querySelectorAll('.preset_store')).pop() : null);
+    if (!target || target.parentElement !== host) return false;
+
+    const originalParent = target.__simpleaiFloatingOriginalParent;
+    if (!originalParent || !originalParent.isConnected) return false;
+    const originalNextSibling = target.__simpleaiFloatingOriginalNextSibling;
+
+    target.classList.remove('simpleai-floating-portal-node');
+    delete target.dataset.simpleaiPortal;
+    if (originalNextSibling && originalNextSibling.parentElement === originalParent) {
+        originalParent.insertBefore(target, originalNextSibling);
+    } else {
+        originalParent.appendChild(target);
+    }
+    originalParent.classList.remove('simpleai-floating-placeholder');
+    return true;
+}
+
+window.restorePresetStoreToManagedTree = restorePresetStoreToManagedTree;
+
+function portalFloatingShells(options = {}) {
     const hostId = 'simpleai_floating_host';
     let host = document.getElementById(hostId);
     if (!host) {
@@ -7008,6 +7036,9 @@ function portalFloatingShells() {
         { id: 'restore_defaults_panel', selectors: ['#restore_defaults_panel', '#restore_defaults_panel_content'] },
         { id: 'preset_store', selectors: ['.preset_store'], collapseParent: true },
     ];
+    const forcePresetStore = !!(options && options.forcePresetStore);
+    const shouldPortalPresetStore = forcePresetStore
+        || document.documentElement.classList.contains('preset-store-open');
 
     const isStopNode = (node) => {
         if (!node || node === document.body || node === host) return true;
@@ -7036,6 +7067,11 @@ function portalFloatingShells() {
     };
 
     targets.forEach((target) => {
+        if (target.id === 'preset_store' && !shouldPortalPresetStore) {
+            const hostedStores = Array.from(host.querySelectorAll('.preset_store'));
+            hostedStores.forEach((store) => restorePresetStoreToManagedTree(store));
+            return;
+        }
         const node = findTargetNode(target);
         if (!node) return;
         const portalNode = getPortalNode(node, target);
@@ -7057,6 +7093,10 @@ function portalFloatingShells() {
             return;
         }
         const originalParent = portalNode.parentElement;
+        if (target.id === 'preset_store') {
+            portalNode.__simpleaiFloatingOriginalParent = originalParent;
+            portalNode.__simpleaiFloatingOriginalNextSibling = portalNode.nextSibling;
+        }
         portalNode.classList.add('simpleai-floating-portal-node');
         portalNode.dataset.simpleaiFloatingFor = target.id;
         host.appendChild(portalNode);

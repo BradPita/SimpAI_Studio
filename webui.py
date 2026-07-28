@@ -4663,7 +4663,12 @@ with shared.gradio_root:
 
                         scene_video.upload(on_video_upload, inputs=[scene_video], outputs=[scene_video, scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path], show_progress=True, queue=False) \
                             .then(lambda: None, js='()=>{if (typeof refreshResolutionControlSource === "function") refreshResolutionControlSource("scene_video", "upload");}')
-                        scene_video.clear(lambda: "", outputs=[scene_video_first_frame_path], queue=False, show_progress=False)
+                        scene_video.clear(
+                            lambda: (None, None, "{}", ""),
+                            outputs=[scene_original_video_path, active_video_source, resolution_source_meta, scene_video_first_frame_path],
+                            queue=False,
+                            show_progress=False,
+                        )
                         scene_resolution_control = create_scene_resolution_control()
                         scene_resolution_override_accordion = scene_resolution_control.container
                         scene_use_resolution_override_checkbox = scene_resolution_control.use_override_checkbox
@@ -5161,7 +5166,7 @@ with shared.gradio_root:
 
                     with gr.Column(scale=2, min_width=124, elem_id="prompt_aux_column") as prompt_internal_panel:
                         random_button = gr.Button(value="RandomPrompt", elem_id="random_prompt_button", elem_classes='type_row_half', size="sm", min_width = 124)
-                        super_prompter = gr.Button(value="SuperPrompt", interactive=False, elem_id="super_prompter_button", elem_classes='type_row_half', size="sm", min_width = 124)
+                        super_prompter = gr.Button(value="Prompt Tools", interactive=False, elem_id="super_prompter_button", elem_classes='type_row_half', size="sm", min_width = 124)
                     with gr.Column(scale=2, min_width=112, elem_id="prompt_submit_column"):
                         generate_button = gr.Button(value="Generate", elem_classes='type_row', elem_id='generate_button', visible=True, min_width = 112)
                         load_parameter_button = gr.Button(value="Load Parameters", elem_classes='type_row', elem_id='load_parameter_button', visible=False, min_width = 112)
@@ -7158,6 +7163,11 @@ with shared.gradio_root:
                         import custom.OneButtonPrompt.ui_onebutton as ui_onebutton
                         ui_onebutton.ui_onebutton(prompt)
                         super_prompter_prompt = gr.Textbox(label='Prompt prefix', value='Expand the following prompt to add more detail:', lines=1, visible='hidden', elem_id='super_prompter_prompt', elem_classes=['sai-gradio-hidden-bridge'])
+                        prompt_action_input = gr.Textbox(value='', visible='hidden', elem_id='prompt_action_input', elem_classes=['sai-gradio-hidden-bridge'])
+                        prompt_action_id = gr.Textbox(value='smart_expand', visible='hidden', elem_id='prompt_action_id', elem_classes=['sai-gradio-hidden-bridge'])
+                        prompt_action_options = gr.Textbox(value='{}', visible='hidden', elem_id='prompt_action_options', elem_classes=['sai-gradio-hidden-bridge'])
+                        prompt_action_trigger = gr.Button(value='Run Prompt Action', visible='hidden', elem_id='prompt_action_trigger', elem_classes=['sai-gradio-hidden-bridge'])
+                        prompt_action_result = gr.Textbox(value='', visible='hidden', elem_id='prompt_action_result', elem_classes=['sai-gradio-hidden-bridge'])
                     
                 with gr.Tab(label='Styles', elem_classes=['style_selections_tab']) as styles_tab:
                     style_sorter.try_load_sorted_styles(
@@ -8735,25 +8745,117 @@ with shared.gradio_root:
                 .then(lambda x: None, inputs=state_topbar, queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(typeof syncSimpleAIImageToolsEnabledClass==="function") syncSimpleAIImageToolsEnabledClass(!(state&&state.__image_tools_enabled===false)); if(state&&state.__post_generation_compare_cleared&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("image_tools_checkbox"); if(typeof syncPostGenerationResultControls==="function") syncPostGenerationResultControls(state);}catch(e){console.warn("[UI-TRACE] image_tools_checkbox_sync_failed", e);}}')
             comfyd_active_checkbox.change(toggle_comfyd_checked, inputs=[comfyd_active_checkbox, state_topbar], queue=False, show_progress=False)
             
-            def handle_super_prompter_click(input_text, prompt_prefix, translation_method, canvas_image, image1, image2, image3, image4, state, state_is_generating):
+            def handle_prompt_action_click(
+                action_id,
+                action_options,
+                input_text,
+                prompt_prefix,
+                translation_method,
+                canvas_image,
+                image1,
+                image2,
+                image3,
+                image4,
+                original_video_path,
+                video_first_frame_path,
+                scene_video_value,
+                video_duration,
+                additional_prompt,
+                additional_prompt_2,
+                scene_audio_value,
+                reference_video_value,
+                director_enabled,
+                director_state,
+                state,
+                state_is_generating,
+            ):
+                original_text = input_text if input_text is not None else ""
                 if check_generating_state(state_is_generating):
-                    logger.info('SuperPrompt ignored while generation is active.')
-                    return input_text if input_text is not None else ""
-                logger.info('Using VLM')
-                return vlm.extended_prompt(
-                    input_text,
-                    prompt_prefix,
-                    [extract_scene_image(canvas_image), extract_scene_image(image1), extract_scene_image(image2), extract_scene_image(image3), extract_scene_image(image4)],
-                    state,
-                    translation_method
-                )
+                    logger.info('Prompt action ignored while generation is active.')
+                    return original_text, json.dumps({
+                        "ok": False,
+                        "action_id": str(action_id or ""),
+                        "error": "Generation is active.",
+                    }, ensure_ascii=False)
+                try:
+                    result = vlm.run_prompt_action(
+                        action_id,
+                        original_text,
+                        prompt_prefix,
+                        {
+                            "scene_canvas_image": canvas_image,
+                            "scene_input_image1": image1,
+                            "scene_input_image2": image2,
+                            "scene_input_image3": image3,
+                            "scene_input_image4": image4,
+                        },
+                        state,
+                        translation_method,
+                        options=action_options,
+                        scene_resources={
+                            "scene_video": scene_video_value,
+                            "scene_original_video_path": original_video_path,
+                            "video_first_frame_path": video_first_frame_path,
+                            "scene_video_duration": video_duration,
+                            "scene_additional_prompt": additional_prompt,
+                            "scene_additional_prompt_2": additional_prompt_2,
+                            "scene_audio": scene_audio_value,
+                            "scene_reference_video": reference_video_value,
+                            "director_enabled": director_enabled,
+                            "director_state": director_state,
+                        },
+                    )
+                except Exception as exc:
+                    logger.exception("Prompt action failed: action=%s", action_id)
+                    result = {
+                        "ok": False,
+                        "text": original_text,
+                        "action_id": str(action_id or ""),
+                        "error": str(exc),
+                    }
+                status = dict(result or {})
+                next_text = str(status.get("text", original_text) or original_text)
+                if not status.get("ok"):
+                    next_text = original_text
+                status["text"] = next_text
+                return json.dumps(status, ensure_ascii=False)
 
-            super_prompter.click(
-                handle_super_prompter_click,
-                inputs=[prompt, super_prompter_prompt, translation_methods, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, state_topbar, state_is_generating],
-                outputs=prompt,
+            prompt_action_event = prompt_action_trigger.click(
+                handle_prompt_action_click,
+                inputs=[
+                    prompt_action_id,
+                    prompt_action_options,
+                    prompt_action_input,
+                    super_prompter_prompt,
+                    translation_methods,
+                    scene_canvas_image,
+                    scene_input_image1,
+                    scene_input_image2,
+                    scene_input_image3,
+                    scene_input_image4,
+                    scene_original_video_path,
+                    scene_video_first_frame_path,
+                    scene_video,
+                    scene_video_duration,
+                    scene_additional_prompt,
+                    scene_additional_prompt_2,
+                    scene_audio,
+                    scene_reference_video,
+                    scene_director_enabled,
+                    scene_director_state,
+                    state_topbar,
+                    state_is_generating,
+                ],
+                outputs=prompt_action_result,
                 queue=False,
                 show_progress=True
+            )
+            prompt_action_event.then(
+                fn=None,
+                inputs=[prompt_action_result],
+                queue=False,
+                show_progress=False,
+                js='(result)=>{try{if(typeof window.completeSimpleAIPromptAction==="function") window.completeSimpleAIPromptAction(result);}catch(e){console.warn("[UI-TRACE] prompt_action_complete_failed",e);}}'
             )
             scene_params = [scene_theme, scene_canvas_image, scene_input_image1, scene_input_image2, scene_input_image3, scene_input_image4, scene_additional_prompt, scene_additional_prompt_2, scene_video_duration, scene_var_number, scene_var_number2, scene_var_number3, scene_var_number4, scene_var_number5, scene_var_number6, scene_var_number7, scene_var_number8, scene_var_number9, scene_var_number10, scene_steps, scene_switch_option1, scene_switch_option2, scene_switch_option3, scene_switch_option4, scene_aspect_ratio, scene_image_number, scene_mask_color_state, scene_video, scene_reference_video, scene_audio]
             scene_preset_save_names = ["scene_theme", "scene_additional_prompt", "scene_additional_prompt_2", "scene_video_duration", "scene_var_number", "scene_var_number2", "scene_var_number3", "scene_var_number4", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10", "scene_steps", "scene_switch_option1", "scene_switch_option2", "scene_switch_option3", "scene_switch_option4", "scene_aspect_ratio", "scene_image_number"]

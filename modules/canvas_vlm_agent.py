@@ -128,6 +128,9 @@ VLM_NATURAL_PROMPT_REFINE_SKILL_FILE = "natural_prompt_refine.md"
 VLM_AGENT_COMPANION_SKILL_FILE = "agent_companion.md"
 VLM_PRESET_TOOL_CALLING_SKILL_FILE = "preset_tool_calling.md"
 VLM_SIMPAI_PRESET_GUIDE_SKILL_FILE = "simpai_preset_guide.md"
+VLM_PROMPT_REWRITE_PRESET_NOTES_MAX_CHARS = 6000
+VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS = 20000
+VLM_PROMPT_REWRITE_SKILL_EXCERPT_MAX_CHARS = 3600
 
 def _canvas_normalize_vlm_action_name(action):
     name = str(action or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -202,6 +205,125 @@ def _canvas_vlm_prompt_rewrite_target_summary(payload):
             fields.append(f"{key}={value[:80]}")
     return (target_key or "unknown/default") + (("; " + "; ".join(fields[:5])) if fields else "")
 
+
+def _canvas_vlm_prompt_rewrite_target_family(target_key, target=None):
+    key = str(target_key or "").strip().lower()
+    data = target if isinstance(target, dict) else {}
+    task_method = str(data.get("task_method") or "").strip().lower()
+    text_encoder = str(data.get("text_encoder") or "").strip().lower()
+    backend_engine = str(data.get("backend_engine") or "").strip().lower()
+    target_name = " ".join(
+        str(data.get(field) or "").strip().lower()
+        for field in ("label", "name")
+    )
+
+    if _canvas_is_anima_prompt_target_key(key, data):
+        return "anima"
+    if key in CANVAS_DANBOORU_TARGET_KEYS:
+        return "danbooru"
+    if (
+        "audio_gen" in task_method
+        or "foley" in task_method
+        or ("video to audio" in target_name and "video to video" not in target_name)
+    ):
+        return "audio"
+    if key == "natural_en":
+        return "natural_en"
+    if key == "natural_zh":
+        return "natural_zh"
+    if key == "qwen_natural" or key.startswith("qwen"):
+        return "qwen"
+    if key == "flux_t5_en":
+        return "flux"
+    if key in {"wan_video_cn", "video_natural"}:
+        if "image_edit" in task_method and "video" not in task_method:
+            return "natural_zh"
+        return "wan"
+    if "umt5" in key or key.startswith("wan") or "video" in key:
+        return "wan"
+    if "flux" in key or ("t5" in key and "umt5" not in key):
+        return "flux"
+
+    # When a generic target key is used, the actual encoder is more reliable
+    # than a marketing/backend family name. In particular, Flux workflows can
+    # use Qwen encoders, while Wan UMT5 must not be treated as FLUX/T5XXL.
+    if "qwen" in text_encoder:
+        return "qwen"
+    if "umt5" in text_encoder or "wan" in backend_engine or "video" in task_method:
+        if "image_edit" in task_method and "video" not in task_method:
+            return "natural_zh"
+        return "wan"
+    if "t5" in text_encoder or "flux" in backend_engine:
+        return "flux"
+    return "natural"
+
+
+def _canvas_vlm_prompt_rewrite_compact_text(value, max_chars):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    max_chars = max(0, int(max_chars or 0))
+    if max_chars == 0:
+        return ""
+    if text.startswith("'''"):
+        text = text[3:].lstrip()
+    text = re.sub(r"'''\s*需要改写的提示词是[：:]?\s*$", "", text).strip()
+    if len(text) <= max_chars:
+        return text
+    marker = "\n\n... middle omitted to fit the prompt context ...\n\n"
+    if max_chars <= len(marker):
+        return text[:max_chars]
+    available = max(0, max_chars - len(marker))
+    head_chars = int(available * 0.6)
+    tail_chars = available - head_chars
+    tail = text[-tail_chars:].lstrip() if tail_chars else ""
+    return text[:head_chars].rstrip() + marker + tail
+
+
+def _canvas_vlm_markdown_section(content, heading):
+    text = str(content or "")
+    pattern = re.compile(
+        rf"(?ms)^{re.escape(heading)}\s*$.*?(?=^##\s|\Z)",
+    )
+    match = pattern.search(text)
+    return match.group(0).strip() if match else ""
+
+
+def _canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target=None):
+    item = doc if isinstance(doc, dict) else {}
+    content = str(item.get("content") or "").strip()
+    if not content:
+        return ""
+    if str(item.get("path") or "").replace("\\", "/") != VLM_IMAGE_PROMPT_SKILL_FILE:
+        return _canvas_vlm_prompt_rewrite_compact_text(
+            content,
+            VLM_PROMPT_REWRITE_SKILL_EXCERPT_MAX_CHARS,
+        )
+
+    family = _canvas_vlm_prompt_rewrite_target_family(target_key, target)
+    if family == "audio":
+        return ""
+    family_heading = {
+        "wan": "## Wan / UMT5 Video Encoders",
+        "flux": "## FLUX.1 / T5XXL Encoders",
+        "qwen": "## Z-image / Qwen Text Encoders",
+        "natural": "## Z-image / Qwen Text Encoders",
+        "natural_en": "## Z-image / Qwen Text Encoders",
+        "natural_zh": "## Z-image / Qwen Text Encoders",
+    }.get(family)
+    selected = ["# Image Prompting And Text Encoder Targets"]
+    target_selection = _canvas_vlm_markdown_section(content, "## Target Selection")
+    if target_selection:
+        selected.append(target_selection)
+    target_section = _canvas_vlm_markdown_section(content, family_heading) if family_heading else ""
+    if target_section:
+        selected.append(target_section)
+    excerpt = "\n\n".join(selected)
+    return _canvas_vlm_prompt_rewrite_compact_text(
+        excerpt or content,
+        VLM_PROMPT_REWRITE_SKILL_EXCERPT_MAX_CHARS,
+    )
+
 def _canvas_vlm_prompt_rewrite_required_docs(payload):
     payload = payload if isinstance(payload, dict) else {}
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload)
@@ -217,17 +339,23 @@ def _canvas_vlm_prompt_rewrite_required_docs(payload):
 
 def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     target = _canvas_vlm_prompt_rewrite_target_summary(payload)
-    target_lower = target.lower()
     target_key = canvas_danbooru_preflight.payload_text_to_image_target_key(payload if isinstance(payload, dict) else {})
     target_meta = _canvas_prompt_target_for_payload(payload if isinstance(payload, dict) else {}, target_key)
     target_requires_anima = _canvas_is_anima_prompt_target_key(target_key, target_meta)
     target_requires_danbooru = target_key in CANVAS_DANBOORU_TARGET_KEYS
-    if "anima" in target_lower:
+    target_family = _canvas_vlm_prompt_rewrite_target_family(target_key, target_meta)
+    if target_requires_anima:
         format_rule = "Final prompt: English Anima hybrid prompt, with compact Anima/Danbooru anchors plus short nltags control sentences when useful. No Chinese characters."
-    elif "flux" in target_lower or "t5" in target_lower or "english" in target_lower:
-        format_rule = "Final prompt: fluent English natural-language image prompt. No Chinese characters."
-    elif "sdxl" in target_lower or "danbooru" in target_lower or "illustrious" in target_lower or "noob" in target_lower or "pony" in target_lower:
+    elif target_requires_danbooru:
         format_rule = "Final prompt: comma-separated Danbooru-style English tags, not prose."
+    elif target_family == "wan":
+        format_rule = "Final prompt: coherent natural-language video prompt; preserve Chinese for Chinese user requests. Emphasize visible motion, camera movement, temporal continuity, and stable subject details."
+    elif target_family == "audio":
+        format_rule = "Final prompt: coherent natural-language audio-effects prompt; preserve Chinese for Chinese user requests. Describe audible events synchronized to visible video, without camera or visual-style instructions."
+    elif target_family in {"flux", "natural_en"}:
+        format_rule = "Final prompt: fluent English natural-language image prompt. No Chinese characters."
+    elif target_family == "natural_zh":
+        format_rule = "Final prompt: coherent Simplified Chinese natural-language image prompt."
     else:
         format_rule = "Final prompt: coherent natural-language image prompt; preserve Chinese for Chinese user requests."
     parts = [
@@ -243,21 +371,24 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
     required_docs = _canvas_vlm_prompt_rewrite_required_docs(payload if isinstance(payload, dict) else {})
     docs = _canvas_read_vlm_skill_docs(
         prompt,
-        3600,
+        VLM_PROMPT_REWRITE_SKILL_SOURCE_MAX_CHARS,
         required_docs=required_docs,
         required_only=bool(required_docs),
     )
     if docs:
         skill_text = "\n\n".join(
-            f"### {doc['title']}\n{doc['content']}"
+            f"### {doc['title']}\n{excerpt}"
             for doc in docs
+            for excerpt in [_canvas_vlm_prompt_rewrite_skill_excerpt(doc, target_key, target_meta)]
+            if excerpt
         )
-        parts.append(
-            "Target prompt skill docs. Use these as target-language and prompt-content guidance only. "
-            "Ignore any action JSON schema or chat-card protocol mentioned in the docs; "
-            "the main WebUI SuperPrompt button still returns final prompt text only:\n"
-            + skill_text
-        )
+        if skill_text:
+            parts.append(
+                "Target prompt skill docs. Use these as target-language and prompt-content guidance only. "
+                "Ignore any action JSON schema or chat-card protocol mentioned in the docs; "
+                "the main WebUI SuperPrompt button still returns final prompt text only:\n"
+                + skill_text
+            )
     if (target_requires_anima or target_requires_danbooru) and str(prompt or "").strip():
         try:
             lookup_text = canvas_danbooru_service._canvas_danbooru_lookup_text(
@@ -274,9 +405,13 @@ def _canvas_vlm_prompt_rewrite_system_prompt(base, payload, prompt=""):
                 + lookup_text
             )
     if base:
+        preset_notes = _canvas_vlm_prompt_rewrite_compact_text(
+            base,
+            VLM_PROMPT_REWRITE_PRESET_NOTES_MAX_CHARS,
+        )
         parts.append(
             "Preset-specific rewrite notes. These are lower priority than the output-format rule above; do not copy any JSON/markdown output format from them:\n"
-            + str(base)[:1800]
+            + preset_notes
         )
     return "\n".join(part for part in parts if str(part or "").strip()).strip()
 
@@ -1948,11 +2083,12 @@ def _canvas_vlm_minimal_persona_image_system_prompt(base, targets, target_key, c
 
 def _canvas_natural_action_protocol_language_rule(target_key):
     key = str(target_key or "").strip().lower()
-    if key == "flux_t5_en" or "flux" in key or "t5" in key or key.endswith("_en"):
+    family = _canvas_vlm_prompt_rewrite_target_family(key)
+    if family in {"flux", "natural_en"}:
         return "For FLUX/T5 targets, prompt and draft_prompt must be fluent English only; translate Chinese user intent into English."
     if "krea" in key:
         return "For Krea2 targets, use coherent natural-language prompts and preserve the user's language."
-    if key == "wan_video_cn" or "wan" in key or "umt5" in key or "video" in key:
+    if family == "wan":
         return "For Wan/video targets, use Chinese for Chinese requests and include visible motion, camera movement, continuity, and stable subject details."
     return "For Qwen/natural targets, preserve the user's language; Chinese requests should become coherent Chinese natural-language prompts."
 
@@ -4713,14 +4849,15 @@ def _canvas_strip_unrequested_negative_prompts(actions, *intent_texts):
 
 def _canvas_natural_prompt_language(target_key, *texts):
     key = str(target_key or "").strip().lower()
-    if key == "flux_t5_en" or "flux" in key or "t5" in key or key.endswith("_en"):
+    family = _canvas_vlm_prompt_rewrite_target_family(key)
+    if family in {"flux", "natural_en"}:
         return "en"
     combined = "\n".join(str(text or "") for text in texts if str(text or "").strip())
     if re.search(r"[\u3400-\u9fff]", combined):
         return "zh"
     if "krea" in key:
         return "en"
-    if key == "wan_video_cn" or key.endswith("_cn") or "qwen" in key or "wan" in key or "umt5" in key:
+    if family in {"wan", "qwen", "natural_zh"} or key.endswith("_cn"):
         return "zh"
     return "en"
 
@@ -6750,9 +6887,10 @@ def _canvas_build_natural_prompt_refine_messages(review_payload):
     adult_intent = payload.get("adult_intent") if isinstance(payload.get("adult_intent"), dict) else {}
     skill = _canvas_read_vlm_skill_file(VLM_NATURAL_PROMPT_REFINE_SKILL_FILE, 12000)
     adult_skill = _canvas_read_vlm_skill_file(VLM_NATURAL_PROMPT_ADULT_SKILL_FILE, 6000) if adult_intent.get("is_adult") else ""
-    if target_key == "flux_t5_en" or "flux" in target_key or "t5" in target_key:
+    target_family = _canvas_vlm_prompt_rewrite_target_family(target_key, target)
+    if target_family in {"flux", "natural_en"}:
         language_rule = "Final prompt must be English natural language only. Translate Chinese intent into fluent English; output no Chinese characters."
-    elif target_key == "wan_video_cn" or "wan" in target_key or "umt5" in target_key or "video" in target_key:
+    elif target_family == "wan":
         language_rule = "Final prompt should be Chinese natural language for video, with visible action progression, camera movement, temporal continuity, and stable subject details."
     else:
         language_rule = "Final prompt should preserve the user's language; for Chinese user requests, write coherent Chinese natural language."

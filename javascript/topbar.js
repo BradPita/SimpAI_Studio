@@ -9345,12 +9345,18 @@ window.scheduleFinishedGalleryBrowserStatusSyncFromRenderedGallery = scheduleFin
 window.syncGalleryBrowserFolderDisplay = syncGalleryBrowserFolderDisplay;
 
 function syncPresetStorePosition() {
+    let preset_store = getPresetStoreElement();
+    if (!preset_store) return;
+    if (!isPresetStoreElementOpen(preset_store)) {
+        const restoreFn = window.restorePresetStoreToManagedTree;
+        if (typeof restoreFn === "function") restoreFn(preset_store);
+        return;
+    }
     const portalFn = window.portalFloatingShells || (typeof portalFloatingShells === "function" ? portalFloatingShells : null);
     if (typeof portalFn === "function") {
-        portalFn();
+        portalFn({ forcePresetStore: true });
+        preset_store = getPresetStoreElement() || preset_store;
     }
-    const preset_store = getPresetStoreElement();
-    if (!preset_store) return;
     const resizeState = ensurePresetStoreResize(preset_store);
     ensurePresetStoreInViewport(preset_store);
     if (resizeState && resizeState.ensureWithinViewport) {
@@ -9398,39 +9404,39 @@ function getPresetStoreDefaultTop() {
     return Math.max(margin, Math.min(preferredTop, viewportScaledTop));
 }
 
+function presetStoreShellHasStructure(element) {
+    if (!element || !element.querySelector) return false;
+    return !!(
+        element.querySelector("#preset_store_tools")
+        && element.querySelector("#preset_store_close")
+        && element.querySelector("#preset_store_nav_draft")
+        && element.querySelector("#preset_store_candidate_pool")
+    );
+}
+
+function selectPresetStoreElement(elements) {
+    const stores = Array.from(elements || []).filter(Boolean);
+    if (!stores.length) return null;
+    const structured = stores.filter((element) => presetStoreShellHasStructure(element));
+    const candidates = structured.length ? structured : stores;
+    const visible = candidates.filter((element) => {
+        if (element.hidden) return false;
+        if (element.classList && (element.classList.contains("hidden") || element.classList.contains("hide"))) return false;
+        const style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+        return !(style && (style.display === "none" || style.visibility === "hidden"));
+    });
+    const selected = visible.length ? visible : candidates;
+    return selected[selected.length - 1];
+}
+
 function getPresetStoreElement() {
-    const host = document.getElementById("simpleai_floating_host");
-    if (host) {
-        const hostedStores = Array.from(host.querySelectorAll('.preset_store'));
-        if (hostedStores.length) {
-            const visibleHosted = hostedStores.filter((el) => {
-                if (!el) return false;
-                if (el.hidden) return false;
-                if (el.classList && (el.classList.contains("hidden") || el.classList.contains("hide"))) return false;
-                const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
-                if (style && (style.display === "none" || style.visibility === "hidden")) return false;
-                return true;
-            });
-            return (visibleHosted.length ? visibleHosted : hostedStores)[(visibleHosted.length ? visibleHosted : hostedStores).length - 1];
-        }
-    }
-    const fromDocumentAll = Array.from(document.querySelectorAll('.preset_store'));
-    if (fromDocumentAll.length) {
-        const visibleDocument = fromDocumentAll.filter((el) => {
-            if (!el) return false;
-            if (el.hidden) return false;
-            if (el.classList && (el.classList.contains("hidden") || el.classList.contains("hide"))) return false;
-            const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
-            if (style && (style.display === "none" || style.visibility === "hidden")) return false;
-            return true;
-        });
-        return (visibleDocument.length ? visibleDocument : fromDocumentAll)[(visibleDocument.length ? visibleDocument : fromDocumentAll).length - 1];
-    }
+    const fromDocument = selectPresetStoreElement(document.querySelectorAll('.preset_store'));
+    if (fromDocument) return fromDocument;
     try {
         const app = gradioApp();
         if (app && app.querySelectorAll) {
-            const stores = Array.from(app.querySelectorAll('.preset_store'));
-            if (stores.length) return stores[stores.length - 1];
+            const selected = selectPresetStoreElement(app.querySelectorAll('.preset_store'));
+            if (selected) return selected;
         }
         return app && app.querySelector ? app.querySelector('.preset_store') : null;
     } catch (e) {
@@ -9645,6 +9651,10 @@ function setPresetStoreOpen(presetStoreEl, isOpen) {
                 presetStoreEl.classList.remove("hide");
             }
         } catch (e) {}
+        const portalFn = window.portalFloatingShells || (typeof portalFloatingShells === "function" ? portalFloatingShells : null);
+        if (typeof portalFn === "function") {
+            portalFn({ forcePresetStore: true });
+        }
     } else {
         presetStoreEl.style.display = 'none';
         presetStoreEl.style.pointerEvents = 'none';
@@ -9661,6 +9671,10 @@ function setPresetStoreOpen(presetStoreEl, isOpen) {
             presetStoreEl.style.setProperty("left", "50%", "important");
             presetStoreEl.style.setProperty("top", `${getPresetStoreDefaultTop()}px`, "important");
             presetStoreEl.style.setProperty("transform", "translateX(-50%)", "important");
+        }
+        const restoreFn = window.restorePresetStoreToManagedTree;
+        if (typeof restoreFn === "function") {
+            restoreFn(presetStoreEl);
         }
     }
     if (wasOpen !== !!isOpen) {
@@ -11169,7 +11183,7 @@ function updatePresetStore(nav_name_list, role, expand_flag, theme) {
     }
     const portalFn = window.portalFloatingShells || (typeof portalFloatingShells === "function" ? portalFloatingShells : null);
     if (typeof portalFn === "function") {
-        portalFn();
+        portalFn({ forcePresetStore: !!expand_flag });
     }
     // Gradio 6 compatibility: skip direct bar_store DOM writes to avoid Svelte null.style crashes.
     // (text/background for bar_store is intentionally left to Gradio rendering lifecycle).
@@ -11205,7 +11219,9 @@ function updatePresetStore(nav_name_list, role, expand_flag, theme) {
     const candidateRevision = getPresetStoreCandidateRenderRevision(candidateEntries);
     const candidatePool = getPresetStoreControl("#preset_store_candidate_pool");
     const candidateNeedsRender = !candidatePool
-        || preset_store.dataset.simpleaiPresetStoreRevision !== candidateRevision;
+        || preset_store.dataset.simpleaiPresetStoreRevision !== candidateRevision
+        || preset_store.dataset.simpleaiPresetStoreReady !== "1"
+        || !candidatePool.querySelector(".preset-store-candidate");
     if (candidateNeedsRender) {
         if (!candidateEntries) candidateEntries = getPresetStoreCandidateEntries();
         const candidateButtons = renderPresetStoreCandidatePool(candidateEntries);

@@ -2281,6 +2281,19 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_reference_video_original_path,
         )
         scene_task_method_value = meta_parser.get_scene_task_method(scene_frontend, scene_theme)
+        try:
+            import modules.scene_director_webui as scene_director_webui
+            scene_director_capability = scene_director_webui._scene_director_capability_from_state(state_params, scene_theme)
+            scene_director_available = scene_director_webui._scene_director_available_from_state(
+                state_params,
+                scene_theme,
+                scene_director_capability,
+            )
+        except Exception:
+            scene_director_capability = {}
+            scene_director_available = True
+        if not scene_director_available:
+            scene_director_enabled = False
 
         def _scene_image_trace_shape(value, *, sketch=False):
             try:
@@ -2330,11 +2343,6 @@ def process_before_generation(state_params, seed_random, image_seed, backend_par
             scene_director_audio_status.get("refs"),
         )
         scene_task_method_l = str(scene_task_method_value or "").lower()
-        try:
-            import modules.scene_director_webui as scene_director_webui
-            scene_director_capability = scene_director_webui._scene_director_capability_from_state(state_params, scene_theme)
-        except Exception:
-            scene_director_capability = {}
         scene_audio_policy = str((scene_director_capability or {}).get("audio_policy") or "").lower()
         scene_switch_option1_effective = scene_switch_option1
         if scene_switch_option1_effective is None:
@@ -3211,10 +3219,8 @@ def toggle_preset_store(state):
             state['preset_store'] = False
             flag = False
         state['preset_store'] = not flag
-        store_was_mounted = bool(state.get("__preset_store_mounted", False))
-        preset_store_update = skip_update() if store_was_mounted else gr.update(visible=not flag)
-        if not flag:
-            state["__preset_store_mounted"] = True
+        preset_store_update = gr.update(visible=not flag)
+        state["__preset_store_mounted"] = not flag
         state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
         state['identity_dialog'] = False
         return [preset_store_update, store_update] + update_topbar_js_params(state, include_canvas_catalogs=False) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]
@@ -3226,10 +3232,8 @@ def toggle_preset_store(state):
                 state['preset_store'] = False
                 flag = False
             state['preset_store'] = not flag
-            store_was_mounted = bool(state.get("__preset_store_mounted", False))
-            preset_store_update = skip_update() if store_was_mounted else gr.update(visible=not flag)
-            if not flag:
-                state["__preset_store_mounted"] = True
+            preset_store_update = gr.update(visible=not flag)
+            state["__preset_store_mounted"] = not flag
             state["__preset_store_seq"] = int(state.get("__preset_store_seq", 0) or 0) + 1
             state['identity_dialog'] = False
             return [preset_store_update, store_update] + update_topbar_js_params(state, include_canvas_catalogs=False) + [gr.update(visible=False)] + [skip_update() for _ in range(17)]

@@ -63,6 +63,9 @@
             "prompt": {
                 "Hunyuan-Foley": "'''Audio Effects Prompt'''\n"
             },
+            "agent_prompt": {
+                "Hunyuan-Foley": "你是视频音效 Prompt 优化师。根据用户文字和主视频中可见的动作、物体、材质、环境与空间关系，写一个自然中文的拟音指令。按画面时间顺序描述需要同步出现的脚步、衣物摩擦、碰撞、液体、机械、交通、天气、环境底噪和空间混响，声音强弱、远近和节奏应符合可见动作及真实物理。你无法听取原视频音频，不要声称识别原声，也不要判断原声中缺少什么。用户未明确要求时，不要新增对白、歌词、旁白、背景音乐或不可见的画外事件。只返回一段最终 Prompt，不要描述画质、镜头美学、标题、列表或解释。"
+            },
             "var_number_title": "Duration limit (seconds) [0 = no limit]",
             "var_number_min": 0,
             "var_number_max": 120,

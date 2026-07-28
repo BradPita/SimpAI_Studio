@@ -29,6 +29,7 @@ const SCENE_DIRECTOR_TEXT = {
     "Start": "开始",
     "End": "结束",
     "Prompt": "提示词",
+    "Prompt Tools": "提示工具",
     "Image ref": "图像引用",
     "Image ref 1": "图像引用 1",
     "Image ref 2": "图像引用 2",
@@ -243,6 +244,7 @@ let sceneDirectorLocalizationRefreshing = false;
 let sceneDirectorTimelineDragState = null;
 let sceneDirectorTimelineDragFrame = null;
 let sceneDirectorTimelineDragPendingPoint = null;
+let sceneDirectorActiveShotIndex = 0;
 
 function sceneDirectorCapability() {
     sceneDirectorEnsurePresetCapabilityLoaded();
@@ -857,8 +859,9 @@ function sceneDirectorScheduleDraftSave() {
 function sceneDirectorApplyDraft(draft) {
     if (!draft || typeof draft !== "object") return false;
     if (!sceneDirectorDraftControlsMounted()) return false;
+    const directorAvailable = sceneDirectorPresetAvailable(sceneDirectorDatasetCapability(true));
     sceneDirectorWithDraftSavePaused(() => {
-        sceneDirectorSetCheckboxValue("#scene_director_enabled", !!draft.enabled, false);
+        sceneDirectorSetCheckboxValue("#scene_director_enabled", directorAvailable && !!draft.enabled, false);
         sceneDirectorSetControlValue("#scene_director_width", draft.width || 1280, false);
         sceneDirectorSetControlValue("#scene_director_height", draft.height || 720, false);
         sceneDirectorSetControlValue("#scene_director_fps", draft.fps || 24, false);
@@ -994,6 +997,7 @@ function sceneDirectorApplyCapabilityDataset(capability) {
         root.classList.toggle("simpai-scene-director-video-required", normalized.videoPolicy === "required");
         root.classList.toggle("simpai-scene-director-video-forbidden", normalized.videoPolicy === "forbidden");
         root.classList.toggle("simpai-scene-director-video-optional", normalized.videoPolicy === "optional");
+        sceneDirectorDeactivateIfUnsupported(normalized);
         if (changed) {
             window.dispatchEvent(new CustomEvent("simpai:scene-director-capability-updated", { detail: normalized }));
         }
@@ -1203,24 +1207,57 @@ function sceneDirectorCloneRows(rows) {
 function sceneDirectorReadRows() {
     const field = sceneDirectorEditorField();
     if (!field || !String(field.value || "").trim()) {
-        return sceneDirectorNormalizeRowsForCapability(SCENE_DIRECTOR_DEFAULT_ROWS);
+        const rows = sceneDirectorNormalizeRowsForCapability(SCENE_DIRECTOR_DEFAULT_ROWS);
+        sceneDirectorActiveShotIndex = Math.max(0, Math.min(rows.length - 1, sceneDirectorActiveShotIndex));
+        return rows;
     }
     try {
         const parsed = JSON.parse(field.value);
         const rows = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.rows) ? parsed.rows : []);
-        return sceneDirectorNormalizeRowsForCapability(rows.length ? rows : SCENE_DIRECTOR_DEFAULT_ROWS);
+        const normalized = sceneDirectorNormalizeRowsForCapability(rows.length ? rows : SCENE_DIRECTOR_DEFAULT_ROWS);
+        if (parsed && !Array.isArray(parsed) && typeof parsed === "object") {
+            const selected = Number(parsed.active_index ?? parsed.active_segment_index);
+            if (Number.isFinite(selected)) sceneDirectorActiveShotIndex = Math.round(selected);
+        }
+        sceneDirectorActiveShotIndex = Math.max(0, Math.min(normalized.length - 1, sceneDirectorActiveShotIndex));
+        return normalized;
     } catch (e) {
-        return sceneDirectorNormalizeRowsForCapability(SCENE_DIRECTOR_DEFAULT_ROWS);
+        const rows = sceneDirectorNormalizeRowsForCapability(SCENE_DIRECTOR_DEFAULT_ROWS);
+        sceneDirectorActiveShotIndex = Math.max(0, Math.min(rows.length - 1, sceneDirectorActiveShotIndex));
+        return rows;
     }
+}
+
+function sceneDirectorSyncActiveShot(editor) {
+    const root = editor || sceneDirectorQuery("#scene_director_editor_root");
+    if (!root) return;
+    root.querySelectorAll("[data-scene-director-shot]").forEach((node) => {
+        const index = Number(node.getAttribute("data-scene-director-index") || 0);
+        const active = index === sceneDirectorActiveShotIndex;
+        node.classList.toggle("is-active-shot", active);
+        if (active) node.setAttribute("aria-current", "true");
+        else node.removeAttribute("aria-current");
+    });
+}
+
+function sceneDirectorSetActiveShot(editor, index) {
+    const rows = sceneDirectorRowsFromEditor(editor);
+    const next = Math.max(0, Math.min(Math.max(0, rows.length - 1), Math.round(Number(index) || 0)));
+    const changed = next !== sceneDirectorActiveShotIndex;
+    sceneDirectorActiveShotIndex = next;
+    sceneDirectorSyncActiveShot(editor);
+    return changed;
 }
 
 function sceneDirectorWriteRows(rows) {
     const field = sceneDirectorEditorField();
     if (!field) return;
     const normalized = sceneDirectorNormalizeRowsForCapability(rows);
-    field.value = JSON.stringify(normalized);
+    sceneDirectorActiveShotIndex = Math.max(0, Math.min(Math.max(0, normalized.length - 1), sceneDirectorActiveShotIndex));
+    field.value = JSON.stringify({ rows: normalized, active_index: sceneDirectorActiveShotIndex });
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
+    sceneDirectorSyncActiveShot();
     sceneDirectorRenderTimelinePreview(normalized);
     sceneDirectorScheduleDraftSave();
 }
@@ -2178,7 +2215,7 @@ function sceneDirectorRenderShot(row, index, total) {
         `<input type="hidden" data-scene-director-field="image_ref_${itemIndex}" value="${sceneDirectorEscapeHtml(imageRefs[itemIndex - 1] || "")}">`
     )).join("");
     return `
-<div class="scene-director-shot" data-scene-director-shot data-scene-director-index="${index}">
+<div class="scene-director-shot ${index === sceneDirectorActiveShotIndex ? "is-active-shot" : ""}" data-scene-director-shot data-scene-director-index="${index}" ${index === sceneDirectorActiveShotIndex ? 'aria-current="true"' : ""}>
   <div class="scene-director-shot-head">
     <b>${sceneDirectorEscapeHtml(sceneDirectorText("Shot"))} ${index + 1}</b>
     <span data-scene-director-rule>${sceneDirectorEscapeHtml(sceneDirectorRowRuleText(values))}</span>
@@ -2191,7 +2228,7 @@ function sceneDirectorRenderShot(row, index, total) {
   <div class="scene-director-shot-grid">
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Start"))}</span><input type="number" min="0" max="86400" step="0.1" data-scene-director-field="start" value="${sceneDirectorEscapeHtml(values[0])}"></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("End"))}</span><input type="number" min="${sceneDirectorEscapeHtml(endMin)}" max="${sceneDirectorEscapeHtml(endMax)}" step="0.1" data-scene-director-field="end" value="${sceneDirectorEscapeHtml(values[1])}"></label>
-    <label class="scene-director-shot-prompt"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt"))}</span><textarea rows="2" data-scene-director-field="prompt">${sceneDirectorEscapeHtml(values[2])}</textarea></label>
+    <label class="scene-director-shot-prompt"><span class="scene-director-shot-prompt-heading"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt"))}</span><button type="button" data-scene-director-action="prompt-tools" title="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" aria-label="${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}" ${String(values[2] || "").trim() ? "" : "disabled"}><i class="fa-solid fa-wand-magic-sparkles"></i><span>${sceneDirectorEscapeHtml(sceneDirectorText("Prompt Tools"))}</span></button></span><textarea rows="2" data-scene-director-field="prompt">${sceneDirectorEscapeHtml(values[2])}</textarea></label>
     <label class="scene-director-image-refs-field"><span>${sceneDirectorEscapeHtml(sceneDirectorText("Image refs"))}</span>${hiddenImageFields}<div class="scene-director-ref-picker" data-scene-director-ref-picker>${SCENE_DIRECTOR_IMAGE_OPTIONS.filter(Boolean).map((ref) => sceneDirectorImageChoiceHtml(ref, imageRefs, mediaMap, capability)).join("")}</div></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Audio"))}</span><select data-scene-director-field="audio_ref" ${capability.audioPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorAudioOptions(), values[8])}</select></label>
     <label><span>${sceneDirectorEscapeHtml(sceneDirectorText("Video"))}</span><select data-scene-director-field="video_ref" ${capability.videoPolicy === "forbidden" ? 'disabled aria-disabled="true"' : ""}>${sceneDirectorOptionHtml(sceneDirectorVideoOptions(), values[9])}</select></label>
@@ -2208,6 +2245,7 @@ function sceneDirectorRenderEditor(rows) {
     const capability = sceneDirectorCapability();
     const capabilitySignature = sceneDirectorCapabilitySignature();
     const nextRows = sourceRows.map((row) => sceneDirectorNormalizeRowValues(row, capability));
+    sceneDirectorActiveShotIndex = Math.max(0, Math.min(Math.max(0, nextRows.length - 1), sceneDirectorActiveShotIndex));
     const title = editor.querySelector("[data-scene-director-title]");
     if (title) title.textContent = sceneDirectorText("Shots");
     const add = editor.querySelector('[data-scene-director-action="add"]');
@@ -2218,14 +2256,37 @@ function sceneDirectorRenderEditor(rows) {
     if (JSON.stringify(sourceRows) !== JSON.stringify(nextRows)) sceneDirectorWriteRows(nextRows);
     editor.dataset.sceneDirectorRendered = "1";
     editor.dataset.sceneDirectorRenderedCapabilitySignature = capabilitySignature;
+    if (typeof syncPositivePromptMetaState === "function") {
+        try { syncPositivePromptMetaState(); } catch (e) {}
+    }
 }
 
 function sceneDirectorBindEditor() {
     const editor = sceneDirectorQuery("#scene_director_editor_root");
     if (!editor || editor.dataset.sceneDirectorBound === "1") return;
     editor.dataset.sceneDirectorBound = "1";
+    editor.addEventListener("focusin", (event) => {
+        const row = event.target.closest("[data-scene-director-shot]");
+        if (!row) return;
+        const index = Number(row.getAttribute("data-scene-director-index") || 0);
+        if (sceneDirectorSetActiveShot(editor, index)) {
+            sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
+        }
+    });
     editor.addEventListener("input", (event) => {
         if (!event.target.closest("[data-scene-director-field]")) return;
+        if (event.target.matches('[data-scene-director-field="prompt"]')) {
+            const row = event.target.closest("[data-scene-director-shot]");
+            const button = row ? row.querySelector('[data-scene-director-action="prompt-tools"]') : null;
+            if (button) {
+                const enabled = !!String(event.target.value || "").trim();
+                button.disabled = !enabled;
+                button.setAttribute("aria-disabled", enabled ? "false" : "true");
+            }
+            if (typeof syncPositivePromptMetaState === "function") {
+                try { syncPositivePromptMetaState(); } catch (e) {}
+            }
+        }
         sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
     });
     editor.addEventListener("change", (event) => {
@@ -2236,6 +2297,10 @@ function sceneDirectorBindEditor() {
         sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
     });
     editor.addEventListener("click", (event) => {
+        const clickedRow = event.target.closest("[data-scene-director-shot]");
+        const activeChanged = clickedRow
+            ? sceneDirectorSetActiveShot(editor, Number(clickedRow.getAttribute("data-scene-director-index") || 0))
+            : false;
         const refChoice = event.target.closest("[data-scene-director-ref-choice]");
         if (refChoice) {
             if (refChoice.disabled || refChoice.getAttribute("aria-disabled") === "true") return;
@@ -2251,14 +2316,26 @@ function sceneDirectorBindEditor() {
             return;
         }
         const actionNode = event.target.closest("[data-scene-director-action]");
-        if (!actionNode) return;
+        if (!actionNode) {
+            if (activeChanged) sceneDirectorWriteRows(sceneDirectorRowsFromEditor(editor));
+            return;
+        }
         const action = actionNode.getAttribute("data-scene-director-action");
+        if (action === "prompt-tools") {
+            if (actionNode.disabled || actionNode.getAttribute("aria-disabled") === "true") return;
+            const promptField = actionNode.closest("[data-scene-director-shot]")?.querySelector('[data-scene-director-field="prompt"]');
+            if (promptField && typeof window.openSimpleAIPromptToolsForField === "function") {
+                window.openSimpleAIPromptToolsForField(promptField);
+            }
+            return;
+        }
         if (action === "add") {
             const rows = sceneDirectorRowsFromEditor(editor);
             const last = rows[rows.length - 1] || [0, 5, "", "", "", "", "", "", "", ""];
             const start = Number(last[1] || last[0] || rows.length * 5);
             const end = Number.isFinite(start) ? start + 5 : (rows.length + 1) * 5;
             rows.push([start, end, "", "", "", "", "", "", "", ""]);
+            sceneDirectorActiveShotIndex = rows.length - 1;
             sceneDirectorRenderEditor(rows);
             sceneDirectorWriteRows(rows);
             return;
@@ -2269,10 +2346,13 @@ function sceneDirectorBindEditor() {
         const rows = sceneDirectorRowsFromEditor(editor);
         if (action === "delete" && rows.length > 1) {
             rows.splice(index, 1);
+            sceneDirectorActiveShotIndex = Math.min(index, rows.length - 1);
         } else if (action === "move-up" && index > 0) {
             [rows[index - 1], rows[index]] = [rows[index], rows[index - 1]];
+            sceneDirectorActiveShotIndex = index - 1;
         } else if (action === "move-down" && index < rows.length - 1) {
             [rows[index + 1], rows[index]] = [rows[index], rows[index + 1]];
+            sceneDirectorActiveShotIndex = index + 1;
         } else {
             return;
         }
@@ -2285,6 +2365,31 @@ function sceneDirectorGenerateEnabled() {
     const root = sceneDirectorQuery("#scene_director_enabled");
     const input = root ? root.querySelector('input[type="checkbox"]') : null;
     return !!(input && input.checked);
+}
+
+function sceneDirectorPresetAvailable(capability = null) {
+    const normalized = sceneDirectorNormalizeCapability(capability || sceneDirectorDatasetCapability(true));
+    const engineType = String(document.documentElement?.dataset?.simpaiPresetEngineType || "").trim().toLowerCase();
+    return normalized.directorSupported && (!engineType || engineType === "video");
+}
+
+function sceneDirectorDeactivateIfUnsupported(capability = null) {
+    if (sceneDirectorPresetAvailable(capability)) return false;
+    let changed = false;
+    sceneDirectorWithDraftSavePaused(() => {
+        const enabledInput = sceneDirectorCheckboxInput("#scene_director_enabled");
+        const composeInput = sceneDirectorCheckboxInput("#scene_director_compose");
+        if (enabledInput && enabledInput.checked) {
+            sceneDirectorSetCheckboxValue("#scene_director_enabled", false, true);
+            changed = true;
+        }
+        if (composeInput && composeInput.checked) {
+            sceneDirectorSetCheckboxValue("#scene_director_compose", false, true);
+            changed = true;
+        }
+    });
+    sceneDirectorSetGenerateButtonLabel();
+    return changed;
 }
 
 function sceneDirectorCheckboxInput(selector) {
@@ -2420,6 +2525,9 @@ function sceneDirectorSyncPromptInputInteractivity() {
         });
     }
     document.documentElement.classList.toggle("simpai-scene-director-mode-enabled", directorEnabled);
+    if (typeof syncPositivePromptMetaState === "function") {
+        try { syncPositivePromptMetaState(); } catch (e) {}
+    }
 }
 
 function sceneDirectorWorkspaceReady() {
@@ -2542,6 +2650,7 @@ window.sceneDirectorSaveDraft = sceneDirectorSaveDraft;
 window.sceneDirectorSetGenerateButtonLabel = sceneDirectorSetGenerateButtonLabel;
 window.sceneDirectorSyncComposeControls = sceneDirectorSyncComposeControls;
 window.sceneDirectorSyncPromptInputInteractivity = sceneDirectorSyncPromptInputInteractivity;
+window.sceneDirectorDeactivateIfUnsupported = sceneDirectorDeactivateIfUnsupported;
 window.sceneDirectorInitWorkspace = sceneDirectorInitWorkspace;
 window.refresh_scene_director_editor = refresh_scene_director_editor;
 window.refresh_scene_director_localization = refresh_scene_director_localization;
@@ -2550,17 +2659,20 @@ if (!window.__simpaiSceneDirectorComposeControlsBound) {
     window.__simpaiSceneDirectorComposeControlsBound = true;
     sceneDirectorScheduleWorkspaceInit();
     try {
-        window.addEventListener("simpai:scene-director-capability-updated", () => {
+        window.addEventListener("simpai:scene-director-capability-updated", async (event) => {
             sceneDirectorBindComposeControls();
             sceneDirectorBindDraftStorage();
+            sceneDirectorDeactivateIfUnsupported(event && event.detail);
             sceneDirectorSyncComposeControls({ fromCapability: true });
-            sceneDirectorRestoreDraft();
+            await sceneDirectorRestoreDraft();
+            sceneDirectorDeactivateIfUnsupported();
             sceneDirectorSyncComposeControls();
             refresh_scene_director_editor();
         });
-        window.addEventListener("simpai:system-params-updated", () => {
+        window.addEventListener("simpai:system-params-updated", async () => {
             sceneDirectorBindDraftStorage();
-            sceneDirectorRestoreDraft();
+            await sceneDirectorRestoreDraft();
+            sceneDirectorDeactivateIfUnsupported();
             sceneDirectorSyncComposeControls();
             refresh_scene_director_editor();
         });

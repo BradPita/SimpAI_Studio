@@ -1069,10 +1069,9 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     # [prompt_internal_panel, disable_intermediate_results, image_tools_checkbox, scene_panel, scene_theme], [generate_button, load_parameter_button]
     if is_scene_frontend:
         scenes = enginedata_dict.get("scene_frontend",{})
-        has_agent = 'agent_prompt' in scenes
         results.append(gr_update(visible=True))    #prompt_internal_panel
         results.append(gr_update(visible=True, interactive=True, value="Prompt Picks"))  #random_button
-        results.append(gr_update(visible=True, interactive=False, value="PromptAgent" if has_agent else "SuperPrompt"))  #super_prompter
+        results.append(gr_update(visible=True, interactive=False, value="Prompt Tools"))  #super_prompter
         results.append(skip_update())  # disable_intermediate_results is a user setting
         results.append(skip_update())  # image_tools_checkbox is a user setting
         results.append(gr_update(visible=True))
@@ -1310,7 +1309,7 @@ def switch_layout_template(presetdata: dict | str, state_params, preset_url='', 
     else:
         results.append(gr_update(visible=True))    #prompt_internal_panel
         results.append(gr_update(visible=True, interactive=True)) #random_button
-        results.append(gr_update(visible=True, value="SuperPrompt"))  #super_prompter
+        results.append(gr_update(visible=True, value="Prompt Tools"))  #super_prompter
         results.append(skip_update())  # disable_intermediate_results is a user setting
         results.append(skip_update())  # image_tools_checkbox is a user setting
         results.append(gr_update(visible=False))

@@ -188,6 +188,23 @@ def _scene_director_rows(value):
     return value if isinstance(value, list) else []
 
 
+def _scene_director_active_row_index(value):
+    parsed = value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value.strip()) if value.strip() else {}
+        except Exception:
+            parsed = {}
+    if not isinstance(parsed, dict):
+        return 0
+    for key in ("active_index", "active_segment_index", "selected_segment_index"):
+        try:
+            return max(0, int(parsed.get(key)))
+        except Exception:
+            continue
+    return 0
+
+
 def scene_director_default_editor_json():
     return json.dumps(SCENE_DIRECTOR_DEFAULT_ROWS, ensure_ascii=False)
 
@@ -1048,6 +1065,14 @@ def _scene_director_capability_from_state(state_params=None, scene_theme=None):
     }
 
 
+def _scene_director_available_from_state(state_params=None, scene_theme=None, capability=None):
+    resolved = capability if isinstance(capability, dict) else _scene_director_capability_from_state(state_params, scene_theme)
+    if resolved.get("director_supported") is False:
+        return False
+    engine_type = _scene_director_engine_type_from_state(state_params)
+    return not engine_type or engine_type == "video"
+
+
 def _scene_director_first_segment_ref(segment, key):
     items = segment.get(key) if isinstance(segment, dict) else []
     if not isinstance(items, list) or not items:
@@ -1518,7 +1543,7 @@ def _scene_director_validate_runtime(runtime, capability=None, state_params=None
 
 def _scene_director_runtime_with_capability(payload, capability, state_params=None):
     prepared = canvas_workbench_director.prepare_director_runtime(_scene_director_apply_capability_to_payload(payload, capability))
-    for key in ("target_preset", "target_theme", "compose_timeline"):
+    for key in ("target_preset", "target_theme", "compose_timeline", "active_segment_index"):
         if isinstance(payload, dict) and key in payload:
             prepared[key] = copy.deepcopy(payload.get(key))
     prepared["director_capability"] = copy.deepcopy(capability)
@@ -1573,8 +1598,10 @@ def _scene_director_apply_target_method(runtime, state_params=None, scene_theme=
 
 
 def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=10, target_format="Wan", media_state=None, state_params=None, scene_theme=None, compose_timeline=None):
+    active_row_index = _scene_director_active_row_index(rows)
     normalized_rows = _scene_director_rows(rows)
     segments = []
+    segment_row_indices = []
     previous_end = 0.0
     resolved_task_method = _scene_director_task_method_from_state(state_params, scene_theme)
     target_theme = _scene_director_theme_from_state(state_params, scene_theme)
@@ -1617,6 +1644,13 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
             "video": [{"source_ref": video_ref, "role": "reference"}] if video_ref else [],
         }
         segments.append(segment)
+        segment_row_indices.append(index)
+    active_segment_index = 0
+    if segment_row_indices:
+        active_segment_index = min(
+            range(len(segment_row_indices)),
+            key=lambda segment_index: (abs(segment_row_indices[segment_index] - active_row_index), segment_index),
+        )
     payload = {
         "schema": canvas_workbench_director.SCHEMA,
         "width": _scene_director_int(width, 1280, 64, 8192),
@@ -1627,6 +1661,7 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
         "target_preset": target_preset,
         "target_theme": target_theme,
         "compose_timeline": compose_enabled,
+        "active_segment_index": active_segment_index,
         "director_capability": copy.deepcopy(capability),
         "segments": segments,
         "media_sources": _scene_director_media_sources(media_state),
@@ -1636,14 +1671,16 @@ def build_scene_director_payload(rows, width=1280, height=720, fps=24, duration=
 
 def update_scene_director_preview(enabled, compose_timeline, rows, width, height, fps, duration, target_format, media_state=None, state_params=None, scene_theme=None):
     runtime = build_scene_director_payload(rows, width, height, fps, duration, target_format, media_state, state_params, scene_theme, compose_timeline)
-    if not enabled:
+    capability = _scene_director_capability_from_state(state_params, scene_theme)
+    if not enabled or not _scene_director_available_from_state(state_params, scene_theme, capability):
         return "", runtime
     return runtime.get("prompt_override", ""), runtime
 
 
 def apply_scene_director_prompt_for_generation(prompt_text, backend_params, enabled, director_runtime, state_params=None, scene_theme=None):
     next_backend = dict(backend_params or {})
-    if not enabled:
+    capability = _scene_director_capability_from_state(state_params, scene_theme)
+    if not enabled or not _scene_director_available_from_state(state_params, scene_theme, capability):
         for key in ("director_timeline", "prompt_override", "director_prompt_override"):
             next_backend.pop(key, None)
         return prompt_text, next_backend
@@ -2081,7 +2118,8 @@ def generate_clicked_or_director(
     generate_clicked_fn,
     compare_button_update_fn,
 ):
-    if not director_enabled:
+    capability = _scene_director_capability_from_state(state_params)
+    if not director_enabled or not _scene_director_available_from_state(state_params, capability=capability):
         yield from generate_clicked_fn(generation_task, state_params)
         return
 
