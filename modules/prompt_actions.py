@@ -12,9 +12,10 @@ from modules import tag_separator
 
 
 PROMPT_ACTION_VIDEO_FRAMES = 8
-PROMPT_ACTION_VIDEO_TILE_WIDTH = 256
-PROMPT_ACTION_VIDEO_TILE_HEIGHT = 232
-PROMPT_ACTION_VIDEO_LABEL_HEIGHT = 24
+PROMPT_ACTION_VIDEO_TILE_WIDTH = 422
+PROMPT_ACTION_VIDEO_TILE_HEIGHT = 384
+PROMPT_ACTION_VIDEO_LABEL_HEIGHT = 32
+PROMPT_ACTION_VIDEO_MULTI_FRAME_MAX_SIDE = 512
 PROMPT_ACTION_VIDEO_CACHE_SIZE = 8
 PROMPT_ACTION_SCENE_IMAGE_SLOTS = (
     "scene_canvas_image",
@@ -511,7 +512,7 @@ def normalize_media_path(value):
     return os.path.abspath(text) if text else ""
 
 
-def _video_cache_key(path, max_frames):
+def _video_cache_key(path, max_frames, visual_mode):
     try:
         stat = os.stat(path)
         return (
@@ -519,9 +520,16 @@ def _video_cache_key(path, max_frames):
             int(stat.st_mtime_ns),
             int(stat.st_size),
             int(max_frames),
+            str(visual_mode or "contact_sheet"),
         )
     except Exception:
         return None
+
+
+def _copy_video_visual(value):
+    if isinstance(value, (list, tuple)):
+        return [np.array(item, copy=True) for item in value]
+    return np.array(value, copy=True)
 
 
 def _video_cache_get(key):
@@ -532,17 +540,17 @@ def _video_cache_get(key):
         if cached is None:
             return None
         _VIDEO_CONTEXT_CACHE.move_to_end(key)
-        sheet, meta = cached
+        visual, meta = cached
         next_meta = copy.deepcopy(meta)
         next_meta["cache_hit"] = True
-        return np.array(sheet, copy=True), next_meta
+        return _copy_video_visual(visual), next_meta
 
 
-def _video_cache_put(key, sheet, meta):
-    if key is None or sheet is None:
+def _video_cache_put(key, visual, meta):
+    if key is None or visual is None:
         return
     with _VIDEO_CACHE_LOCK:
-        _VIDEO_CONTEXT_CACHE[key] = (np.array(sheet, copy=True), copy.deepcopy(meta))
+        _VIDEO_CONTEXT_CACHE[key] = (_copy_video_visual(visual), copy.deepcopy(meta))
         _VIDEO_CONTEXT_CACHE.move_to_end(key)
         while len(_VIDEO_CONTEXT_CACHE) > PROMPT_ACTION_VIDEO_CACHE_SIZE:
             _VIDEO_CONTEXT_CACHE.popitem(last=False)
@@ -574,7 +582,7 @@ def _frame_to_pil(frame):
 def _contact_sheet_font():
     for name in ("DejaVuSans.ttf", "arial.ttf"):
         try:
-            return ImageFont.truetype(name, 13)
+            return ImageFont.truetype(name, 18)
         except Exception:
             continue
     return ImageFont.load_default()
@@ -613,7 +621,7 @@ def _build_contact_sheet(frames, timestamps):
             fill=(24, 31, 42),
         )
         label = f"Frame {index + 1}  {_format_timestamp(timestamps[index] if index < len(timestamps) else 0)}"
-        draw.text((left + 8, label_top + 6), label, fill=(235, 241, 248), font=font)
+        draw.text((left + 12, label_top + 6), label, fill=(235, 241, 248), font=font)
         draw.rectangle(
             (left, top, left + PROMPT_ACTION_VIDEO_TILE_WIDTH - 1, top + PROMPT_ACTION_VIDEO_TILE_HEIGHT - 1),
             outline=(58, 70, 86),
@@ -633,7 +641,7 @@ def _load_first_frame(path):
         return None
 
 
-def build_video_contact_sheet(video_path, first_frame_path="", max_frames=PROMPT_ACTION_VIDEO_FRAMES):
+def _read_video_frames(video_path, first_frame_path, max_frames):
     source = normalize_media_path(video_path)
     max_frames = max(1, min(int(max_frames or PROMPT_ACTION_VIDEO_FRAMES), 16))
     meta = {
@@ -645,11 +653,6 @@ def build_video_contact_sheet(video_path, first_frame_path="", max_frames=PROMPT
         "used_first_frame_only": False,
         "cache_hit": False,
     }
-    cache_key = _video_cache_key(source, max_frames) if source and os.path.exists(source) else None
-    cached = _video_cache_get(cache_key)
-    if cached is not None:
-        return cached
-
     frames = []
     timestamps = []
     if source and os.path.exists(source):
@@ -701,15 +704,58 @@ def build_video_contact_sheet(video_path, first_frame_path="", max_frames=PROMPT
             timestamps = [0.0]
             meta["used_first_frame_only"] = True
 
+    meta.update({
+        "ok": bool(frames),
+        "sampled_frames": len(frames),
+        "timestamps": [round(float(value), 3) for value in timestamps],
+    })
+    return frames, timestamps, meta
+
+
+def _resize_video_frame(frame, max_side=PROMPT_ACTION_VIDEO_MULTI_FRAME_MAX_SIDE):
+    image = _frame_to_pil(frame)
+    longest_side = max(image.size)
+    if longest_side > max_side:
+        scale = max_side / float(longest_side)
+        target = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        image = image.resize(target, resampling)
+    return np.array(image, dtype=np.uint8)
+
+
+def build_video_frame_sequence(video_path, first_frame_path="", max_frames=PROMPT_ACTION_VIDEO_FRAMES):
+    source = normalize_media_path(video_path)
+    max_frames = max(1, min(int(max_frames or PROMPT_ACTION_VIDEO_FRAMES), 16))
+    cache_key = _video_cache_key(source, max_frames, "multi_frame") if source and os.path.exists(source) else None
+    cached = _video_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    frames, _timestamps, meta = _read_video_frames(source, first_frame_path, max_frames)
+    prepared = [_resize_video_frame(frame) for frame in frames]
+    meta["video_visual_mode"] = "multi_frame"
+    meta["video_visual_count"] = len(prepared)
+    if prepared:
+        _video_cache_put(cache_key, prepared, meta)
+    return prepared, meta
+
+
+def build_video_contact_sheet(video_path, first_frame_path="", max_frames=PROMPT_ACTION_VIDEO_FRAMES):
+    source = normalize_media_path(video_path)
+    max_frames = max(1, min(int(max_frames or PROMPT_ACTION_VIDEO_FRAMES), 16))
+    cache_key = _video_cache_key(source, max_frames, "contact_sheet") if source and os.path.exists(source) else None
+    cached = _video_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    frames, timestamps, meta = _read_video_frames(source, first_frame_path, max_frames)
+
     sheet = _build_contact_sheet(frames, timestamps)
     if sheet is None:
         return None, meta
 
-    meta.update({
-        "ok": True,
-        "sampled_frames": len(frames),
-        "timestamps": [round(float(value), 3) for value in timestamps],
-    })
+    meta["video_visual_mode"] = "contact_sheet"
+    meta["video_visual_count"] = 1
     _video_cache_put(cache_key, sheet, meta)
     return sheet, meta
 
@@ -737,11 +783,16 @@ def prepare_prompt_action_media(
     if not use_video:
         return images, media_meta
 
-    sheet, video_meta = build_video_contact_sheet(video_path, first_frame_path)
+    visual_mode = str(opts.get("video_frame_mode") or "contact_sheet").strip().lower()
+    if visual_mode == "multi_frame":
+        video_visuals, video_meta = build_video_frame_sequence(video_path, first_frame_path)
+    else:
+        sheet, video_meta = build_video_contact_sheet(video_path, first_frame_path)
+        video_visuals = [sheet] if sheet is not None else []
     media_meta.update(video_meta or {})
-    media_meta["video_used"] = sheet is not None
-    if sheet is not None:
-        images.insert(0, sheet)
+    media_meta["video_used"] = bool(video_visuals)
+    if video_visuals:
+        images[0:0] = video_visuals
     return images, media_meta
 
 
@@ -764,13 +815,31 @@ def prompt_action_media_note(media_meta):
     parts = []
     if meta.get("video_used"):
         frame_count = int(meta.get("sampled_frames") or 0)
-        source_label = "current Director segment video" if str(meta.get("video_source") or "").startswith("director_") else "main input video"
+        video_source = str(meta.get("video_source") or "")
+        if video_source.startswith("director_"):
+            source_label = "current Director segment video"
+        elif video_source == "describe_upload":
+            source_label = "uploaded video"
+        else:
+            source_label = "main input video"
         if meta.get("used_first_frame_only") or frame_count <= 1:
             first_frame_note = (
                 "The first visual input is the first decodable frame from the main input video. "
                 "Use it for visible subject and setting details, but do not infer motion that is not visible."
             )
             parts.append(first_frame_note.replace("main input video", source_label))
+        elif str(meta.get("video_visual_mode") or "") == "multi_frame":
+            timestamps = meta.get("timestamps") if isinstance(meta.get("timestamps"), list) else []
+            labels = [
+                f"visual input {index + 1} = frame {index + 1} at {_format_timestamp(timestamps[index] if index < len(timestamps) else 0)}"
+                for index in range(frame_count)
+            ]
+            parts.append(
+                f"The first {frame_count} visual inputs are chronological frames sampled from the {source_label}. "
+                + "; ".join(labels)
+                + ". Compare them in order for visible subject motion, scene development, and camera movement; "
+                "do not invent audio, dialogue, or events between sampled frames."
+            )
         else:
             duration = float(meta.get("duration_seconds") or 0.0)
             duration_text = f" across approximately {duration:.2f} seconds" if duration > 0 else ""
@@ -781,7 +850,7 @@ def prompt_action_media_note(media_meta):
                 "Use visible changes as evidence for subject motion, scene development, and camera movement; "
                 "do not invent audio, dialogue, or events between sampled frames."
             )
-    offset = 1 if meta.get("video_used") else 0
+    offset = int(meta.get("video_visual_count") or 1) if meta.get("video_used") else 0
     descriptors = meta.get("image_descriptors") if isinstance(meta.get("image_descriptors"), list) else []
     if descriptors:
         labels = []
@@ -939,12 +1008,12 @@ def _register_builtin_actions():
             "id": "ai_translate",
             "label_en": "AI Translate",
             "label_cn": "AI 翻译",
-            "description_en": "Automatically translate Chinese to English or English to Chinese.",
-            "description_cn": "自动判断中英文并互译，保持原意和格式。",
+            "description_en": "Use the current LLM to translate Chinese and English while preserving format.",
+            "description_cn": "使用当前 LLM 自动判断中英文并互译，保持原意和格式。",
             "icon": "fa-language",
             "group": "convert",
             "modes": ["classic", "scene"],
-            "requires_vlm": False,
+            "requires_vlm": True,
             "media_policy": "none",
             "use_scene_agent_prompt": False,
             "handler": "translate",

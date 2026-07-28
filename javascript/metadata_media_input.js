@@ -1,22 +1,33 @@
 (function () {
     'use strict';
 
-    const ROOT_ID = 'metadata_input_image';
-    const FILE_INPUT_SELECTOR = `#${ROOT_ID} input[type="file"]`;
+    const ROOT_CONFIGS = [
+        { rootId: 'metadata_input_image', metricPrefix: 'metadata_replacement' },
+        { rootId: 'describe_input_image', metricPrefix: 'describe_replacement' },
+    ];
     const PREVIEW_CLASS = 'simpai-metadata-local-preview';
     const HAS_MEDIA_CLASS = 'simpai-metadata-has-media';
     const DRAG_OVER_CLASS = 'simpai-metadata-drag-over';
     const MEDIA_EXTENSION_PATTERN = /\.(?:avif|bmp|gif|heic|heif|jpe?g|m4v|mkv|mov|mp4|mpeg|mpg|png|webm|webp)$/i;
+    const VIDEO_EXTENSION_PATTERN = /\.(?:m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i;
+    const states = ROOT_CONFIGS.map((config) => ({
+        ...config,
+        currentFile: null,
+        currentObjectUrl: '',
+        observedRoot: null,
+        rootObserver: null,
+        renderFrame: 0,
+        reconcileTimer: 0,
+        preservePreviewUntil: 0,
+        replacementInProgress: false,
+    }));
 
-    let currentFile = null;
-    let currentObjectUrl = '';
-    let observedRoot = null;
-    let rootObserver = null;
-    let renderFrame = 0;
-    let replacementInProgress = false;
+    function getRoot(state) {
+        return document.getElementById(state.rootId);
+    }
 
-    function getRoot() {
-        return document.getElementById(ROOT_ID);
+    function rootSelector(state) {
+        return `#${state.rootId}`;
     }
 
     function isMediaFile(file) {
@@ -29,7 +40,7 @@
     function isVideoFile(file) {
         const mime = String(file?.type || '').toLowerCase();
         if (mime.startsWith('video/')) return true;
-        return !mime && /\.(?:m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i.test(String(file?.name || ''));
+        return !mime && VIDEO_EXTENSION_PATTERN.test(String(file?.name || ''));
     }
 
     function dataTransferMayContainMedia(dataTransfer) {
@@ -43,61 +54,71 @@
         });
     }
 
-    function eventHitsRoot(event) {
-        const root = getRoot();
+    function eventHitsRoot(event, state) {
+        const root = getRoot(state);
         if (!root) return false;
         const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-        if (path.some((node) => node === root || node?.id === ROOT_ID)) return true;
-        if (event.target?.closest?.(`#${ROOT_ID}`)) return true;
+        if (path.some((node) => node === root || node?.id === state.rootId)) return true;
+        if (event.target?.closest?.(rootSelector(state))) return true;
+        if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return false;
         const hovered = document.elementFromPoint(event.clientX, event.clientY);
-        return !!hovered?.closest?.(`#${ROOT_ID}`);
+        return !!hovered?.closest?.(rootSelector(state));
+    }
+
+    function stateForEvent(event) {
+        return states.find((state) => eventHitsRoot(event, state)) || null;
     }
 
     function previewKey(file) {
         return [file.name || '', file.size || 0, file.type || '', file.lastModified || 0].join('|');
     }
 
-    function removeRenderedPreview(root = getRoot()) {
+    function removeRenderedPreview(state, root = getRoot(state)) {
         root?.querySelectorAll?.(`.${PREVIEW_CLASS}`).forEach((node) => node.remove());
         root?.classList.remove(HAS_MEDIA_CLASS);
     }
 
-    function revokeObjectUrl() {
-        if (!currentObjectUrl) return;
-        URL.revokeObjectURL(currentObjectUrl);
-        currentObjectUrl = '';
+    function revokeObjectUrl(state) {
+        if (!state.currentObjectUrl) return;
+        URL.revokeObjectURL(state.currentObjectUrl);
+        state.currentObjectUrl = '';
     }
 
-    function clearCurrentPreview() {
-        currentFile = null;
-        revokeObjectUrl();
-        removeRenderedPreview();
+    function clearCurrentPreview(state) {
+        if (state.reconcileTimer) {
+            window.clearTimeout(state.reconcileTimer);
+            state.reconcileTimer = 0;
+        }
+        state.currentFile = null;
+        state.preservePreviewUntil = 0;
+        revokeObjectUrl(state);
+        removeRenderedPreview(state);
     }
 
-    function renderCurrentPreview() {
-        renderFrame = 0;
-        const root = getRoot();
-        if (!root || !currentFile || !currentObjectUrl) return;
-        const key = previewKey(currentFile);
+    function renderCurrentPreview(state) {
+        state.renderFrame = 0;
+        const root = getRoot(state);
+        if (!root || !state.currentFile || !state.currentObjectUrl) return;
+        const key = previewKey(state.currentFile);
         const existing = root.querySelector(`.${PREVIEW_CLASS}`);
         if (existing?.dataset.previewKey === key) {
             root.classList.add(HAS_MEDIA_CLASS);
             return;
         }
-        removeRenderedPreview(root);
+        removeRenderedPreview(state, root);
         const preview = document.createElement('div');
         preview.className = PREVIEW_CLASS;
         preview.dataset.previewKey = key;
-        if (isVideoFile(currentFile)) {
+        if (isVideoFile(state.currentFile)) {
             const video = document.createElement('video');
-            video.src = currentObjectUrl;
+            video.src = state.currentObjectUrl;
             video.controls = true;
             video.preload = 'metadata';
             video.playsInline = true;
             preview.appendChild(video);
         } else {
             const image = document.createElement('img');
-            image.src = currentObjectUrl;
+            image.src = state.currentObjectUrl;
             image.alt = '';
             image.draggable = false;
             preview.appendChild(image);
@@ -106,19 +127,20 @@
         root.classList.add(HAS_MEDIA_CLASS);
     }
 
-    function scheduleRender() {
-        if (renderFrame) return;
-        renderFrame = window.requestAnimationFrame(renderCurrentPreview);
+    function scheduleRender(state) {
+        if (state.renderFrame) return;
+        state.renderFrame = window.requestAnimationFrame(() => renderCurrentPreview(state));
     }
 
-    function setCurrentFile(file) {
+    function setCurrentFile(state, file) {
         if (!isMediaFile(file)) return false;
-        if (currentFile !== file) {
-            revokeObjectUrl();
-            currentFile = file;
-            currentObjectUrl = URL.createObjectURL(file);
+        if (state.currentFile !== file) {
+            revokeObjectUrl(state);
+            state.currentFile = file;
+            state.currentObjectUrl = URL.createObjectURL(file);
         }
-        scheduleRender();
+        state.preservePreviewUntil = Date.now() + 2000;
+        scheduleRender(state);
         return true;
     }
 
@@ -144,17 +166,23 @@
         });
     }
 
-    async function replaceMetadataFile(file) {
+    async function replaceMediaFile(state, file) {
         const perf = window.SimpAIStudioPerformance;
         const startedAt = perf ? performance.now() : 0;
-        perf?.mark('metadata_replacement.begin', { file, replacement_active: replacementInProgress });
-        if (!setCurrentFile(file)) {
-            perf?.mark('metadata_replacement.rejected', { reason: 'unsupported-file', file });
+        const metric = (stage) => `${state.metricPrefix}.${stage}`;
+        perf?.mark(metric('begin'), {
+            file,
+            root_id: state.rootId,
+            replacement_active: state.replacementInProgress,
+        });
+        if (!setCurrentFile(state, file)) {
+            perf?.mark(metric('rejected'), { reason: 'unsupported-file', file, root_id: state.rootId });
             return false;
         }
-        const root = getRoot();
+        const root = getRoot(state);
         if (!root) {
-            perf?.mark('metadata_replacement.rejected', { reason: 'root-missing' });
+            perf?.mark(metric('rejected'), { reason: 'root-missing', root_id: state.rootId });
+            clearCurrentPreview(state);
             return false;
         }
         let input = root.querySelector('input[type="file"]');
@@ -166,132 +194,170 @@
                     outcome = 'clear-button-missing';
                     return false;
                 }
-                replacementInProgress = true;
-                perf?.mark('metadata_replacement.clear', {});
+                state.replacementInProgress = true;
+                perf?.mark(metric('clear'), { root_id: state.rootId });
                 clearButton.click();
                 input = await waitForFileInput(root);
-                perf?.mark('metadata_replacement.input_wait_complete', {
+                perf?.mark(metric('input_wait_complete'), {
                     input_found: Boolean(input),
                     elapsed_ms: performance.now() - startedAt,
+                    root_id: state.rootId,
                 });
             }
             if (!input) {
                 outcome = 'file-input-missing';
-                clearCurrentPreview();
+                clearCurrentPreview(state);
                 return false;
             }
             const transfer = new DataTransfer();
             transfer.items.add(file);
             input.files = transfer.files;
-            perf?.mark('metadata_replacement.submit', { file });
+            perf?.mark(metric('submit'), { file, root_id: state.rootId });
             input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
             outcome = 'submitted';
             return true;
         } catch (error) {
             outcome = 'error';
-            perf?.mark('metadata_replacement.error', { error }, { urgent: true });
-            console.warn('[SimpAI] Failed to replace metadata media input.', error);
+            perf?.mark(metric('error'), { error, root_id: state.rootId }, { urgent: true });
+            console.warn(`[SimpAI] Failed to replace media in #${state.rootId}.`, error);
             return false;
         } finally {
-            replacementInProgress = false;
-            perf?.mark('metadata_replacement.finish', {
+            state.replacementInProgress = false;
+            perf?.mark(metric('finish'), {
                 outcome,
                 elapsed_ms: performance.now() - startedAt,
-                replacement_active: replacementInProgress,
+                root_id: state.rootId,
+                replacement_active: state.replacementInProgress,
             }, { urgent: outcome !== 'submitted' });
         }
     }
 
-    function clearDragState() {
-        getRoot()?.classList.remove(DRAG_OVER_CLASS);
+    function clearDragState(state = null) {
+        const targets = state ? [state] : states;
+        targets.forEach((target) => getRoot(target)?.classList.remove(DRAG_OVER_CLASS));
     }
 
-    function handleFileInputChange(event) {
+    function handleFileInputChange(state, event) {
         const file = Array.from(event.currentTarget?.files || event.target?.files || []).find(isMediaFile);
-        if (file) setCurrentFile(file);
+        if (file) setCurrentFile(state, file);
     }
 
-    function bindCurrentFileInput() {
-        const input = getRoot()?.querySelector('input[type="file"]');
-        if (!input || input.dataset.simpaiMetadataPreviewBound === '1') return;
-        input.dataset.simpaiMetadataPreviewBound = '1';
-        input.addEventListener('change', handleFileInputChange);
+    function scheduleReconcile(state, delayMs = 180) {
+        if (state.reconcileTimer) window.clearTimeout(state.reconcileTimer);
+        state.reconcileTimer = window.setTimeout(() => {
+            state.reconcileTimer = 0;
+            reconcileRoot(state);
+        }, delayMs);
     }
 
-    function watchCurrentRoot() {
-        const root = getRoot();
-        if (root === observedRoot) return;
-        rootObserver?.disconnect();
-        observedRoot = root;
+    function reconcileRoot(state) {
+        const root = getRoot(state);
+        if (!root || !state.currentFile || state.replacementInProgress) return;
+        const input = root.querySelector('input[type="file"]');
+        const hasNativeFile = Boolean(input?.files?.length || root.querySelector('.file-preview-holder'));
+        if (hasNativeFile) {
+            state.preservePreviewUntil = 0;
+            return;
+        }
+        const remainingGraceMs = state.preservePreviewUntil - Date.now();
+        if (remainingGraceMs > 0) {
+            scheduleReconcile(state, remainingGraceMs + 20);
+            return;
+        }
+        clearCurrentPreview(state);
+    }
+
+    function bindCurrentFileInput(state) {
+        const input = getRoot(state)?.querySelector('input[type="file"]');
+        if (!input || input.dataset.simpaiMediaPreviewBound === '1') return;
+        input.dataset.simpaiMediaPreviewBound = '1';
+        input.addEventListener('change', (event) => handleFileInputChange(state, event));
+    }
+
+    function watchCurrentRoot(state) {
+        const root = getRoot(state);
+        if (root === state.observedRoot) return;
+        state.rootObserver?.disconnect();
+        state.observedRoot = root;
         if (!root) return;
-        rootObserver = new MutationObserver(() => {
-            bindCurrentFileInput();
-            scheduleRender();
+        state.rootObserver = new MutationObserver(() => {
+            bindCurrentFileInput(state);
+            scheduleReconcile(state);
+            scheduleRender(state);
         });
-        rootObserver.observe(root, { childList: true, subtree: true });
-        bindCurrentFileInput();
-        scheduleRender();
+        state.rootObserver.observe(root, { childList: true, subtree: true });
+        bindCurrentFileInput(state);
+        scheduleReconcile(state);
+        scheduleRender(state);
     }
 
     document.addEventListener('change', (event) => {
-        const input = event.target?.matches?.(FILE_INPUT_SELECTOR) ? event.target : null;
-        if (input) handleFileInputChange(event);
+        const state = states.find((candidate) => event.target?.matches?.(`${rootSelector(candidate)} input[type="file"]`));
+        if (state) handleFileInputChange(state, event);
     }, true);
 
     document.addEventListener('click', (event) => {
-        if (!eventHitsRoot(event)) return;
-        if (replacementInProgress) return;
+        const state = stateForEvent(event);
+        if (!state || state.replacementInProgress) return;
         const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
-        const button = path.find((node) => node?.tagName === 'BUTTON' && node?.closest?.(`#${ROOT_ID}`));
+        const selector = rootSelector(state);
+        const button = path.find((node) => node?.tagName === 'BUTTON' && node?.closest?.(selector));
         if (!button || button.closest('.file-preview-holder')) return;
-        window.setTimeout(() => {
-            const root = getRoot();
-            const input = root?.querySelector('input[type="file"]');
-            if (!input?.files?.length && !root?.querySelector('.file-preview-holder')) clearCurrentPreview();
-        }, 80);
+        const clearButton = getRoot(state)?.querySelector('.icon-button-wrapper button:last-of-type');
+        if (button === clearButton) {
+            window.setTimeout(() => clearCurrentPreview(state), 0);
+            return;
+        }
+        scheduleReconcile(state, 80);
     }, true);
 
     document.addEventListener('dragenter', (event) => {
-        if (!eventHitsRoot(event) || !dataTransferMayContainMedia(event.dataTransfer)) return;
+        const state = stateForEvent(event);
+        if (!state || !dataTransferMayContainMedia(event.dataTransfer)) return;
         event.preventDefault();
-        getRoot()?.classList.add(DRAG_OVER_CLASS);
+        getRoot(state)?.classList.add(DRAG_OVER_CLASS);
     }, true);
 
     document.addEventListener('dragover', (event) => {
-        if (!eventHitsRoot(event) || !dataTransferMayContainMedia(event.dataTransfer)) return;
+        const state = stateForEvent(event);
+        if (!state || !dataTransferMayContainMedia(event.dataTransfer)) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-        getRoot()?.classList.add(DRAG_OVER_CLASS);
+        getRoot(state)?.classList.add(DRAG_OVER_CLASS);
     }, true);
 
     document.addEventListener('dragleave', (event) => {
+        const state = stateForEvent(event);
+        if (!state) return;
         const hovered = document.elementFromPoint(event.clientX, event.clientY);
-        if (!hovered?.closest?.(`#${ROOT_ID}`)) clearDragState();
+        if (!hovered?.closest?.(rootSelector(state))) clearDragState(state);
     }, true);
 
     document.addEventListener('drop', (event) => {
-        if (!eventHitsRoot(event)) return;
+        const state = stateForEvent(event);
+        if (!state) return;
         const files = Array.from(event.dataTransfer?.files || []);
         if (!files.length) return;
         event.preventDefault();
         event.stopPropagation();
-        clearDragState();
+        clearDragState(state);
         const mediaFile = files.find(isMediaFile);
-        window.SimpAIStudioPerformance?.mark('metadata_replacement.drop_claimed', {
+        window.SimpAIStudioPerformance?.mark(`${state.metricPrefix}.drop_claimed`, {
             matching_file_found: Boolean(mediaFile),
             file: mediaFile,
+            root_id: state.rootId,
         }, { urgent: true });
-        if (mediaFile) void replaceMetadataFile(mediaFile);
+        if (mediaFile) void replaceMediaFile(state, mediaFile);
     }, true);
 
-    document.addEventListener('dragend', clearDragState, true);
-    window.addEventListener('blur', clearDragState);
-    window.addEventListener('beforeunload', revokeObjectUrl);
+    document.addEventListener('dragend', () => clearDragState(), true);
+    window.addEventListener('blur', () => clearDragState());
+    window.addEventListener('beforeunload', () => states.forEach(revokeObjectUrl));
 
     const start = () => {
-        watchCurrentRoot();
-        const pageObserver = new MutationObserver(watchCurrentRoot);
+        states.forEach(watchCurrentRoot);
+        const pageObserver = new MutationObserver(() => states.forEach(watchCurrentRoot));
         pageObserver.observe(document.body, { childList: true, subtree: true });
     };
     if (document.readyState === 'loading') {

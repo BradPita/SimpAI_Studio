@@ -37,6 +37,7 @@ import modules.canvas_danbooru_service as canvas_danbooru_service
 import modules.canvas_vlm_agent as canvas_vlm_agent
 import modules.canvas_vlm_runtime as canvas_vlm_runtime
 import modules.describe_vlm_chat as describe_vlm_chat
+import modules.describe_media as describe_media
 import modules.cloud_image as cloud_image
 import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 import modules.canvas_workbench_media_gallery as canvas_workbench_media_gallery
@@ -6984,10 +6985,17 @@ with shared.gradio_root:
                                                                          .then(lambda: None, js='()=>{try{if(window.syncInpaintMaskControlsVisibility) window.syncInpaintMaskControlsVisibility();}catch(e){console.warn("[UI-TRACE] inpaint_mask_mounted_visibility_sync_failed", e);}}', show_progress=False, queue=False)
 
                     with gr.Tabs():
-                        with gr.Tab(label='Describe Image', id='describe_tab', visible=True) as image_describe:
+                        with gr.Tab(label='Describe Media', id='describe_tab', visible=True) as image_describe:
                             with gr.Group():
                                 with gr.Column():
-                                    describe_input_image = gr.Image(label='Image to be described', sources=['upload'], type='numpy', show_label=True, elem_id='describe_input_image', buttons=["download", "fullscreen"])
+                                    describe_input_image = gr.File(
+                                        label='Image or video to be described',
+                                        file_count='single',
+                                        file_types=['image', 'video'],
+                                        type='filepath',
+                                        height=300,
+                                        elem_id='describe_input_image',
+                                    )
                                 with gr.Column():
                                     with gr.Group(elem_id='describe_prompt_box'):
                                         describe_prompt = gr.Textbox(value='', show_label=False, container=False, lines=1, max_lines=1, visible='hidden', elem_id='describe_prompt', elem_classes=['sai-gradio-hidden-bridge', 'describe-prompt-hidden-bridge'])
@@ -7085,9 +7093,36 @@ with shared.gradio_root:
                                     describe_vlm_model_select_bridge = gr.Textbox(value='', visible='hidden', elem_id='describe_vlm_model_select_bridge', elem_classes=['sai-gradio-hidden-bridge'])
                                     describe_vlm_model_select_btn = gr.Button('Apply Describe VLM model selection', visible='hidden', elem_id='describe_vlm_model_select_btn', elem_classes=['sai-gradio-hidden-bridge'])
 
-                                    def trigger_show_image_properties(image):
-                                        image_size = modules.util.get_image_size_info(image, modules.flags.available_aspect_ratios[0])
-                                        return gr_update(value=image_size, visible=True)
+                                    def trigger_show_media_properties(media, state_params):
+                                        if not media:
+                                            return [
+                                                gr_update(value='Original Size / Recommended Size', visible=False, interactive=False),
+                                                gr_update(interactive=True),
+                                                gr_update(value=False, interactive=True),
+                                            ]
+                                        properties = describe_media.media_properties(media, modules.flags.available_aspect_ratios[0])
+                                        is_english = str((state_params or {}).get('__lang', 'en')).lower().startswith('en')
+                                        if not properties.get('ok'):
+                                            label = properties.get('error') or ('Unsupported media file.' if is_english else '不支持的媒体文件。')
+                                            return [
+                                                gr_update(value=label, visible=True, interactive=False),
+                                                gr_update(interactive=False),
+                                                gr_update(value=False, interactive=False),
+                                            ]
+                                        if properties.get('type') == 'video':
+                                            label = str(properties.get('label') or 'Video')
+                                            if not is_english:
+                                                label = label.replace('Video', '视频').replace('Unknown resolution', '未知分辨率').replace('Unknown duration', '未知时长').replace('Unknown FPS', '未知帧率')
+                                            return [
+                                                gr_update(value=label, visible=True, interactive=False),
+                                                gr_update(value=False, interactive=False),
+                                                gr_update(value=False, interactive=False),
+                                            ]
+                                        return [
+                                            gr_update(value=properties.get('label') or '', visible=True, interactive=True),
+                                            gr_update(interactive=True),
+                                            gr_update(interactive=True),
+                                        ]
 
                                     def apply_recommended_size(button_text):
                                         try:
@@ -7111,7 +7146,13 @@ with shared.gradio_root:
                                         except Exception:
                                             return [skip_component_update(), skip_component_update(), skip_component_update()]
 
-                                    describe_input_image.upload(trigger_show_image_properties, inputs=describe_input_image, outputs=describe_image_size, show_progress=False, queue=False)
+                                    describe_input_image.change(
+                                        trigger_show_media_properties,
+                                        inputs=[describe_input_image, state_topbar],
+                                        outputs=[describe_image_size, describe_output_tags, describe_output_artist],
+                                        show_progress=False,
+                                        queue=False,
+                                    )
                                     describe_image_size.click(apply_recommended_size, inputs=describe_image_size, outputs=[overwrite_width, overwrite_height, use_resolution_override_checkbox], show_progress=False, queue=False) \
                                         .then(lambda: None, js='()=>{try{if(typeof syncResolutionControlWidgets==="function"){syncResolutionControlWidgets({force:true}); setTimeout(()=>syncResolutionControlWidgets({force:true}),80);}}catch(e){console.warn("[UI-TRACE] describe_resolution_sync_failed", e);}}', show_progress=False, queue=False)
 
@@ -10330,7 +10371,12 @@ with shared.gradio_root:
             ]
 
         def _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
-            return img is None or (not output_tags and not output_artist) or bool(output_chinese)
+            return (
+                img is None
+                or describe_media.media_type(img) == "video"
+                or (not output_tags and not output_artist)
+                or bool(output_chinese)
+            )
 
         def _describe_vlm_missing_model_outputs(state_params, version, custom_settings=None):
             version = _vlm_resolve_version(version)
@@ -10378,16 +10424,31 @@ with shared.gradio_root:
         def trigger_describe(img, output_tags, output_chinese, output_artist, describe_prompt=""):
             describe_images = []
             try:
-                if img is not None and output_tags:
-                    from extras.wd14tagger import default_interrogator as default_interrogator_anime
-                    describe_images.append(default_interrogator_anime(img))
+                media_kind = describe_media.media_type(img)
+                if img is not None and not media_kind:
+                    raise ValueError("Choose a supported image or video file.")
+                normalized_image = describe_media.normalize_image(img) if media_kind == "image" else None
 
-                if img is not None and output_artist:
-                    artist_result = get_artist_tags_string(img, None)
+                if normalized_image is not None and output_tags:
+                    from extras.wd14tagger import default_interrogator as default_interrogator_anime
+                    describe_images.append(default_interrogator_anime(normalized_image))
+
+                if normalized_image is not None and output_artist:
+                    artist_result = get_artist_tags_string(normalized_image, None)
                     describe_images.append(artist_result)
 
-                if img is None or (not output_tags and not output_artist and len(describe_images) == 0):
-                    describe_images.append(vlm.interrogate(img, output_chinese, additional_prompt=describe_prompt))
+                if img is None or media_kind == "video" or (not output_tags and not output_artist and len(describe_images) == 0):
+                    use_multi_frame = bool(media_kind == "video" and VLM.is_llamacpp and not VLM.is_custom_version())
+                    visual_input, media_meta = describe_media.prepare_visual_input(img, use_multi_frame=use_multi_frame) if img is not None else (None, {"media_type": "image"})
+                    instruction = describe_media.build_instruction(
+                        media_kind or "image",
+                        output_tags=bool(output_tags and media_kind != "video"),
+                        output_chinese=bool(output_chinese),
+                        output_artist=bool(output_artist and media_kind == "image"),
+                        additional_prompt=describe_prompt,
+                        media_meta=media_meta,
+                    )
+                    describe_images.append(vlm.interrogate(visual_input, prompt=instruction))
 
                 if len(describe_images) == 0:
                     describe_image = skip_component_update()
@@ -10396,6 +10457,9 @@ with shared.gradio_root:
 
                     if (output_tags or output_artist) and output_chinese:
                         describe_image = vlm.translate_cn(describe_image)
+            except ValueError as exc:
+                gr.Warning(str(exc))
+                describe_image = skip_component_update()
             except RuntimeError as exc:
                 message = str(exc)
                 if "VLM model files are missing" not in message and "Custom VLM settings incomplete" not in message:
@@ -10417,6 +10481,9 @@ with shared.gradio_root:
             custom_settings = _main_vlm_settings_from_inputs(api_name, provider, api_format, base_url, model, api_key, supports_images)
             _apply_main_vlm_custom_settings(custom_settings)
             vlm.set_version(version)
+            if img is not None and version == VLM.CUSTOM_VERSION and not bool(custom_settings.get("supports_images")):
+                gr.Warning("The configured custom model does not accept image or video input.")
+                return skip_component_update(), skip_component_update(), *_describe_clear_missing_model_outputs(state_params)
             if _describe_requires_vlm(img, output_tags, output_chinese, output_artist):
                 missing_model_outputs = _describe_vlm_missing_model_outputs(state_params, version, custom_settings)
                 if missing_model_outputs is not None:

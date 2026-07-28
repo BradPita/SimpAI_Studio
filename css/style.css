@@ -8229,11 +8229,11 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     --simpai-upload-media-height: 240px;
 }
 
-#metadata_input_image.simpai-metadata-has-media .file-preview-holder {
+:is(#metadata_input_image, #describe_input_image).simpai-metadata-has-media .file-preview-holder {
     visibility: hidden !important;
 }
 
-#metadata_input_image .simpai-metadata-local-preview {
+:is(#metadata_input_image, #describe_input_image) .simpai-metadata-local-preview {
     position: absolute !important;
     inset: 0 !important;
     z-index: 4 !important;
@@ -8248,7 +8248,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     box-sizing: border-box !important;
 }
 
-#metadata_input_image .simpai-metadata-local-preview :where(img, video) {
+:is(#metadata_input_image, #describe_input_image) .simpai-metadata-local-preview :where(img, video) {
     width: 100% !important;
     height: 100% !important;
     max-width: 100% !important;
@@ -8258,7 +8258,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     background: #17181b !important;
 }
 
-#metadata_input_image.simpai-metadata-drag-over {
+:is(#metadata_input_image, #describe_input_image).simpai-metadata-drag-over {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
@@ -8266,7 +8266,7 @@ html.simpai-preset-nav-active #scene_resolution_override_accordion > * {
     box-shadow: inset 0 0 0 2px var(--color-accent, #f97316), 0 0 0 1px rgba(249, 115, 22, 0.22) !important;
 }
 
-#metadata_input_image.simpai-metadata-drag-over::after {
+:is(#metadata_input_image, #describe_input_image).simpai-metadata-drag-over::after {
     content: "";
     position: absolute;
     inset: 8px;

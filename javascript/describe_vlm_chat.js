@@ -12,6 +12,17 @@
     const getUiLang = UTILS.getUiLang || (() => 'en');
 
     const MAX_ATTACHMENTS = 5;
+    const IMAGE_PRIMARY_MAX_SIDE = 1280;
+    const IMAGE_FALLBACK_MAX_SIDE = 1024;
+    const IMAGE_TARGET_BYTES = 800 * 1024;
+    const IMAGE_COMPRESSION_CANDIDATES = [
+        { maxSide: IMAGE_PRIMARY_MAX_SIDE, quality: 0.85 },
+        { maxSide: IMAGE_PRIMARY_MAX_SIDE, quality: 0.80 },
+        { maxSide: IMAGE_FALLBACK_MAX_SIDE, quality: 0.85 },
+        { maxSide: IMAGE_FALLBACK_MAX_SIDE, quality: 0.80 },
+        { maxSide: IMAGE_FALLBACK_MAX_SIDE, quality: 0.74 },
+        { maxSide: IMAGE_FALLBACK_MAX_SIDE, quality: 0.68 },
+    ];
     const MAX_HISTORY_TURNS = 18;
     const HISTORY_BUDGET = 6200;
     const FULL_HISTORY_BUDGET = 9000;
@@ -385,6 +396,22 @@
         return images.find((img) => img?.src && img.naturalWidth && img.naturalHeight) || images.find((img) => img?.src) || null;
     }
 
+    function currentUploadFile() {
+        const host = root().querySelector('#describe_input_image');
+        const input = host?.querySelector?.('input[type="file"]');
+        return input?.files?.[0] || null;
+    }
+
+    function currentImageKey() {
+        const file = currentUploadFile();
+        if (file) {
+            if (!/^image\//i.test(file.type || '')) return '';
+            return `${file.name || 'image'}:${file.size || 0}:${file.lastModified || 0}`;
+        }
+        const image = currentImageElement();
+        return image ? (image.currentSrc || image.src || '') : '';
+    }
+
     function imageMimeFromDataUrl(dataUrl) {
         const match = String(dataUrl || '').match(/^data:([^;,]+)/);
         return match ? match[1] : 'image/png';
@@ -418,21 +445,114 @@
         };
     }
 
-    function drawImageDataUrl(image, maxSide, mime, quality) {
+    function drawImageCanvas(image, maxSide) {
         const size = scaledSize(image.naturalWidth || image.width, image.naturalHeight || image.height, maxSide);
         const canvas = document.createElement('canvas');
         canvas.width = size.width;
         canvas.height = size.height;
-        const ctx = canvas.getContext('2d', { alpha: String(mime || '').includes('png') });
-        if (!String(mime || '').includes('png')) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, size.width, size.height);
-        }
+        const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: true });
         ctx.drawImage(image, 0, 0, size.width, size.height);
+        return { canvas, width: size.width, height: size.height };
+    }
+
+    function canvasHasTransparency(canvas) {
+        try {
+            const pixels = canvas.getContext('2d', { willReadFrequently: true })
+                .getImageData(0, 0, canvas.width, canvas.height).data;
+            for (let index = 3; index < pixels.length; index += 4) {
+                if (pixels[index] < 255) return true;
+            }
+        } catch (err) {}
+        return false;
+    }
+
+    function flattenCanvas(canvas) {
+        const output = document.createElement('canvas');
+        output.width = canvas.width;
+        output.height = canvas.height;
+        const ctx = output.getContext('2d', { alpha: false });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, output.width, output.height);
+        ctx.drawImage(canvas, 0, 0);
+        return output;
+    }
+
+    function dataUrlBinarySize(dataUrl) {
+        const value = String(dataUrl || '');
+        const separator = value.indexOf(',');
+        if (separator < 0) return 0;
+        const header = value.slice(0, separator);
+        const payload = value.slice(separator + 1);
+        if (!/;base64$/i.test(header)) {
+            try { return new TextEncoder().encode(decodeURIComponent(payload)).length; } catch (err) { return payload.length; }
+        }
+        const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+        return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
+    }
+
+    function encodeCanvasDataUrl(canvas, mime, quality) {
+        const dataUrl = canvas.toDataURL(mime || 'image/jpeg', quality == null ? 0.85 : quality);
         return {
-            dataUrl: canvas.toDataURL(mime || 'image/jpeg', quality == null ? 0.88 : quality),
-            width: size.width,
-            height: size.height
+            dataUrl,
+            mime: imageMimeFromDataUrl(dataUrl),
+            bytes: dataUrlBinarySize(dataUrl),
+            wireBytes: dataUrl.length,
+            width: canvas.width,
+            height: canvas.height,
+            quality: quality == null ? null : quality,
+        };
+    }
+
+    function drawImageDataUrl(image, maxSide, mime, quality) {
+        const drawn = drawImageCanvas(image, maxSide);
+        const output = String(mime || '').toLowerCase() === 'image/jpeg'
+            ? flattenCanvas(drawn.canvas)
+            : drawn.canvas;
+        return encodeCanvasDataUrl(output, mime, quality);
+    }
+
+    function adaptiveImageDataUrl(image) {
+        const sourceLongestSide = Math.max(
+            Number(image.naturalWidth || image.width) || 1,
+            Number(image.naturalHeight || image.height) || 1
+        );
+        const canvasCache = new Map();
+        const outputCache = new Map();
+        const sourceCanvas = (maxSide) => {
+            const effectiveMaxSide = sourceLongestSide > IMAGE_FALLBACK_MAX_SIDE
+                ? maxSide
+                : IMAGE_FALLBACK_MAX_SIDE;
+            if (!canvasCache.has(effectiveMaxSide)) {
+                canvasCache.set(effectiveMaxSide, drawImageCanvas(image, effectiveMaxSide));
+            }
+            return canvasCache.get(effectiveMaxSide);
+        };
+        const probe = sourceCanvas(IMAGE_PRIMARY_MAX_SIDE);
+        const hasTransparency = canvasHasTransparency(probe.canvas);
+        const outputMime = hasTransparency ? 'image/webp' : 'image/jpeg';
+        const outputCanvas = (maxSide) => {
+            const drawn = sourceCanvas(maxSide);
+            const key = `${drawn.width}x${drawn.height}:${outputMime}`;
+            if (!outputCache.has(key)) {
+                outputCache.set(key, outputMime === 'image/jpeg' ? flattenCanvas(drawn.canvas) : drawn.canvas);
+            }
+            return outputCache.get(key);
+        };
+
+        let best = null;
+        const seen = new Set();
+        for (const candidate of IMAGE_COMPRESSION_CANDIDATES) {
+            const canvas = outputCanvas(candidate.maxSide);
+            const key = `${canvas.width}x${canvas.height}:${candidate.quality}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            best = encodeCanvasDataUrl(canvas, outputMime, candidate.quality);
+            if (best.bytes <= IMAGE_TARGET_BYTES) break;
+        }
+        return {
+            ...best,
+            hasTransparency,
+            targetBytes: IMAGE_TARGET_BYTES,
         };
     }
 
@@ -440,28 +560,38 @@
         const sourceMime = options.mime || imageMimeFromDataUrl(dataUrl);
         try {
             const image = await loadImage(dataUrl);
-            const outputMime = sourceMime === 'image/png' ? 'image/png' : 'image/jpeg';
-            const main = drawImageDataUrl(image, 1280, outputMime, 0.88);
-            const thumb = drawImageDataUrl(image, 96, 'image/jpeg', 0.76);
+            const main = adaptiveImageDataUrl(image);
+            const thumb = drawImageDataUrl(image, 96, 'image/jpeg', 0.72);
             return {
                 id: options.id || uid('describe_ref'),
                 name: options.name || 'reference-image.png',
-                mime: imageMimeFromDataUrl(main.dataUrl),
+                mime: main.mime,
                 width: main.width,
                 height: main.height,
-                size: options.size || Math.round((main.dataUrl.length * 3) / 4),
+                size: main.bytes,
+                wire_size: main.wireBytes,
+                original_size: options.originalSize || options.size || dataUrlBinarySize(dataUrl),
                 data_url: main.dataUrl,
                 thumb: thumb.dataUrl,
+                compression: {
+                    max_side: Math.max(main.width, main.height),
+                    quality: main.quality,
+                    target_bytes: main.targetBytes,
+                    alpha: main.hasTransparency,
+                },
                 key: options.key || `${options.name || 'image'}:${main.width}x${main.height}:${main.dataUrl.length}`
             };
         } catch (err) {
+            const fallbackSize = dataUrlBinarySize(dataUrl);
             return {
                 id: options.id || uid('describe_ref'),
                 name: options.name || 'reference-image.png',
                 mime: sourceMime,
                 width: options.width || null,
                 height: options.height || null,
-                size: options.size || Math.round((String(dataUrl).length * 3) / 4),
+                size: fallbackSize,
+                wire_size: String(dataUrl).length,
+                original_size: options.originalSize || options.size || fallbackSize,
                 data_url: dataUrl,
                 thumb: '',
                 key: options.key || String(dataUrl).slice(0, 180)
@@ -470,6 +600,11 @@
     }
 
     async function currentImagePayload() {
+        const file = currentUploadFile();
+        if (file) {
+            if (!String(file.type || '').toLowerCase().startsWith('image/')) return null;
+            return fileToImagePayload(file);
+        }
         const img = currentImageElement();
         if (!img?.src) return null;
         const src = img.currentSrc || img.src;
@@ -498,7 +633,7 @@
             id: uid('describe_ref'),
             name: file.name || 'reference-image.png',
             mime: file.type || imageMimeFromDataUrl(dataUrl),
-            size: file.size || null,
+            originalSize: file.size || null,
             key: `${file.name || 'image'}:${file.size || 0}:${file.lastModified || 0}`
         });
     }
@@ -1318,7 +1453,7 @@
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
-      <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Use image', '使用图片'))}</span></label>
+      <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Attach current image every message', '每次提问附带当前图片'))}</span></label>
       <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
       <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image', '添加引用图片'))}" aria-label="${escapeHtml(t('Attach reference image', '添加引用图片'))}"><i class="fa-solid fa-image"></i></button>
     </div>
@@ -1374,6 +1509,9 @@
             name: String(image?.name || 'image').slice(0, 200),
             width: Number.isFinite(Number(image?.width)) ? Number(image.width) : null,
             height: Number.isFinite(Number(image?.height)) ? Number(image.height) : null,
+            size: Number.isFinite(Number(image?.size)) ? Number(image.size) : null,
+            wire_size: Number.isFinite(Number(image?.wire_size)) ? Number(image.wire_size) : null,
+            mime: String(image?.mime || '').slice(0, 80),
             placeholder: true
         })) : [];
         const actions = Array.isArray(message.actions) ? message.actions.slice(0, 20).map((action) => ({
@@ -1595,9 +1733,10 @@
 
     function replacePendingAssistant(content) {
         const pendingIndex = state.messages.findIndex((item) => item.pending);
+        if (pendingIndex < 0) return false;
         const assistant = { role: 'assistant', content };
-        if (pendingIndex >= 0) state.messages[pendingIndex] = assistant;
-        else state.messages.push(assistant);
+        state.messages[pendingIndex] = assistant;
+        return true;
     }
 
     async function notifyBackendChatCancel(conversationId, requestId) {
@@ -1625,11 +1764,54 @@
         return true;
     }
 
+    function imageUploadBytes(image) {
+        const declared = Number(image?.wire_size);
+        if (Number.isFinite(declared) && declared > 0) return Math.round(declared);
+        const dataUrl = String(image?.data_url || '');
+        return dataUrl ? dataUrl.length : 0;
+    }
+
+    function totalImageUploadBytes(images) {
+        return (Array.isArray(images) ? images : []).reduce((total, image) => total + imageUploadBytes(image), 0);
+    }
+
+    function formatByteSize(value) {
+        const bytes = Math.max(0, Number(value) || 0);
+        if (bytes < 1024) return `${Math.round(bytes)} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 100 * 1024 ? 1 : 0)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 2 : 1)} MB`;
+    }
+
+    function imageUploadStatus(images, completed = false) {
+        const rows = Array.isArray(images) ? images : [];
+        const count = rows.length;
+        const size = formatByteSize(totalImageUploadBytes(rows));
+        const template = completed
+            ? t('Uploaded {count} image(s), about {size}.', '已上传 {count} 张图片，约 {size}。')
+            : t('Estimated image upload: {count} image(s), about {size}.', '预计图片上传：{count} 张，约 {size}。');
+        return template.replace('{count}', String(count)).replace('{size}', size);
+    }
+
+    function consumeSentComposerState(input, inputSnapshot, sentPendingImages) {
+        if (input && String(input.value || '') === inputSnapshot) input.value = '';
+        const sentObjects = new Set(Array.isArray(sentPendingImages) ? sentPendingImages : []);
+        const sentIds = new Set(Array.from(sentObjects).map(image => String(image?.id || '')).filter(Boolean));
+        state.pendingImages = state.pendingImages.filter((image) => {
+            if (sentObjects.has(image)) return false;
+            const id = String(image?.id || '');
+            return !id || !sentIds.has(id);
+        });
+        renderPendingImages();
+    }
+
     function imageSummary(image) {
         return {
             name: image?.name || 'image',
             width: image?.width || null,
             height: image?.height || null,
+            size: image?.size || null,
+            wire_size: imageUploadBytes(image) || null,
+            mime: image?.mime || '',
             thumb: image?.thumb || ONE_PIXEL_IMAGE,
             placeholder: true
         };
@@ -1640,7 +1822,9 @@
         if (!rows.length) return '';
         return `<div class="describe-vlm-chat-image-chips">${rows.map((image, index) => {
             const size = image?.width && image?.height ? ` ${Number(image.width)}x${Number(image.height)}` : '';
-            const label = `${image?.name || t('Image', '图片')}${size}`;
+            const uploadBytes = imageUploadBytes(image);
+            const upload = uploadBytes ? ` · ↑${formatByteSize(uploadBytes)}` : '';
+            const label = `${image?.name || t('Image', '图片')}${size}${upload}`;
             return `<span class="describe-vlm-chat-image-chip">
   <img src="${escapeHtml(image?.thumb || ONE_PIXEL_IMAGE)}" alt="">
   <span>${escapeHtml(label)}</span>
@@ -1883,6 +2067,14 @@
     async function addPendingImageFiles(files) {
         const imageFiles = Array.from(files || []).filter((file) => /^image\//i.test(file.type || ''));
         if (!imageFiles.length) return;
+        const selectedCustomApi = readDescribeCustomApi(readSelectedVlmVersion());
+        if (selectedCustomApi && selectedCustomApi.supports_images === false) {
+            setStatus(t(
+                'The selected Custom API has image input disabled.',
+                '当前 Custom API 未启用图像输入。'
+            ), true);
+            return;
+        }
         setStatus(t('Reading image...', '正在读取图片...'));
         for (const file of imageFiles.slice(0, MAX_ATTACHMENTS)) {
             try {
@@ -1896,7 +2088,7 @@
             state.pendingImages = state.pendingImages.slice(-MAX_ATTACHMENTS);
         }
         renderPendingImages();
-        setStatus(t('Reference image attached.', '引用图片已添加。'));
+        setStatus(`${t('Reference image attached.', '引用图片已添加。')} ${imageUploadStatus(state.pendingImages)}`);
     }
 
     function collectClipboardImageFiles(dataTransfer) {
@@ -2128,10 +2320,22 @@
         state.customSystemPrompt = customSystemPrompt;
         state.systemPromptTemplateId = selectedTemplateId && (!state.systemPromptTemplatesLoaded || selectedSystemPromptTemplateIdForContent(customSystemPrompt) === selectedTemplateId) ? selectedTemplateId : '';
         saveChatSettings();
-        const typed = String(input?.value || '').trim();
+        const inputSnapshot = String(input?.value || '');
+        const typed = inputSnapshot.trim();
         const pendingImages = state.pendingImages.slice();
         if (!typed && !pendingImages.length) return;
         const version = readSelectedVlmVersion();
+        const customApi = readDescribeCustomApi(version);
+        const supportsImageInput = !customApi || customApi.supports_images !== false;
+        const requestedCurrentImageKey = state.useImage ? currentImageKey() : '';
+        const requestedImagesButUnsupported = !supportsImageInput && Boolean(requestedCurrentImageKey || pendingImages.length);
+        if (!typed && pendingImages.length && !supportsImageInput) {
+            setStatus(t(
+                'The selected Custom API has image input disabled.',
+                '当前 Custom API 未启用图像输入。'
+            ), true);
+            return;
+        }
         updateAnswerModelIndicator(modal);
         const modelReady = await ensureSelectedVlmModelReady(version);
         if (requestToken !== state.requestToken) return;
@@ -2140,14 +2344,10 @@
         state.busy = true;
         syncBusyControls(modal);
         setStatus('');
-        if (input) input.value = '';
-        state.pendingImages = [];
-        renderPendingImages();
 
         const message = typed || defaultMessageForMode(selectedMode);
         const includeCurrentPrompt = shouldSendCurrentPromptToVlm(selectedMode, message);
-        const imageElement = state.useImage ? currentImageElement() : null;
-        const imageKey = imageElement ? (imageElement.currentSrc || imageElement.src || '') : '';
+        const imageKey = supportsImageInput ? requestedCurrentImageKey : '';
         resetConversationForImage(imageKey);
         const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET);
         const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET);
@@ -2156,19 +2356,36 @@
         }
 
         const images = [];
-        try {
-            if (state.useImage && imageKey) {
-                const currentImage = await currentImagePayload();
-                if (currentImage) images.push(currentImage);
+        const sentPendingImages = [];
+        if (supportsImageInput) {
+            try {
+                if (state.useImage && imageKey) {
+                    setStatus(t('Optimizing image upload...', '正在优化图片上传...'));
+                    const currentImage = await currentImagePayload();
+                    if (currentImage) images.push(currentImage);
+                }
+            } catch (err) {
+                setStatus(t('Image read failed; sending text only.', '读取图片失败，将仅发送文本。'), true);
             }
-        } catch (err) {
-            setStatus(t('Image read failed; sending text only.', '读取图片失败，将仅发送文本。'), true);
-        }
-        for (const image of pendingImages) {
-            if (images.length >= MAX_ATTACHMENTS) break;
-            if (image?.data_url) images.push(image);
+            for (const image of pendingImages) {
+                if (images.length >= MAX_ATTACHMENTS) break;
+                if (image?.data_url) {
+                    images.push(image);
+                    sentPendingImages.push(image);
+                }
+            }
         }
         if (requestToken !== state.requestToken) return;
+        consumeSentComposerState(input, inputSnapshot, sentPendingImages);
+        const estimatedUploadBytes = totalImageUploadBytes(images);
+        if (images.length) {
+            setStatus(imageUploadStatus(images));
+        } else if (requestedImagesButUnsupported) {
+            setStatus(t(
+                'The selected Custom API has image input disabled; text was sent without images.',
+                '当前 Custom API 未启用图像输入，本次仅发送文字。'
+            ));
+        }
 
         state.messages.push({
             role: 'user',
@@ -2196,10 +2413,9 @@
                 chars: history.chars,
                 budget: history.budget
             },
-            image: images[0] || null,
             images,
             version,
-            custom_api: readDescribeCustomApi(version),
+            custom_api: customApi,
             chat_mode: selectedMode,
             user_system_prompt: customSystemPrompt,
             system_prompt_template_id: state.systemPromptTemplateId,
@@ -2237,7 +2453,18 @@
         state.persistenceDirty = true;
         saveConversationSnapshot();
         renderMessages();
-        if (!response?.ok) setStatus(reply, true);
+        if (!response?.ok) {
+            setStatus(reply, true);
+        } else if (estimatedUploadBytes > 0) {
+            setStatus(imageUploadStatus(images, true));
+        } else if (requestedImagesButUnsupported) {
+            setStatus(t(
+                'The selected Custom API has image input disabled; text was sent without images.',
+                '当前 Custom API 未启用图像输入，本次仅发送文字。'
+            ));
+        } else {
+            setStatus('');
+        }
     }
 
     function actionFromRef(ref) {

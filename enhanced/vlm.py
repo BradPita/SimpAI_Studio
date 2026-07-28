@@ -22,7 +22,7 @@ from enhanced.llamacpp_vlm import llamacpp_vlm
 from enhanced.logger import format_name
 logger = logging.getLogger(format_name(__name__))
 
-from PIL import Image
+from PIL import Image, ImageOps
 from transformers import AutoTokenizer, AutoModel
 from modules.util import HWC3, resize_image, is_chinese
 from enhanced.simpleai import comfyd, p2p_task
@@ -37,6 +37,8 @@ from modules.custom_llm_api import (
 )
 
 DEFAULT_VLM_VERSION = "Qwen3.5-9B-abliterated-Q4_K_M"
+CUSTOM_VLM_IMAGE_MAX_SIDE = 1688
+CUSTOM_VLM_IMAGE_JPEG_QUALITY = 85
 HUIHUI_QWEN35_MODEL_DIR = "Huihui-Qwen3.5-9B-abliterated"
 HUIHUI_QWEN35_MODELSCOPE_BASE = (
     "https://www.modelscope.cn/models/windecay/SimpAI_dev/resolve/master/"
@@ -314,24 +316,37 @@ def _custom_vlm_image_to_data_url(image):
     if image is None:
         return ""
     if isinstance(image, str) and os.path.exists(image):
-        import mimetypes
-
-        mime = mimetypes.guess_type(image)[0] or "image/png"
-        with open(image, "rb") as handle:
-            encoded = base64.b64encode(handle.read()).decode("ascii")
-        return f"data:{mime};base64,{encoded}"
-    if isinstance(image, np.ndarray):
-        pil_image = Image.fromarray(resize_image(HWC3(image), min_side=768, resize_mode=3))
+        try:
+            with Image.open(image) as source:
+                pil_image = ImageOps.exif_transpose(source).copy()
+        except Exception:
+            return ""
+    elif isinstance(image, np.ndarray):
+        pil_image = Image.fromarray(HWC3(image))
     elif isinstance(image, Image.Image):
-        pil_image = image
+        pil_image = ImageOps.exif_transpose(image).copy()
     else:
         return ""
-    if pil_image.mode not in ("RGB", "RGBA"):
+
+    if pil_image.mode != "RGB":
         pil_image = pil_image.convert("RGB")
+    width, height = pil_image.size
+    longest_side = max(width, height)
+    if longest_side > CUSTOM_VLM_IMAGE_MAX_SIDE:
+        scale = CUSTOM_VLM_IMAGE_MAX_SIDE / float(longest_side)
+        target = (max(1, round(width * scale)), max(1, round(height * scale)))
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        pil_image = pil_image.resize(target, resampling)
+
     buffer = io.BytesIO()
-    pil_image.save(buffer, format="PNG")
+    pil_image.save(
+        buffer,
+        format="JPEG",
+        quality=CUSTOM_VLM_IMAGE_JPEG_QUALITY,
+        optimize=True,
+    )
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:image/jpeg;base64,{encoded}"
 
 
 def _custom_vlm_image_data_urls(image):
@@ -1241,13 +1256,21 @@ class VLM:
                 "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
             }
         if handler == "translate":
+            if not VLM.get_enable() or not self.model_exists():
+                return {
+                    "ok": False,
+                    "text": original,
+                    "action_id": action["id"],
+                    "error": "The configured LLM is unavailable.",
+                    "media": {"video_requested": False, "video_used": False, "sampled_frames": 0},
+                }
             direction = str(action_options.get("direction") or "auto").strip().lower()
             if direction == "auto":
                 direction = "to_en" if is_chinese(original) else "to_cn"
             if direction == "to_en":
-                output = self.translate(original, translation_methods)
+                output = self.inference(None, prompt=f'{VLM.prompt_translator}{original}')
             elif direction == "to_cn":
-                output = self.translate_cn(original, translation_methods)
+                output = self.inference(None, prompt=f'{VLM.prompt_translator_cn}{original}')
             else:
                 return {"ok": False, "text": original, "action_id": action["id"], "error": "Unsupported translation direction."}
             translated = str(output or "").strip()
@@ -1317,12 +1340,14 @@ class VLM:
                 "error": "The configured custom model does not accept image input. Disable video context or choose a vision model.",
                 "media": {"video_requested": True, "video_used": False, "sampled_frames": 0},
             }
+        media_options = dict(action_options)
+        media_options["video_frame_mode"] = "multi_frame" if VLM.is_llamacpp and not VLM.is_custom_version() else "contact_sheet"
         prepared_images, media_meta = prompt_actions.prepare_prompt_action_media(
             action["id"],
             resource_images,
             video_path=resolved_video_path,
             first_frame_path=resolved_first_frame_path,
-            options=action_options,
+            options=media_options,
             resource_context=resource_context,
         )
         public_media = {
@@ -1336,6 +1361,8 @@ class VLM:
                 "cache_hit",
                 "image_descriptors",
                 "video_source",
+                "video_visual_mode",
+                "video_visual_count",
                 "target_duration_seconds",
                 "audio_present",
                 "director",
