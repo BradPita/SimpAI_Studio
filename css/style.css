@@ -6133,7 +6133,8 @@ html.describe-vlm-chat-resizing * {
   }
 
   .describe-vlm-chat-mode-hint {
-    display: none;
+    margin-top: -1px;
+    font-size: 11px;
   }
 }
 
@@ -6212,7 +6213,9 @@ html.describe-vlm-chat-resizing * {
   }
 
   .describe-vlm-chat-mode-hint {
-    display: none;
+    margin-top: -1px;
+    font-size: 11px;
+    line-height: 1.3;
   }
 
   .describe-vlm-chat-log {
@@ -16683,6 +16686,137 @@ button[aria-label="Edit"][title="Edit"] {
     overflow-wrap: anywhere;
 }
 
+.describe-vlm-chat-generation-media {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.describe-vlm-chat-generation-media-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--describe-chat-muted, #a4a8b4);
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.describe-vlm-chat-generation-media-head b {
+    margin-left: auto;
+    color: var(--describe-chat-text, #f3f4f8);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.describe-vlm-chat-generation-media-list {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+.describe-vlm-chat-generation-media-item {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 48px;
+    padding: 4px;
+    background: var(--describe-chat-panel-deep, #1f2024);
+    border: 1px solid var(--describe-chat-line-soft, #393b43);
+    border-radius: 6px;
+}
+
+.describe-vlm-chat-generation-media-item > img,
+.describe-vlm-chat-generation-media-item > i {
+    width: 44px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.describe-vlm-chat-generation-media-item > i {
+    display: grid;
+    place-items: center;
+    color: var(--describe-chat-muted, #a4a8b4);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.describe-vlm-chat-generation-media-item > span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.describe-vlm-chat-generation-media-item > span b,
+.describe-vlm-chat-generation-media-item > span small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.describe-vlm-chat-generation-media-item > span b {
+    color: var(--describe-chat-text, #f3f4f8);
+    font-size: 11px;
+}
+
+.describe-vlm-chat-generation-media-item > span small {
+    color: var(--describe-chat-muted, #a4a8b4);
+    font-size: 10px;
+}
+
+.describe-vlm-chat-generation-media-item > div {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.describe-vlm-chat-generation-media-item button {
+    display: inline-grid;
+    place-items: center;
+    width: 27px;
+    height: 27px;
+    min-width: 27px;
+    min-height: 27px;
+    padding: 0;
+    color: var(--describe-chat-muted, #a4a8b4);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+}
+
+.describe-vlm-chat-generation-media-item button:hover:not(:disabled) {
+    color: var(--describe-chat-text, #f3f4f8);
+    border-color: var(--describe-chat-line, #494c56);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.describe-vlm-chat-generation-media-item button:disabled {
+    opacity: 0.3;
+}
+
+.describe-vlm-chat-generation-media-empty {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 7px 8px;
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: 6px;
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.describe-vlm-chat-generation-media-empty span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 .describe-vlm-chat-generation label {
     display: grid;
     gap: 4px;
@@ -17039,6 +17173,28 @@ button[aria-label="Edit"][title="Edit"] {
     background: #fbbf24 !important;
 }
 
+.describe-vlm-chat-auto-generate {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--describe-chat-muted, #a4a8b4);
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.describe-vlm-chat-auto-generate input {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    accent-color: #f59e0b;
+}
+
+.describe-vlm-chat-auto-generate span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 640px) {
     .describe-vlm-chat-msg:has(.describe-vlm-chat-generation) {
         width: 100%;
@@ -17087,6 +17243,21 @@ button[aria-label="Edit"][title="Edit"] {
 
     .describe-vlm-chat-generation-results {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .describe-vlm-chat-generation-media-item {
+        grid-template-columns: 40px minmax(0, 1fr);
+    }
+
+    .describe-vlm-chat-generation-media-item > img,
+    .describe-vlm-chat-generation-media-item > i {
+        width: 40px;
+        height: 40px;
+    }
+
+    .describe-vlm-chat-generation-media-item > div {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
     }
 
     .describe-vlm-chat-generation-status {

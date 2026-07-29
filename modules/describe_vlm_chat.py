@@ -27,21 +27,24 @@ _CANCELLED_REQUESTS_LOCK = threading.Lock()
 DESCRIBE_CHAT_BASE_SYSTEM = (
     "You are the SimpAI Describe Image VLM chat assistant. This chat is a standalone wrapper, not the infinite canvas. "
     "You can discuss images, prompts, model behavior, visual ideas, and ordinary user questions. "
-    "You cannot operate canvas nodes. Creative mode may return a structured image-generation proposal that the UI executes only after user confirmation. "
+    "You cannot operate canvas nodes. Creative mode may return a structured media-generation request that the UI executes according to the user's creative preference. "
     "Never claim that an image is queued, running, or finished before the UI reports that state. "
     "Answer naturally in the user's UI language unless the user asks for another language."
 )
 
 CREATIVE_ASSISTANT_SYSTEM = (
     "Creative mode for SimpAI Studio VLM chat. The UI may already show a session preference card for anime, realistic, automatic, or a specific Preset. "
-    "When the user asks to draw, create, render, or generate an image, return exactly one JSON object: "
+    "When the user asks to draw, create, render, generate, or edit an image, return exactly one JSON object: "
     "{\"reply\":\"short user-facing reply\",\"actions\":[{\"type\":\"generate_image\",\"prompt\":\"complete generation prompt\","
-    "\"preset\":\"Z-imageT\",\"aspect_ratio\":\"auto\",\"image_number\":1}]}. "
+    "\"preset\":\"Z-imageT\",\"task\":\"text_to_image|image_edit|multi_image_edit\",\"media_refs\":[],"
+    "\"aspect_ratio\":\"auto\",\"image_number\":1}]}. "
     "If the user explicitly names a preferred style or Preset for this conversation, also return a set_creative_preference action before generate_image: "
     "{\"type\":\"set_creative_preference\",\"style\":\"anime|realistic|auto|custom\",\"preset\":\"exact Preset name when known\",\"scope\":\"session\"}. "
     "An unqualified request such as `use Anima to generate it` counts as a session preference. "
     "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
-    "The generate_image action is a proposal, not proof that generation has started. Tell the user to review the options and confirm. "
+    "The generate_image action is a request, not proof that generation has started. The UI decides whether it needs confirmation. "
+    "For image editing, include the exact attached media refs in visual input order. Use image_edit for one referenced image and multi_image_edit for two or more. "
+    "Choose a Preset whose max_images is at least the number of media_refs. Never invent media refs. "
     "Use the active session preference when present; otherwise use Z-imageT. Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
     "image_number must be an integer from 1 to 4. Do not invent API routes, canvas node IDs, run IDs, file paths, or completed image URLs. "
     "For ordinary conversation that does not request an image or prompt, answer normally without action JSON."
@@ -90,6 +93,7 @@ GUIDE_MODE_SYSTEM = """
 SimpAI UI guide skill:
 - You guide users to the most suitable SimpAI Studio main-interface workflow, preset, or mode based on their goal.
 - Do not claim you can click buttons, operate the UI, queue jobs, or inspect hidden interface state. Recommend where to go and what to try.
+- In Describe Image chat, Creative mode can run image Presets through Canvas Runner for text-to-image, single-image editing, and multi-image editing. Guide mode recommends workflows and Presets but does not start generation; direct users to Creative mode when they want the chat to generate or edit images.
 - Text-to-image / first image:
   - For realistic / general text-to-image, recommend Z-image, Krea2-Turbo, Wan(T2I), Flux, or Qwen2512. These are mainly realistic/general-purpose routes, but can handle some simple anime or illustration requests.
   - For anime, illustration, 二次元, character art, or tag-style workflows, recommend Anima, Illustrious / 光辉, NoobAI, or SDXL-class anime presets first. Treat these as the dedicated anime-oriented choices.
@@ -466,6 +470,75 @@ def _media_sources_from_payload(payload, conversation_id, limit=5):
     return sources
 
 
+def _media_manifest_from_payload(payload, limit=5):
+    raw_media = payload.get("images") if isinstance(payload.get("images"), list) else []
+    if not raw_media and isinstance(payload.get("image"), dict):
+        raw_media = [payload.get("image")]
+    manifest = []
+    seen = set()
+    for item in raw_media:
+        if not isinstance(item, dict) or item.get("placeholder"):
+            continue
+        data_url = str(item.get("data_url") or "").strip()
+        mime = str(item.get("mime") or _data_url_mime(data_url)).strip().lower()
+        media_type = "video" if mime.startswith("video/") else "image" if mime.startswith("image/") else ""
+        ref = _clean_text(item.get("id"))[:160]
+        if not ref or not media_type or ref in seen:
+            continue
+        seen.add(ref)
+        manifest.append(
+            {
+                "ref": ref,
+                "index": len(manifest) + 1,
+                "type": media_type,
+                "name": _clean_text(item.get("name"))[:160] or f"{media_type} {len(manifest) + 1}",
+            }
+        )
+        if len(manifest) >= max(1, min(5, int(limit or 5))):
+            break
+    return manifest
+
+
+def _normalize_preset_capabilities(value, limit=100):
+    normalized = []
+    seen = set()
+    for item in value if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = re.sub(r"[\x00-\x1f\x7f]+", "", str(item.get("name") or "")).strip()[:120]
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        try:
+            max_images = max(0, min(5, int(item.get("max_images") or 0)))
+        except Exception:
+            max_images = 0
+        try:
+            min_images = max(0, min(max_images, int(item.get("min_images") or 0)))
+        except Exception:
+            min_images = 0
+        normalized.append(
+            {
+                "name": name,
+                "min_images": min_images,
+                "max_images": max_images,
+                "output_type": "video" if str(item.get("output_type") or "").strip().lower() == "video" else "image",
+            }
+        )
+        if len(normalized) >= max(1, min(200, int(limit or 100))):
+            break
+    return normalized
+
+
+def _preset_capability_map(capabilities):
+    return {
+        str(item.get("name") or "").strip().lower(): item
+        for item in (capabilities if isinstance(capabilities, list) else [])
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    }
+
+
 def _truthy(value, default=False):
     if value is None:
         return bool(default)
@@ -627,6 +700,8 @@ def _prompt_options_from_payload(payload, lang):
         "enable_prompt_skills": chat_mode == "prompt" or (chat_mode == "chat" and prompt_intent),
         "enable_generation_actions": chat_mode == "creative",
         "creative_preferences": creative_preferences,
+        "media_manifest": _media_manifest_from_payload(payload),
+        "preset_capabilities": _normalize_preset_capabilities(payload.get("preset_capabilities")),
     }
 
 
@@ -640,6 +715,7 @@ def _normalize_creative_preferences(value):
         "prompted": _truthy(source.get("prompted"), False),
         "style": style,
         "preset": preset,
+        "auto_generate": _truthy(source.get("auto_generate"), False),
     }
 
 
@@ -709,13 +785,38 @@ def _describe_chat_system_prompt(options, lang):
         sections.append(
             "Default chat mode: normal conversation is allowed. "
             "Do not force every answer into prompt-writing. "
-            "Only use prompt actions when the user clearly asks you to write, refine, append, or prepare an image-generation prompt."
+            "Only use prompt actions when the user clearly asks you to write, refine, append, or prepare an image-generation prompt. "
+            "This mode cannot start image generation or editing. When the user asks to generate or edit an image, tell them to switch to Creative mode."
         )
     elif chat_mode == "creative":
         sections.append(CREATIVE_ASSISTANT_SYSTEM)
         preference = options.get("creative_preferences") if isinstance(options.get("creative_preferences"), dict) else {}
         preferred_style = str(preference.get("style") or "").strip()
         preferred_preset = str(preference.get("preset") or "").strip()
+        auto_generate = bool(preference.get("auto_generate"))
+        sections.append(
+            "The UI will start valid generate_image actions immediately; keep the reply short and do not ask the user to confirm."
+            if auto_generate
+            else "The UI will show a review card before execution; tell the user they can review and confirm the request."
+        )
+        media_manifest = options.get("media_manifest") if isinstance(options.get("media_manifest"), list) else []
+        if media_manifest:
+            manifest_text = ", ".join(
+                f"visual input {item.get('index')} ref={item.get('ref')} type={item.get('type')}"
+                for item in media_manifest if isinstance(item, dict)
+            )
+            sections.append(
+                f"Attached media manifest, in the exact order seen by the VLM: {manifest_text}. "
+                "Use only these refs in media_refs."
+            )
+        capabilities = options.get("preset_capabilities") if isinstance(options.get("preset_capabilities"), list) else []
+        if capabilities:
+            capability_text = ", ".join(
+                f"{item.get('name')}[min_images={item.get('min_images')}, max_images={item.get('max_images')}]"
+                for item in capabilities if isinstance(item, dict) and item.get("output_type") == "image"
+            )
+            if capability_text:
+                sections.append(f"Available image Preset input limits: {capability_text}.")
         if preferred_style or preferred_preset:
             sections.append(
                 "Active session creative preference: "
@@ -736,7 +837,9 @@ def _describe_chat_system_prompt(options, lang):
     elif chat_mode == "guide":
         sections.append(
             "Guide mode: focus on helping the user choose SimpAI Studio main-interface workflows and presets. "
-            "Do not return prompt-action JSON in this mode."
+            "Do not return prompt-action JSON or start generation in this mode. "
+            "Creative mode can run image Presets through Canvas Runner for text-to-image, single-image editing, and multi-image editing; "
+            "recommend switching there when the user wants the chat to generate or edit images directly."
         )
         sections.append(_describe_preset_guide_skill())
     else:
@@ -851,6 +954,9 @@ def build_runtime_payload(payload):
         "describe_unload_after_chat": unload_after_chat,
         "describe_creative_preference_style": prompt_options["creative_preferences"]["style"],
         "describe_creative_preference_preset": prompt_options["creative_preferences"]["preset"],
+        "describe_creative_auto_generate": prompt_options["creative_preferences"]["auto_generate"],
+        "describe_media_manifest": prompt_options["media_manifest"],
+        "describe_preset_capabilities": prompt_options["preset_capabilities"],
         "free_after": unload_after_chat,
         "conversation_id": conversation_id,
         "save_context": True,
@@ -1087,7 +1193,78 @@ def _normalize_creative_image_number(value):
     return max(1, min(4, number))
 
 
-def normalize_limited_actions(actions, allow_generation=False, default_generation_preset="Z-imageT"):
+def _normalize_generation_media_refs(value, available_media_refs=None):
+    available = []
+    for item in available_media_refs if isinstance(available_media_refs, list) else []:
+        ref = _clean_text(item.get("ref") if isinstance(item, dict) else item)[:160]
+        media_type = str(item.get("type") or "image").strip().lower() if isinstance(item, dict) else "image"
+        if ref and media_type == "image" and ref not in available:
+            available.append(ref)
+    allowed = set(available)
+    normalized = []
+    raw_refs = value if isinstance(value, list) else []
+    for item in raw_refs:
+        ref = _clean_text(item.get("ref") if isinstance(item, dict) else item)[:160]
+        if ref and ref in allowed and ref not in normalized:
+            normalized.append(ref)
+    return normalized, available
+
+
+def _normalize_generation_task(value, media_refs):
+    task = str(value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "t2i": "text_to_image",
+        "generate": "text_to_image",
+        "edit": "image_edit",
+        "image_to_image": "image_edit",
+        "multi_edit": "multi_image_edit",
+        "multi_image": "multi_image_edit",
+    }
+    task = aliases.get(task, task)
+    if task not in {"text_to_image", "image_edit", "multi_image_edit"}:
+        task = "multi_image_edit" if len(media_refs) > 1 else "image_edit" if media_refs else "text_to_image"
+    if not media_refs:
+        return "text_to_image" if task == "text_to_image" else task
+    return "multi_image_edit" if len(media_refs) > 1 else "image_edit"
+
+
+def _generation_media_limit(preset, preset_capabilities, default=5):
+    capability = _preset_capability_map(preset_capabilities).get(str(preset or "").strip().lower())
+    if not capability:
+        return max(0, min(5, int(default or 5)))
+    try:
+        return max(0, min(5, int(capability.get("max_images") or 0)))
+    except Exception:
+        return 0
+
+
+def _apply_generation_media_limits(actions, available_media_refs=None, preset_capabilities=None):
+    normalized = []
+    _, available = _normalize_generation_media_refs([], available_media_refs)
+    for action in actions or []:
+        if not isinstance(action, dict) or action.get("type") != "generate_image":
+            normalized.append(action)
+            continue
+        item = dict(action)
+        refs, _ = _normalize_generation_media_refs(item.get("media_refs"), available_media_refs)
+        limit = _generation_media_limit(item.get("preset"), preset_capabilities)
+        task = _normalize_generation_task(item.get("task"), refs)
+        if task != "text_to_image" and not refs:
+            refs = available[:limit]
+        refs = refs[:limit]
+        item["media_refs"] = refs
+        item["task"] = _normalize_generation_task(task, refs)
+        normalized.append(item)
+    return normalized
+
+
+def normalize_limited_actions(
+    actions,
+    allow_generation=False,
+    default_generation_preset="Z-imageT",
+    available_media_refs=None,
+    preset_capabilities=None,
+):
     normalized = []
     for item in actions if isinstance(actions, list) else []:
         if not isinstance(item, dict):
@@ -1139,10 +1316,21 @@ def normalize_limited_actions(actions, allow_generation=False, default_generatio
                 "",
                 str(item.get("preset") or item.get("preset_name") or default_generation_preset or "Z-imageT"),
             ).strip()[:120]
+            refs, available = _normalize_generation_media_refs(
+                item.get("media_refs") or item.get("input_refs"),
+                available_media_refs,
+            )
+            task = _normalize_generation_task(item.get("task") or item.get("task_type"), refs)
+            limit = _generation_media_limit(preset, preset_capabilities)
+            if task != "text_to_image" and not refs:
+                refs = available[:limit]
+            refs = refs[:limit]
             normalized.append(
                 {
                     "type": "generate_image",
                     "target": "canvas_run",
+                    "task": _normalize_generation_task(task, refs),
+                    "media_refs": refs,
                     "prompt": prompt_text,
                     "preset": preset or "Z-imageT",
                     "aspect_ratio": _normalize_creative_aspect_ratio(
@@ -1168,7 +1356,15 @@ def normalize_limited_actions(actions, allow_generation=False, default_generatio
     return normalized[:3]
 
 
-def parse_limited_response(text, lang="cn", allow_actions=True, allow_generation=False, default_generation_preset="Z-imageT"):
+def parse_limited_response(
+    text,
+    lang="cn",
+    allow_actions=True,
+    allow_generation=False,
+    default_generation_preset="Z-imageT",
+    available_media_refs=None,
+    preset_capabilities=None,
+):
     if not allow_actions:
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
     data = _extract_json_object(text)
@@ -1178,6 +1374,8 @@ def parse_limited_response(text, lang="cn", allow_actions=True, allow_generation
         data.get("actions"),
         allow_generation=allow_generation,
         default_generation_preset=default_generation_preset,
+        available_media_refs=available_media_refs,
+        preset_capabilities=preset_capabilities,
     )
     if not actions and data.get("prompt"):
         action_type = str(data.get("action") or data.get("type") or "set_prompt").strip()
@@ -1185,6 +1383,8 @@ def parse_limited_response(text, lang="cn", allow_actions=True, allow_generation
             [{**data, "type": action_type, "prompt": data.get("prompt")}],
             allow_generation=allow_generation,
             default_generation_preset=default_generation_preset,
+            available_media_refs=available_media_refs,
+            preset_capabilities=preset_capabilities,
         )
     reply = str(data.get("reply") or data.get("message") or data.get("text") or "").strip()
     if not reply and actions:
@@ -1237,7 +1437,7 @@ def _repair_creative_anima_actions(actions, source_prompt=""):
     ]
 
 
-def _apply_creative_preference_preset(actions, active_preset=""):
+def _apply_creative_preference_preset(actions, active_preset="", preset_capabilities=None):
     preferred_preset = re.sub(r"[\x00-\x1f\x7f]+", "", str(active_preset or "")).strip()[:120]
     normalized = []
     for action in actions or []:
@@ -1248,7 +1448,9 @@ def _apply_creative_preference_preset(actions, active_preset=""):
         if item.get("type") == "set_creative_preference" and item.get("preset"):
             preferred_preset = str(item.get("preset") or "").strip()[:120]
         elif item.get("type") == "generate_image" and preferred_preset:
-            item["preset"] = preferred_preset
+            refs = item.get("media_refs") if isinstance(item.get("media_refs"), list) else []
+            if len(refs) <= _generation_media_limit(preferred_preset, preset_capabilities):
+                item["preset"] = preferred_preset
         normalized.append(item)
     return normalized
 
@@ -1274,6 +1476,51 @@ def apply_prompt_action_payload(payload_text, current_prompt=""):
         separator = "\n" if "\n" in existing or "\n" in prompt_text else ", "
         return f"{existing.rstrip()}{separator}{prompt_text.lstrip()}"
     return prompt_text
+
+
+def _describe_input_media_assets(payload, asset_refs):
+    manifest = _media_manifest_from_payload(payload)
+    refs = asset_refs if isinstance(asset_refs, list) else []
+    allowed_asset_keys = (
+        "kind",
+        "asset_id",
+        "mime",
+        "size",
+        "width",
+        "height",
+        "path",
+        "output_path",
+        "asset_relative_path",
+        "relative_path",
+        "preview_url",
+    )
+    refs_by_source_index = {}
+    for position, asset_ref in enumerate(refs):
+        if not isinstance(asset_ref, dict):
+            continue
+        match = re.search(r":(?:image|video):(\d+)$", str(asset_ref.get("node_id") or ""))
+        source_index = int(match.group(1)) if match else position
+        refs_by_source_index.setdefault(source_index, asset_ref)
+    assets = []
+    for index, item in enumerate(manifest):
+        asset_ref = refs_by_source_index.get(index) or {}
+        if not asset_ref:
+            continue
+        clean_asset = {
+            key: asset_ref.get(key)
+            for key in allowed_asset_keys
+            if asset_ref.get(key) not in (None, "")
+        }
+        assets.append(
+            {
+                "ref": item.get("ref"),
+                "index": item.get("index"),
+                "type": item.get("type"),
+                "name": item.get("name"),
+                "asset": clean_asset,
+            }
+        )
+    return assets
 
 
 def run_describe_vlm_chat(payload):
@@ -1337,11 +1584,19 @@ def run_describe_vlm_chat(payload):
         allow_actions=bool(params.get("describe_actions_enabled")),
         allow_generation=bool(params.get("describe_generation_actions_enabled")),
         default_generation_preset=params.get("describe_creative_preference_preset") or "Z-imageT",
+        available_media_refs=runtime_payload.get("params", {}).get("describe_media_manifest"),
+        preset_capabilities=runtime_payload.get("params", {}).get("describe_preset_capabilities"),
     )
     if params.get("describe_generation_actions_enabled"):
         parsed["actions"] = _apply_creative_preference_preset(
             parsed.get("actions"),
             params.get("describe_creative_preference_preset"),
+            runtime_payload.get("params", {}).get("describe_preset_capabilities"),
+        )
+        parsed["actions"] = _apply_generation_media_limits(
+            parsed.get("actions"),
+            runtime_payload.get("params", {}).get("describe_media_manifest"),
+            runtime_payload.get("params", {}).get("describe_preset_capabilities"),
         )
         parsed["actions"] = _repair_creative_anima_actions(parsed.get("actions"), payload.get("message"))
     result = dict(result)
@@ -1350,5 +1605,6 @@ def run_describe_vlm_chat(payload):
     if result["text"] != original_text and not result.get("raw_text"):
         result["raw_text"] = original_text
     result["limited_actions"] = parsed.get("actions") or []
+    result["input_media_assets"] = _describe_input_media_assets(payload, result.get("asset_refs"))
     result["agent_actions"] = []
     return result

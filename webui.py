@@ -8970,13 +8970,17 @@ with shared.gradio_root:
             gallery_browser_more_btn.click(gallery_util.load_more_main_gallery_browser, inputs=[gallery_browser_folder, image_tools_checkbox, state_topbar], outputs=gallery_browser_outputs, queue=False, show_progress=False, js='(folder,tools,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.more"); state=(typeof beginFinishedGalleryBrowserNativeRequest==="function")?beginFinishedGalleryBrowserNativeRequest("gallery_browser.more",folder,state):state;}catch(e){} return [folder,tools,state];}') \
                 .then(lambda status, x, state: None, inputs=[gallery_browser_status, gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(status,x,state)=>{try{clearSimpleAICompareReadyState("gallery_browser.more"); const applied=(typeof syncFinishedGalleryBrowserAfterNativeLoad==="function")?syncFinishedGalleryBrowserAfterNativeLoad(status,state,"gallery_browser.more"):true; if(applied===false) return; const mode=state && (state.__gallery_engine_type || state.engine_type); syncGalleryMediaSwitch(mode); refresh_finished_images_catalog_label(x, mode, {refresh:false}); traceResultPanelStateSoon("gallery_browser.more");}catch(e){console.warn("[UI-TRACE] gallery_browser_more.dom_trace_failed", e);}}')
             gallery.select(gallery_util.select_gallery, inputs=[gallery_index, image_tools_checkbox, state_topbar, backfill_prompt], outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, prompt, negative_prompt, params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, image_toolbox, state_topbar], show_progress=False) \
+                .then(gallery_util.close_comparison_view_for_gallery_selection, outputs=[comparison_state, comparison_box], queue=False, show_progress=False) \
                 .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"gallery.select"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] gallery_select_compare_sync_failed", e);}}')
-            gallery.preview_open(gallery_util.gallery_preview_open, inputs=[image_tools_checkbox, state_topbar], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False)
-            gallery.preview_close(gallery_util.gallery_preview_close, inputs=state_topbar, outputs=[image_toolbox, state_topbar], queue=False, show_progress=False, js='()=>{try{clearSimpleAICompareReadyState("gallery.preview_close");}catch(e){}}')
+            gallery.preview_open(gallery_util.gallery_preview_open, inputs=[image_tools_checkbox, state_topbar], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False) \
+                .then(gallery_util.gallery_preview_compare_button_update, inputs=[image_tools_checkbox, state_topbar], outputs=compare_btn, queue=False, show_progress=False)
+            gallery.preview_close(gallery_util.gallery_preview_close, inputs=[state_topbar, comparison_state], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False, js='(state,isComp)=>{let keep=!!isComp; try{keep=keep||Number(window.__simpleAIComparisonOpeningUntil||0)>Date.now(); if(!keep&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("gallery.preview_close");}catch(e){} return [state,keep];}')
             progress_gallery.select(gallery_util.select_gallery_progress, inputs=[image_tools_checkbox, state_topbar, backfill_prompt], outputs=[prompt_info_box, prompt_info_close_btn, prompt_info_container, prompt, negative_prompt, params_note_info, params_note_close_button, params_note_input_name, params_note_delete_button, params_note_regen_button, params_note_preset_button, params_note_box, image_toolbox, state_topbar], show_progress=False) \
+                .then(gallery_util.close_comparison_view_for_gallery_selection, outputs=[comparison_state, comparison_box], queue=False, show_progress=False) \
                 .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){state=(typeof mergeSimpleAITopbarSystemParamsForGallery==="function")?mergeSimpleAITopbarSystemParamsForGallery(state,"progress_gallery.select"):state; if(typeof mergeSimpleAITopbarSystemParamsForGallery!=="function"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;}} syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80);}catch(e){console.warn("[UI-TRACE] progress_gallery_select_compare_sync_failed", e);}}')
-            progress_gallery.preview_open(gallery_util.gallery_preview_open, inputs=[image_tools_checkbox, state_topbar], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False)
-            progress_gallery.preview_close(gallery_util.gallery_preview_close, inputs=state_topbar, outputs=[image_toolbox, state_topbar], queue=False, show_progress=False, js='()=>{try{clearSimpleAICompareReadyState("progress_gallery.preview_close");}catch(e){}}')
+            progress_gallery.preview_open(gallery_util.gallery_preview_open, inputs=[image_tools_checkbox, state_topbar], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False) \
+                .then(gallery_util.gallery_preview_compare_button_update, inputs=[image_tools_checkbox, state_topbar], outputs=compare_btn, queue=False, show_progress=False)
+            progress_gallery.preview_close(gallery_util.gallery_preview_close, inputs=[state_topbar, comparison_state], outputs=[image_toolbox, state_topbar], queue=False, show_progress=False, js='(state,isComp)=>{let keep=!!isComp; try{keep=keep||Number(window.__simpleAIComparisonOpeningUntil||0)>Date.now(); if(!keep&&typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("progress_gallery.preview_close");}catch(e){} return [state,keep];}')
 
         load_data_named_outputs = [
             ("progress_window", progress_window),
@@ -9651,6 +9655,31 @@ with shared.gradio_root:
                 first_item = first_item[0]
             return process_image_for_slider(first_item)
 
+        def image_output_paths(value):
+            paths = []
+
+            def collect(item):
+                if item is None:
+                    return
+                if isinstance(item, dict):
+                    for key in ("name", "path", "value", "data"):
+                        collect(item.get(key))
+                    return
+                if isinstance(item, (list, tuple, set)):
+                    for child in item:
+                        collect(child)
+                    return
+                if not isinstance(item, str):
+                    return
+                candidate = item.strip()
+                if not candidate or candidate.lower().endswith((".mp4", ".webm")):
+                    return
+                if candidate not in paths:
+                    paths.append(candidate)
+
+            collect(value)
+            return paths
+
         def describe_slider_image_source(value):
             if value is None:
                 return {"type": "None"}
@@ -9793,9 +9822,12 @@ with shared.gradio_root:
                 )
 
             compare_toolbox_disabled = state_params.get("__image_tools_enabled") is False
+            recoverable_current_source = bool(
+                not compare_toolbox_disabled
+                and gallery_util.restore_post_generation_compare_state(state_params)
+            )
             post_generation_compare_available = bool(
                 state_params.get("__post_generation_has_output")
-                and state_params.get("__post_generation_compare_ready")
                 and state_params.get("__post_generation_compare_visible")
                 and not state_params.get("__post_generation_compare_cleared")
             )
@@ -9823,7 +9855,7 @@ with shared.gradio_root:
                 )
             compare_state_invalid = bool(
                 compare_toolbox_disabled
-                or state_params.get("__post_generation_compare_cleared")
+                or (state_params.get("__post_generation_compare_cleared") and not recoverable_current_source)
             )
             if compare_state_invalid:
                 util.log_ui_trace(
@@ -9863,12 +9895,14 @@ with shared.gradio_root:
                 )
 
             output_img = None
-            
-            # Try to find output image from progress gallery first, then final gallery
-            for output in [gallery_output, final_gallery]:
-                output_img = first_gallery_image_for_slider(output)
-                if output_img is not None:
-                    break
+            if gallery_util.selected_media_is_post_generation_output(state_params) is True:
+                output_img = process_image_for_slider(state_params.get("__selected_gallery_media_path"))
+
+            if output_img is None:
+                for output in [gallery_output, final_gallery]:
+                    output_img = first_gallery_image_for_slider(output)
+                    if output_img is not None:
+                        break
 
             if not output_img:
                 util.log_ui_trace(
@@ -9988,10 +10022,17 @@ with shared.gradio_root:
             state_topbar["__post_generation_video_output"] = bool(video_has_output)
             state_topbar["__post_generation_compare_input_ok"] = bool(compare_input_ok)
             preview_url = _file_url_for_output(task_results) or _file_url_for_output(gallery_output)
+            post_generation_image_paths = image_output_paths(task_results) or image_output_paths(gallery_output)
             if preview_url and not video_has_output:
                 state_topbar["__post_generation_image_url"] = preview_url
+                state_topbar["__post_generation_image_paths"] = post_generation_image_paths
+                gallery_util.set_selected_gallery_media_path(
+                    state_topbar,
+                    post_generation_image_paths[0] if post_generation_image_paths else None,
+                )
             else:
                 state_topbar.pop("__post_generation_image_url", None)
+                state_topbar.pop("__post_generation_image_paths", None)
             if not has_output:
                 state_topbar["gallery_preview_open"] = False
                 state_topbar["__post_generation_compare_visible"] = False
@@ -10039,7 +10080,7 @@ with shared.gradio_root:
             compare_update = compare_button_gr_update(visible=toolbox_visible, ready=compare_ready)
             return compare_update, gr_update(visible=toolbox_visible), state_topbar
 
-        compare_btn.click(toggle_comparison, inputs=[comparison_state, cached_input_image, progress_gallery, gallery, state_topbar, scene_input_image1, scene_canvas_image], outputs=[comparison_state, comparison_box, progress_gallery, gallery, progress_window, progress_video, compare_btn, image_toolbox, state_topbar], show_progress=False, js='(isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas)=>{try{if(!isComp&&typeof preparePostGenerationComparisonSurfaceState==="function"){const prepared=preparePostGenerationComparisonSurfaceState(state,"comparison_click_before"); if(prepared&&typeof prepared==="object") state=prepared;}}catch(e){console.warn("[UI-TRACE] comparison_click_prepare_failed", e);} return [isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas];}') \
+        compare_btn.click(toggle_comparison, inputs=[comparison_state, cached_input_image, progress_gallery, gallery, state_topbar, scene_input_image1, scene_canvas_image], outputs=[comparison_state, comparison_box, progress_gallery, gallery, progress_window, progress_video, compare_btn, image_toolbox, state_topbar], show_progress=False, js='(isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas)=>{try{window.__simpleAIComparisonOpeningUntil=isComp?0:(Date.now()+2500); if(!isComp&&typeof preparePostGenerationComparisonSurfaceState==="function"){const prepared=preparePostGenerationComparisonSurfaceState(state,"comparison_click_before"); if(prepared&&typeof prepared==="object") state=prepared;}}catch(e){console.warn("[UI-TRACE] comparison_click_prepare_failed", e);} return [isComp,input,galleryOutput,finalGallery,state,scene1,sceneCanvas];}') \
             .then(fn=None, inputs=[state_topbar], queue=False, show_progress=False, js='(state)=>{try{if(state&&typeof state==="object"){window.simpleaiTopbarSystemParams=state;if(typeof topbarLastSystemParams!=="undefined")topbarLastSystemParams=state;} if(state&&state.__post_generation_compare_cleared){if(typeof clearSimpleAICompareReadyState==="function") clearSimpleAICompareReadyState("comparison_click_cleared"); syncPostGenerationResultControls(state); setTimeout(()=>syncPostGenerationResultControls(state),80); return;} if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click"); syncPostGenerationResultControls(state); setTimeout(()=>{if(typeof suppressFinishedGalleryWelcomeGuardForComparison==="function") suppressFinishedGalleryWelcomeGuardForComparison("comparison_click+60"); syncPostGenerationResultControls(state);},60); setTimeout(()=>syncPostGenerationResultControls(state),180); setTimeout(()=>syncPostGenerationResultControls(state),420);}catch(e){console.warn("[UI-TRACE] comparison_preview_sync_failed", e);}}')
         protections = [random_button, super_prompter, background_theme, image_tools_checkbox] + nav_bars
         from extras.media_normalize import stash_scene_media_before_generation as _stash_scene_media_before_generation

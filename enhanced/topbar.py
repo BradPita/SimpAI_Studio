@@ -1544,6 +1544,41 @@ def _build_canvas_scene_schema(scene_frontend):
     }
 
 
+def _build_canvas_media_capability(schema, engine_type="image"):
+    schema = schema if isinstance(schema, dict) else {}
+    ordered_image_slots = (
+        "scene_canvas_image",
+        "scene_input_image1",
+        "scene_input_image2",
+        "scene_input_image3",
+        "scene_input_image4",
+    )
+    upload_slots = schema.get("upload_slots") if isinstance(schema.get("upload_slots"), list) else []
+    visible = {
+        str(item.get("key") or ""): item.get("visible") is not False
+        for item in upload_slots
+        if isinstance(item, dict)
+    }
+    image_slots = [slot for slot in ordered_image_slots if visible.get(slot, False)]
+    director = schema.get("director_capability") if isinstance(schema.get("director_capability"), dict) else {}
+    try:
+        declared_max = int(director.get("max_images")) if director.get("max_images") is not None else len(image_slots)
+    except Exception:
+        declared_max = len(image_slots)
+    try:
+        declared_min = int(director.get("min_images")) if director.get("min_images") is not None else 0
+    except Exception:
+        declared_min = 0
+    max_images = max(0, min(len(image_slots), declared_max))
+    min_images = max(0, min(max_images, declared_min))
+    return {
+        "output_type": "video" if str(engine_type or "").strip().lower() == "video" else "image",
+        "image_slots": image_slots[:max_images],
+        "min_images": min_images,
+        "max_images": max_images,
+    }
+
+
 def _build_canvas_lora_defaults(preset_content, backend_params=None):
     backend_params = backend_params if isinstance(backend_params, dict) else {}
     raw_loras = []
@@ -1606,7 +1641,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_prompt_defaults_v2",
+        "canvas_preset_meta_media_capability_v3",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -1757,6 +1792,7 @@ def _build_preset_store_meta(state, copy_cached=True):
             "scene": bool(is_scene),
             "task_method": str(task_method or ""),
             "schema": schema,
+            "media_capability": _build_canvas_media_capability(schema, engine_type),
             "themes": schema.get("themes", []) if isinstance(schema, dict) else [],
             "models_config": models_config,
             "resolution_config": resolution_config,

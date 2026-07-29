@@ -39,7 +39,7 @@
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
     const CONVERSATION_STORAGE_KEY = 'simpai.describeVlmChat.conversation.v1';
     const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
-    const CONVERSATION_VERSION = 6;
+    const CONVERSATION_VERSION = 7;
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
     const MAX_PERSISTED_MESSAGES = 80;
     const MAX_PERSISTED_TEXT = 12000;
@@ -61,6 +61,7 @@
             prompted: !!source.prompted,
             style,
             preset,
+            auto_generate: !!source.auto_generate,
             source: String(source.source || '').trim().slice(0, 80),
             updated_at: String(source.updated_at || '').trim().slice(0, 80)
         };
@@ -200,11 +201,16 @@
     function applyCreativePreferenceToPendingActions(preference = state.creativePreference) {
         const preset = String(preference?.preset || '').trim();
         if (!preset) return;
+        const entry = creativePresetEntry(preset);
         state.messages.forEach((message) => {
             (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
-                if (['awaiting_confirmation', 'models_missing', 'preset_missing'].includes(generationState)) {
+                const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
+                if (
+                    ['awaiting_confirmation', 'models_missing', 'preset_missing'].includes(generationState)
+                    && (inputCount === 0 || (entry && creativePresetMaxImages(entry) >= inputCount))
+                ) {
                     action.preset = preset;
                 }
             });
@@ -212,7 +218,7 @@
     }
 
     function setCreativePreference(value, source = 'user') {
-        const next = normalizeCreativePreference(Object.assign({}, value || {}, {
+        const next = normalizeCreativePreference(Object.assign({}, state.creativePreference || {}, value || {}, {
             prompted: true,
             source,
             updated_at: new Date().toISOString()
@@ -282,6 +288,29 @@
         return normalizeChatMode(mode) === 'prompt';
     }
 
+    function chatModeHint(mode) {
+        const normalized = normalizeChatMode(mode);
+        if (normalized === 'chat') {
+            return t(
+                'For direct image generation or editing, switch to Creative mode. Use Guide Mode for feature recommendations.',
+                '需要直接生成或编辑图片时，请切换到创作模式；功能推荐可使用向导模式。'
+            );
+        }
+        if (normalized === 'creative') {
+            return t(
+                'Generate images directly, or reference one or more images for editing.',
+                '可直接生成图片，也可引用一张或多张图片进行编辑。'
+            );
+        }
+        if (normalized === 'guide') {
+            return t(
+                'Get workflow and Preset recommendations here. Switch to Creative mode to generate or edit images directly.',
+                '用于推荐合适的功能和 Preset；需要直接生成或编辑图片时，请切换到创作模式。'
+            );
+        }
+        return '';
+    }
+
     function syncChatSettingsControls(modal) {
         if (!modal) return;
         const mode = modal.querySelector('[data-describe-vlm-chat-mode]');
@@ -296,7 +325,11 @@
         if (template) syncSystemPromptTemplateControls(modal);
         if (unload) unload.checked = !!state.unloadAfterChat;
         if (autoImage) autoImage.checked = !!state.autoAttachPreviousImage;
-        if (modeHint) modeHint.hidden = state.chatMode !== 'chat';
+        if (modeHint) {
+            const hint = chatModeHint(state.chatMode);
+            modeHint.textContent = hint;
+            modeHint.hidden = !hint;
+        }
         if (input) input.setAttribute('placeholder', chatInputPlaceholder(state.chatMode));
         updateAnswerModelIndicator(modal);
     }
@@ -1621,7 +1654,7 @@
     </select></label>
     <label class="describe-vlm-chat-template-field"><span>${escapeHtml(t('Template', '模板'))}</span><select data-describe-vlm-chat-template aria-label="${escapeHtml(t('System Prompt Template', '系统提示词模板'))}">${renderSystemPromptTemplateOptions()}</select></label>
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
-    <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(t('Free Chat may not know SimpAI main UI workflows. For feature recommendations, switch to Guide Mode.', '自由对话可能不了解 SimpAI 主界面功能；需要功能推荐时可切换到向导模式。'))}</div>
+    <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(chatModeHint(state.chatMode))}</div>
   </div>
   <div class="describe-vlm-chat-chat-area">
     <div class="describe-vlm-chat-preference-mount" data-describe-vlm-chat-preference-mount hidden></div>
@@ -1691,7 +1724,7 @@
     function normalizeCreativeAsset(asset) {
         if (!asset || typeof asset !== 'object') return null;
         const clean = {};
-        ['kind', 'asset_id', 'mime', 'name', 'path', 'output_path', 'preview_url'].forEach((key) => {
+        ['kind', 'asset_id', 'mime', 'name', 'path', 'output_path', 'asset_relative_path', 'relative_path', 'preview_url'].forEach((key) => {
             const value = String(asset?.[key] || '').trim();
             if (value) clean[key] = value.slice(0, MAX_PERSISTED_TEXT);
         });
@@ -1700,6 +1733,20 @@
             if (Number.isFinite(value) && value >= 0) clean[key] = value;
         });
         return clean.asset_id || clean.path || clean.preview_url ? clean : null;
+    }
+
+    function normalizeCreativeMediaInput(input, index = 0) {
+        if (!input || typeof input !== 'object') return null;
+        const asset = normalizeCreativeAsset(input.asset);
+        const ref = String(input.ref || '').trim().slice(0, 160);
+        if (!ref || !asset || !String(asset.mime || '').toLowerCase().startsWith('image/')) return null;
+        return {
+            ref,
+            role: index === 0 ? 'base_image' : `reference_image_${index}`,
+            name: String(input.name || asset.name || `Image ${index + 1}`).trim().slice(0, 200),
+            type: 'image',
+            asset
+        };
     }
 
     function normalizeCreativeGeneration(generation) {
@@ -1734,6 +1781,10 @@
         return {
             type,
             target: 'canvas_run',
+            task: ['image_edit', 'multi_image_edit'].includes(String(action.task || '')) ? String(action.task) : 'text_to_image',
+            media_inputs: Array.isArray(action.media_inputs)
+                ? action.media_inputs.slice(0, MAX_ATTACHMENTS).map(normalizeCreativeMediaInput).filter(Boolean)
+                : [],
             prompt,
             preset: String(action.preset || CREATIVE_DEFAULT_PRESET).slice(0, 200),
             aspect_ratio: String(action.aspect_ratio || 'auto').slice(0, 40),
@@ -2240,16 +2291,48 @@
         }
     }
 
-    function copyChatMessage(messageIndex) {
+    async function writeClipboardText(value) {
+        const text = String(value || '');
+        if (!text) return false;
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {}
+        }
+        const textarea = document.createElement('textarea');
+        const previousFocus = document.activeElement;
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        let copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (err) {}
+        textarea.remove();
+        try {
+            previousFocus?.focus?.();
+        } catch (err) {}
+        return copied;
+    }
+
+    async function copyChatMessage(messageIndex) {
         const message = state.messages[Number(messageIndex)];
         const text = chatMessageText(message);
         if (!text.trim()) {
             setStatus(t('No message text to copy.', '没有可复制的消息文本。'), true);
             return;
         }
-        navigator.clipboard?.writeText(text).then(
-            () => setStatus(t('Message copied.', '消息已复制。')),
-            () => setStatus(t('Copy failed.', '复制失败。'), true)
+        const copied = await writeClipboardText(text);
+        setStatus(
+            copied ? t('Message copied.', '消息已复制。') : t('Copy failed.', '复制失败。'),
+            !copied
         );
     }
 
@@ -2380,6 +2463,41 @@
         return state.creativePresetCatalog.find((entry) => String(entry.name || '').toLowerCase() === wanted) || null;
     }
 
+    function creativePresetImageSlots(entry) {
+        const ordered = ['scene_canvas_image', 'scene_input_image1', 'scene_input_image2', 'scene_input_image3', 'scene_input_image4'];
+        const declared = Array.isArray(entry?.media_capability?.image_slots)
+            ? entry.media_capability.image_slots.map((slot) => String(slot || '')).filter((slot) => ordered.includes(slot))
+            : [];
+        if (declared.length) return ordered.filter((slot) => declared.includes(slot));
+        const slots = Array.isArray(entry?.schema?.upload_slots) ? entry.schema.upload_slots : [];
+        return ordered.filter((key) => slots.some((slot) => String(slot?.key || '') === key && slot?.visible !== false));
+    }
+
+    function creativePresetMaxImages(entry) {
+        const slots = creativePresetImageSlots(entry);
+        const declared = Number(entry?.media_capability?.max_images ?? entry?.schema?.director_capability?.max_images);
+        return Number.isFinite(declared)
+            ? Math.max(0, Math.min(slots.length, Math.round(declared)))
+            : slots.length;
+    }
+
+    function creativePresetMinImages(entry) {
+        const maxImages = creativePresetMaxImages(entry);
+        const declared = Number(entry?.media_capability?.min_images ?? entry?.schema?.director_capability?.min_images);
+        return Number.isFinite(declared)
+            ? Math.max(0, Math.min(maxImages, Math.round(declared)))
+            : 0;
+    }
+
+    function creativePresetCapabilitiesPayload() {
+        return state.creativePresetCatalog.slice(0, 100).map((entry) => ({
+            name: String(entry?.name || ''),
+            min_images: creativePresetMinImages(entry),
+            max_images: creativePresetMaxImages(entry),
+            output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image'
+        })).filter((item) => item.name);
+    }
+
     function creativePresetForStyle(style) {
         if (style !== 'anime') return style === 'realistic' ? CREATIVE_DEFAULT_PRESET : '';
         const entries = state.creativePresetCatalog;
@@ -2435,6 +2553,7 @@
       <button type="button" class="${initiative.mode === 'proactive' ? 'is-active' : ''}" data-describe-vlm-chat-initiative="proactive" aria-pressed="${initiative.mode === 'proactive' ? 'true' : 'false'}"><i class="fa-solid fa-lightbulb"></i><span>${escapeHtml(localText('Suggest scenes', '主动提议'))}</span></button>
     </div>
   </div>
+  <label class="describe-vlm-chat-auto-generate"><input type="checkbox" data-describe-vlm-chat-auto-generate ${preference.auto_generate ? 'checked' : ''}><span>${escapeHtml(localText('Generate without confirmation', '无需确认，直接生成'))}</span></label>
 </div>`;
     }
 
@@ -2473,6 +2592,16 @@
         if (!action || typeof action !== 'object') return { state: 'awaiting_confirmation', assets: [] };
         action.type = action.type === 'offer_image' ? 'offer_image' : 'generate_image';
         action.target = 'canvas_run';
+        action.media_inputs = (Array.isArray(action.media_inputs) ? action.media_inputs : [])
+            .slice(0, MAX_ATTACHMENTS)
+            .map(normalizeCreativeMediaInput)
+            .filter(Boolean);
+        const requestedTask = String(action.task || '').trim().toLowerCase();
+        action.task = action.media_inputs.length > 1
+            ? 'multi_image_edit'
+            : action.media_inputs.length === 1
+                ? 'image_edit'
+                : (['image_edit', 'multi_image_edit'].includes(requestedTask) ? requestedTask : 'text_to_image');
         action.preset = String(action.preset || CREATIVE_DEFAULT_PRESET).trim() || CREATIVE_DEFAULT_PRESET;
         action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
         action.image_number = Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1)));
@@ -2485,7 +2614,37 @@
         return action.generation;
     }
 
-    function prepareAssistantActions(actions, mode) {
+    function clampCreativeActionMediaInputs(action, entry = creativePresetEntry(action?.preset)) {
+        if (!action || typeof action !== 'object') return [];
+        const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
+        action.media_inputs = (Array.isArray(action.media_inputs) ? action.media_inputs : [])
+            .slice(0, Math.max(0, maxImages))
+            .map(normalizeCreativeMediaInput)
+            .filter(Boolean);
+        action.media_inputs.forEach((input, index) => {
+            input.role = index === 0 ? 'base_image' : `reference_image_${index}`;
+        });
+        if (action.media_inputs.length > 1) action.task = 'multi_image_edit';
+        else if (action.media_inputs.length === 1) action.task = 'image_edit';
+        else if (!['image_edit', 'multi_image_edit'].includes(String(action.task || ''))) action.task = 'text_to_image';
+        return action.media_inputs;
+    }
+
+    function creativeMediaAssetSource(input) {
+        const normalized = normalizeCreativeMediaInput(input);
+        if (!normalized) return null;
+        return {
+            node_id: `describe_vlm_chat_media:${normalized.ref}`,
+            type: 'image',
+            title: normalized.name,
+            asset: Object.assign({}, normalized.asset),
+            mask: null,
+            source: { kind: 'describe_vlm_chat' }
+        };
+    }
+
+    function prepareAssistantActions(actions, mode, inputMediaAssets = []) {
+        const mediaByRef = new Map((Array.isArray(inputMediaAssets) ? inputMediaAssets : []).map((item) => [String(item?.ref || ''), item]));
         const prepared = [];
         (Array.isArray(actions) ? actions : []).forEach((raw) => {
             if (!raw || typeof raw !== 'object') return null;
@@ -2504,9 +2663,18 @@
                 prepared.push({ type: 'set_prompt', target: 'main_prompt', prompt: String(action.prompt || ''), label: String(action.label || '') });
                 return;
             }
+            const requestedRefs = Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
             const preferredPreset = String(state.creativePreference?.preset || '').trim();
-            if (preferredPreset) action.preset = preferredPreset;
+            const preferredEntry = creativePresetEntry(preferredPreset);
+            if (preferredPreset && (!preferredEntry || creativePresetMaxImages(preferredEntry) >= requestedRefs.length)) {
+                action.preset = preferredPreset;
+            }
+            action.media_inputs = requestedRefs.map((ref, index) => {
+                const resolved = mediaByRef.get(ref);
+                return resolved ? normalizeCreativeMediaInput(resolved, index) : null;
+            }).filter(Boolean);
             creativeGenerationForAction(action);
+            clampCreativeActionMediaInputs(action);
             prepared.push(action);
         });
         return prepared.filter((action) => action && String(action.prompt || '').trim());
@@ -2733,6 +2901,37 @@
         }
     }
 
+    function renderCreativeMediaInputs(action, actionRef, disabled = '') {
+        const inputs = clampCreativeActionMediaInputs(action);
+        const entry = creativePresetEntry(action?.preset);
+        const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
+        if (!inputs.length) {
+            return ['image_edit', 'multi_image_edit'].includes(String(action?.task || ''))
+                ? `<div class="describe-vlm-chat-generation-media-empty"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(localText('The editing source is unavailable. Attach the image again.', '编辑素材不可用，请重新引用图片。'))}</span></div>`
+                : '';
+        }
+        const countLabel = localText(`${inputs.length} / ${maxImages} input images`, `${inputs.length} / ${maxImages} 张输入图片`);
+        return `<div class="describe-vlm-chat-generation-media">
+  <div class="describe-vlm-chat-generation-media-head"><span>${escapeHtml(localText('Input images', '输入图片'))}</span><b>${escapeHtml(countLabel)}</b></div>
+  <div class="describe-vlm-chat-generation-media-list">${inputs.map((input, index) => {
+            const preview = creativeAssetUrl(input?.asset?.preview_url);
+            const roleLabel = index === 0 ? localText('Base image', '主体图') : localText(`Reference ${index}`, `参考图 ${index}`);
+            const moveLeft = localText('Move image left', '向左移动图片');
+            const moveRight = localText('Move image right', '向右移动图片');
+            const remove = localText('Remove input image', '移除输入图片');
+            return `<div class="describe-vlm-chat-generation-media-item">
+  ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(roleLabel)}" loading="lazy">` : '<i class="fa-solid fa-image"></i>'}
+  <span><b>${escapeHtml(roleLabel)}</b><small>${escapeHtml(input.name || `Image ${index + 1}`)}</small></span>
+  <div>
+    <button type="button" data-describe-vlm-chat-media-move="-1" data-describe-vlm-chat-media-ref="${escapeHtml(actionRef)}" data-describe-vlm-chat-media-index="${index}" title="${escapeHtml(moveLeft)}" aria-label="${escapeHtml(moveLeft)}" ${disabled || index === 0 ? 'disabled' : ''}><i class="fa-solid fa-arrow-left"></i></button>
+    <button type="button" data-describe-vlm-chat-media-move="1" data-describe-vlm-chat-media-ref="${escapeHtml(actionRef)}" data-describe-vlm-chat-media-index="${index}" title="${escapeHtml(moveRight)}" aria-label="${escapeHtml(moveRight)}" ${disabled || index === inputs.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-arrow-right"></i></button>
+    <button type="button" data-describe-vlm-chat-media-remove data-describe-vlm-chat-media-ref="${escapeHtml(actionRef)}" data-describe-vlm-chat-media-index="${index}" title="${escapeHtml(remove)}" aria-label="${escapeHtml(remove)}" ${disabled}><i class="fa-solid fa-xmark"></i></button>
+  </div>
+</div>`;
+        }).join('')}</div>
+</div>`;
+    }
+
     function renderCreativeGenerationAction(action, actionRef) {
         const generation = creativeGenerationForAction(action);
         const currentState = String(generation.state || 'awaiting_confirmation').toLowerCase();
@@ -2765,7 +2964,13 @@
             visual_reveal: localText('Visual reveal', '关键揭示'),
             character_moment: localText('Character moment', '角色时刻')
         };
-        const cardTitle = offered ? localText('I want to draw this moment', '我想画下这一幕') : localText('Image generation', '生图');
+        const cardTitle = offered
+            ? localText('I want to draw this moment', '我想画下这一幕')
+            : action.task === 'multi_image_edit'
+                ? localText('Multi-image edit', '多图编辑')
+                : action.task === 'image_edit'
+                    ? localText('Image edit', '图片编辑')
+                    : localText('Image generation', '生图');
         const offerReason = offered ? offerReasonLabels[String(action.offer_reason || '')] || '' : '';
         const offerNote = offered && String(action.offer_text || '').trim()
             ? `<p class="describe-vlm-chat-offer-note">${escapeHtml(action.offer_text)}</p>`
@@ -2776,6 +2981,7 @@
   <div class="describe-vlm-chat-generation-title"><i class="fa-solid ${offered ? 'fa-clapperboard' : 'fa-wand-magic-sparkles'}"></i><span>${escapeHtml(cardTitle)}</span>${headerStatus ? `<b>${escapeHtml(headerStatus)}</b>` : ''}${offered && !active ? `<button type="button" data-describe-vlm-chat-offer-dismiss="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}" aria-label="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}"><i class="fa-solid fa-xmark"></i></button>` : ''}<button type="button" data-describe-vlm-chat-generation-collapse="${escapeHtml(actionRef)}" title="${escapeHtml(collapseTitle)}" aria-label="${escapeHtml(collapseTitle)}" aria-expanded="${collapsed ? 'false' : 'true'}"><i class="fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i></button></div>
   <div class="describe-vlm-chat-generation-body" ${collapsed ? 'hidden' : ''}>
   ${offerNote}
+  ${renderCreativeMediaInputs(action, actionRef, disabled)}
   <label class="describe-vlm-chat-generation-prompt"><span>${escapeHtml(localText('Prompt', '提示词'))}</span><textarea rows="4" data-describe-vlm-chat-generation-prompt="${escapeHtml(actionRef)}" ${disabled}>${escapeHtml(prompt)}</textarea></label>
   <div class="describe-vlm-chat-generation-options">
     <label><span>Preset</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
@@ -2811,6 +3017,31 @@
         found.action.aspect_ratio = String(card.querySelector('[data-describe-vlm-chat-generation-aspect]')?.value || found.action.aspect_ratio || 'auto');
         found.action.image_number = Math.max(1, Math.min(4, Math.round(Number(card.querySelector('[data-describe-vlm-chat-generation-count]')?.value || found.action.image_number || 1))));
         return found;
+    }
+
+    function moveCreativeActionMediaInput(ref, index, delta) {
+        const found = syncCreativeActionFromDom(ref);
+        if (!found) return false;
+        const inputs = Array.isArray(found.action.media_inputs) ? found.action.media_inputs : [];
+        const from = Number(index);
+        const to = from + Number(delta);
+        if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= inputs.length || to >= inputs.length) return false;
+        [inputs[from], inputs[to]] = [inputs[to], inputs[from]];
+        clampCreativeActionMediaInputs(found.action);
+        persistCreativeAction(true);
+        return true;
+    }
+
+    function removeCreativeActionMediaInput(ref, index) {
+        const found = syncCreativeActionFromDom(ref);
+        if (!found) return false;
+        const inputs = Array.isArray(found.action.media_inputs) ? found.action.media_inputs : [];
+        const target = Number(index);
+        if (!Number.isInteger(target) || target < 0 || target >= inputs.length) return false;
+        inputs.splice(target, 1);
+        clampCreativeActionMediaInputs(found.action);
+        persistCreativeAction(true);
+        return true;
     }
 
     function persistCreativeAction(render = true) {
@@ -2913,6 +3144,19 @@
         });
     }
 
+    function autoStartCreativeActionsForMessage(messageId) {
+        if (!state.creativePreference.auto_generate) return;
+        const messageIndex = state.messages.findIndex((message) => String(message?.id || '') === String(messageId || ''));
+        if (messageIndex < 0) return;
+        const actions = Array.isArray(state.messages[messageIndex]?.actions) ? state.messages[messageIndex].actions : [];
+        actions.forEach((action, actionIndex) => {
+            if (action?.type !== 'generate_image') return;
+            const generation = creativeGenerationForAction(action);
+            if (String(generation.state || 'awaiting_confirmation').toLowerCase() !== 'awaiting_confirmation') return;
+            startCreativeGeneration(`${messageIndex}:${actionIndex}`);
+        });
+    }
+
     function stopCreativePolls() {
         state.creativeGenerationPolls.forEach((timer) => window.clearTimeout(timer));
         state.creativeGenerationPolls.clear();
@@ -2960,6 +3204,32 @@
             return;
         }
         action.preset = entry.name;
+        const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
+        const mediaInputs = clampCreativeActionMediaInputs(action, entry);
+        const minImages = creativePresetMinImages(entry);
+        if (['image_edit', 'multi_image_edit'].includes(String(action.task || '')) && !mediaInputs.length) {
+            action.generation.state = 'failed';
+            action.generation.error = imageSlots.length
+                ? localText('The source image is unavailable. Reference the image and send the edit request again.', '编辑源图不可用，请重新引用图片并发送编辑需求。')
+                : localText('This Preset does not accept image input. Choose an image-editing Preset.', '这个 Preset 不接收图片，请选择图片编辑 Preset。');
+            persistCreativeAction(true);
+            return;
+        }
+        if (mediaInputs.length < minImages) {
+            action.generation.state = 'failed';
+            action.generation.error = localText(
+                `This Preset requires at least ${minImages} input images.`,
+                `这个 Preset 至少需要 ${minImages} 张输入图片。`
+            );
+            persistCreativeAction(true);
+            return;
+        }
+        const assetSources = {};
+        mediaInputs.forEach((input, index) => {
+            const source = creativeMediaAssetSource(input);
+            const slot = imageSlots[index];
+            if (source && slot) assetSources[slot] = source;
+        });
         const api = creativeCanvasApi();
         const presetNode = api?.buildPresetRunNode?.(entry, {
             id: `describe_vlm_chat_preset_${action.tool_call_id}`,
@@ -2973,6 +3243,11 @@
             persistCreativeAction(true);
             return;
         }
+        presetNode.upload_slot_sources = Object.assign({}, presetNode.upload_slot_sources || {}, assetSources);
+        presetNode.upload_slots = Object.assign({}, presetNode.upload_slots || {});
+        Object.entries(assetSources).forEach(([slot, source]) => {
+            presetNode.upload_slots[slot] = String(source?.node_id || '');
+        });
         const modelStatus = await api.presetModelStatus({
             project_id: 'describe_vlm_chat',
             preset_node: presetNode,
@@ -3008,7 +3283,7 @@
             upload_edges: [],
             config_edges: [],
             text_edges: [],
-            asset_sources: {},
+            asset_sources: assetSources,
             user_context: creativeUserContext(),
             result_asset_scope: 'gallery',
             client_context: {
@@ -3571,6 +3846,10 @@
         const modelReady = await ensureSelectedVlmModelReady(version);
         if (requestToken !== state.requestToken) return;
         if (!modelReady) return;
+        if (selectedMode === 'creative') {
+            await ensureCreativePresetCatalog();
+            if (requestToken !== state.requestToken) return;
+        }
 
         state.busy = true;
         syncBusyControls(modal);
@@ -3615,14 +3894,15 @@
             ));
         }
 
-        state.messages.push({
+        const userMessage = {
             id: uid('describe_vlm_chat_user'),
             role: 'user',
             content: message,
             image_count: images.length,
             images: images.map(imageSummary),
             _image_payloads: images.filter((image) => mediaKind(image) === 'image')
-        });
+        };
+        state.messages.push(userMessage);
         state.messages.push({ id: uid('describe_vlm_chat_assistant'), role: 'assistant', content: t('Thinking', '思考中'), pending: true });
         renderMessages();
 
@@ -3653,6 +3933,7 @@
             free_after: !!state.unloadAfterChat,
             prompt_options: readDescribePromptOptions(),
             creative_preferences: normalizeCreativePreference(state.creativePreference),
+            preset_capabilities: selectedMode === 'creative' ? creativePresetCapabilitiesPayload() : [],
             lang: state.__lang
         };
         const response = await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
@@ -3678,9 +3959,12 @@
             role: 'assistant',
             content: reply,
             actions: response?.ok && Array.isArray(response.limited_actions)
-                ? prepareAssistantActions(response.limited_actions, selectedMode)
+                ? prepareAssistantActions(response.limited_actions, selectedMode, response.input_media_assets)
                 : []
         };
+        userMessage.media_assets = Array.isArray(response?.input_media_assets)
+            ? response.input_media_assets.map(normalizeCreativeMediaInput).filter(Boolean)
+            : [];
         if (pendingIndex >= 0) state.messages[pendingIndex] = assistant;
         else state.messages.push(assistant);
         if (response?.conversation_id) state.conversationId = response.conversation_id;
@@ -3693,6 +3977,9 @@
         state.persistenceDirty = true;
         saveConversationSnapshot();
         renderMessages();
+        if (response?.ok && selectedMode === 'creative' && state.creativePreference.auto_generate) {
+            window.setTimeout(() => autoStartCreativeActionsForMessage(assistant.id), 0);
+        }
         if (!response?.ok) {
             setStatus(reply, true);
         } else if (estimatedUploadBytes > 0) {
@@ -3856,6 +4143,23 @@
             }
             return;
         }
+        const mediaMove = evt.target.closest('[data-describe-vlm-chat-media-move]');
+        if (mediaMove) {
+            moveCreativeActionMediaInput(
+                mediaMove.getAttribute('data-describe-vlm-chat-media-ref'),
+                mediaMove.getAttribute('data-describe-vlm-chat-media-index'),
+                mediaMove.getAttribute('data-describe-vlm-chat-media-move')
+            );
+            return;
+        }
+        const mediaRemove = evt.target.closest('[data-describe-vlm-chat-media-remove]');
+        if (mediaRemove) {
+            removeCreativeActionMediaInput(
+                mediaRemove.getAttribute('data-describe-vlm-chat-media-ref'),
+                mediaRemove.getAttribute('data-describe-vlm-chat-media-index')
+            );
+            return;
+        }
         const offerDismiss = evt.target.closest('[data-describe-vlm-chat-offer-dismiss]');
         if (offerDismiss) {
             dismissCreativeOffer(offerDismiss.getAttribute('data-describe-vlm-chat-offer-dismiss'));
@@ -3900,20 +4204,46 @@
         }
         const copy = evt.target.closest('[data-describe-vlm-chat-copy]');
         if (copy) {
-            const action = actionFromRef(copy.getAttribute('data-describe-vlm-chat-copy'));
-            if (action?.prompt) navigator.clipboard?.writeText(action.prompt).catch(() => {});
-            setStatus(t('Prompt copied.', '提示词已复制。'));
+            const ref = copy.getAttribute('data-describe-vlm-chat-copy');
+            const found = syncCreativeActionFromDom(ref);
+            const action = found?.action || actionFromRef(ref);
+            writeClipboardText(action?.prompt).then((copied) => {
+                setStatus(
+                    copied ? t('Prompt copied.', '提示词已复制。') : t('Copy failed.', '复制失败。'),
+                    !copied
+                );
+            });
+            return;
         }
     });
 
     document.addEventListener('change', (evt) => {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-auto-generate]')) {
+            setCreativePreference({ auto_generate: !!evt.target.checked }, 'preference_card');
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-preference-preset]')) {
             syncCreativePreferenceApplyButton();
             return;
         }
-        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-preset], [data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt]')) {
-            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-preset')
-                || evt.target.getAttribute('data-describe-vlm-chat-generation-aspect')
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-preset]')) {
+            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-preset');
+            const before = creativeActionFromRef(ref)?.action?.media_inputs?.length || 0;
+            const found = syncCreativeActionFromDom(ref);
+            if (found) {
+                const after = clampCreativeActionMediaInputs(found.action, creativePresetEntry(found.action.preset)).length;
+                persistCreativeAction(true);
+                if (after < before) {
+                    setStatus(localText(
+                        `This Preset accepts ${after} input images; extra references were removed.`,
+                        `这个 Preset 支持 ${after} 张输入图片，多余引用已移除。`
+                    ));
+                }
+            }
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt]')) {
+            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-aspect')
                 || evt.target.getAttribute('data-describe-vlm-chat-generation-count')
                 || evt.target.getAttribute('data-describe-vlm-chat-generation-prompt');
             syncCreativeActionFromDom(ref);

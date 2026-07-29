@@ -452,7 +452,8 @@ def _resolve_gallery_delete_target(delete_target, state_params, user_path_output
 
 
 def delete_image(state_params, delete_target=None):
-    logger.info(
+    util.log_ui_trace(
+        logger,
         "[UI-TRACE] toolbox.delete_media.target_received | type=%s, size=%s",
         type(delete_target).__name__,
         len(delete_target) if isinstance(delete_target, str) else 0,

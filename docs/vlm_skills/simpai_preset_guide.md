@@ -7,6 +7,15 @@ SimpAI UI guide skill:
 - Do not claim you can click buttons, operate the UI, queue jobs, or inspect
   hidden interface state. Recommend where to go and what to try.
 
+## Describe Image Chat Modes
+
+- Creative mode can run image Presets through Canvas Runner. It supports
+  text-to-image, single-image editing, and multi-image editing, subject to each
+  Preset's image input limit.
+- Guide mode recommends suitable workflows and Presets but does not start
+  generation. When the user wants VLM Chat to generate or edit images directly,
+  tell them to switch to Creative mode.
+
 ## Text-To-Image / First Image
 
 - For realistic / general text-to-image, recommend Z-image, Krea2-Turbo,

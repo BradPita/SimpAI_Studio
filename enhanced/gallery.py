@@ -21,6 +21,7 @@ from lxml import etree
 import logging
 import threading
 import time
+from urllib.parse import unquote, urlparse
 from PIL import Image, ImageDraw, ImageOps
 from enhanced.logger import format_name
 from ui.update_helpers import dropdown_update, gr_update, skip_update
@@ -639,6 +640,7 @@ def clear_post_generation_output_state(state_params):
         "__post_generation_has_output",
         "__post_generation_gallery_output",
         "__post_generation_video_output",
+        "__post_generation_image_paths",
     ):
         state_params.pop(key, None)
     return state_params
@@ -709,6 +711,74 @@ def set_selected_gallery_media_path(state_params, media_path):
     return None
 
 
+def _gallery_media_path_identity(media_path):
+    if not isinstance(media_path, str) or not media_path.strip():
+        return ""
+    text = unquote(media_path.strip()).replace("\\", "/")
+    if "://" in text:
+        try:
+            parsed = urlparse(text)
+            text = unquote(parsed.path or text)
+        except Exception:
+            pass
+    for marker in ("/gradio_api/file=", "/file="):
+        marker_index = text.find(marker)
+        if marker_index >= 0:
+            text = text[marker_index + len(marker):]
+            break
+    if re.match(r"^/[A-Za-z]:/", text):
+        text = text[1:]
+    try:
+        return os.path.normcase(os.path.abspath(text.replace("/", os.sep)))
+    except Exception:
+        return os.path.normcase(text)
+
+
+def selected_media_is_post_generation_output(state_params):
+    if not isinstance(state_params, dict):
+        return False
+    current_paths = state_params.get("__post_generation_image_paths")
+    if not isinstance(current_paths, (list, tuple)) or not current_paths:
+        return None
+    selected_identity = _gallery_media_path_identity(state_params.get("__selected_gallery_media_path"))
+    if not selected_identity:
+        return None
+    return any(
+        selected_identity == _gallery_media_path_identity(path)
+        for path in current_paths
+    )
+
+
+def post_generation_compare_source_is_current(state_params):
+    if not isinstance(state_params, dict):
+        return False
+    if not state_params.get("__post_generation_has_output"):
+        return False
+    if not state_params.get("__post_generation_gallery_output"):
+        return False
+    if state_params.get("__post_generation_video_output"):
+        return False
+    selected_is_current = selected_media_is_post_generation_output(state_params)
+    if state_params.get("__post_generation_image_paths"):
+        return selected_is_current is True
+    return selected_is_current is not False
+
+
+def restore_post_generation_compare_state(state_params):
+    if not post_generation_compare_source_is_current(state_params):
+        return False
+    state_params["__post_generation_compare_visible"] = True
+    state_params["__post_generation_compare_cleared"] = False
+    return True
+
+
+def sync_post_generation_compare_for_selected_media(state_params):
+    selected_is_current = selected_media_is_post_generation_output(state_params)
+    if selected_is_current is False:
+        clear_post_generation_result_state(state_params)
+    return selected_is_current
+
+
 def get_selected_gallery_media_metadata(state_params):
     if not isinstance(state_params, dict):
         return None
@@ -756,10 +826,33 @@ def gallery_preview_open(image_tools_checkbox, state_params):
     return gr_update(visible=_should_show_image_toolbox(image_tools_checkbox, state_params)), state_params
 
 
-def gallery_preview_close(state_params):
+def close_comparison_view_for_gallery_selection():
+    return False, gr_update(visible=False)
+
+
+def gallery_preview_compare_button_update(image_tools_checkbox, state_params):
     state_params = state_params or {}
+    visible = _should_show_image_toolbox(image_tools_checkbox, state_params)
+    ready = bool(
+        visible
+        and state_params.get("__post_generation_has_output")
+        and state_params.get("__post_generation_compare_ready")
+        and state_params.get("__post_generation_compare_visible")
+        and not state_params.get("__post_generation_compare_cleared")
+    )
+    return gr_update(
+        visible=visible,
+        interactive=ready,
+        variant="primary" if ready else "secondary",
+    )
+
+
+def gallery_preview_close(state_params, comparison_active=False):
+    state_params = state_params or {}
+    if comparison_active:
+        state_params["gallery_preview_open"] = True
+        return skip_update(), state_params
     state_params["gallery_preview_open"] = False
-    clear_post_generation_compare_state(state_params)
     return gr_update(visible=False), state_params
 
 
@@ -1368,6 +1461,7 @@ def images_list_update(choice, image_tools_checkbox, state_params):
         gallery_result = [gr_update(value=None, visible=False), gr_update(visible=False)]
     state_params.update({"prompt_info": [choice, 0]})
     remember_selected_gallery_media_path(choice, 0, state_params)
+    sync_post_generation_compare_for_selected_media(state_params)
 
     infobox_state = state_params.get("infobox_state", False)
     try:
@@ -2306,6 +2400,7 @@ def select_gallery(choice, image_tools_checkbox, state_params, backfill_prompt, 
         choice = state_params["__output_list"][0]
     state_params.update({"prompt_info": [choice, selected_index]})
     remember_selected_gallery_media_path(choice, selected_index, state_params)
+    sync_post_generation_compare_for_selected_media(state_params)
     result = get_images_prompt(choice, selected_index, state_params["__max_per_page"], True, state_params["user"].get_did(), media_type="image")
     prompt_value = _metadata_prompt_value(result, "Prompt", "prompt")
     negative_value = _metadata_prompt_value(result, "Negative Prompt", "negative_prompt")
@@ -2375,6 +2470,7 @@ def select_gallery_progress(image_tools_checkbox, state_params, backfill_prompt,
 
     state_params.update({"prompt_info": [choice, selected_index]})
     remember_selected_gallery_media_path(choice, selected_index, state_params)
+    sync_post_generation_compare_for_selected_media(state_params)
     result = get_images_prompt(choice, selected_index, state_params["__max_per_page"], user_did=state_params["user"].get_did(), media_type=get_gallery_engine_type(state_params))
 
     infobox_state = state_params.get("infobox_state", False)
