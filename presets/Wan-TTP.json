@@ -10,8 +10,8 @@
             "theme_title": "Use SeedVR2 + Wan for tiled TTP upscaling",
             "disable_canvas_mask": true,
             "disvisible": ["scene_input_image1", "scene_additional_prompt","scene_additional_prompt_2","scene_input_image2","scene_aspect_ratio", "scene_video", "scene_audio",
-                "scene_steps", "scene_refiner_model", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
-                    ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
+                "scene_steps", "scene_refiner_model", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
+                    ,"scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "task_method": {
                 "Wan_TTP_Hires.Upscale": "wan_ttp_cn"
             },
@@ -44,6 +44,20 @@
             "var_number4": {
                 "Wan_TTP_Hires.Upscale": 0
             },
+            "var_number5_title": "Latent detail strength",
+            "var_number5_min": 0.0,
+            "var_number5_max": 1.0,
+            "var_number5_step": 0.01,
+            "var_number5": {
+                "Wan_TTP_Hires.Upscale": 0.5
+            },
+            "var_number6_title": "Latent texture strength",
+            "var_number6_min": 0.0,
+            "var_number6_max": 1.0,
+            "var_number6_step": 0.01,
+            "var_number6": {
+                "Wan_TTP_Hires.Upscale": 0.5
+            },
             "switch_option1_title": "FlashAttention [Disable on RTX 20 series and below]",
             "switch_option1": {
                 "Wan_TTP_Hires.Upscale": true
@@ -51,6 +65,10 @@
             "switch_option2_title": "Use 2x VAE Decode",
             "switch_option2": {
                 "Wan_TTP_Hires.Upscale": false
+            },
+            "switch_option3_title": "Use latent detail sampler",
+            "switch_option3": {
+                "Wan_TTP_Hires.Upscale": true
             },
             "aspect_ratio": ["origin|Original"],
             "resolution_control": {
@@ -76,7 +94,7 @@
     "default_loras": [
         [
             "Bernini-R_LightX2V_low_noise.safetensors",
-            1.0
+            2.0
         ],
         [
             "None",

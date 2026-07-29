@@ -14,6 +14,7 @@ import modules.constants as constants
 import modules.flags as flags
 from modules import canvas_workbench_assets
 from modules import canvas_workbench_director
+from modules.access_mode import user_can_generate
 
 try:
     import simpleai_base.api_params as api_params
@@ -55,6 +56,41 @@ TERMINAL_RUN_STATES = ("finished", "failed", "canceled", "skipped")
 PREVIEW_STREAM_MAX_FRAMES = 128
 PREVIEW_STREAM_DELTA_MAX_FRAMES = 64
 PREVIEW_STREAM_FPS = 8
+
+
+def _normalize_client_context(value):
+    source = value if isinstance(value, dict) else {}
+    result = {}
+    limits = {
+        "surface": 80,
+        "conversation_id": 240,
+        "message_id": 240,
+        "tool_call_id": 240,
+        "source_message_id": 240,
+        "scene_key": 160,
+        "offer_reason": 80,
+    }
+    for key, limit in limits.items():
+        text = str(source.get(key) or "").strip()
+        if text:
+            result[key] = text[:limit]
+    return result
+
+
+def _run_record_owner(record):
+    if not isinstance(record, dict):
+        return ""
+    owner = str(record.get("owner_user_did") or "").strip()
+    if owner:
+        return owner
+    task = record.get("task")
+    return str(getattr(task, "user_did", None) or "").strip()
+
+
+def _run_record_owned_by(record, identity):
+    owner = _run_record_owner(record)
+    user_did = str((identity or {}).get("user_did") or "").strip()
+    return bool(owner and user_did and owner == user_did)
 
 
 def _iso_from_ts(value):
@@ -2014,24 +2050,25 @@ def _output_asset(value, record=None):
     if isinstance(value, str):
         name = os.path.basename(value)
         asset_ref = None
-        try:
-            task = record.get("task") if isinstance(record, dict) else None
-            asset_ref = canvas_workbench_assets.register_existing_file_asset(
-                value,
-                (record or {}).get("project_id") or "default",
-                (record or {}).get("state_params") if isinstance((record or {}).get("state_params"), dict) else {},
-                node_id=(record or {}).get("placeholder_node_id") or "",
-                role="output",
-                metadata={"owner": getattr(task, "user_did", None) or ""},
-            )
-            if asset_ref and isinstance(record, dict) and asset_ref.get("copied_to_assets"):
-                _add_run_event(record, "info", "Output copied into canvas asset directory.", {
-                    "asset_id": asset_ref.get("asset_id"),
-                    "path": asset_ref.get("path"),
-                    "output_path": asset_ref.get("output_path"),
-                })
-        except Exception:
-            asset_ref = None
+        if not (isinstance(record, dict) and record.get("result_asset_scope") == "gallery"):
+            try:
+                task = record.get("task") if isinstance(record, dict) else None
+                asset_ref = canvas_workbench_assets.register_existing_file_asset(
+                    value,
+                    (record or {}).get("project_id") or "default",
+                    (record or {}).get("state_params") if isinstance((record or {}).get("state_params"), dict) else {},
+                    node_id=(record or {}).get("placeholder_node_id") or "",
+                    role="output",
+                    metadata={"owner": getattr(task, "user_did", None) or ""},
+                )
+                if asset_ref and isinstance(record, dict) and asset_ref.get("copied_to_assets"):
+                    _add_run_event(record, "info", "Output copied into canvas asset directory.", {
+                        "asset_id": asset_ref.get("asset_id"),
+                        "path": asset_ref.get("path"),
+                        "output_path": asset_ref.get("output_path"),
+                    })
+            except Exception:
+                asset_ref = None
         if not asset_ref:
             asset_ref = {
                 "kind": "generated_file",
@@ -2041,7 +2078,7 @@ def _output_asset(value, record=None):
                 "name": name,
             }
         preview_path = asset_ref.get("path") or value
-        asset_ref["preview_url"] = f"/file={quote(preview_path, safe=':/')}" if os.path.exists(preview_path) else ""
+        asset_ref["preview_url"] = f"/gradio_api/file={quote(preview_path, safe=':/')}" if os.path.exists(preview_path) else ""
         asset_ref["name"] = asset_ref.get("name") or name
         return asset_ref
     data_url = _image_like_to_data_url(value)
@@ -2246,6 +2283,8 @@ def _public_run_record(record, after_preview_serial=None):
         "input_count": record.get("input_count"),
         "output_count": len(record.get("assets") or []),
         "events": record.get("events") or [],
+        "result_asset_scope": record.get("result_asset_scope") or "canvas",
+        "client_context": copy.deepcopy(record.get("client_context") or {}),
         "created_at": _iso_from_ts(record.get("created_ts")),
         "updated_at": _iso_from_ts(record.get("updated_ts")),
         "finished_at": _iso_from_ts(record.get("finished_ts")),
@@ -2294,10 +2333,56 @@ def run_node(payload, state_params):
     if not isinstance(payload, dict):
         return {"ok": False, "error": "payload is not an object"}
     _cleanup_runs()
+    identity = _state_identity(payload, state_params)
+    if not user_can_generate(identity.get("user_did") or ""):
+        return {
+            "ok": False,
+            "error": "generation_not_allowed",
+            "details": "Current identity is not allowed to generate images.",
+        }
+
+    run_id = str(payload.get("run_id") or f"canvas-run-{time.time_ns()}").strip()[:240]
+    if not run_id:
+        return {"ok": False, "error": "run_id is empty"}
+    result_asset_scope = "gallery" if str(payload.get("result_asset_scope") or "").strip().lower() == "gallery" else "canvas"
+    client_context = _normalize_client_context(payload.get("client_context"))
+    now = time.time()
+    reservation = {
+        "run_id": run_id,
+        "project_id": payload.get("project_id") or "default",
+        "placeholder_node_id": payload.get("placeholder_node_id") or "",
+        "preset_node_id": "",
+        "state": "preparing",
+        "percent": 0.01,
+        "message": "Preparing AsyncTask.",
+        "result_asset_scope": result_asset_scope,
+        "client_context": client_context,
+        "owner_user_did": identity.get("user_did") or "guest",
+        "created_ts": now,
+        "updated_ts": now,
+    }
+    with CANVAS_RUNS_LOCK:
+        existing = CANVAS_RUNS.get(run_id)
+        if existing:
+            if not _run_record_owned_by(existing, identity):
+                return {
+                    "ok": False,
+                    "error": "run_id_conflict",
+                    "details": "The run_id is already used by another identity.",
+                }
+            response = _public_run_record(existing)
+            response["idempotent_replay"] = True
+            return response
+        CANVAS_RUNS[run_id] = reservation
+
+    def discard_reservation():
+        with CANVAS_RUNS_LOCK:
+            if CANVAS_RUNS.get(run_id) is reservation:
+                CANVAS_RUNS.pop(run_id, None)
+
     try:
         import modules.async_worker as worker
 
-        run_id = payload.get("run_id") or f"canvas-run-{int(time.time() * 1000)}"
         placeholder_node_id = payload.get("placeholder_node_id") or ""
         preset_node = payload.get("preset_node") if isinstance(payload.get("preset_node"), dict) else {}
         materialized_inputs, errors = _materialize_run_inputs(payload, state_params)
@@ -2305,8 +2390,10 @@ def run_node(payload, state_params):
         task_args_preview = build_canvas_task_args_preview(payload, materialized_inputs, state_params)
         async_args_preview = task_args_preview.get("async_args_preview") if isinstance(task_args_preview, dict) else {}
         if errors:
+            discard_reservation()
             return {"ok": False, "error": "input materialization failed", "errors": errors}
         if not async_args_preview.get("ok"):
+            discard_reservation()
             return {"ok": False, "error": async_args_preview.get("error") or "AsyncTask args validation failed", "task_args_preview": task_args_preview}
 
         models = _merged_config_values(_model_config(preset_node))
@@ -2314,11 +2401,8 @@ def run_node(payload, state_params):
         api_arg_overrides = task_args_preview.get("api_arg_overrides") or {}
         args = build_canvas_async_task_args(api_arg_overrides, enabled_loras, materialized_inputs, load_images=True)
         task = worker.AsyncTask(args=args)
-        worker.add_task(task)
-        now = time.time()
-        record = {
-            "run_id": run_id,
-            "project_id": payload.get("project_id") or "default",
+        record = reservation
+        record.update({
             "task_id": task.task_id,
             "task": task,
             "preset_node_id": preset_node.get("id"),
@@ -2326,25 +2410,36 @@ def run_node(payload, state_params):
             "state": "queued",
             "percent": 0.02,
             "message": "Queued in AsyncTask.",
-            "queue_size": worker.get_task_size(),
+            "queue_size": None,
             "processing_id": worker.get_processing_id(),
             "task_preview": task_preview,
             "wildcard_preview": payload.get("wildcard_preview") if isinstance(payload.get("wildcard_preview"), dict) else {},
             "resolved_seed": task_args_preview.get("resolved_seed") if isinstance(task_args_preview, dict) else None,
             "input_count": len(materialized_inputs),
             "state_params": copy.deepcopy(state_params) if isinstance(state_params, dict) else {},
-            "created_ts": now,
             "updated_ts": now,
-        }
+        })
         _add_run_event(record, "info", "Queued in AsyncTask.", {
             "task_id": task.task_id,
             "preset_node_id": preset_node.get("id"),
             "placeholder_node_id": placeholder_node_id,
+            "client_context": client_context,
         })
         with CANVAS_RUNS_LOCK:
             CANVAS_RUNS[run_id] = record
+        try:
+            worker.add_task(task)
+        except Exception:
+            discard_reservation()
+            raise
+        try:
+            record["queue_size"] = worker.get_task_size()
+        except Exception:
+            record["queue_size"] = None
+        record["updated_ts"] = time.time()
         return _public_run_record(record)
     except Exception as err:
+        discard_reservation()
         return {"ok": False, "error": f"{type(err).__name__}: {err}"}
 
 
@@ -2353,12 +2448,15 @@ def poll_run(payload, state_params):
         return {"ok": False, "error": "payload is not an object"}
     run_id = payload.get("run_id") or ""
     after_preview_serial = payload.get("after_preview_serial")
+    identity = _state_identity(payload, state_params)
     try:
         import modules.async_worker as worker
 
         with CANVAS_RUNS_LOCK:
             record = CANVAS_RUNS.get(run_id)
         if not record:
+            return {"ok": False, "error": "run not found", "run_id": run_id}
+        if not _run_record_owned_by(record, identity):
             return {"ok": False, "error": "run not found", "run_id": run_id}
 
         _apply_task_yields(record)
@@ -2368,21 +2466,24 @@ def poll_run(payload, state_params):
         record["processing_id"] = processing_id
         record["queue_size"] = queue_size
         if record.get("state") not in TERMINAL_RUN_STATES:
-            cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
-            if cancel_action == "stop":
-                record["state"] = "cancelling"
-                record["message"] = "Stop requested. Waiting for backend interruption."
-            elif cancel_action == "skip":
-                record["state"] = "skipping"
-                record["message"] = "Skip requested. Waiting for backend interruption."
-            if processing_id == record.get("task_id") or getattr(task, "processing", False):
-                if record.get("state") not in ("cancelling", "skipping"):
-                    record["state"] = "running"
-                record["percent"] = max(float(record.get("percent") or 0), 0.06)
-                if not record.get("message") or record.get("message") == "Queued in AsyncTask.":
-                    record["message"] = "Running in AsyncTask."
+            if task is None or not record.get("task_id"):
+                record["state"] = "preparing"
+                record["message"] = "Preparing AsyncTask."
             else:
-                if record.get("state") not in ("cancelling", "skipping"):
+                cancel_action = getattr(task, "user_cancel_action", None) or getattr(task, "last_stop", None)
+                if cancel_action == "stop":
+                    record["state"] = "cancelling"
+                    record["message"] = "Stop requested. Waiting for backend interruption."
+                elif cancel_action == "skip":
+                    record["state"] = "skipping"
+                    record["message"] = "Skip requested. Waiting for backend interruption."
+                if processing_id == record.get("task_id") or getattr(task, "processing", False):
+                    if record.get("state") not in ("cancelling", "skipping"):
+                        record["state"] = "running"
+                    record["percent"] = max(float(record.get("percent") or 0), 0.06)
+                    if not record.get("message") or record.get("message") == "Queued in AsyncTask.":
+                        record["message"] = "Running in AsyncTask."
+                elif record.get("state") not in ("cancelling", "skipping"):
                     record["state"] = "queued"
                     record["message"] = f"Queued in AsyncTask. Queue size: {queue_size}"
         record["updated_ts"] = time.time()
@@ -2398,12 +2499,15 @@ def control_run(payload, state_params):
         return {"ok": False, "error": "payload is not an object"}
     run_id = payload.get("run_id") or ""
     action = str(payload.get("action") or "").strip().lower()
+    identity = _state_identity(payload, state_params)
     if action not in ("stop", "skip"):
         return {"ok": False, "error": "unsupported control action", "run_id": run_id}
     try:
         with CANVAS_RUNS_LOCK:
             record = CANVAS_RUNS.get(run_id)
         if not record:
+            return {"ok": False, "error": "run not found", "run_id": run_id}
+        if not _run_record_owned_by(record, identity):
             return {"ok": False, "error": "run not found", "run_id": run_id}
         if record.get("state") in TERMINAL_RUN_STATES:
             return _public_run_record(record)

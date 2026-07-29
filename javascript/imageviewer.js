@@ -401,14 +401,48 @@ function simpleaiHandleGalleryNativeDragStart(event) {
     const displaySrc = simpleaiMediaSrc(img);
     const previewOriginalSrc = simpleaiGalleryDisplayPreviewOriginalSrc(displaySrc);
     const originalSrc = simpleaiOriginalGalleryImageSrc(img);
-    if (!transfer || !originalSrc) return;
     const url = simpleaiAbsoluteGalleryImageSrc(originalSrc);
+    const loadedWidth = Math.round(Number(img.naturalWidth || 0));
+    const loadedHeight = Math.round(Number(img.naturalHeight || 0));
+    const declaredDimensions = simpleaiGalleryDeclaredDragDimensions(img);
+    const diagnostic = {
+        trusted: Boolean(event.isTrusted),
+        surface_id: img.closest?.(SIMPLEAI_GALLERY_NATIVE_DRAG_CONTAINER_SELECTOR)?.id || '',
+        display_source_kind: simpleaiGalleryDragSourceKind(displaySrc),
+        original_source_kind: simpleaiGalleryDragSourceKind(originalSrc),
+        preview_original_found: Boolean(previewOriginalSrc),
+        original_source_found: Boolean(originalSrc),
+        transfer_found: Boolean(transfer),
+        loaded_width: loadedWidth || null,
+        loaded_height: loadedHeight || null,
+        loaded_pixels: loadedWidth > 0 && loadedHeight > 0 ? loadedWidth * loadedHeight : null,
+        declared_width: declaredDimensions?.width || null,
+        declared_height: declaredDimensions?.height || null,
+        declared_pixels: declaredDimensions ? declaredDimensions.width * declaredDimensions.height : null,
+        original_mime_type: originalSrc ? simpleaiGalleryImageMimeType(originalSrc) : '',
+        original_url: { attempted: false, set_ok: false, readback_matches: null },
+        uri_list: { attempted: false, set_ok: false, readback_matches: null },
+        plain_text: { attempted: false, set_ok: false, readback_matches: null },
+        download_url: { attempted: false, set_ok: false, readback_matches: null },
+        transfer_types: [],
+        outcome: !transfer ? 'missing-transfer' : !originalSrc ? 'missing-original-source' : 'prepared',
+    };
+    if (!transfer || !originalSrc) {
+        try { window.SimpAIStudioPerformance?.mark('gallery.native_drag_start', diagnostic); } catch (e) {}
+        return;
+    }
     const dragVersion = ++simpleaiGalleryNativeDragVersion;
     try { window.__simpleaiGalleryOriginalDragUrl = url; } catch (e) {}
-    try { transfer.setData(SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url); } catch (e) {}
-    try { transfer.setData('text/uri-list', url); } catch (e) {}
-    try { transfer.setData('text/plain', url); } catch (e) {}
-    if (previewOriginalSrc) simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    diagnostic.original_url = simpleaiSetGalleryDragTransferData(transfer, SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url);
+    diagnostic.uri_list = simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url);
+    diagnostic.plain_text = simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url);
+    if (previewOriginalSrc) diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url);
+    try {
+        diagnostic.transfer_types = Array.from(transfer.types || [])
+            .slice(0, 20)
+            .map((type) => String(type).slice(0, 120));
+    } catch (e) {}
+    try { window.SimpAIStudioPerformance?.mark('gallery.native_drag_start', diagnostic); } catch (e) {}
     simpleaiClearGalleryOriginalDragUrl(30000, dragVersion);
 }
 
@@ -447,11 +481,57 @@ function simpleaiGalleryImageFileName(src) {
     }
 }
 
+function simpleaiGalleryDragSourceKind(src) {
+    const value = String(src || '').trim();
+    if (!value) return 'missing';
+    if (/^data:image\//i.test(value)) return 'data-image';
+    if (/^blob:/i.test(value)) return 'blob';
+    try {
+        const url = new URL(value, document.baseURI || window.location?.href || location.href);
+        const path = String(url.pathname || '').toLowerCase();
+        if (path.includes('/simpleai/gallery-preview/')) return 'gallery-preview';
+        if (path.includes('/gradio_api/file=') || path.includes('/file=')) return 'gradio-file';
+        return /^https?:$/i.test(url.protocol) ? 'http-image' : 'other-url';
+    } catch (e) {
+        return 'unparsed';
+    }
+}
+
+function simpleaiGalleryDeclaredDragDimensions(img) {
+    const hosts = [
+        img?.closest?.('.gallery-item, .thumbnail-item, .media-button, .image-container, .image-frame'),
+        img?.parentElement,
+    ].filter(Boolean);
+    for (const host of hosts) {
+        const text = String(host.querySelector?.('.simpai-media-resolution-badge')?.textContent || '');
+        const match = text.match(/(\d{2,6})\s*[xX\u00d7]\s*(\d{2,6})/);
+        if (!match) continue;
+        const width = Number(match[1]);
+        const height = Number(match[2]);
+        if (width > 0 && height > 0) return { width, height };
+    }
+    return null;
+}
+
+function simpleaiSetGalleryDragTransferData(transfer, type, value) {
+    const result = { attempted: true, set_ok: false, readback_matches: null };
+    try {
+        transfer.setData(type, value);
+        result.set_ok = true;
+    } catch (e) {
+        return result;
+    }
+    try {
+        result.readback_matches = transfer.getData(type) === value;
+    } catch (e) {}
+    return result;
+}
+
 function simpleaiSetGalleryPreviewOriginalDownload(transfer, originalSrc) {
-    if (!transfer || !originalSrc) return;
+    if (!transfer || !originalSrc) return { attempted: false, set_ok: false, readback_matches: null };
     const fileName = simpleaiGalleryImageFileName(originalSrc);
     const mimeType = simpleaiGalleryImageMimeType(originalSrc);
-    try { transfer.setData('DownloadURL', `${mimeType}:${fileName}:${originalSrc}`); } catch (e) {}
+    return simpleaiSetGalleryDragTransferData(transfer, 'DownloadURL', `${mimeType}:${fileName}:${originalSrc}`);
 }
 
 function simpleaiClearGalleryOriginalDragUrl(delay = 0, expectedVersion = simpleaiGalleryNativeDragVersion) {

@@ -1,5 +1,6 @@
 import base64
 import copy
+import io
 import json
 import logging
 import mimetypes
@@ -14,6 +15,7 @@ import modules.config
 import modules.canvas_danbooru_prompt_review as canvas_danbooru_prompt_review
 import modules.canvas_vlm_agent as canvas_vlm_agent
 import modules.canvas_workbench_assets as canvas_workbench_assets
+import modules.describe_media as describe_media
 import modules.model_loader as model_loader
 import modules.util as util
 import shared
@@ -401,9 +403,21 @@ def canvas_custom_llm_run(payload, params, prompt, asset_refs, conversation_id, 
                 continue
             path = ref.get("path")
             mime = str(ref.get("mime") or "")
-            if not path or not os.path.exists(path) or (mime and not mime.startswith("image/")):
+            if not path or not os.path.exists(path):
                 continue
             try:
+                if mime.startswith("video/") or describe_media.media_type(path) == "video":
+                    contact_sheet, _ = describe_media.prepare_visual_input(path, use_multi_frame=False)
+                    output = io.BytesIO()
+                    Image.fromarray(np.asarray(contact_sheet).astype(np.uint8, copy=False)).save(output, format="JPEG", quality=86)
+                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                    image_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
+                    })
+                    continue
+                if mime and not mime.startswith("image/"):
+                    continue
                 image_parts.append({
                     "type": "image_url",
                     "image_url": {"url": canvas_file_to_data_url(path, mime)}
@@ -706,6 +720,7 @@ def canvas_vlm_run(payload):
     images = []
     asset_refs = []
     video_frames = 0
+    video_assets = 0
     for source in sources:
         if not isinstance(source, dict):
             continue
@@ -715,17 +730,37 @@ def canvas_vlm_run(payload):
         if not image_path or not os.path.exists(image_path):
             continue
         asset_refs.append(asset_ref)
+        source_is_video = is_video_path(image_path, asset_ref.get("mime") if isinstance(asset_ref, dict) else "")
+        if source_is_video:
+            video_assets += 1
         if is_custom_api:
             continue
-        if is_video_path(image_path, asset_ref.get("mime") if isinstance(asset_ref, dict) else ""):
+        if source_is_video:
             requested_frames = clamp_int(params.get("video_frames", 8), 8, 1, 32)
-            frames = extract_video_frames(image_path, llama_cpp_video_frame_budget(requested_frames))
-            images.extend(frames)
-            video_frames += len(frames)
+            if is_llama_cpp_vlm_version():
+                frames = extract_video_frames(image_path, llama_cpp_video_frame_budget(requested_frames))
+                images.extend(frames)
+                video_frames += len(frames)
+            else:
+                contact_sheet, video_meta = describe_media.prepare_visual_input(
+                    image_path,
+                    use_multi_frame=False,
+                    max_frames=requested_frames,
+                )
+                images.append(prepare_vlm_image_array(np.asarray(contact_sheet)))
+                video_frames += max(1, int(video_meta.get("sampled_frames") or 1))
         else:
             with Image.open(image_path) as image:
                 images.append(prepare_vlm_image_array(np.array(image.convert("RGB"))))
     _canvas_vlm_add_timing(params, "asset_materialize_decode", time.monotonic() - stage_started)
+
+    if video_assets:
+        prompt = (
+            f"{prompt}\n\n"
+            "The attached video visuals are chronological samples from the referenced video. "
+            "Treat them as ordered frames, describe visible motion and continuity, and do not infer audio."
+        ).strip()
+        params["prompt"] = prompt
 
     if is_custom_api:
         if is_canvas_vlm_cancelled(project_id, node_id, conversation_id, request_id):

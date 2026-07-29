@@ -71,8 +71,8 @@
         if (!button) return;
         const label = isSceneMode() ? text("Prompt Picks", "推荐提示词") : text("Random Prompt", "随机提示词");
         if (button.textContent !== label) button.textContent = label;
-        button.setAttribute("title", label);
-        button.setAttribute("aria-label", label);
+        if (button.getAttribute("title") !== label) button.setAttribute("title", label);
+        if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
     }
 
     async function postJson(url, payload) {

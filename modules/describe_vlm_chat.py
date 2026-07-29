@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import threading
 import time
 
@@ -9,6 +10,15 @@ import modules.vlm_system_prompt_templates as vlm_system_prompt_templates
 
 
 ALLOWED_PROMPT_ACTIONS = {"set_prompt", "append_prompt", "refine_prompt", "describe_image_to_prompt", "text_to_prompt"}
+GENERATION_ACTION_ALIASES = {
+    "text_to_image",
+    "generate_image",
+    "image_generation",
+    "create_image",
+    "make_image",
+    "draw_image",
+}
+CREATIVE_ASPECT_RATIOS = {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2", "7:4", "4:7"}
 _CANCEL_TTL_SECONDS = 1800
 _CANCELLED_REQUESTS = {}
 _CANCELLED_REQUESTS_LOCK = threading.Lock()
@@ -17,9 +27,50 @@ _CANCELLED_REQUESTS_LOCK = threading.Lock()
 DESCRIBE_CHAT_BASE_SYSTEM = (
     "You are the SimpAI Describe Image VLM chat assistant. This chat is a standalone wrapper, not the infinite canvas. "
     "You can discuss images, prompts, model behavior, visual ideas, and ordinary user questions. "
-    "No canvas tools are available here, and you must not claim that you can operate canvas nodes or generate images directly. "
+    "You cannot operate canvas nodes. Creative mode may return a structured image-generation proposal that the UI executes only after user confirmation. "
+    "Never claim that an image is queued, running, or finished before the UI reports that state. "
     "Answer naturally in the user's UI language unless the user asks for another language."
 )
+
+CREATIVE_ASSISTANT_SYSTEM = (
+    "Creative mode for SimpAI Studio VLM chat. The UI may already show a session preference card for anime, realistic, automatic, or a specific Preset. "
+    "When the user asks to draw, create, render, or generate an image, return exactly one JSON object: "
+    "{\"reply\":\"short user-facing reply\",\"actions\":[{\"type\":\"generate_image\",\"prompt\":\"complete generation prompt\","
+    "\"preset\":\"Z-imageT\",\"aspect_ratio\":\"auto\",\"image_number\":1}]}. "
+    "If the user explicitly names a preferred style or Preset for this conversation, also return a set_creative_preference action before generate_image: "
+    "{\"type\":\"set_creative_preference\",\"style\":\"anime|realistic|auto|custom\",\"preset\":\"exact Preset name when known\",\"scope\":\"session\"}. "
+    "An unqualified request such as `use Anima to generate it` counts as a session preference. "
+    "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
+    "The generate_image action is a proposal, not proof that generation has started. Tell the user to review the options and confirm. "
+    "Use the active session preference when present; otherwise use Z-imageT. Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
+    "image_number must be an integer from 1 to 4. Do not invent API routes, canvas node IDs, run IDs, file paths, or completed image URLs. "
+    "For ordinary conversation that does not request an image or prompt, answer normally without action JSON."
+)
+
+CREATIVE_DIRECTOR_SYSTEM = (
+    "You are the independent visual director for SimpAI Studio Creative chat. "
+    "The main assistant reply has already been shown, so do not continue the roleplay, answer the user, or rewrite that reply. "
+    "Decide whether the latest exchange contains a newly established, visually distinctive story moment worth offering to illustrate. "
+    "Strong reasons are scene_change, emotional_peak, climax, visual_reveal, and character_moment. "
+    "Do not offer for greetings, setup questions, ordinary exposition, meta discussion, prompt/model settings, repeated scenes, or a direct image request that already received a generation card. "
+    "Prefer false. Return true only when score is at least 0.72 and the image would add entertainment or story value. "
+    "Return exactly one JSON object. For no offer: "
+    "{\"offer\":false,\"score\":0.0,\"reason\":\"none\",\"scene_key\":\"\"}. "
+    "For an offer: {\"offer\":true,\"score\":0.85,\"reason\":\"scene_change\","
+    "\"scene_key\":\"short stable lowercase scene identity\",\"offer_text\":\"one short sentence offering to draw this moment\","
+    "\"prompt\":\"complete image-generation prompt\",\"preset\":\"exact preferred Preset name when available\","
+    "\"aspect_ratio\":\"16:9\",\"image_number\":1}. "
+    "Never invent API routes, run IDs, files, completed images, or extra actions."
+)
+
+CREATIVE_OFFER_REASONS = {
+    "scene_change",
+    "emotional_peak",
+    "climax",
+    "visual_reveal",
+    "character_moment",
+}
+CREATIVE_OFFER_MIN_SCORE = 0.72
 
 PROMPT_ASSISTANT_SYSTEM = (
     "Prompt-writing mode for SimpAI Web Describe Image chat. This is the regular SimpAI web prompt helper, not the infinite canvas. "
@@ -189,6 +240,12 @@ Anima prompt skill adapter for SimpAI Web Describe Image chat:
 - Do not output top-level `generate_image`, `subject_counts`, `draft_prompt`, or canvas confirmation-card payloads in this Web prompt helper.
 - The final prompt must be an English Anima positive prompt, not a generic natural-language paragraph and not Chinese prose.
 """
+ANIMA_CREATIVE_PROMPT_ADAPTER = """
+Anima prompt skill adapter for SimpAI Studio Creative chat:
+- Use the Anima rules below to format only the `prompt` field in the active Creative JSON contract.
+- Keep the outer `generate_image` or visual-director offer schema required by the active system prompt.
+- The final prompt must be an English Anima positive prompt, not a generic natural-language paragraph and not Chinese prose.
+"""
 PROMPT_TARGET_OPTION_KEYS = (
     "preset",
     "preset_name",
@@ -227,7 +284,7 @@ def _clean_text(value):
 
 def _data_url_mime(data_url):
     match = re.match(r"^data:([^;,]+)", str(data_url or ""))
-    return match.group(1) if match else "image/png"
+    return match.group(1) if match else "application/octet-stream"
 
 
 def _normalize_lang(value):
@@ -260,17 +317,20 @@ def _describe_preset_guide_skill():
     return _describe_read_vlm_skill_file(SIMPAI_PRESET_GUIDE_SKILL_FILE) or GUIDE_MODE_SYSTEM.strip()
 
 
-def _describe_anima_prompt_skill():
+def _describe_anima_prompt_skill(adapter=None):
     content = _describe_read_vlm_skill_file(ANIMA_PROMPT_SKILL_FILE, 16000)
     if content and "## Output Contract" in content and "## Positive Prompt Shape" in content:
         intro = content.split("## Output Contract", 1)[0].strip()
         body = "## Positive Prompt Shape\n" + content.split("## Positive Prompt Shape", 1)[1].strip()
         content = f"{intro}\n\n{body}".strip()
-    return "\n\n".join(part for part in (ANIMA_DESCRIBE_PROMPT_ADAPTER.strip(), content) if part).strip()
+    prompt_adapter = ANIMA_DESCRIBE_PROMPT_ADAPTER if adapter is None else str(adapter or "")
+    return "\n\n".join(part for part in (prompt_adapter.strip(), content) if part).strip()
 
 
 def _normalize_chat_mode(value):
     text = str(value or "").strip().lower().replace("-", "_")
+    if text in {"creative", "create", "creation", "creative_mode", "image_generation"}:
+        return "creative"
     if text in {"prompt", "prompt_assistant", "assistant"}:
         return "prompt"
     if text in {"guide", "guide_mode", "wizard", "ui_guide", "workflow_guide"}:
@@ -290,9 +350,13 @@ def _clean_multiline_text(value, limit=4000):
 
 def _localized_default_reply(action_type, lang):
     if _normalize_lang(lang) == "en":
+        if action_type == "generate_image":
+            return "I prepared an image-generation proposal. Review the options and confirm when ready."
         if action_type == "append_prompt":
             return "I prepared prompt text to append."
         return "I prepared prompt text for the main prompt box."
+    if action_type == "generate_image":
+        return "已准备生图方案，请检查选项后确认生成。"
     if action_type == "append_prompt":
         return "已整理可追加到主提示词框的内容。"
     return "已整理可写入主提示词框的内容。"
@@ -308,7 +372,7 @@ def _history_image_placeholder(item):
         image_count = 0
     if image_count <= 0:
         return ""
-    return f"[{image_count} previous image reference(s) retained as 1x1 placeholder; full image bytes omitted.]"
+    return f"[{image_count} previous visual media reference(s); full media bytes omitted from history.]"
 
 
 def _normalize_history(messages, limit=24, budget=6000):
@@ -345,32 +409,37 @@ def _normalize_history(messages, limit=24, budget=6000):
     return selected
 
 
-def _image_source_from_payload(image, conversation_id, index=0):
-    image = image if isinstance(image, dict) else {}
-    data_url = str(image.get("data_url") or "").strip()
+def _media_source_from_payload(media, conversation_id, index=0):
+    media = media if isinstance(media, dict) else {}
+    data_url = str(media.get("data_url") or "").strip()
     if not data_url:
         return None
-    asset_id = str(image.get("id") or f"describe_vlm_chat_{int(time.time() * 1000)}")
+    mime = str(media.get("mime") or _data_url_mime(data_url)).strip().lower()
+    media_type = "video" if mime.startswith("video/") else "image" if mime.startswith("image/") else ""
+    if not media_type:
+        return None
+    asset_id = str(media.get("id") or f"describe_vlm_chat_{int(time.time() * 1000)}")
     return {
-        "node_id": f"describe_vlm_chat:{conversation_id}:image:{index}",
-        "type": "image",
-        "title": str(image.get("name") or "Describe Image chat image"),
+        "node_id": f"describe_vlm_chat:{conversation_id}:{media_type}:{index}",
+        "type": media_type,
+        "title": str(media.get("name") or f"Describe chat {media_type}"),
         "asset": {
             "kind": "browser_upload",
             "asset_id": asset_id,
-            "mime": str(image.get("mime") or _data_url_mime(data_url)),
-            "width": image.get("width") or None,
-            "height": image.get("height") or None,
-            "size": image.get("size") or None,
+            "mime": mime,
+            "width": media.get("width") or None,
+            "height": media.get("height") or None,
+            "duration": media.get("duration") or None,
+            "size": media.get("size") or None,
             "data_url": data_url,
-            "thumb": image.get("thumb") or "",
+            "thumb": media.get("thumb") or "",
         },
         "mask": None,
         "source": {"kind": "describe_vlm_chat"},
     }
 
 
-def _image_sources_from_payload(payload, conversation_id, limit=5):
+def _media_sources_from_payload(payload, conversation_id, limit=5):
     raw_images = []
     if isinstance(payload.get("images"), list):
         raw_images.extend(payload.get("images") or [])
@@ -389,7 +458,7 @@ def _image_sources_from_payload(payload, conversation_id, limit=5):
         if key in seen:
             continue
         seen.add(key)
-        source = _image_source_from_payload(image, conversation_id, len(sources))
+        source = _media_source_from_payload(image, conversation_id, len(sources))
         if source:
             sources.append(source)
         if len(sources) >= max(1, int(limit or 5)):
@@ -406,9 +475,8 @@ def _truthy(value, default=False):
 
 
 def _runtime_default_prompt_target_options():
-    try:
-        import modules.config as config
-    except (Exception, SystemExit):
+    config = sys.modules.get("modules.config")
+    if config is None:
         return {}
 
     preset = str(getattr(config, "preset", "") or "").strip()
@@ -540,6 +608,7 @@ def _prompt_options_from_payload(payload, lang):
         custom_system_prompt = _clean_multiline_text(
             vlm_system_prompt_templates.resolve_vlm_system_prompt_template(system_prompt_template_id)
         )
+    creative_preferences = _normalize_creative_preferences(payload.get("creative_preferences"))
     return {
         "chat_mode": chat_mode,
         "mode": mode,
@@ -556,6 +625,21 @@ def _prompt_options_from_payload(payload, lang):
         "prompt_intent": prompt_intent,
         "include_current_prompt": include_current_prompt,
         "enable_prompt_skills": chat_mode == "prompt" or (chat_mode == "chat" and prompt_intent),
+        "enable_generation_actions": chat_mode == "creative",
+        "creative_preferences": creative_preferences,
+    }
+
+
+def _normalize_creative_preferences(value):
+    source = value if isinstance(value, dict) else {}
+    style = str(source.get("style") or "").strip().lower()
+    if style not in {"anime", "realistic", "auto", "custom"}:
+        style = ""
+    preset = re.sub(r"[\x00-\x1f\x7f]+", "", str(source.get("preset") or "")).strip()[:120]
+    return {
+        "prompted": _truthy(source.get("prompted"), False),
+        "style": style,
+        "preset": preset,
     }
 
 
@@ -627,6 +711,28 @@ def _describe_chat_system_prompt(options, lang):
             "Do not force every answer into prompt-writing. "
             "Only use prompt actions when the user clearly asks you to write, refine, append, or prepare an image-generation prompt."
         )
+    elif chat_mode == "creative":
+        sections.append(CREATIVE_ASSISTANT_SYSTEM)
+        preference = options.get("creative_preferences") if isinstance(options.get("creative_preferences"), dict) else {}
+        preferred_style = str(preference.get("style") or "").strip()
+        preferred_preset = str(preference.get("preset") or "").strip()
+        if preferred_style or preferred_preset:
+            sections.append(
+                "Active session creative preference: "
+                f"style={preferred_style or 'unspecified'}, preset={preferred_preset or 'choose a suitable Preset for the style'}. "
+                "Use this as the default for image proposals. A clear one-image-only request may override it without changing the session preference."
+            )
+        else:
+            sections.append(
+                "No session creative preference is selected. The UI preference card already lets the user choose, so do not repeat that question. "
+                "If the user names a style or Preset now, record it with set_creative_preference; otherwise choose a suitable Preset for the current request."
+            )
+        creative_target = {"preset": preferred_preset or options.get("target_preset")}
+        sections.append(
+            _describe_anima_prompt_skill(ANIMA_CREATIVE_PROMPT_ADAPTER)
+            if _is_anima_prompt_target(creative_target)
+            else NATURAL_PROMPT_SKILL.strip()
+        )
     elif chat_mode == "guide":
         sections.append(
             "Guide mode: focus on helping the user choose SimpAI Studio main-interface workflows and presets. "
@@ -640,7 +746,7 @@ def _describe_chat_system_prompt(options, lang):
         )
     if custom_system_prompt:
         sections.append(
-            "User custom system prompt. Follow it for role, tone, constraints, and answer format unless it asks for unavailable canvas/tool actions:\n"
+            "User custom system prompt. Follow it for role, tone, and constraints unless it conflicts with the active mode's action contract:\n"
             f"{custom_system_prompt}"
         )
     if chat_mode != "guide" and options.get("enable_prompt_skills"):
@@ -649,7 +755,7 @@ def _describe_chat_system_prompt(options, lang):
         sections.append(
             "Return practical workflow guidance only. If the user needs prompt text, suggest switching to Prompt Assistant mode."
         )
-    else:
+    elif chat_mode != "creative":
         sections.append(
             "Prompt-writing skill is available, but it is not active for this turn. "
             "Return plain conversational text and no action JSON unless the user's next message asks for prompt text."
@@ -709,11 +815,12 @@ def build_runtime_payload(payload):
     conversation_id = _clean_text(payload.get("conversation_id")) or f"describe_vlm_chat:{int(time.time() * 1000)}"
     lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
     current_prompt = str(payload.get("current_prompt") or "")
-    image_sources = _image_sources_from_payload(payload, conversation_id)
+    media_sources = _media_sources_from_payload(payload, conversation_id)
     prompt_options = _prompt_options_from_payload(payload, lang)
     unload_after_chat = _truthy(payload.get("unload_after_chat", payload.get("free_after")), False)
     prompt_actions_enabled = bool(prompt_options.get("enable_prompt_skills") and prompt_options.get("chat_mode") not in {"raw", "guide"})
-    prompt_mode_active = prompt_options.get("chat_mode") in {"prompt", "guide"} or prompt_actions_enabled
+    generation_actions_enabled = bool(prompt_options.get("enable_generation_actions"))
+    prompt_mode_active = prompt_options.get("chat_mode") in {"prompt", "guide", "creative"} or prompt_actions_enabled
     params = {
         "mode": "chat",
         "agent_mode": "raw",
@@ -728,6 +835,8 @@ def build_runtime_payload(payload):
         "describe_prompt_mode": prompt_options["mode"],
         "describe_prompt_intent": prompt_options["prompt_intent"],
         "describe_prompt_actions_enabled": prompt_actions_enabled,
+        "describe_generation_actions_enabled": generation_actions_enabled,
+        "describe_actions_enabled": prompt_actions_enabled or generation_actions_enabled,
         "describe_prompt_target_preset": prompt_options["target_preset"],
         "describe_prompt_target_backend_engine": prompt_options["target_backend_engine"],
         "describe_prompt_target_task_method": prompt_options["target_task_method"],
@@ -740,6 +849,8 @@ def build_runtime_payload(payload):
         "describe_output_chinese": prompt_options["output_chinese"],
         "describe_output_artist": prompt_options["output_artist"],
         "describe_unload_after_chat": unload_after_chat,
+        "describe_creative_preference_style": prompt_options["creative_preferences"]["style"],
+        "describe_creative_preference_preset": prompt_options["creative_preferences"]["preset"],
         "free_after": unload_after_chat,
         "conversation_id": conversation_id,
         "save_context": True,
@@ -761,7 +872,7 @@ def build_runtime_payload(payload):
         "project_id": "describe_image_chat",
         "node_id": "describe_vlm_chat",
         "conversation_id": conversation_id,
-        "asset_sources": image_sources,
+        "asset_sources": media_sources,
         "chat_messages": _normalize_history(payload.get("history"), limit=18, budget=6000),
         "chat_messages_full": _normalize_history(payload.get("history_full") or payload.get("history"), limit=32, budget=9000),
         "context": payload.get("context") if isinstance(payload.get("context"), dict) else {},
@@ -775,6 +886,84 @@ def build_runtime_payload(payload):
         "ok": True,
         "runtime_payload": runtime_payload,
     }
+
+
+def _creative_director_system_prompt(payload, lang):
+    preference = _normalize_creative_preferences(payload.get("creative_preferences"))
+    preset = preference.get("preset") or ""
+    style = preference.get("style") or "auto"
+    previous_scene_key = _clean_text(payload.get("last_scene_key"))[:160]
+    reply_lang = "English" if _normalize_lang(lang) == "en" else "Chinese"
+    prompt_skill = (
+        _describe_anima_prompt_skill(ANIMA_CREATIVE_PROMPT_ADAPTER)
+        if _is_anima_prompt_target({"preset": preset})
+        else NATURAL_PROMPT_SKILL
+    )
+    return (
+        f"{CREATIVE_DIRECTOR_SYSTEM}\n\n"
+        f"UI reply language: {reply_lang}. Session preference: style={style}, preset={preset or 'agent chooses'}. "
+        f"Previously offered scene_key={previous_scene_key or 'none'}; do not offer the same scene again. "
+        "The offer_text must use the UI reply language. The image prompt must follow the preferred Preset's prompt format.\n\n"
+        f"{prompt_skill.strip()}"
+    )
+
+
+def build_creative_offer_runtime_payload(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    conversation_id = _clean_text(payload.get("conversation_id")) or f"describe_vlm_chat:{int(time.time() * 1000)}"
+    request_id = _clean_text(payload.get("request_id")) or f"director:{int(time.time() * 1000)}"
+    lang = _normalize_lang(payload.get("lang") or payload.get("__lang"))
+    user_message = _clean_multiline_text(payload.get("message"), limit=3000)
+    assistant_reply = _clean_multiline_text(payload.get("assistant_reply"), limit=5000)
+    if not user_message or not assistant_reply:
+        return {"ok": False, "error": "Creative director context is incomplete."}
+    prompt = (
+        "Evaluate the latest exchange for a proactive image offer.\n\n"
+        f"Latest user message:\n{user_message}\n\n"
+        f"Main assistant reply already shown:\n{assistant_reply}"
+    )
+    params = {
+        "mode": "chat",
+        "agent_mode": "raw",
+        "agent_use_skills": False,
+        "agent_use_canvas_context": False,
+        "agent_action_hints": False,
+        "compact_agent_prompt": True,
+        "disable_llm_draft_retry": True,
+        "prompt": prompt,
+        "user_system_prompt": _creative_director_system_prompt(payload, lang),
+        "describe_chat_mode": "creative_director",
+        "describe_actions_enabled": False,
+        "free_after": _truthy(payload.get("unload_after_chat", payload.get("free_after")), False),
+        "conversation_id": f"{conversation_id}:visual_director:{request_id}",
+        "save_context": False,
+        "max_history": 14,
+        "context_chars": 6500,
+        "max_tokens": 800,
+        "temperature": 0.25,
+        "top_p": 0.8,
+        "top_k": 30,
+        "repetition_penalty": 1.03,
+    }
+    version, custom_params = _custom_runtime_params(payload)
+    if version:
+        params["version"] = version
+    if custom_params:
+        params.update(custom_params)
+    runtime_payload = {
+        "project_id": "describe_image_chat_director",
+        "node_id": "describe_vlm_chat_visual_director",
+        "conversation_id": params["conversation_id"],
+        "asset_sources": [],
+        "chat_messages": _normalize_history(payload.get("history"), limit=14, budget=6500),
+        "chat_messages_full": _normalize_history(payload.get("history_full") or payload.get("history"), limit=20, budget=8000),
+        "context": {"request_kind": "creative_offer"},
+        "agent_context": None,
+        "params": params,
+    }
+    if params.get("custom_api_key"):
+        runtime_payload["api_key"] = params.get("custom_api_key")
+    return {"ok": True, "runtime_payload": runtime_payload, "conversation_id": conversation_id}
 
 
 def _extract_json_object(text):
@@ -795,6 +984,44 @@ def _extract_json_object(text):
         except Exception:
             continue
     return None
+
+
+def parse_creative_offer_response(text, lang="cn", default_generation_preset="Z-imageT"):
+    data = _extract_json_object(text)
+    if not isinstance(data, dict) or not _truthy(data.get("offer"), False):
+        return {"offer": False}
+    try:
+        score = max(0.0, min(1.0, float(data.get("score") or 0.0)))
+    except Exception:
+        score = 0.0
+    reason = str(data.get("reason") or "").strip().lower().replace("-", "_")
+    prompt = str(data.get("prompt") or data.get("positive_prompt") or "").strip()
+    if score < CREATIVE_OFFER_MIN_SCORE or reason not in CREATIVE_OFFER_REASONS or not prompt:
+        return {"offer": False}
+    prompt = sanitize_danbooru_character_outfit_tags(prompt)
+    prompt = canvas_danbooru_service._canvas_prompt_safe_danbooru_text(prompt)
+    scene_key = re.sub(r"[^a-z0-9:_-]+", "-", str(data.get("scene_key") or "").strip().lower()).strip("-")[:160]
+    if not scene_key:
+        scene_key = re.sub(r"[^a-z0-9:_-]+", "-", prompt.lower()).strip("-")[:160]
+    preset = re.sub(
+        r"[\x00-\x1f\x7f]+",
+        "",
+        str(data.get("preset") or data.get("preset_name") or default_generation_preset or "Z-imageT"),
+    ).strip()[:120]
+    offer_text = _clean_multiline_text(data.get("offer_text") or data.get("reply"), limit=240)
+    if not offer_text:
+        offer_text = "I want to draw this moment." if _normalize_lang(lang) == "en" else "我想画下这一幕。"
+    return {
+        "offer": True,
+        "score": score,
+        "reason": reason,
+        "scene_key": scene_key,
+        "offer_text": offer_text,
+        "prompt": prompt,
+        "preset": preset or "Z-imageT",
+        "aspect_ratio": _normalize_creative_aspect_ratio(data.get("aspect_ratio") or data.get("aspect") or data.get("ratio")),
+        "image_number": _normalize_creative_image_number(data.get("image_number") or data.get("count") or 1),
+    }
 
 
 _DANBOORU_CHARACTER_TAG_RE = re.compile(r"^(?P<name>[a-z0-9][a-z0-9_]*?)_\((?P<context>[^)]*)\)$", re.I)
@@ -839,26 +1066,61 @@ def sanitize_danbooru_character_outfit_tags(prompt_text):
     return ", ".join(cleaned) if changed else source
 
 
-def normalize_limited_actions(actions):
+def _normalize_creative_aspect_ratio(value):
+    text = str(value or "auto").strip().lower().replace("：", ":").replace("x", ":").replace("*", ":")
+    aliases = {
+        "square": "1:1",
+        "landscape": "16:9",
+        "horizontal": "16:9",
+        "portrait": "9:16",
+        "vertical": "9:16",
+    }
+    text = aliases.get(text, text)
+    return text if text in CREATIVE_ASPECT_RATIOS else "auto"
+
+
+def _normalize_creative_image_number(value):
+    try:
+        number = int(float(value))
+    except Exception:
+        number = 1
+    return max(1, min(4, number))
+
+
+def normalize_limited_actions(actions, allow_generation=False, default_generation_preset="Z-imageT"):
     normalized = []
     for item in actions if isinstance(actions, list) else []:
         if not isinstance(item, dict):
             continue
         action_type = str(item.get("type") or item.get("action") or "").strip().lower().replace("-", "_")
-        if action_type in {
+        if action_type == "set_creative_preference":
+            if not allow_generation or str(item.get("scope") or "session").strip().lower() != "session":
+                continue
+            style = str(item.get("style") or "").strip().lower()
+            if style not in {"anime", "realistic", "auto", "custom"}:
+                style = ""
+            preset = re.sub(r"[\x00-\x1f\x7f]+", "", str(item.get("preset") or item.get("preset_name") or "")).strip()[:120]
+            if not style and not preset:
+                continue
+            normalized.append(
+                {
+                    "type": "set_creative_preference",
+                    "style": style or "custom",
+                    "preset": preset,
+                    "scope": "session",
+                }
+            )
+            continue
+        if action_type in GENERATION_ACTION_ALIASES:
+            action_type = "generate_image" if allow_generation else "set_prompt"
+        elif action_type in {
             "replace_prompt",
             "fill_prompt",
             "send_prompt",
             "write_prompt",
-            "text_to_image",
-            "generate_image",
-            "image_generation",
-            "create_image",
-            "make_image",
-            "draw_image",
         }:
             action_type = "set_prompt"
-        if action_type not in ALLOWED_PROMPT_ACTIONS:
+        if action_type not in ALLOWED_PROMPT_ACTIONS and action_type != "generate_image":
             continue
         prompt_text = str(
             item.get("prompt")
@@ -871,6 +1133,28 @@ def normalize_limited_actions(actions):
             continue
         prompt_text = sanitize_danbooru_character_outfit_tags(prompt_text)
         prompt_text = canvas_danbooru_service._canvas_prompt_safe_danbooru_text(prompt_text)
+        if action_type == "generate_image":
+            preset = re.sub(
+                r"[\x00-\x1f\x7f]+",
+                "",
+                str(item.get("preset") or item.get("preset_name") or default_generation_preset or "Z-imageT"),
+            ).strip()[:120]
+            normalized.append(
+                {
+                    "type": "generate_image",
+                    "target": "canvas_run",
+                    "prompt": prompt_text,
+                    "preset": preset or "Z-imageT",
+                    "aspect_ratio": _normalize_creative_aspect_ratio(
+                        item.get("aspect_ratio") or item.get("aspect") or item.get("ratio")
+                    ),
+                    "image_number": _normalize_creative_image_number(
+                        item.get("image_number") or item.get("count") or item.get("images")
+                    ),
+                    "label": str(item.get("label") or "").strip()[:120],
+                }
+            )
+            continue
         if action_type in {"refine_prompt", "describe_image_to_prompt", "text_to_prompt"}:
             action_type = "set_prompt"
         normalized.append(
@@ -884,20 +1168,89 @@ def normalize_limited_actions(actions):
     return normalized[:3]
 
 
-def parse_limited_response(text, lang="cn", allow_actions=True):
+def parse_limited_response(text, lang="cn", allow_actions=True, allow_generation=False, default_generation_preset="Z-imageT"):
     if not allow_actions:
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
     data = _extract_json_object(text)
     if not isinstance(data, dict):
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
-    actions = normalize_limited_actions(data.get("actions"))
+    actions = normalize_limited_actions(
+        data.get("actions"),
+        allow_generation=allow_generation,
+        default_generation_preset=default_generation_preset,
+    )
     if not actions and data.get("prompt"):
         action_type = str(data.get("action") or data.get("type") or "set_prompt").strip()
-        actions = normalize_limited_actions([{"type": action_type, "prompt": data.get("prompt")}])
+        actions = normalize_limited_actions(
+            [{**data, "type": action_type, "prompt": data.get("prompt")}],
+            allow_generation=allow_generation,
+            default_generation_preset=default_generation_preset,
+        )
     reply = str(data.get("reply") or data.get("message") or data.get("text") or "").strip()
     if not reply and actions:
         reply = _localized_default_reply(actions[0].get("type"), lang)
     return {"reply": reply or str(text or "").strip(), "actions": actions, "raw_json": data}
+
+
+_ANIMA_PROMPT_CJK_RE = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+_ANIMA_QUALITY_RE = re.compile(r"(?:^|,\s*)(?:masterpiece|best quality|very[_ ]aesthetic|high quality)(?:\s*,|$)", re.I)
+_ANIMA_PERIOD_RE = re.compile(r"(?:^|,\s*)(?:newest|recent|mid|early|old|year\s+\d{4})(?:\s*,|$)", re.I)
+_ANIMA_RATING_RE = re.compile(r"(?:^|,\s*)(?:safe|sensitive|nsfw|explicit)(?:\s*,|$)", re.I)
+
+
+def _is_anima_positive_prompt(prompt):
+    source = str(prompt or "").strip()
+    if not source or _ANIMA_PROMPT_CJK_RE.search(source) or source.count(",") < 4:
+        return False
+    return bool(
+        _ANIMA_QUALITY_RE.search(source)
+        and _ANIMA_PERIOD_RE.search(source)
+        and _ANIMA_RATING_RE.search(source)
+    )
+
+
+def _repair_creative_anima_prompt(item, source_prompt=""):
+    action = dict(item) if isinstance(item, dict) else {}
+    prompt = str(action.get("prompt") or "").strip()
+    if not prompt or not _is_anima_prompt_target({"preset": action.get("preset")}) or _is_anima_positive_prompt(prompt):
+        return action
+
+    from modules import canvas_vlm_agent
+
+    effective_prompt = "\n".join(part for part in (str(source_prompt or "").strip(), prompt) if part)
+    composed = canvas_vlm_agent._canvas_compose_anima_prompt(
+        effective_prompt,
+        {"type": "generate_image", "prompt": prompt},
+    )
+    repaired_prompt = str(composed.get("prompt") or "").strip()
+    if repaired_prompt and not _ANIMA_PROMPT_CJK_RE.search(repaired_prompt):
+        action["prompt"] = repaired_prompt
+    return action
+
+
+def _repair_creative_anima_actions(actions, source_prompt=""):
+    return [
+        _repair_creative_anima_prompt(action, source_prompt)
+        if isinstance(action, dict) and action.get("type") == "generate_image"
+        else action
+        for action in (actions or [])
+    ]
+
+
+def _apply_creative_preference_preset(actions, active_preset=""):
+    preferred_preset = re.sub(r"[\x00-\x1f\x7f]+", "", str(active_preset or "")).strip()[:120]
+    normalized = []
+    for action in actions or []:
+        if not isinstance(action, dict):
+            normalized.append(action)
+            continue
+        item = dict(action)
+        if item.get("type") == "set_creative_preference" and item.get("preset"):
+            preferred_preset = str(item.get("preset") or "").strip()[:120]
+        elif item.get("type") == "generate_image" and preferred_preset:
+            item["preset"] = preferred_preset
+        normalized.append(item)
+    return normalized
 
 
 def apply_prompt_action_payload(payload_text, current_prompt=""):
@@ -927,7 +1280,8 @@ def run_describe_vlm_chat(payload):
     payload = payload if isinstance(payload, dict) else {}
     conversation_id = str(payload.get("conversation_id") or "").strip()
     request_id = str(payload.get("request_id") or "").strip()
-    built = build_runtime_payload(payload)
+    request_kind = str(payload.get("request_kind") or "").strip().lower()
+    built = build_creative_offer_runtime_payload(payload) if request_kind == "creative_offer" else build_runtime_payload(payload)
     if not built.get("ok"):
         return built
 
@@ -958,12 +1312,38 @@ def run_describe_vlm_chat(payload):
     if not isinstance(result, dict) or not result.get("ok"):
         return result if isinstance(result, dict) else {"ok": False, "error": "Invalid VLM response."}
 
+    if request_kind == "creative_offer":
+        preference = _normalize_creative_preferences(payload.get("creative_preferences"))
+        offer = parse_creative_offer_response(
+            result.get("text") or result.get("raw_text") or "",
+            payload.get("lang"),
+            default_generation_preset=preference.get("preset") or "Z-imageT",
+        )
+        if offer.get("offer"):
+            if preference.get("preset"):
+                offer["preset"] = preference["preset"]
+            offer = _repair_creative_anima_prompt(offer, payload.get("message"))
+        return {
+            "ok": True,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "creative_offer": offer,
+        }
+
     params = runtime_payload.get("params") if isinstance(runtime_payload.get("params"), dict) else {}
     parsed = parse_limited_response(
         result.get("text") or result.get("raw_text") or "",
         (payload or {}).get("lang"),
-        allow_actions=bool(params.get("describe_prompt_actions_enabled")),
+        allow_actions=bool(params.get("describe_actions_enabled")),
+        allow_generation=bool(params.get("describe_generation_actions_enabled")),
+        default_generation_preset=params.get("describe_creative_preference_preset") or "Z-imageT",
     )
+    if params.get("describe_generation_actions_enabled"):
+        parsed["actions"] = _apply_creative_preference_preset(
+            parsed.get("actions"),
+            params.get("describe_creative_preference_preset"),
+        )
+        parsed["actions"] = _repair_creative_anima_actions(parsed.get("actions"), payload.get("message"))
     result = dict(result)
     original_text = str(result.get("text") or "")
     result["text"] = parsed.get("reply") or original_text

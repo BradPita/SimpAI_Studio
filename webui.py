@@ -14409,9 +14409,15 @@ async def describe_image_vlm_chat_run_endpoint(payload: dict = Body(...)):
 
         started = time.monotonic()
         logger.info(
-            "Describe Image VLM chat request received: conversation_id=%s, has_image=%s",
+            "Describe Image VLM chat request received: conversation_id=%s, has_visual_media=%s",
             payload.get("conversation_id") or "",
-            bool(isinstance(payload.get("image"), dict) and payload.get("image", {}).get("data_url")),
+            bool(
+                (isinstance(payload.get("image"), dict) and payload.get("image", {}).get("data_url"))
+                or any(
+                    isinstance(item, dict) and item.get("data_url")
+                    for item in (payload.get("images") if isinstance(payload.get("images"), list) else [])
+                )
+            ),
         )
         result = await run_in_threadpool(lambda: describe_vlm_chat.run_describe_vlm_chat(payload))
         logger.info(

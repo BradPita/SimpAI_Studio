@@ -20,6 +20,7 @@
         reconcileTimer: 0,
         preservePreviewUntil: 0,
         replacementInProgress: false,
+        revision: 0,
     }));
 
     function getRoot(state) {
@@ -138,6 +139,7 @@
             revokeObjectUrl(state);
             state.currentFile = file;
             state.currentObjectUrl = URL.createObjectURL(file);
+            state.revision += 1;
         }
         state.preservePreviewUntil = Date.now() + 2000;
         scheduleRender(state);
@@ -354,6 +356,23 @@
     document.addEventListener('dragend', () => clearDragState(), true);
     window.addEventListener('blur', () => clearDragState());
     window.addEventListener('beforeunload', () => states.forEach(revokeObjectUrl));
+
+    window.SimpAIMetadataMediaInput = Object.freeze({
+        getCurrentMedia(rootId) {
+            const state = states.find((candidate) => candidate.rootId === String(rootId || ''));
+            const file = state?.currentFile;
+            if (!state || !isMediaFile(file)) return null;
+            return {
+                file,
+                key: `${previewKey(file)}|${state.revision}`,
+                kind: isVideoFile(file) ? 'video' : 'image',
+                mime: String(file.type || ''),
+                name: String(file.name || ''),
+                size: Number(file.size) || 0,
+                lastModified: Number(file.lastModified) || 0,
+            };
+        },
+    });
 
     const start = () => {
         states.forEach(watchCurrentRoot);

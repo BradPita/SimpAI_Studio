@@ -452,9 +452,10 @@
         const button = promptButton();
         if (!button) return;
         const label = text("Prompt Tools", "提示工具");
+        const title = text("Open prompt tools", "打开提示工具");
         if (button.textContent !== label) button.textContent = label;
-        button.setAttribute("title", text("Open prompt tools", "打开提示工具"));
-        button.setAttribute("aria-label", label);
+        if (button.getAttribute("title") !== title) button.setAttribute("title", title);
+        if (button.getAttribute("aria-label") !== label) button.setAttribute("aria-label", label);
     }
 
     function onButtonClick(event) {

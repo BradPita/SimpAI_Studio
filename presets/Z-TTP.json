@@ -10,8 +10,8 @@
             "theme_title": "Use SeedVR2 + Z-image for tiled TTP upscaling",
             "disable_canvas_mask": true,
             "disvisible": ["scene_input_image1", "scene_additional_prompt","scene_additional_prompt_2","scene_input_image2", "scene_video", "scene_audio",
-                "scene_steps", "scene_refiner_model", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
-                    ,"scene_switch_option3","scene_switch_option4","sam3_input_video","sam3_mask_video"],
+                "scene_steps", "scene_refiner_model", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"
+                    ,"scene_switch_option4","sam3_input_video","sam3_mask_video"],
             "task_method": {
                 "Z-Image_TTP_Hires.Upscale": "zit_ttp_cn"
             },
@@ -43,12 +43,30 @@
             "var_number4": {
                 "Z-Image_TTP_Hires.Upscale": 0
             },
+            "var_number5_title": "Latent detail strength",
+            "var_number5_min": 0.0,
+            "var_number5_max": 1.0,
+            "var_number5_step": 0.01,
+            "var_number5": {
+                "Z-Image_TTP_Hires.Upscale": 0.3
+            },
+            "var_number6_title": "Latent texture strength",
+            "var_number6_min": 0.0,
+            "var_number6_max": 1.0,
+            "var_number6_step": 0.01,
+            "var_number6": {
+                "Z-Image_TTP_Hires.Upscale": 0.08
+            },
             "switch_option1_title": "FlashAttention [Disable on RTX 20 series and below]",
             "switch_option1": {
                 "Z-Image_TTP_Hires.Upscale": true
             },
             "switch_option2_title": "Use UltraFlux_VAE Decode",
             "switch_option2": {
+                "Z-Image_TTP_Hires.Upscale": true
+            },
+            "switch_option3_title": "Use latent detail sampler",
+            "switch_option3": {
                 "Z-Image_TTP_Hires.Upscale": true
             },
             "var_number_max": 16,

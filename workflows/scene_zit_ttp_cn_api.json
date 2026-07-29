@@ -71,8 +71,21 @@
         "200",
         0
       ],
+      "enhance_detail": [
+        "166",
+        22
+      ],
+      "detail_strength": [
+        "166",
+        14
+      ],
+      "texture_strength": [
+        "166",
+        15
+      ],
+      "focus_persistence": 0.65,
       "model": [
-        "250",
+        "255",
         0
       ],
       "positive": [
@@ -88,9 +101,9 @@
         0
       ]
     },
-    "class_type": "KSampler",
+    "class_type": "SimpAILatentDetailSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "SimpAI Latent Detail Sampler"
     }
   },
   "144": {
@@ -143,24 +156,25 @@
       "steps": 24,
       "var_number": 0,
       "var_number2": 0,
-      "var_number3": 0.0,
-      "var_number4": 0.0,
-      "var_number5": 0.0,
-      "var_number6": 0.0,
+      "var_number3": 0,
+      "var_number4": 0,
+      "var_number5": 0.3,
+      "var_number6": 0.08,
       "var_number7": 0,
       "var_number8": 0,
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
       "switch_option2": false,
-      "switch_option3": false,
+      "switch_option3": true,
       "switch_option4": false,
       "model_type": 1,
       "model_type2": 1,
       "clip_type": 1,
       "negative_prompt": "",
       "sampler": "euler_ancestral",
-      "scheduler": "beta"
+      "scheduler": "beta",
+      "video_duration": 0
     },
     "class_type": "SceneInput",
     "_meta": {
@@ -1086,6 +1100,19 @@
     "class_type": "ColorMatchV2",
     "_meta": {
       "title": "ColorMatchV2"
+    }
+  },
+  "255": {
+    "inputs": {
+      "shift": 1.5,
+      "model": [
+        "250",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
     }
   },
   "166:112": {

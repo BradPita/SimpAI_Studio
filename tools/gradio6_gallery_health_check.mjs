@@ -12,7 +12,6 @@ const NATIVE_DRAG_IMAGE_SELECTOR = [
   "#finished_gallery img",
   "#final_gallery img",
   "#preview_generating img",
-  "#simpleai_gallery_welcome_guard_placeholder img",
 ].join(", ");
 
 const SELECTORS = Object.freeze({
@@ -346,64 +345,87 @@ const IMAGEVIEWER_NATIVE_DRAG_SOURCE_CONTRACT = Object.freeze({
       requiredSnippets: [NATIVE_DRAG_ORIGINAL_URL_TYPE],
     },
     {
-      code: "native-drag-preview-selector",
-      anchor: "SIMPLEAI_NATIVE_IMAGE_DRAG_PREVIEW_SELECTOR",
+      code: "native-drag-image-selector",
+      anchor: "SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR",
+      lookaheadLines: 28,
+      requiredSnippets: ["'#preview_generating img'", "'#finished_gallery img'", "'#final_gallery img'", "'#comparison_box img'"],
+    },
+    {
+      code: "native-drag-image-source",
+      anchor: "function simpleaiEnableNativeGalleryImageDrag(img)",
       lookaheadLines: 18,
-      requiredSnippets: ["'#preview_generating img'", "'#finished_gallery img'", "'#final_gallery img'"],
-    },
-    {
-      code: "native-drag-managed-decision",
-      anchor: "function simpleaiShouldUseManagedNativeImageDrag(img)",
-      lookaheadLines: 8,
       requiredSnippets: [
-        "simpleaiGalleryDisplayPreviewOriginalSrc(simpleaiMediaSrc(img))",
-        "img.closest?.('#preview_generating')",
-        "simpleaiShouldPreventLargeNativeImageDrag(img)",
+        "img.setAttribute('draggable', 'true')",
+        "img.dataset.simpleaiGalleryNativeDragImage = '1'",
       ],
-    },
-    {
-      code: "native-drag-managed-source",
-      anchor: "function simpleaiPrepareManagedNativeImageDragSource(img)",
-      lookaheadLines: 24,
-      requiredSnippets: [
-        "img.setAttribute('draggable', 'false')",
-        "img.dataset.simpleaiManagedNativeImageDragImage = '1'",
-        "source.setAttribute('draggable', 'true')",
-        "source.dataset.simpleaiManagedNativeImageDragSource = '1'",
-      ],
+      forbiddenSnippets: ["setDragImage", "clearData", "DownloadURL"],
     },
     {
       code: "native-drag-original-payload",
-      anchor: "function simpleaiSetLargeNativeImageDragData(transfer, originalSrc)",
-      lookaheadLines: 14,
+      anchor: "function simpleaiHandleGalleryNativeDragStart(event)",
+      lookaheadLines: 70,
       requiredSnippets: [
-        "transfer.setData(SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url)",
-        "transfer.setData('text/uri-list', url)",
-        "transfer.setData('text/plain', url)",
-        "transfer.setData('DownloadURL'",
+        "simpleaiSetGalleryDragTransferData(transfer, SIMPLEAI_GALLERY_ORIGINAL_DRAG_URL_TYPE, url)",
+        "simpleaiSetGalleryDragTransferData(transfer, 'text/uri-list', url)",
+        "simpleaiSetGalleryDragTransferData(transfer, 'text/plain', url)",
+        "if (previewOriginalSrc) diagnostic.download_url = simpleaiSetGalleryPreviewOriginalDownload(transfer, url)",
+        "window.SimpAIStudioPerformance?.mark('gallery.native_drag_start', diagnostic)",
       ],
+      forbiddenSnippets: ["clearData", "setDragImage", "preventDefault", "stopPropagation"],
     },
     {
-      code: "native-drag-start-handler",
-      anchor: "function simpleaiHandleNativeImageDragStart(event)",
-      lookaheadLines: 26,
+      code: "native-drag-preview-original-download",
+      anchor: "function simpleaiSetGalleryPreviewOriginalDownload(transfer, originalSrc)",
+      lookaheadLines: 8,
       requiredSnippets: [
-        "simpleaiPreparedManagedNativeImageDragImage",
-        "simpleaiPrepareManagedNativeImageDragSource(img)",
-        "simpleaiShouldUseManagedNativeImageDrag(img)",
-        "simpleaiSetLargeNativeImageDragData(transfer, largeDragState.originalSrc)",
+        "simpleaiGalleryImageFileName(originalSrc)",
+        "simpleaiGalleryImageMimeType(originalSrc)",
+        "simpleaiSetGalleryDragTransferData(transfer, 'DownloadURL', `${mimeType}:${fileName}:${originalSrc}`)",
       ],
-      forbiddenSnippets: ["event.preventDefault();", "event.stopPropagation();", "event.stopImmediatePropagation();"],
+      forbiddenSnippets: ["clearData", "setDragImage", "preventDefault", "stopPropagation"],
+    },
+    {
+      code: "native-drag-sync",
+      anchor: "function simpleaiSyncGalleryNativeDragImages()",
+      lookaheadLines: 18,
+      requiredSnippets: [
+        "querySelectorAll?.('.simpleai-gallery-external-drag-handle').forEach((handle) => handle.remove())",
+        "document.getElementById('simpleai-gallery-external-drag-style')?.remove()",
+        "forEach(simpleaiEnableNativeGalleryImageDrag)",
+      ],
+      forbiddenSnippets: ["createElement", "appendChild"],
     },
     {
       code: "native-drag-event-listeners",
-      anchor: "document.addEventListener('pointerover', simpleaiPrepareManagedNativeImageDrag, true);",
-      lookaheadLines: 12,
+      anchor: "document.addEventListener('dragstart', simpleaiHandleGalleryNativeDragStart, true);",
+      lookaheadLines: 34,
       requiredSnippets: [
-        "document.addEventListener('pointerover', simpleaiPrepareManagedNativeImageDrag, true);",
-        "document.addEventListener('mousedown', simpleaiPrepareManagedNativeImageDrag, true);",
-        "document.addEventListener('dragstart', simpleaiHandleNativeImageDragStart, true);",
-        "document.addEventListener('dragend', simpleaiHandleNativeImageDragEnd, true);",
+        "document.addEventListener('dragend', simpleaiHandleGalleryNativeDragEnd, true);",
+        "document.addEventListener('drop', simpleaiHandleGalleryNativeDragEnd, true);",
+        "onAfterUiUpdate(simpleaiScheduleGalleryNativeDragImageSync);",
+      ],
+      forbiddenSnippets: [
+        "simpleaiHandleGalleryPointerDragDown",
+        "simpleaiHandleGalleryPointerDragMove",
+        "simpleaiHandleGalleryPointerDragUp",
+        "simpleaiHandleGalleryPointerDragCancel",
+        "simpleaiCancelNativeGalleryImageDrag",
+        "simpleaiPrepareGalleryNativeDragImage",
+      ],
+    },
+    {
+      code: "native-drag-no-custom-machinery",
+      anchor: "SIMPLEAI_GALLERY_NATIVE_DRAG_IMAGE_SELECTOR",
+      lookaheadLines: 1800,
+      requiredSnippets: [],
+      forbiddenSnippets: [
+        "setDragImage(",
+        "transfer.clearData(",
+        "new DataTransfer(",
+        "simpleaiCreateGalleryPointerDragPreview",
+        "simpleaiEnsureGalleryExternalDragHandle",
+        "simpleaiHandleGalleryPointerDragMove",
+        "setPointerCapture(",
       ],
     },
   ],
@@ -908,7 +930,7 @@ function sourceAuditViolations(sourceAudit) {
   const badNativeDragRows = (sourceAudit.nativeDragRows || []).filter((row) => !row.ok);
   if (badNativeDragRows.length) {
     violations.push(
-      makeViolation("imageviewer-source", "fail", "imageviewer_native_drag_contract_mismatch", "Gallery native drag source no longer matches the managed drag contract", {
+      makeViolation("imageviewer-source", "fail", "imageviewer_native_drag_contract_mismatch", "Gallery images no longer match the native drag contract", {
         path: sourceAudit.imageviewerPath,
         nativeDragRows: badNativeDragRows.map((row) => ({
           code: row.code,
@@ -1204,7 +1226,7 @@ function renderMarkdownSummary(report) {
     missing: (row.missingSnippets || []).concat(row.forbiddenSnippetsPresent || []).join(", "),
   }));
   const nativeDragRows = (report.checks || [])
-    .filter((check) => check.label === "native-gallery-drag-contract")
+    .filter((check) => check.label === "gallery-native-drag-contract")
     .flatMap((check) => {
       const drag = check.drag || {};
       return [
@@ -2812,6 +2834,7 @@ const ACTION_RECOMMENDATION_RULES = Object.freeze([
     priority: "medium",
     triggerCodes: [
       "preview_generating_visible_with_rendered_media",
+      "preview_generating_hidden_but_occupies_layout",
       "preview_generating_flicker",
       "preview_and_gallery_overlap",
       "gallery_preview_thumbnails_missing",
@@ -2847,23 +2870,29 @@ const ACTION_RECOMMENDATION_RULES = Object.freeze([
   },
   {
     code: "gallery_native_drag_contract_recommended",
-    action: "preserve_native_drag_responsiveness",
+    action: "preserve_internal_and_external_drag_responsiveness",
     priority: "high",
     triggerCodes: [
       "imageviewer_native_drag_contract_mismatch",
       "native_drag_datatransfer_unavailable",
-      "native_drag_image_still_native_draggable",
-      "native_drag_missing_managed_source",
+      "native_drag_image_not_draggable",
+      "native_drag_image_not_marked",
       "native_drag_missing_original_url_payload",
-      "native_drag_unmanaged_left_managed_marks",
+      "native_drag_preview_missing_original_download",
+      "native_drag_preview_download_not_original",
+      "native_drag_unexpected_downloadurl",
+      "native_drag_default_prevented",
+      "native_drag_external_handle_present",
+      "native_drag_state_residue",
       "native_drag_live_responsiveness_timeout",
       "native_drag_contract_runtime_error",
     ],
-    message: "Keep large gallery images and preview images on the managed native drag path.",
+    message: "Keep gallery images as the native drag source for both page and external targets.",
     implementation: [
-      "keep img draggable=false and wrapper draggable=true for preview or large gallery images",
-      "write original image URL to the standard drag payload fields",
-      "verify live mouse drag returns before the timeout",
+      "keep gallery images draggable=true without adding visible drag controls",
+      "preserve the browser native payload while adding original URL text types",
+      "use DownloadURL only for memory-preview images so Windows folders receive the original file",
+      "avoid source replacement, setDragImage, clearData, pointer capture, and layout writes during dragstart",
     ],
   },
 ]);
@@ -2895,6 +2924,13 @@ function buildActionRecommendations(checks, globalViolations = []) {
 function analyzeCheck(record, options = {}) {
   const samples = record.samples || [];
   const violations = [];
+  const hiddenPreviewOccupiesLayout = (snapshot) => !!(
+    snapshot?.preview?.exists
+    && !snapshot.preview.visible
+    && snapshot.preview.display !== "none"
+    && snapshot.preview.width > 0
+    && snapshot.preview.height > 0
+  );
   const transitions = {
     previewVisible: countTransitions(samples, (sample) => !!sample.preview?.visible),
     finishedGalleryVisible: countTransitions(samples, (sample) => !!sample.finishedGallery?.visible),
@@ -2931,6 +2967,7 @@ function analyzeCheck(record, options = {}) {
     ),
     progressVisibleMs: longestActiveMs(samples, (sample) => sample.progressBar?.visible || sample.gradioStatusMonitor?.visible),
     previewVisibleWithMediaMs: longestActiveMs(samples, (sample) => sample.preview?.visible && hasRenderedMedia(sample)),
+    hiddenPreviewOccupyingLayoutMs: longestActiveMs(samples, hiddenPreviewOccupiesLayout),
   };
   const statusSequence = uniqueSequence(samples, (sample) => sample.status?.text || "");
   const modeSequence = uniqueSequence(samples, (sample) => sample.mode || "");
@@ -3072,6 +3109,20 @@ function analyzeCheck(record, options = {}) {
         finishedMediaCount: after.finishedGallery.mediaCount,
         finalMediaCount: after.finalGallery.mediaCount,
         videoMediaCount: after.videoPlayer.mediaCount,
+      })
+    );
+  }
+
+  const hiddenPreviewLayoutEvidence = [after, ...samples]
+    .filter(hiddenPreviewOccupiesLayout)
+    .sort((a, b) => (b.preview?.height || 0) - (a.preview?.height || 0))[0];
+  if (hiddenPreviewLayoutEvidence) {
+    violations.push(
+      makeViolation(record.label, "fail", "preview_generating_hidden_but_occupies_layout", "Hidden preview_generating is still reserving layout space", {
+        preview: hiddenPreviewLayoutEvidence.preview,
+        longestMs: longest.hiddenPreviewOccupyingLayoutMs,
+        finishedMediaCount: hiddenPreviewLayoutEvidence.finishedGallery?.mediaCount || 0,
+        finalMediaCount: hiddenPreviewLayoutEvidence.finalGallery?.mediaCount || 0,
       })
     );
   }
@@ -4742,25 +4793,14 @@ async function runNativeDragSynthetic(page, label) {
       function mediaSrc(elem) {
         return elem?.currentSrc || elem?.src || elem?.getAttribute?.("src") || "";
       }
-      function displayPreviewOriginalSrc(src) {
-        const value = String(src || "");
-        if (!value) return "";
+      function isGalleryDisplayPreview(src) {
         try {
-          const url = new URL(value, document.baseURI || location.href);
+          const url = new URL(String(src || ""), document.baseURI || location.href);
           const fileName = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
-          const match = fileName.match(/^simpai_gprev__([A-Za-z0-9_-]+)__[0-9a-f]{16}\.jpg$/);
-          return match ? match[1] || "" : "";
+          return /^simpai_gprev__[A-Za-z0-9_-]+__[0-9a-f]{16}\.jpg$/.test(fileName);
         } catch {
-          return "";
+          return false;
         }
-      }
-      function expectedManaged(img) {
-        const naturalWidth = Number(img?.naturalWidth || 0);
-        const naturalHeight = Number(img?.naturalHeight || 0);
-        const large = !!naturalWidth && !!naturalHeight && (
-          naturalWidth * naturalHeight >= 2000000 || Math.max(naturalWidth, naturalHeight) >= 2048
-        );
-        return !!displayPreviewOriginalSrc(mediaSrc(img)) || !!img.closest?.("#preview_generating") || large;
       }
       function isVisible(node) {
         if (!node) return false;
@@ -4768,42 +4808,26 @@ async function runNativeDragSynthetic(page, label) {
         const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
         return rect.width > 0 && rect.height > 0 && (!style || (style.display !== "none" && style.visibility !== "hidden"));
       }
-      function sourceFromImage(img) {
-        return img?.closest?.(".thumbnail-item, .gallery-item, .image-container, .image-frame, .preview, button") || img?.parentElement || null;
-      }
-      function dispatchPointer(type, target) {
-        const Ctor = window.PointerEvent || window.MouseEvent;
-        const event = new Ctor(type, { bubbles: true, cancelable: true, button: 0, buttons: type === "mouseup" || type === "pointerup" ? 0 : 1 });
-        target.dispatchEvent(event);
-        return event;
-      }
-      function dispatchMouse(type, target) {
-        const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: type === "mouseup" ? 0 : 1 });
-        target.dispatchEvent(event);
-        return event;
-      }
       function dispatchDrag(type, target, dataTransfer) {
         const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer });
         target.dispatchEvent(event);
         return event;
       }
       const candidates = Array.from(document.querySelectorAll(selector)).filter(isVisible).slice(0, Math.max(0, Number(candidateLimit || 0)));
+      const externalHandleCount = document.querySelectorAll(".simpleai-gallery-external-drag-handle").length;
       const candidateRows = candidates.map((img, index) => {
-        const source = sourceFromImage(img);
         const rect = img.getBoundingClientRect();
         return {
           index,
           src: mediaSrc(img),
+          previewBacked: isGalleryDisplayPreview(mediaSrc(img)),
           naturalWidth: img.naturalWidth || 0,
           naturalHeight: img.naturalHeight || 0,
           rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
-          expectedManaged: expectedManaged(img),
-          sourceTag: source?.tagName || "",
-          sourceClass: String(source?.className || ""),
           imgDraggable: !!img.draggable,
-          sourceDraggable: !!source?.draggable,
-          imgMarked: img.dataset?.simpleaiManagedNativeImageDragImage === "1",
-          sourceMarked: source?.dataset?.simpleaiManagedNativeImageDragSource === "1",
+          imgDraggableAttr: img.getAttribute("draggable"),
+          imgMarked: img.dataset?.simpleaiGalleryNativeDragImage === "1",
+          externalHandleCount,
           inPreview: !!img.closest?.("#preview_generating"),
           inGallery: !!img.closest?.("#finished_gallery, #final_gallery"),
         };
@@ -4815,66 +4839,79 @@ async function runNativeDragSynthetic(page, label) {
         for (let index = 0; index < candidates.length; index += 1) {
           const img = candidates[index];
           if (!img?.isConnected) continue;
-          const source = sourceFromImage(img);
-          if (!source?.isConnected) continue;
-          const managed = expectedManaged(img);
-          dispatchPointer("pointerover", img);
-          dispatchMouse("mousedown", img);
-          const dragTarget = source?.dataset?.simpleaiManagedNativeImageDragSource === "1" ? source : img;
-          let dataTransfer = null;
+          const previewBacked = isGalleryDisplayPreview(mediaSrc(img));
+          let transfer = null;
           try {
-            dataTransfer = new DataTransfer();
+            transfer = new DataTransfer();
           } catch (error) {
             failures.push({ code: "native_drag_datatransfer_unavailable", round, index, error: String(error?.message || error) });
             continue;
           }
-          const startEvent = dispatchDrag("dragstart", dragTarget, dataTransfer);
-          const types = Array.from(dataTransfer.types || []);
-          const customUrl = dataTransfer.getData(customType);
-          const uri = dataTransfer.getData("text/uri-list");
-          const plain = dataTransfer.getData("text/plain");
-          const downloadUrl = dataTransfer.getData("DownloadURL");
-          const after = {
+          const startEvent = dispatchDrag("dragstart", img, transfer);
+          const types = Array.from(transfer.types || []);
+          const typesLower = types.map((type) => String(type).toLowerCase());
+          const customUrl = transfer.getData(customType);
+          const uri = transfer.getData("text/uri-list");
+          const plain = transfer.getData("text/plain");
+          const downloadUrl = transfer.getData("DownloadURL");
+          const afterStart = {
             imgDraggable: !!img.draggable,
-            imgMarked: img.dataset?.simpleaiManagedNativeImageDragImage === "1",
-            sourceDraggable: !!source.draggable,
-            sourceMarked: source.dataset?.simpleaiManagedNativeImageDragSource === "1",
+            imgDraggableAttr: img.getAttribute("draggable"),
+            imgMarked: img.dataset?.simpleaiGalleryNativeDragImage === "1",
+            externalHandleCount: document.querySelectorAll(".simpleai-gallery-external-drag-handle").length,
           };
-          if (managed) {
-            if (!after.imgMarked || after.imgDraggable) {
-              failures.push({ code: "native_drag_image_still_native_draggable", round, index, after });
-            }
-            if (!after.sourceMarked || !after.sourceDraggable) {
-              failures.push({ code: "native_drag_missing_managed_source", round, index, after });
-            }
-            if (!customUrl || !uri || !plain) {
-              failures.push({ code: "native_drag_missing_original_url_payload", round, index, types, customUrl, uri, plain });
-            }
-            if (!downloadUrl) {
-              warnings.push({ code: "native_drag_missing_downloadurl", round, index, types });
-            }
-          } else if (after.sourceMarked || after.imgMarked) {
-            failures.push({ code: "native_drag_unmanaged_left_managed_marks", round, index, after });
+          if (!afterStart.imgDraggable || afterStart.imgDraggableAttr !== "true") {
+            failures.push({
+              code: "native_drag_image_not_draggable",
+              round,
+              index,
+              afterStart,
+            });
+          }
+          if (!afterStart.imgMarked) {
+            failures.push({ code: "native_drag_image_not_marked", round, index, afterStart });
           }
           if (startEvent.defaultPrevented) {
-            warnings.push({ code: "native_drag_default_prevented", round, index, managed });
+            failures.push({ code: "native_drag_default_prevented", round, index });
           }
-          dispatchDrag("dragend", dragTarget, dataTransfer);
-          dispatchPointer("pointerup", img);
-          dispatchMouse("mouseup", img);
+          if (!customUrl || !uri || !plain) {
+            failures.push({ code: "native_drag_missing_original_url_payload", round, index, types, customUrl, uri, plain });
+          }
+          if (previewBacked && (!downloadUrl || !typesLower.includes("downloadurl"))) {
+            failures.push({ code: "native_drag_preview_missing_original_download", round, index, types, downloadUrl, customUrl });
+          }
+          if (previewBacked && downloadUrl && (!customUrl || !downloadUrl.endsWith(`:${customUrl}`) || downloadUrl.includes("simpai_gprev__"))) {
+            failures.push({ code: "native_drag_preview_download_not_original", round, index, types, downloadUrl, customUrl });
+          }
+          if (!previewBacked && (downloadUrl || typesLower.includes("downloadurl"))) {
+            failures.push({ code: "native_drag_unexpected_downloadurl", round, index, types, downloadUrl });
+          }
+          if (afterStart.externalHandleCount) {
+            failures.push({ code: "native_drag_external_handle_present", round, index, afterStart });
+          }
+          dispatchDrag("dragend", img, transfer);
+          const afterEnd = {
+            externalHandleCount: document.querySelectorAll(".simpleai-gallery-external-drag-handle").length,
+            pointerPreview: !!document.getElementById("simpleai-gallery-pointer-drag-preview"),
+            nativePreview: !!document.getElementById("simpleai-native-image-drag-preview"),
+            managedSourceCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-source="1"]').length,
+            managedImageCount: document.querySelectorAll('[data-simpleai-managed-native-image-drag-image="1"]').length,
+          };
+          if (Object.values(afterEnd).some((value) => Boolean(value))) {
+            failures.push({ code: "native_drag_state_residue", round, index, afterEnd });
+          }
           runs.push({
             round,
             index,
-            managed,
-            targetTag: dragTarget?.tagName || "",
-            targetMarked: dragTarget?.dataset?.simpleaiManagedNativeImageDragSource === "1",
             defaultPrevented: !!startEvent.defaultPrevented,
             types,
             hasCustomUrl: !!customUrl,
             hasUri: !!uri,
             hasPlain: !!plain,
             hasDownloadUrl: !!downloadUrl,
-            after,
+            previewBacked,
+            afterStart,
+            afterEnd,
           });
         }
       }
@@ -4901,7 +4938,10 @@ async function runNativeDragSynthetic(page, label) {
 
 async function runNativeDragLiveSmoke(page, dragResult) {
   if (!config.nativeDragLive) return [];
-  const candidates = (dragResult?.candidates || []).filter((item) => item.rect?.width >= 8 && item.rect?.height >= 8).slice(0, config.nativeDragCandidateLimit);
+  const candidates = (dragResult?.candidates || []).filter((item) => (
+    item.rect?.width >= 8
+    && item.rect?.height >= 8
+  )).slice(0, config.nativeDragCandidateLimit);
   const rows = [];
   for (const item of candidates) {
     const x = item.rect.x + Math.min(Math.max(4, Math.floor(item.rect.width / 2)), Math.max(4, item.rect.width - 4));
@@ -4912,8 +4952,8 @@ async function runNativeDragLiveSmoke(page, dragResult) {
         (async () => {
           await page.mouse.move(x, y);
           await page.mouse.down();
-          await page.mouse.move(x + 18, y + 8, { steps: 3 });
-          await page.mouse.move(x + 3, y + 2, { steps: 2 });
+          await page.mouse.move(x + 32, y + 38, { steps: 6 });
+          await page.mouse.move(x + 3, y + 2, { steps: 3 });
           await page.mouse.up();
           await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(true))));
         })(),
@@ -4933,7 +4973,7 @@ async function runNativeDragLiveSmoke(page, dragResult) {
 async function runNativeDragContractCheck(page, checks, targetFolder = "") {
   const startedAt = Date.now();
   const record = {
-    label: "native-gallery-drag-contract",
+    label: "gallery-native-drag-contract",
     startedAt,
     endedAt: null,
     durationMs: null,
@@ -4962,14 +5002,14 @@ async function runNativeDragContractCheck(page, checks, targetFolder = "") {
       await selectFolderByValue(page, targetFolder);
       await page.waitForTimeout(Math.max(240, config.rapidDelayMs * 2));
     }
-    record.before = await snapshotGalleryHealth(page, "native-gallery-drag-contract:before");
+    record.before = await snapshotGalleryHealth(page, "gallery-native-drag-contract:before");
     const dragResult = await runNativeDragSynthetic(page, record.label);
     const liveRows = await runNativeDragLiveSmoke(page, dragResult);
     record.after = await snapshotGalleryHealth(page, record.label);
     record.drag = { ...dragResult, live: liveRows };
     if (!dragResult.candidates.length) {
       record.skipped = true;
-      record.skipReason = `no visible native drag candidates for ${config.nativeDragSelector}`;
+      record.skipReason = `no visible gallery drag candidates for ${config.nativeDragSelector}`;
     }
     for (const failure of dragResult.failures || []) {
       record.violations.push(makeViolation(record.label, "fail", failure.code, "Gallery native drag contract failed", failure));
@@ -4978,7 +5018,7 @@ async function runNativeDragContractCheck(page, checks, targetFolder = "") {
       record.violations.push(makeViolation(record.label, "warn", warning.code, "Gallery native drag contract warning", warning));
     }
     for (const row of liveRows.filter((item) => !item.ok)) {
-      record.violations.push(makeViolation(record.label, "fail", "native_drag_live_responsiveness_timeout", "Live mouse drag did not return before timeout", row));
+      record.violations.push(makeViolation(record.label, "fail", "native_drag_live_responsiveness_timeout", "Live native drag did not return before timeout", row));
     }
     record.settled = !record.violations.some((item) => item.severity === "fail");
     record.endedReason = record.skipped ? "skipped_no_candidates" : "native_drag_contract_checked";
@@ -5296,7 +5336,7 @@ const COVERAGE_RULES = Object.freeze([
   { code: "preview-after-rapid-folder-switch", title: "Open preview after rapid folder switching", prefixes: ["preview-after-rapid-folder-switch-"], required: false, requiresData: "folder_with_more_than_page_size_media" },
   { code: "frost-reveal-during-folder-switch", title: "Reveal blur overlay during folder switching", prefixes: ["frost-reveal-during-folder-switch-"], required: false, requiresData: "folder_with_more_than_page_size_media" },
   { code: "frost-reveal-after-preview-folder-switch", title: "Reveal blur overlay after switching folders from preview", prefixes: ["frost-reveal-after-preview-folder-switch-"], required: false, requiresData: "folder_with_more_than_page_size_media" },
-  { code: "native-gallery-drag", title: "Native gallery image drag contract", prefixes: ["native-gallery-drag-contract"], required: false, requiresData: "visible_gallery_media" },
+  { code: "gallery-native-drag", title: "Image native drag contract", prefixes: ["gallery-native-drag-contract"], required: false, requiresData: "visible_gallery_media" },
   { code: "rapid-media-switch", title: "Rapid image/video switching", prefixes: ["rapid-media-switch"], required: true },
   { code: "rapid-folder-switch", title: "Rapid folder switching", prefixes: ["rapid-folder-switch"], required: true },
   { code: "catalog-close-reopen", title: "Close and reopen catalog", prefixes: ["close-catalog", "reopen-catalog-after-close"], required: true },
@@ -5624,6 +5664,7 @@ function syntheticGradioConfigWithGalleryDependencies(overrides = {}) {
     ["gallery_media_switch_request", "textbox"],
     ["gallery_browser_load_btn", "button"],
     ["scene_panel", "group"],
+    ["scene_video_duration", "slider"],
   ];
   const components = componentSpecs.map(([elemId, type], index) => ({
     id: index + 1,

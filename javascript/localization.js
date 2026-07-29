@@ -1307,7 +1307,10 @@ function localizeWholePage() {
 function syncLocalizedCssContent() {
     try {
         const vlmModelLabel = getTranslation("\uD83E\uDD16 VLM Model:") || "\uD83E\uDD16 VLM Model:";
-        document.documentElement.style.setProperty("--simpai-vlm-model-label", JSON.stringify(vlmModelLabel));
+        const value = JSON.stringify(vlmModelLabel);
+        if (document.documentElement.style.getPropertyValue("--simpai-vlm-model-label") !== value) {
+            document.documentElement.style.setProperty("--simpai-vlm-model-label", value);
+        }
     } catch (e) {}
 }
 

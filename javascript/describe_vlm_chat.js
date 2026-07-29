@@ -12,6 +12,8 @@
     const getUiLang = UTILS.getUiLang || (() => 'en');
 
     const MAX_ATTACHMENTS = 5;
+    const MAX_VIDEO_ATTACHMENT_BYTES = 80 * 1024 * 1024;
+    const IMAGE_MESSAGE_PREVIEW_MAX_SIDE = 256;
     const IMAGE_PRIMARY_MAX_SIDE = 1280;
     const IMAGE_FALLBACK_MAX_SIDE = 1024;
     const IMAGE_TARGET_BYTES = 800 * 1024;
@@ -37,12 +39,49 @@
     const SETTINGS_STORAGE_KEY = 'simpai.describeVlmChat.settings.v1';
     const CONVERSATION_STORAGE_KEY = 'simpai.describeVlmChat.conversation.v1';
     const CONVERSATION_SCHEMA = 'simpai.describeVlmChat.conversation';
+    const CONVERSATION_VERSION = 6;
     const SYSTEM_PROMPT_TEMPLATE_ENDPOINT = '/vlm-system-prompt-templates';
     const MAX_PERSISTED_MESSAGES = 80;
     const MAX_PERSISTED_TEXT = 12000;
+    const MAX_PERSISTED_THUMB_LENGTH = 80000;
+    const MAX_PERSISTED_THUMB_TOTAL = 480000;
+    const CREATIVE_DEFAULT_PRESET = 'Z-imageT';
+    const CREATIVE_POLL_INTERVAL_MS = 900;
+    const CREATIVE_TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped']);
+    const CREATIVE_ACTIVE_STATES = new Set(['preparing', 'checking_models', 'queued', 'running', 'cancelling', 'skipping']);
+
+    function normalizeCreativePreference(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const allowedStyles = new Set(['anime', 'realistic', 'auto', 'custom']);
+        const style = allowedStyles.has(String(source.style || '').trim().toLowerCase())
+            ? String(source.style || '').trim().toLowerCase()
+            : '';
+        const preset = String(source.preset || '').trim().replace(/\.json$/i, '').slice(0, 200);
+        return {
+            prompted: !!source.prompted,
+            style,
+            preset,
+            source: String(source.source || '').trim().slice(0, 80),
+            updated_at: String(source.updated_at || '').trim().slice(0, 80)
+        };
+    }
+
+    function normalizeCreativeInitiative(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const mode = String(source.mode || 'proactive').trim().toLowerCase() === 'responsive'
+            ? 'responsive'
+            : 'proactive';
+        return {
+            mode,
+            turn_index: Math.max(0, Math.round(Number(source.turn_index) || 0)),
+            last_offer_turn: Math.max(0, Math.round(Number(source.last_offer_turn) || 0)),
+            last_scene_key: String(source.last_scene_key || '').trim().toLowerCase().slice(0, 160)
+        };
+    }
 
     function normalizeChatMode(value) {
         const mode = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+        if (mode === 'creative' || mode === 'create' || mode === 'creation' || mode === 'creative_mode') return 'creative';
         if (mode === 'prompt' || mode === 'prompt_assistant' || mode === 'assistant') return 'prompt';
         if (mode === 'guide' || mode === 'guide_mode' || mode === 'wizard' || mode === 'ui_guide') return 'guide';
         if (mode === 'raw' || mode === 'raw_model') return 'raw';
@@ -90,16 +129,19 @@
     let modalTouchPoint = null;
     let describeViewportSyncFrame = 0;
 
+    const initialSystemParams = window.simpleaiTopbarSystemParams || {};
     const state = {
+        __lang: String(initialSystemParams.__lang || initialSystemParams.language || getUiLang(initialSystemParams) || 'en'),
         conversationId: '',
         messages: [],
         busy: false,
         requestToken: 0,
         activeAbortController: null,
         activeRequestId: '',
-        lastImageKey: '',
-        useImage: true,
+        autoAttachPreviousImage: true,
         pendingImages: [],
+        lastAutoReferencedDescribeMediaKey: '',
+        describeMediaReferencePromise: null,
         missingVlmModelRequest: null,
         chatMode: savedChatSettings.chatMode,
         customSystemPrompt: savedChatSettings.customSystemPrompt,
@@ -107,6 +149,17 @@
         systemPromptTemplates: [],
         systemPromptTemplatesLoaded: false,
         systemPromptTemplatesLoading: false,
+        creativePresetCatalog: [],
+        creativePresetCatalogLoaded: false,
+        creativePresetCatalogLoading: false,
+        creativePresetCatalogPromise: null,
+        creativeGenerationPolls: new Map(),
+        creativePreference: normalizeCreativePreference(null),
+        creativePreferenceExpanded: false,
+        creativeInitiative: normalizeCreativeInitiative(null),
+        creativeDirectorBusy: false,
+        creativeDirectorAbortController: null,
+        creativeDirectorRequestId: '',
         unloadAfterChat: !!savedChatSettings.unloadAfterChat,
         windowLayout: savedChatSettings.windowLayout,
         persistenceRestored: false,
@@ -131,8 +184,46 @@
     }
 
     function localText(en, cn) {
-        const lang = String(getUiLang?.() || '').toLowerCase();
+        const lang = String(state.__lang || getUiLang?.(state) || '').toLowerCase();
         return lang.startsWith('zh') || lang.startsWith('cn') ? cn : en;
+    }
+
+    function creativePreferenceLabel(preference = state.creativePreference) {
+        const current = normalizeCreativePreference(preference);
+        if (current.preset) return current.preset;
+        if (current.style === 'anime') return localText('Anime', '动漫');
+        if (current.style === 'realistic') return localText('Realistic', '写实');
+        if (current.style === 'auto') return localText('Let Agent decide', '交给 Agent');
+        return localText('Not selected', '未选择');
+    }
+
+    function applyCreativePreferenceToPendingActions(preference = state.creativePreference) {
+        const preset = String(preference?.preset || '').trim();
+        if (!preset) return;
+        state.messages.forEach((message) => {
+            (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
+                if (!['generate_image', 'offer_image'].includes(action?.type)) return;
+                const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
+                if (['awaiting_confirmation', 'models_missing', 'preset_missing'].includes(generationState)) {
+                    action.preset = preset;
+                }
+            });
+        });
+    }
+
+    function setCreativePreference(value, source = 'user') {
+        const next = normalizeCreativePreference(Object.assign({}, value || {}, {
+            prompted: true,
+            source,
+            updated_at: new Date().toISOString()
+        }));
+        state.creativePreference = next;
+        applyCreativePreferenceToPendingActions(next);
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        renderMessages();
+        setStatus(localText(`Creative preference: ${creativePreferenceLabel(next)}`, `创作偏好：${creativePreferenceLabel(next)}`));
+        return next;
     }
 
     function saveChatSettings() {
@@ -151,6 +242,9 @@
 
     function chatInputPlaceholder(mode) {
         const currentMode = normalizeChatMode(mode);
+        if (currentMode === 'creative') {
+            return localText('Describe an image to create...', '描述你想生成的图片...');
+        }
         if (currentMode === 'prompt') {
             return t('Ask it to prepare or refine a prompt...', '让它整理或优化提示词...');
         }
@@ -163,8 +257,18 @@
         return t('Chat naturally, ask about the image, or request a prompt...', '正常聊天、询问图片，或要求整理提示词...');
     }
 
-    function defaultMessageForMode(mode) {
+    function defaultMessageForMode(mode, attachments = []) {
         const currentMode = normalizeChatMode(mode);
+        const hasVideo = (Array.isArray(attachments) ? attachments : []).some((item) => mediaKind(item) === 'video');
+        if (hasVideo) {
+            if (currentMode === 'creative') return localText('Create an image inspired by the attached video.', '参考附加视频创作一张新图。');
+            if (currentMode === 'prompt') return t('Please analyze the attached video and prepare a prompt.', '请分析附加视频，并整理成提示词。');
+            if (currentMode === 'guide') return t('Please recommend a suitable SimpAI workflow for this video.', '请根据这段视频推荐适合的 SimpAI 工作流。');
+            return t('Please analyze the attached video.', '请分析附加视频。');
+        }
+        if (currentMode === 'creative') {
+            return localText('Create an image inspired by the attached reference.', '参考附加图片创作一张新图。');
+        }
         if (currentMode === 'prompt') {
             return t('Please analyze the attached reference image and prepare a prompt.', '请分析附加引用图，并整理成提示词。');
         }
@@ -185,13 +289,13 @@
         const template = modal.querySelector('[data-describe-vlm-chat-template]');
         const input = modal.querySelector('[data-describe-vlm-chat-input]');
         const unload = modal.querySelector('[data-describe-vlm-chat-unload-after]');
-        const useImage = modal.querySelector('[data-describe-vlm-chat-use-image]');
+        const autoImage = modal.querySelector('[data-describe-vlm-chat-auto-previous-image]');
         const modeHint = modal.querySelector('[data-describe-vlm-chat-mode-hint]');
         if (mode) mode.value = state.chatMode;
         if (system && system.value !== state.customSystemPrompt) system.value = state.customSystemPrompt;
         if (template) syncSystemPromptTemplateControls(modal);
         if (unload) unload.checked = !!state.unloadAfterChat;
-        if (useImage) useImage.checked = !!state.useImage;
+        if (autoImage) autoImage.checked = !!state.autoAttachPreviousImage;
         if (modeHint) modeHint.hidden = state.chatMode !== 'chat';
         if (input) input.setAttribute('placeholder', chatInputPlaceholder(state.chatMode));
         updateAnswerModelIndicator(modal);
@@ -390,31 +494,43 @@
         setStatus(t('System prompt template loaded: {name}', '已载入系统提示词模板：{name}').replace('{name}', template.name));
     }
 
-    function currentImageElement() {
-        const host = root().querySelector('#describe_input_image');
-        const images = Array.from(host?.querySelectorAll?.('img') || []);
-        return images.find((img) => img?.src && img.naturalWidth && img.naturalHeight) || images.find((img) => img?.src) || null;
-    }
-
-    function currentUploadFile() {
-        const host = root().querySelector('#describe_input_image');
-        const input = host?.querySelector?.('input[type="file"]');
-        return input?.files?.[0] || null;
-    }
-
-    function currentImageKey() {
-        const file = currentUploadFile();
-        if (file) {
-            if (!/^image\//i.test(file.type || '')) return '';
-            return `${file.name || 'image'}:${file.size || 0}:${file.lastModified || 0}`;
-        }
-        const image = currentImageElement();
-        return image ? (image.currentSrc || image.src || '') : '';
-    }
-
     function imageMimeFromDataUrl(dataUrl) {
         const match = String(dataUrl || '').match(/^data:([^;,]+)/);
         return match ? match[1] : 'image/png';
+    }
+
+    function mediaKind(value) {
+        return /^video\//i.test(String(value?.mime || value?.type || '')) ? 'video' : 'image';
+    }
+
+    function describeInputMediaDescriptor() {
+        const exposed = window.SimpAIMetadataMediaInput?.getCurrentMedia?.('describe_input_image');
+        if (exposed?.file instanceof File) {
+            return {
+                file: exposed.file,
+                key: String(exposed.key || ''),
+                kind: exposed.kind === 'video' ? 'video' : 'image',
+            };
+        }
+        const host = root().querySelector('#describe_input_image');
+        const file = host?.querySelector?.('input[type="file"]')?.files?.[0] || null;
+        if (file instanceof File && /^(?:image|video)\//i.test(file.type || '')) {
+            return {
+                file,
+                key: `${file.name || 'media'}:${file.size || 0}:${file.lastModified || 0}`,
+                kind: /^video\//i.test(file.type || '') ? 'video' : 'image',
+            };
+        }
+        const media = host?.querySelector?.('.simpai-metadata-local-preview video, .simpai-metadata-local-preview img, .file-preview-holder video, .file-preview-holder img');
+        const source = String(media?.currentSrc || media?.src || '').trim();
+        if (!source) return null;
+        return {
+            source,
+            key: source,
+            kind: media.tagName === 'VIDEO' ? 'video' : 'image',
+            width: Number(media.videoWidth || media.naturalWidth) || null,
+            height: Number(media.videoHeight || media.naturalHeight) || null,
+        };
     }
 
     function blobToDataUrl(blob) {
@@ -561,7 +677,7 @@
         try {
             const image = await loadImage(dataUrl);
             const main = adaptiveImageDataUrl(image);
-            const thumb = drawImageDataUrl(image, 96, 'image/jpeg', 0.72);
+            const thumb = drawImageDataUrl(image, IMAGE_MESSAGE_PREVIEW_MAX_SIDE, 'image/jpeg', 0.76);
             return {
                 id: options.id || uid('describe_ref'),
                 name: options.name || 'reference-image.png',
@@ -599,34 +715,6 @@
         }
     }
 
-    async function currentImagePayload() {
-        const file = currentUploadFile();
-        if (file) {
-            if (!String(file.type || '').toLowerCase().startsWith('image/')) return null;
-            return fileToImagePayload(file);
-        }
-        const img = currentImageElement();
-        if (!img?.src) return null;
-        const src = img.currentSrc || img.src;
-        let dataUrl = '';
-        if (/^data:/i.test(src)) {
-            dataUrl = src;
-        } else {
-            const response = await fetch(src);
-            const blob = await response.blob();
-            dataUrl = await blobToDataUrl(blob);
-        }
-        if (!dataUrl) return null;
-        return imagePayloadFromDataUrl(dataUrl, {
-            id: uid('describe_img'),
-            name: 'describe-image.png',
-            mime: imageMimeFromDataUrl(dataUrl),
-            width: img.naturalWidth || null,
-            height: img.naturalHeight || null,
-            key: src
-        });
-    }
-
     async function fileToImagePayload(file) {
         const dataUrl = await blobToDataUrl(file);
         return imagePayloadFromDataUrl(dataUrl, {
@@ -636,6 +724,97 @@
             originalSize: file.size || null,
             key: `${file.name || 'image'}:${file.size || 0}:${file.lastModified || 0}`
         });
+    }
+
+    async function fileToMediaPayload(file, options = {}) {
+        if (!(file instanceof Blob)) throw new Error('media file is unavailable');
+        const mime = String(file.type || options.mime || '').toLowerCase();
+        if (!mime.startsWith('video/')) {
+            const image = await fileToImagePayload(file);
+            if (options.key) image.key = options.key;
+            return image;
+        }
+        if (Number(file.size) > MAX_VIDEO_ATTACHMENT_BYTES) throw new Error('video attachment is too large');
+        const dataUrl = await blobToDataUrl(file);
+        return {
+            id: options.id || uid('describe_video_ref'),
+            name: options.name || file.name || 'reference-video.mp4',
+            mime: mime || 'video/mp4',
+            media_type: 'video',
+            width: options.width || null,
+            height: options.height || null,
+            size: Number(file.size) || dataUrlBinarySize(dataUrl),
+            wire_size: dataUrl.length,
+            original_size: Number(file.size) || null,
+            data_url: dataUrl,
+            thumb: '',
+            key: options.key || `${file.name || 'video'}:${file.size || 0}:${file.lastModified || 0}`,
+        };
+    }
+
+    async function payloadFromDescribeInputMedia(descriptor) {
+        if (!descriptor) return null;
+        const payloadKey = `describe-input:${String(descriptor.key || '')}`;
+        if (descriptor.file instanceof File) {
+            return fileToMediaPayload(descriptor.file, { key: payloadKey });
+        }
+        const response = await fetch(descriptor.source, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`media fetch failed: ${response.status}`);
+        const blob = await response.blob();
+        const fallbackMime = descriptor.kind === 'video' ? 'video/mp4' : 'image/png';
+        const mime = String(blob.type || fallbackMime).toLowerCase();
+        const extension = (mime.split('/')[1] || (descriptor.kind === 'video' ? 'mp4' : 'png')).split(';')[0];
+        const file = new File([blob], `describe-input.${extension}`, { type: mime });
+        return fileToMediaPayload(file, {
+            key: payloadKey,
+            width: descriptor.width,
+            height: descriptor.height,
+        });
+    }
+
+    async function autoReferenceDescribeInputMedia() {
+        const descriptor = describeInputMediaDescriptor();
+        const key = String(descriptor?.key || '');
+        if (!descriptor || !key || key === state.lastAutoReferencedDescribeMediaKey) return false;
+        const payloadKey = `describe-input:${key}`;
+        if (state.pendingImages.some((item) => String(item?.key || '') === payloadKey)) {
+            state.lastAutoReferencedDescribeMediaKey = key;
+            return true;
+        }
+        if (state.describeMediaReferencePromise?.key === key) return state.describeMediaReferencePromise.promise;
+        const promise = (async () => {
+            setStatus(localText('Referencing Describe input media...', '正在引用反推输入媒体...'));
+            try {
+                const payload = await payloadFromDescribeInputMedia(descriptor);
+                if (!payload) return false;
+                const currentKey = String(describeInputMediaDescriptor()?.key || '');
+                if (currentKey !== key) return false;
+                state.pendingImages = [payload, ...state.pendingImages.filter((item) => {
+                    const itemKey = String(item?.key || '');
+                    return itemKey !== payload.key && !itemKey.startsWith('describe-input:');
+                })].slice(0, MAX_ATTACHMENTS);
+                state.lastAutoReferencedDescribeMediaKey = key;
+                renderPendingImages();
+                const kindLabel = mediaKind(payload) === 'video'
+                    ? localText('video', '视频')
+                    : localText('image', '图片');
+                setStatus(localText(
+                    `Describe input ${kindLabel} referenced for the next message.`,
+                    `已自动引用反推输入${kindLabel}，将在下一条消息中发送。`
+                ));
+                return true;
+            } catch (err) {
+                const tooLarge = String(err?.message || '').includes('too large');
+                setStatus(tooLarge
+                    ? localText('The Describe input video exceeds the 80 MB chat limit.', '反推输入视频超过 Chat 的 80 MB 限制。')
+                    : localText('Could not reference the Describe input media.', '无法自动引用反推输入媒体。'), true);
+                return false;
+            } finally {
+                if (state.describeMediaReferencePromise?.key === key) state.describeMediaReferencePromise = null;
+            }
+        })();
+        state.describeMediaReferencePromise = { key, promise };
+        return promise;
     }
 
     function cleanVlmVersion(value) {
@@ -1435,6 +1614,7 @@
   <div class="describe-vlm-chat-controls">
     <label><span>${escapeHtml(t('Mode', '模式'))}</span><select data-describe-vlm-chat-mode aria-label="${escapeHtml(t('Chat Mode', '对话模式'))}">
       <option value="chat" ${state.chatMode === 'chat' ? 'selected' : ''}>${escapeHtml(t('Free Chat', '自由对话'))}</option>
+      <option value="creative" ${state.chatMode === 'creative' ? 'selected' : ''}>${escapeHtml(localText('Creative', '创作模式'))}</option>
       <option value="guide" ${state.chatMode === 'guide' ? 'selected' : ''}>${escapeHtml(t('Guide Mode', '向导模式'))}</option>
       <option value="prompt" ${state.chatMode === 'prompt' ? 'selected' : ''}>${escapeHtml(t('Prompt Assistant', '提示词助手'))}</option>
       <option value="raw" ${state.chatMode === 'raw' ? 'selected' : ''}>${escapeHtml(t('Raw Model', '原始模型'))}</option>
@@ -1443,7 +1623,10 @@
     <label class="describe-vlm-chat-system-field"><span>${escapeHtml(t('System Prompt', '系统提示词'))}</span><textarea data-describe-vlm-chat-system rows="2" placeholder="${escapeHtml(t('Optional custom system prompt...', '可选自定义 system prompt...'))}">${escapeHtml(state.customSystemPrompt)}</textarea></label>
     <div class="describe-vlm-chat-mode-hint" data-describe-vlm-chat-mode-hint>${escapeHtml(t('Free Chat may not know SimpAI main UI workflows. For feature recommendations, switch to Guide Mode.', '自由对话可能不了解 SimpAI 主界面功能；需要功能推荐时可切换到向导模式。'))}</div>
   </div>
-  <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
+  <div class="describe-vlm-chat-chat-area">
+    <div class="describe-vlm-chat-preference-mount" data-describe-vlm-chat-preference-mount hidden></div>
+    <div class="describe-vlm-chat-log" data-describe-vlm-chat-log></div>
+  </div>
   <div class="describe-vlm-chat-status" data-describe-vlm-chat-status></div>
   <div class="describe-vlm-chat-compose">
     <div class="describe-vlm-chat-compose-toolbar">
@@ -1453,7 +1636,7 @@
         <button type="button" data-describe-vlm-chat-import title="${escapeHtml(t('Import conversation', '导入对话'))}" aria-label="${escapeHtml(t('Import conversation', '导入对话'))}"><i class="fa-solid fa-upload"></i></button>
         <button type="button" data-describe-vlm-chat-clear title="${escapeHtml(t('Clear chat', '清空对话'))}" aria-label="${escapeHtml(t('Clear chat', '清空对话'))}"><i class="fa-solid fa-broom"></i></button>
       </div>
-      <label class="describe-vlm-chat-image-toggle"><input type="checkbox" data-describe-vlm-chat-use-image checked><span>${escapeHtml(t('Attach current image every message', '每次提问附带当前图片'))}</span></label>
+      <label class="describe-vlm-chat-image-toggle" title="${escapeHtml(t('Automatically attach the most recent image in this chat. A manually referenced image takes priority.', '发送时自动附带对话中最近的一张图片。手动引用的图片优先。'))}"><input type="checkbox" data-describe-vlm-chat-auto-previous-image checked><span>${escapeHtml(t('Attach previous chat image', '附带上一张对话图片'))}</span></label>
       <label class="describe-vlm-chat-unload-toggle" title="${escapeHtml(t('Unload the local VLM/LLM model after each reply.', '每次回复后卸载本地 VLM/LLM 模型。'))}"><input type="checkbox" data-describe-vlm-chat-unload-after><span>${escapeHtml(t('Unload after reply', '回复后卸载模型'))}</span></label>
       <button type="button" data-describe-vlm-chat-pick-image title="${escapeHtml(t('Attach reference image', '添加引用图片'))}" aria-label="${escapeHtml(t('Attach reference image', '添加引用图片'))}"><i class="fa-solid fa-image"></i></button>
     </div>
@@ -1477,11 +1660,15 @@
 
     function openModal() {
         const modal = ensureModal();
+        const systemParams = window.simpleaiTopbarSystemParams || {};
+        state.__lang = String(systemParams.__lang || systemParams.language || getUiLang(systemParams) || state.__lang || 'en');
         restoreConversationSnapshot();
+        ensureCreativePreferencePrompt();
         syncChatSettingsControls(modal);
         renderMessages();
         ensureSystemPromptTemplates(modal).catch(() => {});
         modal.hidden = false;
+        autoReferenceDescribeInputMedia().catch(() => {});
         installDescribeFloatingLayer(modal);
         document.documentElement.classList.add('describe-vlm-chat-open');
         window.requestAnimationFrame(() => {
@@ -1501,50 +1688,138 @@
         window.setTimeout(() => modal.querySelector('[data-describe-vlm-chat-input]')?.focus(), 40);
     }
 
-    function normalizePersistedMessage(message) {
-        if (!message || typeof message !== 'object') return null;
-        const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
-        const content = String(message.content || '').slice(0, MAX_PERSISTED_TEXT);
-        const images = Array.isArray(message.images) ? message.images.slice(0, MAX_ATTACHMENTS).map((image) => ({
+    function normalizeCreativeAsset(asset) {
+        if (!asset || typeof asset !== 'object') return null;
+        const clean = {};
+        ['kind', 'asset_id', 'mime', 'name', 'path', 'output_path', 'preview_url'].forEach((key) => {
+            const value = String(asset?.[key] || '').trim();
+            if (value) clean[key] = value.slice(0, MAX_PERSISTED_TEXT);
+        });
+        ['size', 'width', 'height'].forEach((key) => {
+            const value = Number(asset?.[key]);
+            if (Number.isFinite(value) && value >= 0) clean[key] = value;
+        });
+        return clean.asset_id || clean.path || clean.preview_url ? clean : null;
+    }
+
+    function normalizeCreativeGeneration(generation) {
+        if (!generation || typeof generation !== 'object') return null;
+        let generationState = String(generation.state || 'awaiting_confirmation').trim().toLowerCase().slice(0, 80);
+        const runId = String(generation.run_id || '').trim().slice(0, 240);
+        if (CREATIVE_ACTIVE_STATES.has(generationState) && !runId) generationState = 'awaiting_confirmation';
+        const result = {
+            state: generationState || 'awaiting_confirmation',
+            run_id: runId,
+            percent: Math.max(0, Math.min(1, Number(generation.percent) || 0)),
+            message: String(generation.message || '').slice(0, 1000),
+            error: String(generation.error || '').slice(0, 1000),
+            missing_count: Math.max(0, Number(generation.missing_count) || 0),
+            preview_serial: Math.max(0, Number(generation.preview_serial) || 0),
+            submission_uncertain: !!generation.submission_uncertain,
+            started_at: String(generation.started_at || '').slice(0, 80),
+            finished_at: String(generation.finished_at || '').slice(0, 80),
+            assets: Array.isArray(generation.assets)
+                ? generation.assets.slice(0, 16).map(normalizeCreativeAsset).filter(Boolean)
+                : []
+        };
+        return result;
+    }
+
+    function normalizePersistedAction(action) {
+        if (!action || typeof action !== 'object') return null;
+        const type = String(action.type || '').slice(0, 80);
+        const prompt = String(action.prompt || '').slice(0, MAX_PERSISTED_TEXT);
+        if (!prompt) return null;
+        if (!['generate_image', 'offer_image'].includes(type)) return { type, prompt };
+        return {
+            type,
+            target: 'canvas_run',
+            prompt,
+            preset: String(action.preset || CREATIVE_DEFAULT_PRESET).slice(0, 200),
+            aspect_ratio: String(action.aspect_ratio || 'auto').slice(0, 40),
+            image_number: Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1))),
+            label: String(action.label || '').slice(0, 200),
+            tool_call_id: String(action.tool_call_id || '').slice(0, 240),
+            offer_text: String(action.offer_text || '').slice(0, 240),
+            offer_reason: String(action.offer_reason || '').slice(0, 80),
+            scene_key: String(action.scene_key || '').slice(0, 160),
+            source_message_id: String(action.source_message_id || '').slice(0, 240),
+            score: Math.max(0, Math.min(1, Number(action.score) || 0)),
+            ui_collapsed: !!action.ui_collapsed,
+            generation: normalizeCreativeGeneration(action.generation) || { state: 'awaiting_confirmation', assets: [] }
+        };
+    }
+
+    function normalizePersistedMessageImage(image, thumbBudget = null) {
+        const rawThumb = String(image?.thumb || '').trim();
+        const thumbAllowed = /^data:image\/(?:jpeg|png|webp);base64,/i.test(rawThumb)
+            && rawThumb.length <= MAX_PERSISTED_THUMB_LENGTH
+            && (!thumbBudget || rawThumb.length <= thumbBudget.remaining);
+        if (thumbAllowed && thumbBudget) thumbBudget.remaining -= rawThumb.length;
+        return {
             name: String(image?.name || 'image').slice(0, 200),
             width: Number.isFinite(Number(image?.width)) ? Number(image.width) : null,
             height: Number.isFinite(Number(image?.height)) ? Number(image.height) : null,
             size: Number.isFinite(Number(image?.size)) ? Number(image.size) : null,
             wire_size: Number.isFinite(Number(image?.wire_size)) ? Number(image.wire_size) : null,
             mime: String(image?.mime || '').slice(0, 80),
-            placeholder: true
-        })) : [];
-        const actions = Array.isArray(message.actions) ? message.actions.slice(0, 20).map((action) => ({
-            type: String(action?.type || '').slice(0, 80),
-            prompt: String(action?.prompt || '').slice(0, MAX_PERSISTED_TEXT)
-        })).filter((action) => action.prompt) : [];
+            thumb: thumbAllowed ? rawThumb : '',
+            placeholder: !thumbAllowed
+        };
+    }
+
+    function normalizePersistedMessage(message, options = {}) {
+        if (!message || typeof message !== 'object') return null;
+        const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user';
+        const id = String(message.id || uid(`describe_vlm_chat_${role}`)).slice(0, 240);
+        const content = String(message.content || '').slice(0, MAX_PERSISTED_TEXT);
+        const images = Array.isArray(message.images)
+            ? message.images.slice(0, MAX_ATTACHMENTS).map((image) => normalizePersistedMessageImage(image, options.thumbBudget))
+            : [];
+        const actions = Array.isArray(message.actions)
+            ? message.actions.slice(0, 20).map(normalizePersistedAction).filter(Boolean)
+            : [];
         if (!content && !images.length && !actions.length) return null;
-        return { role, content, actions, images, image_count: Math.max(0, Number(message.image_count) || images.length) };
+        return { id, role, content, actions, images, image_count: Math.max(0, Number(message.image_count) || images.length) };
+    }
+
+    function normalizePersistedMessages(messages) {
+        const source = (Array.isArray(messages) ? messages : []).filter((message) => !message?.pending).slice(-MAX_PERSISTED_MESSAGES);
+        const thumbBudget = { remaining: MAX_PERSISTED_THUMB_TOTAL };
+        const normalized = [];
+        for (let index = source.length - 1; index >= 0; index -= 1) {
+            normalized.unshift(normalizePersistedMessage(source[index], { thumbBudget }));
+        }
+        return normalized.filter(Boolean);
     }
 
     function conversationPayload() {
         return {
             schema: CONVERSATION_SCHEMA,
-            version: 1,
+            version: CONVERSATION_VERSION,
             saved_at: new Date().toISOString(),
             conversation_id: String(state.conversationId || ''),
-            messages: state.messages.filter((message) => !message?.pending).slice(-MAX_PERSISTED_MESSAGES).map(normalizePersistedMessage).filter(Boolean),
+            messages: normalizePersistedMessages(state.messages),
             chatMode: normalizeChatMode(state.chatMode),
             customSystemPrompt: String(state.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
             systemPromptTemplateId: String(state.systemPromptTemplateId || '').slice(0, 200),
-            useImage: !!state.useImage
+            auto_attach_previous_image: !!state.autoAttachPreviousImage,
+            creative_preferences: normalizeCreativePreference(state.creativePreference),
+            creative_initiative: normalizeCreativeInitiative(state.creativeInitiative)
         };
     }
 
     function normalizeConversationPayload(data) {
-        if (!data || typeof data !== 'object' || data.schema !== CONVERSATION_SCHEMA || Number(data.version) !== 1 || !Array.isArray(data.messages)) return null;
+        if (!data || typeof data !== 'object' || data.schema !== CONVERSATION_SCHEMA || Number(data.version) !== CONVERSATION_VERSION || !Array.isArray(data.messages)) return null;
         return {
             conversationId: uid('describe_vlm_chat_import'),
-            messages: data.messages.slice(-MAX_PERSISTED_MESSAGES).map(normalizePersistedMessage).filter(Boolean),
+            messages: normalizePersistedMessages(data.messages),
             chatMode: normalizeChatMode(data.chatMode),
             customSystemPrompt: String(data.customSystemPrompt || '').slice(0, MAX_PERSISTED_TEXT),
             systemPromptTemplateId: String(data.systemPromptTemplateId || '').slice(0, 200),
-            useImage: !!data.useImage
+            autoAttachPreviousImage: data.auto_attach_previous_image !== false,
+            creativePreference: normalizeCreativePreference(data.creative_preferences),
+            creativeInitiative: normalizeCreativeInitiative(data.creative_initiative)
         };
     }
 
@@ -1563,15 +1838,20 @@
         try {
             const data = JSON.parse(window.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || 'null');
             const restored = normalizeConversationPayload(data);
-            if (!restored || !restored.messages.length) return;
+            if (!restored) return;
             state.conversationId = restored.conversationId;
             state.messages = restored.messages;
             state.chatMode = restored.chatMode;
             state.customSystemPrompt = restored.customSystemPrompt;
             state.systemPromptTemplateId = restored.systemPromptTemplateId;
-            state.useImage = restored.useImage;
+            state.autoAttachPreviousImage = restored.autoAttachPreviousImage;
+            state.creativePreference = restored.creativePreference;
+            state.creativePreferenceExpanded = normalizeChatMode(restored.chatMode) === 'creative' && !restored.creativePreference.prompted;
+            state.creativeInitiative = restored.creativeInitiative;
+            applyCreativePreferenceToPendingActions(restored.creativePreference);
             saveChatSettings();
             setStatus(t('Recent conversation restored.', '已恢复最近对话。'));
+            window.setTimeout(resumeCreativeGenerationPolls, 0);
         } catch (err) {}
     }
 
@@ -1593,10 +1873,17 @@
             try {
                 const restored = normalizeConversationPayload(JSON.parse(String(reader.result || '')));
                 if (!restored) throw new Error('invalid conversation');
+                activeCreativeRunIds().forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
+                    user_context: creativeUserContext()
+                }).catch(() => {}));
+                stopCreativePolls();
                 state.requestToken += 1;
                 abortActiveChatRequest();
+                abortCreativeDirectorRequest(true);
                 state.busy = false;
                 Object.assign(state, restored);
+                state.creativePreferenceExpanded = normalizeChatMode(restored.chatMode) === 'creative' && !restored.creativePreference.prompted;
+                applyCreativePreferenceToPendingActions(restored.creativePreference);
                 state.pendingImages = [];
                 state.persistenceRestored = true;
                 saveChatSettings();
@@ -1605,6 +1892,7 @@
                 syncChatSettingsControls(modal);
                 renderPendingImages();
                 renderMessages();
+                window.setTimeout(resumeCreativeGenerationPolls, 0);
                 setStatus(t('Conversation imported.', '对话已导入。'));
             } catch (err) {
                 setStatus(t('Invalid conversation file.', '对话文件格式无效。'), true);
@@ -1622,10 +1910,19 @@
     async function clearConversation() {
         const previousConversationId = state.conversationId;
         const previousRequestId = state.activeRequestId;
+        const creativeRunIds = activeCreativeRunIds();
         state.requestToken += 1;
         state.busy = false;
         abortActiveChatRequest();
+        abortCreativeDirectorRequest(true);
+        stopCreativePolls();
+        creativeRunIds.forEach((runId) => creativeCanvasApi()?.controlRun?.(runId, 'stop', {
+            user_context: creativeUserContext()
+        }).catch(() => {}));
         state.messages = [];
+        state.creativePreference = normalizeCreativePreference(null);
+        state.creativePreferenceExpanded = normalizeChatMode(state.chatMode) === 'creative';
+        state.creativeInitiative = normalizeCreativeInitiative(null);
         state.conversationId = uid('describe_vlm_chat');
         state.persistenceRestored = true;
         state.persistenceDirty = false;
@@ -1739,6 +2036,32 @@
         return true;
     }
 
+    function abortCreativeDirectorRequest(notifyBackend = false) {
+        const controller = state.creativeDirectorAbortController;
+        const requestId = state.creativeDirectorRequestId;
+        state.creativeDirectorAbortController = null;
+        state.creativeDirectorRequestId = '';
+        state.creativeDirectorBusy = false;
+        try {
+            controller?.abort?.();
+        } catch (err) {}
+        if (notifyBackend && requestId) {
+            notifyBackendChatCancel(state.conversationId, requestId).catch(() => {});
+        }
+    }
+
+    function setCreativeInitiativeMode(value) {
+        const mode = String(value || '').trim().toLowerCase() === 'responsive' ? 'responsive' : 'proactive';
+        state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, state.creativeInitiative, { mode }));
+        if (mode === 'responsive') abortCreativeDirectorRequest(true);
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        renderMessages();
+        setStatus(mode === 'proactive'
+            ? localText('Agent may suggest images for important scenes.', 'Agent 会在重要场景主动提议画面。')
+            : localText('Images are proposed only when requested.', '仅在你提出生图需求时显示方案。'));
+    }
+
     async function notifyBackendChatCancel(conversationId, requestId) {
         if (!conversationId && !requestId) return;
         await postJson('/describe-image/vlm-chat-cancel', {
@@ -1786,9 +2109,14 @@
         const rows = Array.isArray(images) ? images : [];
         const count = rows.length;
         const size = formatByteSize(totalImageUploadBytes(rows));
-        const template = completed
-            ? t('Uploaded {count} image(s), about {size}.', '已上传 {count} 张图片，约 {size}。')
-            : t('Estimated image upload: {count} image(s), about {size}.', '预计图片上传：{count} 张，约 {size}。');
+        const hasVideo = rows.some((item) => mediaKind(item) === 'video');
+        const template = hasVideo
+            ? (completed
+                ? t('Uploaded {count} media file(s), about {size}.', '已上传 {count} 个媒体文件，约 {size}。')
+                : t('Estimated media upload: {count} file(s), about {size}.', '预计媒体上传：{count} 个文件，约 {size}。'))
+            : (completed
+                ? t('Uploaded {count} image(s), about {size}.', '已上传 {count} 张图片，约 {size}。')
+                : t('Estimated image upload: {count} image(s), about {size}.', '预计图片上传：{count} 张，约 {size}。'));
         return template.replace('{count}', String(count)).replace('{size}', size);
     }
 
@@ -1806,13 +2134,14 @@
 
     function imageSummary(image) {
         return {
-            name: image?.name || 'image',
+            name: image?.name || (mediaKind(image) === 'video' ? 'video' : 'image'),
             width: image?.width || null,
             height: image?.height || null,
             size: image?.size || null,
             wire_size: imageUploadBytes(image) || null,
             mime: image?.mime || '',
             thumb: image?.thumb || ONE_PIXEL_IMAGE,
+            preview_url: mediaKind(image) === 'video' ? String(image?.data_url || '') : '',
             placeholder: true
         };
     }
@@ -1824,12 +2153,33 @@
             const size = image?.width && image?.height ? ` ${Number(image.width)}x${Number(image.height)}` : '';
             const uploadBytes = imageUploadBytes(image);
             const upload = uploadBytes ? ` · ↑${formatByteSize(uploadBytes)}` : '';
-            const label = `${image?.name || t('Image', '图片')}${size}${upload}`;
+            const video = mediaKind(image) === 'video';
+            const label = `${image?.name || (video ? t('Video', '视频') : t('Image', '图片'))}${size}${upload}`;
             return `<span class="describe-vlm-chat-image-chip">
-  <img src="${escapeHtml(image?.thumb || ONE_PIXEL_IMAGE)}" alt="">
+  ${video ? '<i class="fa-solid fa-film" aria-hidden="true"></i>' : `<img src="${escapeHtml(image?.thumb || ONE_PIXEL_IMAGE)}" alt="">`}
   <span>${escapeHtml(label)}</span>
   ${removable ? `<button type="button" data-describe-vlm-chat-remove-image="${index}" title="${escapeHtml(t('Remove', '移除'))}" aria-label="${escapeHtml(t('Remove', '移除'))}"><i class="fa-solid fa-xmark"></i></button>` : ''}
 </span>`;
+        }).join('')}</div>`;
+    }
+
+    function renderMessageImages(images) {
+        const rows = Array.isArray(images) ? images : [];
+        if (!rows.length) return '';
+        return `<div class="describe-vlm-chat-message-images">${rows.map((image, index) => {
+            const video = mediaKind(image) === 'video';
+            const source = String(image?.thumb || '').trim() || ONE_PIXEL_IMAGE;
+            const dimensions = image?.width && image?.height ? `, ${Number(image.width)}x${Number(image.height)}` : '';
+            const label = video
+                ? localText(`Attached video ${index + 1}${dimensions}`, `附加视频 ${index + 1}${dimensions}`)
+                : localText(`Attached image ${index + 1}${dimensions}`, `附图 ${index + 1}${dimensions}`);
+            if (video) {
+                const preview = String(image?.preview_url || '').trim();
+                return preview
+                    ? `<video src="${escapeHtml(preview)}" aria-label="${escapeHtml(label)}" controls preload="metadata" playsinline></video>`
+                    : `<span class="describe-vlm-chat-message-video-placeholder"><i class="fa-solid fa-film"></i><span>${escapeHtml(image?.name || label)}</span></span>`;
+            }
+            return `<img src="${escapeHtml(source)}" alt="${escapeHtml(label)}" loading="lazy">`;
         }).join('')}</div>`;
     }
 
@@ -1880,6 +2230,7 @@
         const previousConversationId = state.conversationId;
         state.requestToken += 1;
         state.busy = false;
+        abortCreativeDirectorRequest(true);
         state.conversationId = uid('describe_vlm_chat');
         if (previousConversationId) {
             postJson('/describe-image/vlm-chat-clear', {
@@ -1922,7 +2273,7 @@
         const index = Number(messageIndex);
         if (!Number.isInteger(index) || index < 0 || index >= state.messages.length) return;
         const message = state.messages[index];
-        if (message?.pending || state.busy) {
+        if (message?.pending || state.busy || activeCreativeRunIds(state.messages.slice(index)).length) {
             setStatus(t('Wait for the active response before editing context.', '请等待当前回复结束后再编辑上下文。'), true);
             return;
         }
@@ -1938,7 +2289,7 @@
     function deleteChatMessage(messageIndex) {
         const index = Number(messageIndex);
         if (!Number.isInteger(index) || index < 0 || index >= state.messages.length) return;
-        if (state.messages[index]?.pending || state.busy) {
+        if (state.messages[index]?.pending || state.busy || activeCreativeRunIds(state.messages.slice(index)).length) {
             setStatus(t('Wait for the active response before editing context.', '请等待当前回复结束后再编辑上下文。'), true);
             return;
         }
@@ -1962,16 +2313,795 @@
         tray.innerHTML = renderImageChips(state.pendingImages.map(imageSummary), true);
     }
 
+    function creativeCanvasApi() {
+        const api = window.SimpAICanvasWorkbenchApi;
+        return api && typeof api === 'object' ? api : null;
+    }
+
+    function creativeUserContext() {
+        const params = window.simpleaiTopbarSystemParams && typeof window.simpleaiTopbarSystemParams === 'object'
+            ? window.simpleaiTopbarSystemParams
+            : {};
+        return {
+            user_did: String(params.user_did || params.__user_did || ''),
+            owner: String(params.owner || params.user_did || params.__user_did || ''),
+            scope: String(params.scope || params.access_mode || params.__access_mode || ''),
+            nickname: String(params.nickname || params.user_name || '')
+        };
+    }
+
+    function normalizeCreativePresetEntries(entries) {
+        const seen = new Set();
+        const rows = [];
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            const name = String(entry.name || entry.display_name || '').trim().replace(/\.json$/i, '');
+            const engineType = String(entry.engine_type || entry.default_engine?.engine_type || 'image').trim().toLowerCase();
+            if (!name || seen.has(name.toLowerCase()) || ['video', 'audio'].includes(engineType)) return;
+            seen.add(name.toLowerCase());
+            rows.push(Object.assign({}, entry, { name, display_name: String(entry.display_name || name) }));
+        });
+        return rows.sort((a, b) => {
+            if (a.name === CREATIVE_DEFAULT_PRESET) return -1;
+            if (b.name === CREATIVE_DEFAULT_PRESET) return 1;
+            return String(a.display_name || a.name).localeCompare(String(b.display_name || b.name));
+        });
+    }
+
+    async function ensureCreativePresetCatalog(options = {}) {
+        const force = !!options.force;
+        if (state.creativePresetCatalogLoaded && !force) return state.creativePresetCatalog;
+        if (state.creativePresetCatalogPromise) return state.creativePresetCatalogPromise;
+        const api = creativeCanvasApi();
+        if (!api || typeof api.presetCatalog !== 'function') return [];
+        state.creativePresetCatalogLoading = true;
+        state.creativePresetCatalogPromise = api.presetCatalog({ user_context: creativeUserContext() })
+            .then((response) => {
+                if (!response?.ok) throw new Error(response?.details || response?.error || 'preset catalog failed');
+                state.creativePresetCatalog = normalizeCreativePresetEntries(response.presets);
+                state.creativePresetCatalogLoaded = true;
+                return state.creativePresetCatalog;
+            })
+            .catch(() => {
+                state.creativePresetCatalog = [];
+                state.creativePresetCatalogLoaded = true;
+                return [];
+            })
+            .finally(() => {
+                state.creativePresetCatalogLoading = false;
+                state.creativePresetCatalogPromise = null;
+                renderMessages();
+            });
+        return state.creativePresetCatalogPromise;
+    }
+
+    function creativePresetEntry(name) {
+        const wanted = String(name || '').trim().replace(/\.json$/i, '').toLowerCase();
+        return state.creativePresetCatalog.find((entry) => String(entry.name || '').toLowerCase() === wanted) || null;
+    }
+
+    function creativePresetForStyle(style) {
+        if (style !== 'anime') return style === 'realistic' ? CREATIVE_DEFAULT_PRESET : '';
+        const entries = state.creativePresetCatalog;
+        const exact = entries.find((entry) => ['anima动漫', 'anima'].includes(String(entry.name || '').toLowerCase()));
+        const related = entries.find((entry) => /(^|[^a-z0-9])anima([^a-z0-9]|$)/i.test(String(entry.name || '')));
+        return String(exact?.name || related?.name || 'Anima');
+    }
+
+    function ensureCreativePreferencePrompt() {
+        if (normalizeChatMode(state.chatMode) !== 'creative' || state.creativePreference.prompted) return false;
+        state.creativePreference = normalizeCreativePreference(Object.assign({}, state.creativePreference, { prompted: true }));
+        state.creativePreferenceExpanded = true;
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        ensureCreativePresetCatalog().catch(() => {});
+        renderMessages();
+        return true;
+    }
+
+    function renderCreativePreferencePanel() {
+        const preference = normalizeCreativePreference(state.creativePreference);
+        const initiative = normalizeCreativeInitiative(state.creativeInitiative);
+        const selectedPreset = String(preference.preset || '');
+        const presetRows = state.creativePresetCatalog.slice();
+        if (selectedPreset && !presetRows.some((entry) => entry.name === selectedPreset)) {
+            presetRows.unshift({ name: selectedPreset, display_name: selectedPreset });
+        }
+        const presetOptions = [
+            `<option value="">${escapeHtml(localText('Choose a Preset...', '选择 Preset...'))}</option>`,
+            ...presetRows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selectedPreset ? 'selected' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`)
+        ].join('');
+        const presetApplied = Boolean(selectedPreset);
+        const applyLabel = presetApplied ? localText('Preset active', '已使用') : localText('Use Preset', '使用 Preset');
+        const styleButton = (style, icon, en, cn) => {
+            const active = preference.style === style ? 'is-active' : '';
+            return `<button type="button" class="${active}" data-describe-vlm-chat-preference-style="${style}" aria-pressed="${active ? 'true' : 'false'}"><i class="fa-solid ${icon}"></i><span>${escapeHtml(localText(en, cn))}</span></button>`;
+        };
+        return `<div class="describe-vlm-chat-preference">
+  <div class="describe-vlm-chat-generation-title"><i class="fa-solid fa-palette"></i><span>${escapeHtml(localText('Creative preference', '创作偏好'))}</span><b>${escapeHtml(creativePreferenceLabel(preference))}</b><button type="button" data-describe-vlm-chat-preference-toggle title="${escapeHtml(localText('Collapse creative preference', '收起创作偏好'))}" aria-label="${escapeHtml(localText('Collapse creative preference', '收起创作偏好'))}" aria-expanded="true"><i class="fa-solid fa-chevron-up"></i></button></div>
+  <div class="describe-vlm-chat-preference-styles">
+    ${styleButton('anime', 'fa-wand-sparkles', 'Anime', '动漫')}
+    ${styleButton('realistic', 'fa-camera', 'Realistic', '写实')}
+    ${styleButton('auto', 'fa-compass', 'Let Agent decide', '交给 Agent')}
+  </div>
+  <div class="describe-vlm-chat-preference-preset">
+    <label><span>${escapeHtml(localText('Advanced / custom Preset', '高级 / 自定义 Preset'))}</span><select data-describe-vlm-chat-preference-preset>${presetOptions}</select></label>
+    <button type="button" class="${presetApplied ? 'is-active' : ''}" data-describe-vlm-chat-preference-apply title="${escapeHtml(localText('Use selected Preset for this conversation', '在本次对话中使用所选 Preset'))}" aria-pressed="${presetApplied ? 'true' : 'false'}"><i class="fa-solid fa-check"></i><span>${escapeHtml(applyLabel)}</span></button>
+  </div>
+  <div class="describe-vlm-chat-initiative">
+    <span>${escapeHtml(localText('Image initiative', '画面提议'))}</span>
+    <div role="group" aria-label="${escapeHtml(localText('Image initiative', '画面提议'))}">
+      <button type="button" class="${initiative.mode === 'responsive' ? 'is-active' : ''}" data-describe-vlm-chat-initiative="responsive" aria-pressed="${initiative.mode === 'responsive' ? 'true' : 'false'}"><i class="fa-solid fa-reply"></i><span>${escapeHtml(localText('Only when asked', '仅响应'))}</span></button>
+      <button type="button" class="${initiative.mode === 'proactive' ? 'is-active' : ''}" data-describe-vlm-chat-initiative="proactive" aria-pressed="${initiative.mode === 'proactive' ? 'true' : 'false'}"><i class="fa-solid fa-lightbulb"></i><span>${escapeHtml(localText('Suggest scenes', '主动提议'))}</span></button>
+    </div>
+  </div>
+</div>`;
+    }
+
+    function renderCreativePreferenceMount(modal = document.getElementById('describe_vlm_chat_modal')) {
+        const mount = modal?.querySelector?.('[data-describe-vlm-chat-preference-mount]');
+        if (!mount) return;
+        const creativeMode = normalizeChatMode(state.chatMode) === 'creative';
+        mount.hidden = !creativeMode;
+        if (!creativeMode) {
+            mount.innerHTML = '';
+            return;
+        }
+        if (!state.creativePresetCatalogLoaded && !state.creativePresetCatalogLoading) {
+            ensureCreativePresetCatalog().catch(() => {});
+        }
+        if (state.creativePreferenceExpanded) {
+            mount.classList.add('is-expanded');
+            mount.innerHTML = renderCreativePreferencePanel();
+            return;
+        }
+        mount.classList.remove('is-expanded');
+        const label = localText(
+            `Creative preference: ${creativePreferenceLabel()}`,
+            `创作偏好：${creativePreferenceLabel()}`
+        );
+        mount.innerHTML = `<button type="button" class="describe-vlm-chat-preference-trigger" data-describe-vlm-chat-preference-toggle title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" aria-expanded="false"><i class="fa-solid fa-palette"></i></button>`;
+    }
+
+    function toggleCreativePreferenceMount() {
+        if (normalizeChatMode(state.chatMode) !== 'creative') return;
+        state.creativePreferenceExpanded = !state.creativePreferenceExpanded;
+        renderCreativePreferenceMount();
+    }
+
+    function creativeGenerationForAction(action) {
+        if (!action || typeof action !== 'object') return { state: 'awaiting_confirmation', assets: [] };
+        action.type = action.type === 'offer_image' ? 'offer_image' : 'generate_image';
+        action.target = 'canvas_run';
+        action.preset = String(action.preset || CREATIVE_DEFAULT_PRESET).trim() || CREATIVE_DEFAULT_PRESET;
+        action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
+        action.image_number = Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1)));
+        action.tool_call_id = String(action.tool_call_id || uid('describe_vlm_chat_tool'));
+        action.ui_collapsed = !!action.ui_collapsed;
+        if (!action.generation || typeof action.generation !== 'object') {
+            action.generation = { state: 'awaiting_confirmation', assets: [] };
+        }
+        if (!Array.isArray(action.generation.assets)) action.generation.assets = [];
+        return action.generation;
+    }
+
+    function prepareAssistantActions(actions, mode) {
+        const prepared = [];
+        (Array.isArray(actions) ? actions : []).forEach((raw) => {
+            if (!raw || typeof raw !== 'object') return null;
+            const action = Object.assign({}, raw);
+            if (action.type === 'set_creative_preference') {
+                if (normalizeChatMode(mode) === 'creative' && String(action.scope || 'session') === 'session') {
+                    setCreativePreference({ style: action.style, preset: action.preset }, 'explicit_user_message');
+                }
+                return;
+            }
+            if (action.type !== 'generate_image') {
+                prepared.push(action);
+                return;
+            }
+            if (normalizeChatMode(mode) !== 'creative') {
+                prepared.push({ type: 'set_prompt', target: 'main_prompt', prompt: String(action.prompt || ''), label: String(action.label || '') });
+                return;
+            }
+            const preferredPreset = String(state.creativePreference?.preset || '').trim();
+            if (preferredPreset) action.preset = preferredPreset;
+            creativeGenerationForAction(action);
+            prepared.push(action);
+        });
+        return prepared.filter((action) => action && String(action.prompt || '').trim());
+    }
+
+    function syncCreativePreferenceApplyButton() {
+        const modal = document.getElementById('describe_vlm_chat_modal');
+        const select = modal?.querySelector?.('[data-describe-vlm-chat-preference-preset]');
+        const button = modal?.querySelector?.('[data-describe-vlm-chat-preference-apply]');
+        if (!select || !button) return;
+        const applied = Boolean(select.value) && String(select.value) === String(state.creativePreference?.preset || '');
+        button.classList.toggle('is-active', applied);
+        button.setAttribute('aria-pressed', applied ? 'true' : 'false');
+        const label = button.querySelector('span');
+        if (label) label.textContent = applied ? localText('Preset active', '已使用') : localText('Use Preset', '使用 Preset');
+    }
+
+    function creativeAspectOptions() {
+        const apiOptions = creativeCanvasApi()?.presetRunAspectOptions?.();
+        return Array.isArray(apiOptions) && apiOptions.length ? apiOptions : [
+            { key: 'auto' }, { key: '1:1' }, { key: '16:9' }, { key: '9:16' },
+            { key: '4:3' }, { key: '3:4' }, { key: '2:3' }, { key: '3:2' }
+        ];
+    }
+
+    function creativePresetOptions(action) {
+        const selected = String(action?.preset || CREATIVE_DEFAULT_PRESET);
+        const rows = state.creativePresetCatalog.slice();
+        if (!rows.some((entry) => entry.name === selected)) {
+            rows.unshift({ name: selected, display_name: selected });
+        }
+        if (!rows.length) rows.push({ name: CREATIVE_DEFAULT_PRESET, display_name: CREATIVE_DEFAULT_PRESET });
+        return rows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selected ? 'selected' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`).join('');
+    }
+
+    function creativeAssetUrl(value) {
+        const url = String(value || '').trim();
+        if (!url) return '';
+        if (url.startsWith('/file=')) return `/gradio_api/file=${url.slice('/file='.length)}`;
+        if (url.startsWith('/gradio_api/file=') || url.startsWith('data:image/') || url.startsWith('blob:')) return url;
+        return '';
+    }
+
+    function creativeResponseError(response) {
+        const code = String(response?.error || '').trim();
+        if (code === 'generation_not_allowed') {
+            return localText('The current identity is not allowed to generate images.', '当前身份没有生图权限。');
+        }
+        if (code === 'run not found') {
+            return localText('The generation task is no longer available.', '生成任务已不可用。');
+        }
+        return String(response?.details || response?.error || localText('Generation failed.', '生成失败。'));
+    }
+
+    function creativeStateLabel(generation) {
+        const current = String(generation?.state || 'awaiting_confirmation').toLowerCase();
+        if (current === 'checking_models') return localText('Checking models', '正在检查模型');
+        if (current === 'models_missing') {
+            const count = Math.max(0, Number(generation?.missing_count) || 0);
+            return localText(`${count} required model file(s) are missing`, `缺少 ${count} 个所需模型文件`);
+        }
+        if (current === 'preset_missing') {
+            return localText('Selected Preset is no longer available', '所选 Preset 已不可用');
+        }
+        if (current === 'preparing') return localText('Preparing task', '正在准备任务');
+        if (current === 'queued') return localText('Queued', '排队中');
+        if (current === 'running') return localText('Generating', '生成中');
+        if (current === 'cancelling') return localText('Stopping', '正在停止');
+        if (current === 'skipping') return localText('Skipping', '正在跳过');
+        if (current === 'finished') return localText('Finished', '生成完成');
+        if (current === 'canceled') return localText('Stopped', '已停止');
+        if (current === 'skipped') return localText('Skipped', '已跳过');
+        if (current === 'failed') return String(generation?.error || generation?.message || localText('Generation failed.', '生成失败。'));
+        return localText('Ready', '等待确认');
+    }
+
+    function creativePreviewSource(generation) {
+        const preview = generation?.preview && typeof generation.preview === 'object' ? generation.preview : {};
+        return creativeAssetUrl(preview.data_url || preview.thumb || '');
+    }
+
+    function creativeResultImageKey(asset, source = '') {
+        const identity = String(
+            asset?.asset_id || asset?.output_path || asset?.path || asset?.preview_url || source || ''
+        ).trim();
+        return identity ? `creative-result:${identity.slice(0, MAX_PERSISTED_TEXT)}` : '';
+    }
+
+    async function creativeResultImagePayload(asset, index = 0) {
+        const source = creativeAssetUrl(asset?.preview_url);
+        const imageKey = creativeResultImageKey(asset, source);
+        if (!asset || !source || !imageKey) throw new Error('generated image is unavailable');
+        const response = await fetch(source, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`image fetch failed: ${response.status}`);
+        const blob = await response.blob();
+        const mime = String(blob.type || asset.mime || 'image/png').toLowerCase();
+        if (!mime.startsWith('image/')) throw new Error('result asset is not an image');
+        const rawExt = (mime.split('/')[1] || 'png').split(';')[0].replace('svg+xml', 'svg');
+        const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+        const dataUrl = await blobToDataUrl(blob);
+        return imagePayloadFromDataUrl(dataUrl, {
+            id: uid('describe_result_ref'),
+            name: asset.name || `generated-image-${Number(index) + 1}.${ext}`,
+            mime,
+            originalSize: blob.size || null,
+            key: imageKey
+        });
+    }
+
+    function latestConversationImageCandidate() {
+        for (let messageIndex = state.messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+            const message = state.messages[messageIndex];
+            const payloads = Array.isArray(message?._image_payloads) ? message._image_payloads : [];
+            for (let index = payloads.length - 1; index >= 0; index -= 1) {
+                const payload = payloads[index];
+                if (mediaKind(payload) === 'image' && payload?.data_url) return { payload };
+            }
+            const actions = Array.isArray(message?.actions) ? message.actions : [];
+            for (let actionIndex = actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
+                const action = actions[actionIndex];
+                if (!['generate_image', 'offer_image'].includes(action?.type)) continue;
+                if (String(action.generation?.state || '').toLowerCase() !== 'finished') continue;
+                const assets = (Array.isArray(action.generation?.assets) ? action.generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
+                if (assets.length) return { asset: assets[assets.length - 1], index: assets.length - 1 };
+            }
+            const summaries = Array.isArray(message?.images) ? message.images : [];
+            for (let index = summaries.length - 1; index >= 0; index -= 1) {
+                const summary = summaries[index];
+                const thumb = String(summary?.thumb || '').trim();
+                if (mediaKind(summary) === 'image' && thumb && thumb !== ONE_PIXEL_IMAGE) {
+                    return { summary, messageId: String(message?.id || ''), index };
+                }
+            }
+        }
+        return null;
+    }
+
+    async function previousConversationImagePayload() {
+        const candidate = latestConversationImageCandidate();
+        if (!candidate) return null;
+        if (candidate.payload) return candidate.payload;
+        if (candidate.asset) return creativeResultImagePayload(candidate.asset, candidate.index);
+        const summary = candidate.summary;
+        return imagePayloadFromDataUrl(summary.thumb, {
+            id: uid('describe_previous_ref'),
+            name: summary.name || 'previous-chat-image.jpg',
+            mime: summary.mime || imageMimeFromDataUrl(summary.thumb),
+            width: summary.width,
+            height: summary.height,
+            key: `previous-chat:${candidate.messageId}:${candidate.index}`,
+        });
+    }
+
+    function renderCreativeFinishedResult(action, actionRef, assets) {
+        const rerunTitle = localText('Generate again', '再次生成');
+        const copyTitle = localText('Copy prompt', '复制提示词');
+        return `<div class="describe-vlm-chat-generated-result" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}">${assets.map((asset, index) => {
+            const src = creativeAssetUrl(asset.preview_url);
+            if (!src) return '';
+            const resultLabel = localText(`Generated image ${index + 1}`, `生成图片 ${index + 1}`);
+            const imageKey = creativeResultImageKey(asset, src);
+            const attached = Boolean(imageKey) && state.pendingImages.some((image) => String(image?.key || '') === imageKey);
+            const attachTitle = attached
+                ? localText('Image referenced in next message', '图片已引用到下一条消息')
+                : localText('Reference image in next message', '引用图片继续对话');
+            return `<div class="describe-vlm-chat-generated-media">
+  <a href="${escapeHtml(src)}" target="_blank" rel="noopener" title="${escapeHtml(resultLabel)}"><img src="${escapeHtml(src)}" alt="${escapeHtml(resultLabel)}" loading="lazy"></a>
+  <div class="describe-vlm-chat-generated-tools" role="toolbar" aria-label="${escapeHtml(localText('Image actions', '图片操作'))}">
+    <button type="button" class="${attached ? 'is-active' : ''}" data-describe-vlm-chat-generation-attach="${escapeHtml(actionRef)}" data-describe-vlm-chat-generation-asset="${index}" title="${escapeHtml(attachTitle)}" aria-label="${escapeHtml(attachTitle)}" aria-pressed="${attached ? 'true' : 'false'}"><i class="fa-solid ${attached ? 'fa-check' : 'fa-image'}"></i></button>
+    <button type="button" data-describe-vlm-chat-generation-run="${escapeHtml(actionRef)}" title="${escapeHtml(rerunTitle)}" aria-label="${escapeHtml(rerunTitle)}"><i class="fa-solid fa-rotate-right"></i></button>
+    <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(copyTitle)}" aria-label="${escapeHtml(copyTitle)}"><i class="fa-solid fa-copy"></i></button>
+  </div>
+</div>`;
+        }).join('')}</div>`;
+    }
+
+    async function attachCreativeResultImage(ref, assetIndex) {
+        const found = creativeActionFromRef(ref);
+        const index = Number(assetIndex);
+        const generation = found ? creativeGenerationForAction(found.action) : null;
+        const assets = (Array.isArray(generation?.assets) ? generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
+        const asset = Number.isInteger(index) && index >= 0 ? assets[index] : null;
+        const source = creativeAssetUrl(asset?.preview_url);
+        const imageKey = creativeResultImageKey(asset, source);
+        if (!asset || !source || !imageKey) {
+            setStatus(localText('The generated image is no longer available.', '这张结果图已不可用。'), true);
+            return false;
+        }
+        const customApi = readDescribeCustomApi(readSelectedVlmVersion());
+        if (customApi && customApi.supports_images === false) {
+            setStatus(localText(
+                'The selected Custom API has image input disabled.',
+                '当前 Custom API 未启用图像输入。'
+            ), true);
+            return false;
+        }
+        const attachedMessage = localText(
+            'Result image referenced. Send your next message so the Agent can see and discuss it.',
+            '结果图已引用到输入区。发送下一条消息后，Agent 才能看到并基于这张图交流。'
+        );
+        if (state.pendingImages.some((image) => String(image?.key || '') === imageKey)) {
+            setStatus(attachedMessage);
+            ensureModal().querySelector('[data-describe-vlm-chat-input]')?.focus();
+            return true;
+        }
+        setStatus(localText('Reading generated image...', '正在读取结果图...'));
+        try {
+            const payload = await creativeResultImagePayload(asset, index);
+            state.pendingImages.push(payload);
+            if (state.pendingImages.length > MAX_ATTACHMENTS) {
+                state.pendingImages = state.pendingImages.slice(-MAX_ATTACHMENTS);
+            }
+            renderPendingImages();
+            renderMessages();
+            ensureModal().querySelector('[data-describe-vlm-chat-input]')?.focus();
+            setStatus(attachedMessage);
+            return true;
+        } catch (err) {
+            setStatus(localText(
+                'Could not reference this result image. Open the original image and attach it manually.',
+                '结果图引用失败，请打开原图后手动添加。'
+            ), true);
+            return false;
+        }
+    }
+
+    function renderCreativeGenerationAction(action, actionRef) {
+        const generation = creativeGenerationForAction(action);
+        const currentState = String(generation.state || 'awaiting_confirmation').toLowerCase();
+        const active = CREATIVE_ACTIVE_STATES.has(currentState);
+        const finished = currentState === 'finished';
+        const prompt = String(action.prompt || '').trim();
+        const progress = Math.max(0, Math.min(100, Math.round((Number(generation.percent) || 0) * 100)));
+        const previewSource = creativePreviewSource(generation);
+        const assets = (Array.isArray(generation.assets) ? generation.assets : []).map(normalizeCreativeAsset).filter(Boolean);
+        if (finished && assets.length) return renderCreativeFinishedResult(action, actionRef, assets);
+        const previewHtml = previewSource && !finished
+            ? `<div class="describe-vlm-chat-generation-preview"><img src="${escapeHtml(previewSource)}" alt="${escapeHtml(localText('Sampling preview', '采样预览'))}"></div>`
+            : '';
+        const statusDetail = String(generation.message || '').trim();
+        const canSubmit = !active;
+        const submitLabel = ['finished', 'failed', 'canceled', 'skipped'].includes(currentState)
+            ? localText('Generate again', '再次生成')
+            : ['models_missing', 'preset_missing'].includes(currentState)
+                ? localText('Check again', '重新检查')
+                : localText('Generate', '确认生成');
+        const submitTitle = localText('Submit image generation', '提交生图任务');
+        const stopTitle = localText('Stop generation', '停止生成');
+        const disabled = active ? 'disabled' : '';
+        const offered = action.type === 'offer_image';
+        const collapsed = !!action.ui_collapsed;
+        const offerReasonLabels = {
+            scene_change: localText('New scene', '场景变化'),
+            emotional_peak: localText('Emotional peak', '情绪高点'),
+            climax: localText('Climax', '剧情高潮'),
+            visual_reveal: localText('Visual reveal', '关键揭示'),
+            character_moment: localText('Character moment', '角色时刻')
+        };
+        const cardTitle = offered ? localText('I want to draw this moment', '我想画下这一幕') : localText('Image generation', '生图');
+        const offerReason = offered ? offerReasonLabels[String(action.offer_reason || '')] || '' : '';
+        const offerNote = offered && String(action.offer_text || '').trim()
+            ? `<p class="describe-vlm-chat-offer-note">${escapeHtml(action.offer_text)}</p>`
+            : '';
+        const collapseTitle = collapsed ? localText('Expand generation details', '展开生图详情') : localText('Collapse generation details', '折叠生图详情');
+        const headerStatus = collapsed ? creativeStateLabel(generation) : offerReason;
+        return `<div class="describe-vlm-chat-action-card describe-vlm-chat-generation${collapsed ? ' is-collapsed' : ''}" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}">
+  <div class="describe-vlm-chat-generation-title"><i class="fa-solid ${offered ? 'fa-clapperboard' : 'fa-wand-magic-sparkles'}"></i><span>${escapeHtml(cardTitle)}</span>${headerStatus ? `<b>${escapeHtml(headerStatus)}</b>` : ''}${offered && !active ? `<button type="button" data-describe-vlm-chat-offer-dismiss="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}" aria-label="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}"><i class="fa-solid fa-xmark"></i></button>` : ''}<button type="button" data-describe-vlm-chat-generation-collapse="${escapeHtml(actionRef)}" title="${escapeHtml(collapseTitle)}" aria-label="${escapeHtml(collapseTitle)}" aria-expanded="${collapsed ? 'false' : 'true'}"><i class="fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i></button></div>
+  <div class="describe-vlm-chat-generation-body" ${collapsed ? 'hidden' : ''}>
+  ${offerNote}
+  <label class="describe-vlm-chat-generation-prompt"><span>${escapeHtml(localText('Prompt', '提示词'))}</span><textarea rows="4" data-describe-vlm-chat-generation-prompt="${escapeHtml(actionRef)}" ${disabled}>${escapeHtml(prompt)}</textarea></label>
+  <div class="describe-vlm-chat-generation-options">
+    <label><span>Preset</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
+    <label><span>${escapeHtml(localText('Aspect', '比例'))}</span><select data-describe-vlm-chat-generation-aspect="${escapeHtml(actionRef)}" ${disabled}>${creativeAspectOptions().map((item) => `<option value="${escapeHtml(item.key)}" ${String(item.key) === action.aspect_ratio ? 'selected' : ''}>${escapeHtml(item.key === 'auto' ? localText('Auto', '自适应') : item.key)}</option>`).join('')}</select></label>
+    <label><span>${escapeHtml(localText('Images', '数量'))}</span><select data-describe-vlm-chat-generation-count="${escapeHtml(actionRef)}" ${disabled}>${[1, 2, 3, 4].map((count) => `<option value="${count}" ${count === action.image_number ? 'selected' : ''}>${count}</option>`).join('')}</select></label>
+  </div>
+  ${previewHtml}
+  <div class="describe-vlm-chat-generation-status is-${escapeHtml(currentState)}" aria-live="polite"><span>${escapeHtml(creativeStateLabel(generation))}</span>${active && progress ? `<progress max="100" value="${progress}"></progress><b>${progress}%</b>` : ''}${statusDetail && !['awaiting_confirmation', 'finished', 'failed', 'models_missing'].includes(currentState) ? `<small>${escapeHtml(statusDetail)}</small>` : ''}</div>
+  <div class="describe-vlm-chat-action-buttons">
+    ${canSubmit ? `<button type="button" data-describe-vlm-chat-generation-run="${escapeHtml(actionRef)}" title="${escapeHtml(submitTitle)}" aria-label="${escapeHtml(submitTitle)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(submitLabel)}</span></button>` : ''}
+    ${active && generation.run_id ? `<button type="button" class="is-danger" data-describe-vlm-chat-generation-stop="${escapeHtml(actionRef)}" title="${escapeHtml(stopTitle)}" aria-label="${escapeHtml(stopTitle)}"><i class="fa-solid fa-stop"></i><span>${escapeHtml(localText('Stop', '停止'))}</span></button>` : ''}
+    <button type="button" data-describe-vlm-chat-copy="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Copy prompt', '复制提示词'))}" aria-label="${escapeHtml(localText('Copy prompt', '复制提示词'))}"><i class="fa-solid fa-copy"></i></button>
+  </div>
+  </div>
+</div>`;
+    }
+
+    function creativeActionFromRef(ref) {
+        const [messageIndex, actionIndex] = String(ref || '').split(':').map((part) => Number(part));
+        const message = state.messages[messageIndex];
+        const action = message?.actions?.[actionIndex];
+        return ['generate_image', 'offer_image'].includes(action?.type) ? { message, action, messageIndex, actionIndex } : null;
+    }
+
+    function syncCreativeActionFromDom(ref) {
+        const found = creativeActionFromRef(ref);
+        if (!found) return null;
+        const cards = Array.from(document.querySelectorAll('[data-describe-vlm-chat-generation-ref]'));
+        const card = cards.find((item) => item.getAttribute('data-describe-vlm-chat-generation-ref') === String(ref));
+        if (!card) return found;
+        found.action.prompt = String(card.querySelector('[data-describe-vlm-chat-generation-prompt]')?.value || found.action.prompt || '').trim();
+        found.action.preset = String(card.querySelector('[data-describe-vlm-chat-generation-preset]')?.value || found.action.preset || CREATIVE_DEFAULT_PRESET);
+        found.action.aspect_ratio = String(card.querySelector('[data-describe-vlm-chat-generation-aspect]')?.value || found.action.aspect_ratio || 'auto');
+        found.action.image_number = Math.max(1, Math.min(4, Math.round(Number(card.querySelector('[data-describe-vlm-chat-generation-count]')?.value || found.action.image_number || 1))));
+        return found;
+    }
+
+    function persistCreativeAction(render = true) {
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        if (render) renderMessages();
+    }
+
+    function applyCreativeRunResponse(ref, response) {
+        const found = creativeActionFromRef(ref);
+        if (!found) return null;
+        const generation = creativeGenerationForAction(found.action);
+        const wasFinished = String(generation.state || '').toLowerCase() === 'finished';
+        const responseState = String(response?.state || (response?.assets?.length ? 'finished' : generation.state || 'queued')).toLowerCase();
+        generation.state = responseState;
+        generation.run_id = String(response?.run_id || generation.run_id || '');
+        generation.percent = Math.max(0, Math.min(1, Number(response?.percent) || 0));
+        generation.message = String(response?.message || '');
+        generation.error = response?.ok === false ? creativeResponseError(response) : '';
+        generation.submission_uncertain = false;
+        const frames = Array.isArray(response?.preview_stream?.frames_delta) ? response.preview_stream.frames_delta : [];
+        const preview = frames.length ? frames[frames.length - 1] : response?.preview;
+        if (preview && typeof preview === 'object') generation.preview = Object.assign({}, preview);
+        generation.preview_serial = Math.max(
+            Number(generation.preview_serial) || 0,
+            Number(response?.preview_stream?.latest_serial) || 0,
+            Number(preview?.serial) || 0
+        );
+        const assets = Array.isArray(response?.assets) ? response.assets : (response?.asset ? [response.asset] : []);
+        if (assets.length) generation.assets = assets.map(normalizeCreativeAsset).filter(Boolean);
+        if (CREATIVE_TERMINAL_STATES.has(responseState)) {
+            generation.finished_at = String(response?.finished_at || new Date().toISOString());
+        }
+        persistCreativeAction(true);
+        if (!wasFinished && responseState === 'finished' && generation.assets.length) {
+            setStatus(state.autoAttachPreviousImage
+                ? localText(
+                    'Image generated. Your next message will include the latest result image.',
+                    '图片已生成。下一条消息会自动附带最新结果图。'
+                )
+                : localText(
+                    'Image generated. To discuss it with the Agent, reference the image before sending your next message.',
+                    '图片已生成。需要 Agent 继续看图交流时，请点击图片上的“引用图片”，再发送消息。'
+                ));
+        }
+        return generation;
+    }
+
+    function scheduleCreativeGenerationPoll(ref, runId, delay = CREATIVE_POLL_INTERVAL_MS) {
+        const id = String(runId || '');
+        if (!id || state.creativeGenerationPolls.has(id)) return;
+        const timer = window.setTimeout(async () => {
+            state.creativeGenerationPolls.delete(id);
+            const found = creativeActionFromRef(ref);
+            if (!found || String(found.action.generation?.run_id || '') !== id) return;
+            const api = creativeCanvasApi();
+            if (!api || typeof api.pollRun !== 'function') {
+                found.action.generation.state = 'failed';
+                found.action.generation.error = localText('Canvas generation API is unavailable.', 'Canvas 生图接口不可用。');
+                persistCreativeAction(true);
+                return;
+            }
+            const response = await api.pollRun(id, {
+                after_preview_serial: Number(found.action.generation?.preview_serial) || 0,
+                user_context: creativeUserContext()
+            });
+            const live = creativeActionFromRef(ref);
+            if (!live || live.action !== found.action || String(live.action.generation?.run_id || '') !== id) return;
+            if (!response?.ok) {
+                const failures = (Number(found.action.generation?._poll_failures) || 0) + 1;
+                found.action.generation._poll_failures = failures;
+                if (failures < 3 && String(response?.error || '') !== 'run not found') {
+                    scheduleCreativeGenerationPoll(ref, id, CREATIVE_POLL_INTERVAL_MS * failures);
+                    return;
+                }
+                found.action.generation.state = 'failed';
+                found.action.generation.error = creativeResponseError(response);
+                found.action.generation.message = String(response?.details || response?.error || '');
+                persistCreativeAction(true);
+                return;
+            }
+            found.action.generation._poll_failures = 0;
+            const generation = applyCreativeRunResponse(ref, response);
+            if (generation && !CREATIVE_TERMINAL_STATES.has(String(generation.state || '').toLowerCase())) {
+                scheduleCreativeGenerationPoll(ref, id);
+            }
+        }, Math.max(0, Number(delay) || 0));
+        state.creativeGenerationPolls.set(id, timer);
+    }
+
+    function resumeCreativeGenerationPolls() {
+        state.messages.forEach((message, messageIndex) => {
+            (Array.isArray(message?.actions) ? message.actions : []).forEach((action, actionIndex) => {
+                if (!['generate_image', 'offer_image'].includes(action?.type)) return;
+                const generation = creativeGenerationForAction(action);
+                if (generation.run_id && CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) {
+                    scheduleCreativeGenerationPoll(`${messageIndex}:${actionIndex}`, generation.run_id, 100);
+                }
+            });
+        });
+    }
+
+    function stopCreativePolls() {
+        state.creativeGenerationPolls.forEach((timer) => window.clearTimeout(timer));
+        state.creativeGenerationPolls.clear();
+    }
+
+    async function startCreativeGeneration(ref) {
+        const found = syncCreativeActionFromDom(ref);
+        if (!found) return;
+        const action = found.action;
+        if (!String(action.prompt || '').trim()) {
+            setStatus(localText('Enter a generation prompt first.', '请先填写生图提示词。'), true);
+            return;
+        }
+        const previous = creativeGenerationForAction(action);
+        const reusableRunId = previous.submission_uncertain && previous.run_id ? previous.run_id : '';
+        const attemptToken = uid('describe_vlm_chat_attempt');
+        action.generation = {
+            state: 'checking_models',
+            run_id: '',
+            percent: 0,
+            message: '',
+            error: '',
+            assets: previous.state === 'finished' ? previous.assets || [] : [],
+            _attempt_token: attemptToken
+        };
+        persistCreativeAction(true);
+        const catalog = await ensureCreativePresetCatalog({ force: true });
+        const current = creativeActionFromRef(ref);
+        if (!current || current.action.generation?._attempt_token !== attemptToken) return;
+        let entry = creativePresetEntry(action.preset);
+        if (!entry && String(action.preset || '').trim()) {
+            action.generation.state = 'preset_missing';
+            action.generation.error = localText(
+                'The selected Preset was renamed or deleted. Choose another Preset.',
+                '所选 Preset 已改名或删除，请重新选择。'
+            );
+            persistCreativeAction(true);
+            return;
+        }
+        if (!entry) entry = creativePresetEntry(CREATIVE_DEFAULT_PRESET) || catalog[0] || null;
+        if (!entry) {
+            action.generation.state = 'failed';
+            action.generation.error = localText('No image preset is available.', '没有可用的生图 Preset。');
+            persistCreativeAction(true);
+            return;
+        }
+        action.preset = entry.name;
+        const api = creativeCanvasApi();
+        const presetNode = api?.buildPresetRunNode?.(entry, {
+            id: `describe_vlm_chat_preset_${action.tool_call_id}`,
+            prompt: action.prompt,
+            aspectRatio: action.aspect_ratio,
+            imageNumber: action.image_number
+        });
+        if (!api || !presetNode || typeof api.presetModelStatus !== 'function' || typeof api.runNode !== 'function') {
+            action.generation.state = 'failed';
+            action.generation.error = localText('Canvas generation API is unavailable.', 'Canvas 生图接口不可用。');
+            persistCreativeAction(true);
+            return;
+        }
+        const modelStatus = await api.presetModelStatus({
+            project_id: 'describe_vlm_chat',
+            preset_node: presetNode,
+            user_context: creativeUserContext()
+        });
+        const liveAfterModelCheck = creativeActionFromRef(ref);
+        if (!liveAfterModelCheck || liveAfterModelCheck.action !== action || action.generation?._attempt_token !== attemptToken) return;
+        if (!modelStatus?.ok) {
+            action.generation.state = 'failed';
+            action.generation.error = creativeResponseError(modelStatus);
+            action.generation.message = String(modelStatus?.message || '');
+            persistCreativeAction(true);
+            return;
+        }
+        if (!modelStatus.ready) {
+            action.generation.state = 'models_missing';
+            action.generation.missing_count = Math.max(0, Number(modelStatus.missing_count) || 0);
+            action.generation.message = String(modelStatus.message || '');
+            persistCreativeAction(true);
+            return;
+        }
+        const runId = reusableRunId || uid('describe_vlm_chat_run');
+        action.generation.state = 'preparing';
+        action.generation.run_id = runId;
+        action.generation.started_at = new Date().toISOString();
+        action.generation.message = '';
+        persistCreativeAction(true);
+        const response = await api.runNode({
+            project_id: 'describe_vlm_chat',
+            run_id: runId,
+            placeholder_node_id: `describe_vlm_chat_result_${action.tool_call_id}`,
+            preset_node: presetNode,
+            upload_edges: [],
+            config_edges: [],
+            text_edges: [],
+            asset_sources: {},
+            user_context: creativeUserContext(),
+            result_asset_scope: 'gallery',
+            client_context: {
+                surface: 'studio_vlm_chat',
+                conversation_id: ensureConversationId(),
+                message_id: String(found.message.id || ''),
+                tool_call_id: action.tool_call_id,
+                source_message_id: String(action.source_message_id || found.message.id || ''),
+                scene_key: String(action.scene_key || ''),
+                offer_reason: String(action.offer_reason || '')
+            }
+        });
+        const liveAfterSubmit = creativeActionFromRef(ref);
+        if (!liveAfterSubmit || liveAfterSubmit.action !== action) {
+            if (response?.ok) api.controlRun?.(runId, 'stop', { user_context: creativeUserContext() }).catch(() => {});
+            return;
+        }
+        if (!response?.ok) {
+            action.generation.state = 'failed';
+            action.generation.run_id = runId;
+            action.generation.submission_uncertain = !String(response?.details || '').trim();
+            action.generation.error = creativeResponseError(response);
+            action.generation.message = String(response?.details || response?.error || '');
+            persistCreativeAction(true);
+            return;
+        }
+        const generation = applyCreativeRunResponse(ref, response);
+        if (generation && !CREATIVE_TERMINAL_STATES.has(String(generation.state || '').toLowerCase())) {
+            scheduleCreativeGenerationPoll(ref, runId, 250);
+        }
+    }
+
+    async function stopCreativeGeneration(ref) {
+        const found = creativeActionFromRef(ref);
+        const runId = String(found?.action?.generation?.run_id || '');
+        if (!found || !runId) return;
+        found.action.generation.state = 'cancelling';
+        persistCreativeAction(true);
+        const response = await creativeCanvasApi()?.controlRun?.(runId, 'stop', {
+            user_context: creativeUserContext()
+        });
+        const live = creativeActionFromRef(ref);
+        if (!live || live.action !== found.action || String(live.action.generation?.run_id || '') !== runId) return;
+        if (!response?.ok) {
+            found.action.generation.state = 'failed';
+            found.action.generation.error = creativeResponseError(response);
+            persistCreativeAction(true);
+            return;
+        }
+        applyCreativeRunResponse(ref, response);
+        scheduleCreativeGenerationPoll(ref, runId, 200);
+    }
+
+    function dismissCreativeOffer(ref) {
+        const found = creativeActionFromRef(ref);
+        if (!found || found.action.type !== 'offer_image') return;
+        const generation = creativeGenerationForAction(found.action);
+        if (CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) {
+            setStatus(localText('Stop the generation before dismissing this suggestion.', '请先停止生成任务，再忽略这次提议。'), true);
+            return;
+        }
+        found.message.actions.splice(found.actionIndex, 1);
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        renderMessages();
+        setStatus(localText('Scene suggestion dismissed.', '已忽略这次场景提议。'));
+    }
+
+    function activeCreativeRunIds(messages = state.messages) {
+        const ids = [];
+        (Array.isArray(messages) ? messages : []).forEach((message) => {
+            (Array.isArray(message?.actions) ? message.actions : []).forEach((action) => {
+                const generation = ['generate_image', 'offer_image'].includes(action?.type) ? action.generation : null;
+                if (generation?.run_id && CREATIVE_ACTIVE_STATES.has(String(generation.state || '').toLowerCase())) ids.push(generation.run_id);
+            });
+        });
+        return Array.from(new Set(ids));
+    }
+
     function renderMessages() {
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
+        renderCreativePreferenceMount(modal);
+        const previousScrollTop = log.scrollTop;
+        const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
         syncBusyControls(modal);
         if (!state.messages.length) {
             log.innerHTML = `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>`;
             return;
         }
         log.innerHTML = state.messages.map((message, messageIndex) => {
+            if (!message.id) message.id = uid(`describe_vlm_chat_${message.role || 'message'}`);
             const role = message.role === 'assistant' ? 'assistant' : 'user';
             const pending = !!message.pending;
             const actions = Array.isArray(message.actions) ? message.actions : [];
@@ -1979,6 +3109,12 @@
                 const promptText = String(action?.prompt || '').trim();
                 if (!promptText) return '';
                 const actionRef = `${messageIndex}:${actionIndex}`;
+                if (['generate_image', 'offer_image'].includes(action?.type)) {
+                    if (!state.creativePresetCatalogLoaded && !state.creativePresetCatalogLoading) {
+                        ensureCreativePresetCatalog().catch(() => {});
+                    }
+                    return renderCreativeGenerationAction(action, actionRef);
+                }
                 const previewTitle = localText('Prepared prompt', '整理出的提示词');
                 const setLabel = localText('Set', '写入');
                 const setTitle = localText('Set main prompt', '写入主提示词');
@@ -2004,21 +3140,12 @@
     <button type="button" data-describe-vlm-chat-rollback="${messageIndex}" title="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}" aria-label="${escapeHtml(t('Move this message back to input', '把这条消息放回输入框'))}"><i class="fa-solid fa-clock-rotate-left"></i></button>
     <button type="button" class="is-danger" data-describe-vlm-chat-delete="${messageIndex}" title="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}" aria-label="${escapeHtml(t('Delete this message from context', '从上下文删除此消息'))}"><i class="fa-solid fa-trash"></i></button>
   </span></div>
-  <p>${escapeHtml(message.content || '')}</p>
-  ${renderImageChips(message.images, false)}
+  ${renderMessageImages(message.images)}
+  ${message.content ? `<p>${escapeHtml(message.content)}</p>` : ''}
   ${actionHtml}
 </div>`;
         }).join('');
-        log.scrollTop = log.scrollHeight;
-    }
-
-    function resetConversationForImage(imageKey) {
-        const key = String(imageKey || '');
-        if (state.lastImageKey && state.lastImageKey !== key) {
-            state.messages = [];
-            state.conversationId = '';
-        }
-        state.lastImageKey = key;
+        log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
     }
 
     function historyTextForMessage(message) {
@@ -2031,7 +3158,7 @@
         }
         const imageCount = Number(message?.image_count || (Array.isArray(message?.images) ? message.images.length : 0) || 0);
         if (imageCount > 0) {
-            const placeholder = `[${imageCount} previous image reference(s) retained as 1x1 placeholder; full image bytes omitted.]`;
+            const placeholder = `[${imageCount} previous visual media reference(s); full media bytes omitted from history.]`;
             content = `${content}${content ? '\n' : ''}${placeholder}`.trim();
         }
         return content;
@@ -2307,8 +3434,108 @@
         modalTouchPoint = null;
     }
 
+    function messageHasCreativeImageAction(message) {
+        return (Array.isArray(message?.actions) ? message.actions : []).some((action) => (
+            ['generate_image', 'offer_image'].includes(action?.type)
+        ));
+    }
+
+    function creativeOfferCooldownAllows() {
+        const initiative = normalizeCreativeInitiative(state.creativeInitiative);
+        if (initiative.mode !== 'proactive') return false;
+        if (!initiative.last_offer_turn) return true;
+        return initiative.turn_index - initiative.last_offer_turn >= 3;
+    }
+
+    function creativePreferenceAllowsProactiveOffer() {
+        const preference = normalizeCreativePreference(state.creativePreference);
+        return preference.prompted && Boolean(preference.style || preference.preset);
+    }
+
+    async function maybeRequestCreativeOffer(options = {}) {
+        const sourceMessageId = String(options.source_message_id || '');
+        const sourceMessage = state.messages.find((item) => item?.id === sourceMessageId);
+        if (!sourceMessage || normalizeChatMode(state.chatMode) !== 'creative') return;
+        if (!creativePreferenceAllowsProactiveOffer() || !creativeOfferCooldownAllows() || messageHasCreativeImageAction(sourceMessage)) return;
+        abortCreativeDirectorRequest(false);
+        const requestId = uid('describe_vlm_chat_director');
+        const controller = new AbortController();
+        state.creativeDirectorBusy = true;
+        state.creativeDirectorRequestId = requestId;
+        state.creativeDirectorAbortController = controller;
+        setStatus(localText('Visual director is reviewing this scene...', '视觉导演正在判断这一幕...'));
+        const history = buildRollingHistory(14, 6500);
+        const fullHistory = buildRollingHistory(20, 8000);
+        const response = await postJson('/describe-image/vlm-chat-run', {
+            request_kind: 'creative_offer',
+            message: String(options.user_message || ''),
+            assistant_reply: String(sourceMessage.content || ''),
+            source_message_id: sourceMessageId,
+            conversation_id: ensureConversationId(),
+            request_id: requestId,
+            history: history.messages,
+            history_full: fullHistory.messages,
+            version: options.version,
+            custom_api: options.custom_api,
+            unload_after_chat: !!state.unloadAfterChat,
+            creative_preferences: normalizeCreativePreference(state.creativePreference),
+            last_scene_key: String(state.creativeInitiative.last_scene_key || ''),
+            lang: state.__lang
+        }, { signal: controller.signal });
+        if (state.creativeDirectorRequestId !== requestId) return;
+        state.creativeDirectorBusy = false;
+        state.creativeDirectorRequestId = '';
+        state.creativeDirectorAbortController = null;
+        if (response?.aborted) return;
+        if (!response?.ok) {
+            setStatus(localText('Visual director is unavailable; the main reply is complete.', '视觉导演暂不可用，主回复已正常完成。'), true);
+            return;
+        }
+        const offer = response.creative_offer && typeof response.creative_offer === 'object'
+            ? response.creative_offer
+            : null;
+        if (!offer?.offer) {
+            setStatus('');
+            return;
+        }
+        const initiative = normalizeCreativeInitiative(state.creativeInitiative);
+        const sceneKey = String(offer.scene_key || '').trim().toLowerCase().slice(0, 160);
+        if (!sceneKey || sceneKey === initiative.last_scene_key || initiative.mode !== 'proactive') {
+            setStatus('');
+            return;
+        }
+        const liveMessage = state.messages.find((item) => item?.id === sourceMessageId);
+        if (!liveMessage || messageHasCreativeImageAction(liveMessage)) return;
+        if (!Array.isArray(liveMessage.actions)) liveMessage.actions = [];
+        const action = {
+            type: 'offer_image',
+            target: 'canvas_run',
+            prompt: String(offer.prompt || '').trim(),
+            preset: String(offer.preset || state.creativePreference.preset || CREATIVE_DEFAULT_PRESET),
+            aspect_ratio: String(offer.aspect_ratio || 'auto'),
+            image_number: Math.max(1, Math.min(4, Math.round(Number(offer.image_number) || 1))),
+            offer_text: String(offer.offer_text || '').trim(),
+            offer_reason: String(offer.reason || '').trim(),
+            scene_key: sceneKey,
+            source_message_id: sourceMessageId,
+            score: Math.max(0, Math.min(1, Number(offer.score) || 0)),
+            generation: { state: 'awaiting_confirmation', assets: [] }
+        };
+        creativeGenerationForAction(action);
+        liveMessage.actions.push(action);
+        state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, initiative, {
+            last_offer_turn: initiative.turn_index,
+            last_scene_key: sceneKey
+        }));
+        state.persistenceDirty = true;
+        saveConversationSnapshot();
+        renderMessages();
+        setStatus(localText('A scene image was suggested for review.', '已提出一张场景画面，等待你确认。'));
+    }
+
     async function sendMessage() {
         if (state.busy) return;
+        abortCreativeDirectorRequest(true);
         const requestToken = state.requestToken + 1;
         state.requestToken = requestToken;
         const modal = ensureModal();
@@ -2322,13 +3549,17 @@
         saveChatSettings();
         const inputSnapshot = String(input?.value || '');
         const typed = inputSnapshot.trim();
+        if (state.describeMediaReferencePromise?.promise) {
+            await state.describeMediaReferencePromise.promise;
+            if (requestToken !== state.requestToken) return;
+        }
         const pendingImages = state.pendingImages.slice();
         if (!typed && !pendingImages.length) return;
         const version = readSelectedVlmVersion();
         const customApi = readDescribeCustomApi(version);
         const supportsImageInput = !customApi || customApi.supports_images !== false;
-        const requestedCurrentImageKey = state.useImage ? currentImageKey() : '';
-        const requestedImagesButUnsupported = !supportsImageInput && Boolean(requestedCurrentImageKey || pendingImages.length);
+        const requestedPreviousImage = !pendingImages.length && state.autoAttachPreviousImage && Boolean(latestConversationImageCandidate());
+        const requestedImagesButUnsupported = !supportsImageInput && Boolean(pendingImages.length || requestedPreviousImage);
         if (!typed && pendingImages.length && !supportsImageInput) {
             setStatus(t(
                 'The selected Custom API has image input disabled.',
@@ -2345,10 +3576,8 @@
         syncBusyControls(modal);
         setStatus('');
 
-        const message = typed || defaultMessageForMode(selectedMode);
+        const message = typed || defaultMessageForMode(selectedMode, pendingImages);
         const includeCurrentPrompt = shouldSendCurrentPromptToVlm(selectedMode, message);
-        const imageKey = supportsImageInput ? requestedCurrentImageKey : '';
-        resetConversationForImage(imageKey);
         const history = buildRollingHistory(MAX_HISTORY_TURNS, HISTORY_BUDGET);
         const fullHistory = buildRollingHistory(32, FULL_HISTORY_BUDGET);
         if (history.omitted > 0) {
@@ -2358,20 +3587,19 @@
         const images = [];
         const sentPendingImages = [];
         if (supportsImageInput) {
-            try {
-                if (state.useImage && imageKey) {
-                    setStatus(t('Optimizing image upload...', '正在优化图片上传...'));
-                    const currentImage = await currentImagePayload();
-                    if (currentImage) images.push(currentImage);
-                }
-            } catch (err) {
-                setStatus(t('Image read failed; sending text only.', '读取图片失败，将仅发送文本。'), true);
-            }
             for (const image of pendingImages) {
                 if (images.length >= MAX_ATTACHMENTS) break;
                 if (image?.data_url) {
                     images.push(image);
                     sentPendingImages.push(image);
+                }
+            }
+            if (!pendingImages.length && state.autoAttachPreviousImage) {
+                try {
+                    const previousImage = await previousConversationImagePayload();
+                    if (previousImage) images.push(previousImage);
+                } catch (err) {
+                    setStatus(t('Previous chat image could not be read; sending text only.', '无法读取上一张对话图片，本次仅发送文字。'), true);
                 }
             }
         }
@@ -2388,12 +3616,14 @@
         }
 
         state.messages.push({
+            id: uid('describe_vlm_chat_user'),
             role: 'user',
             content: message,
             image_count: images.length,
-            images: images.map(imageSummary)
+            images: images.map(imageSummary),
+            _image_payloads: images.filter((image) => mediaKind(image) === 'image')
         });
-        state.messages.push({ role: 'assistant', content: t('Thinking', '思考中'), pending: true });
+        state.messages.push({ id: uid('describe_vlm_chat_assistant'), role: 'assistant', content: t('Thinking', '思考中'), pending: true });
         renderMessages();
 
         const requestId = uid('describe_vlm_chat_req');
@@ -2422,7 +3652,8 @@
             unload_after_chat: !!state.unloadAfterChat,
             free_after: !!state.unloadAfterChat,
             prompt_options: readDescribePromptOptions(),
-            lang: getUiLang(window.simpleaiTopbarSystemParams || {})
+            creative_preferences: normalizeCreativePreference(state.creativePreference),
+            lang: state.__lang
         };
         const response = await postJson('/describe-image/vlm-chat-run', payload, { signal: abortController.signal });
         if (state.activeRequestId === requestId) {
@@ -2438,18 +3669,27 @@
             return;
         }
         const pendingIndex = state.messages.findIndex((item) => item.pending);
+        const pendingMessageId = pendingIndex >= 0 ? state.messages[pendingIndex]?.id : '';
         const reply = response?.ok
             ? (response.text || t('Done.', '完成。'))
             : (response?.details || response?.error || t('VLM/LLM AI chat failed.', 'VLM/LLM AI对话失败。'));
         const assistant = {
+            id: pendingMessageId || uid('describe_vlm_chat_assistant'),
             role: 'assistant',
             content: reply,
-            actions: response?.ok && Array.isArray(response.limited_actions) ? response.limited_actions : []
+            actions: response?.ok && Array.isArray(response.limited_actions)
+                ? prepareAssistantActions(response.limited_actions, selectedMode)
+                : []
         };
         if (pendingIndex >= 0) state.messages[pendingIndex] = assistant;
         else state.messages.push(assistant);
         if (response?.conversation_id) state.conversationId = response.conversation_id;
         state.busy = false;
+        if (response?.ok && selectedMode === 'creative') {
+            state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, state.creativeInitiative, {
+                turn_index: Number(state.creativeInitiative.turn_index || 0) + 1
+            }));
+        }
         state.persistenceDirty = true;
         saveConversationSnapshot();
         renderMessages();
@@ -2464,6 +3704,14 @@
             ));
         } else {
             setStatus('');
+        }
+        if (response?.ok && selectedMode === 'creative' && !messageHasCreativeImageAction(assistant)) {
+            maybeRequestCreativeOffer({
+                source_message_id: assistant.id,
+                user_message: message,
+                version,
+                custom_api: customApi
+            }).catch(() => {});
         }
     }
 
@@ -2577,6 +3825,67 @@
             deleteChatMessage(deleteMessage.getAttribute('data-describe-vlm-chat-delete'));
             return;
         }
+        const generationAttach = evt.target.closest('[data-describe-vlm-chat-generation-attach]');
+        if (generationAttach) {
+            generationAttach.disabled = true;
+            attachCreativeResultImage(
+                generationAttach.getAttribute('data-describe-vlm-chat-generation-attach'),
+                generationAttach.getAttribute('data-describe-vlm-chat-generation-asset')
+            ).finally(() => {
+                if (generationAttach.isConnected) generationAttach.disabled = false;
+            });
+            return;
+        }
+        const generationRun = evt.target.closest('[data-describe-vlm-chat-generation-run]');
+        if (generationRun) {
+            startCreativeGeneration(generationRun.getAttribute('data-describe-vlm-chat-generation-run'));
+            return;
+        }
+        const generationStop = evt.target.closest('[data-describe-vlm-chat-generation-stop]');
+        if (generationStop) {
+            stopCreativeGeneration(generationStop.getAttribute('data-describe-vlm-chat-generation-stop'));
+            return;
+        }
+        const generationCollapse = evt.target.closest('[data-describe-vlm-chat-generation-collapse]');
+        if (generationCollapse) {
+            const ref = generationCollapse.getAttribute('data-describe-vlm-chat-generation-collapse');
+            const found = syncCreativeActionFromDom(ref);
+            if (found) {
+                found.action.ui_collapsed = !found.action.ui_collapsed;
+                persistCreativeAction(true);
+            }
+            return;
+        }
+        const offerDismiss = evt.target.closest('[data-describe-vlm-chat-offer-dismiss]');
+        if (offerDismiss) {
+            dismissCreativeOffer(offerDismiss.getAttribute('data-describe-vlm-chat-offer-dismiss'));
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-preference-toggle]')) {
+            toggleCreativePreferenceMount();
+            return;
+        }
+        const initiativeMode = evt.target.closest('[data-describe-vlm-chat-initiative]');
+        if (initiativeMode) {
+            setCreativeInitiativeMode(initiativeMode.getAttribute('data-describe-vlm-chat-initiative'));
+            return;
+        }
+        const preferenceStyle = evt.target.closest('[data-describe-vlm-chat-preference-style]');
+        if (preferenceStyle) {
+            const style = String(preferenceStyle.getAttribute('data-describe-vlm-chat-preference-style') || 'auto');
+            const preset = creativePresetForStyle(style);
+            setCreativePreference({ style, preset }, 'preference_card');
+            return;
+        }
+        if (evt.target.closest('[data-describe-vlm-chat-preference-apply]')) {
+            const preset = String(modal.querySelector('[data-describe-vlm-chat-preference-preset]')?.value || '').trim();
+            if (!preset) {
+                setStatus(localText('Choose a Preset first.', '请先选择 Preset。'), true);
+                return;
+            }
+            setCreativePreference({ style: 'custom', preset }, 'preference_card');
+            return;
+        }
         const apply = evt.target.closest('[data-describe-vlm-chat-apply]');
         if (apply) {
             const action = Object.assign({}, actionFromRef(apply.getAttribute('data-describe-vlm-chat-apply')) || {}, { type: 'set_prompt' });
@@ -2598,21 +3907,36 @@
     });
 
     document.addEventListener('change', (evt) => {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-preference-preset]')) {
+            syncCreativePreferenceApplyButton();
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-preset], [data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt]')) {
+            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-preset')
+                || evt.target.getAttribute('data-describe-vlm-chat-generation-aspect')
+                || evt.target.getAttribute('data-describe-vlm-chat-generation-count')
+                || evt.target.getAttribute('data-describe-vlm-chat-generation-prompt');
+            syncCreativeActionFromDom(ref);
+            persistCreativeAction(false);
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-model-select]')) {
             setDescribeVlmVersionFromHeader(evt.target.value);
             return;
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-mode]')) {
             state.chatMode = normalizeChatMode(evt.target.value);
+            ensureCreativePreferencePrompt();
             saveChatSettings();
             saveConversationSnapshot();
             syncChatSettingsControls(document.getElementById('describe_vlm_chat_modal'));
+            renderMessages();
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-template]')) {
             applySystemPromptTemplate(evt.target.value, document.getElementById('describe_vlm_chat_modal'));
         }
-        if (evt.target?.matches?.('[data-describe-vlm-chat-use-image]')) {
-            state.useImage = !!evt.target.checked;
+        if (evt.target?.matches?.('[data-describe-vlm-chat-auto-previous-image]')) {
+            state.autoAttachPreviousImage = !!evt.target.checked;
             saveConversationSnapshot();
         }
         if (evt.target?.matches?.('[data-describe-vlm-chat-unload-after]')) {
@@ -2633,6 +3957,14 @@
     });
 
     document.addEventListener('input', (evt) => {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-prompt]')) {
+            const found = creativeActionFromRef(evt.target.getAttribute('data-describe-vlm-chat-generation-prompt'));
+            if (found) {
+                found.action.prompt = evt.target.value || '';
+                state.persistenceDirty = true;
+            }
+            return;
+        }
         if (evt.target?.matches?.('[data-describe-vlm-chat-system]')) {
             state.customSystemPrompt = evt.target.value || '';
             state.systemPromptTemplateId = selectedSystemPromptTemplateIdForContent(state.customSystemPrompt);

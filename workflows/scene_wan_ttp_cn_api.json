@@ -71,6 +71,19 @@
         "200",
         0
       ],
+      "enhance_detail": [
+        "166",
+        22
+      ],
+      "detail_strength": [
+        "166",
+        14
+      ],
+      "texture_strength": [
+        "166",
+        15
+      ],
+      "focus_persistence": 0.65,
       "model": [
         "166:139",
         0
@@ -88,9 +101,9 @@
         0
       ]
     },
-    "class_type": "KSampler",
+    "class_type": "SimpAILatentDetailSampler",
     "_meta": {
-      "title": "KSampler"
+      "title": "SimpAI Latent Detail Sampler"
     }
   },
   "144": {
@@ -161,24 +174,25 @@
       "steps": 24,
       "var_number": 0,
       "var_number2": 0,
-      "var_number3": 0.0,
-      "var_number4": 0.0,
-      "var_number5": 0.0,
-      "var_number6": 0.0,
+      "var_number3": 0,
+      "var_number4": 0,
+      "var_number5": 0.22,
+      "var_number6": 0,
       "var_number7": 0,
       "var_number8": 0,
       "var_number9": 0,
       "var_number10": 0,
       "switch_option1": false,
       "switch_option2": false,
-      "switch_option3": false,
+      "switch_option3": true,
       "switch_option4": false,
       "model_type": 1,
       "model_type2": 1,
       "clip_type": 1,
       "negative_prompt": "",
       "sampler": "euler",
-      "scheduler": "kl_optimal"
+      "scheduler": "kl_optimal",
+      "video_duration": 0
     },
     "class_type": "SceneInput",
     "_meta": {
@@ -1248,19 +1262,6 @@
       "title": "Clean VRAM Used"
     }
   },
-  "166:139": {
-    "inputs": {
-      "shift": 5,
-      "model": [
-        "248",
-        0
-      ]
-    },
-    "class_type": "ModelSamplingSD3",
-    "_meta": {
-      "title": "ModelSamplingSD3"
-    }
-  },
   "166:153": {
     "inputs": {
       "value": "round(a/16)*16",
@@ -1285,6 +1286,19 @@
     "class_type": "SimpleMath+",
     "_meta": {
       "title": "🔧 Simple Math"
+    }
+  },
+  "166:139": {
+    "inputs": {
+      "shift": 1.5,
+      "model": [
+        "248",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
     }
   },
   "166:127": {

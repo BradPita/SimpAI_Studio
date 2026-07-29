@@ -2222,12 +2222,22 @@ function scheduleAfterUiUpdateCallbacks() {
 
 var executedOnLoaded = false;
 
+function mutationNeedsUiUpdateCallbacks(mutation) {
+    const target = mutation?.target?.nodeType === Node.ELEMENT_NODE
+        ? mutation.target
+        : mutation?.target?.parentElement;
+    if (!target?.closest) return true;
+    return !target.closest('.status-monitor-tile, .vram-usage, .ram-usage, .online-users-badge, .admin-access-pending-badge');
+}
+
 document.addEventListener("DOMContentLoaded", function() {
     var mutationObserver = new MutationObserver(function(m) {
         if (!executedOnLoaded && gradioApp().querySelector('#generate_button')) {
             executedOnLoaded = true;
             executeCallbacks(uiLoadedCallbacks);
         }
+
+        if (!m.some(mutationNeedsUiUpdateCallbacks)) return;
 
         executeCallbacks(uiUpdateCallbacks, m);
         scheduleAfterUiUpdateCallbacks();
@@ -2677,8 +2687,13 @@ document.addEventListener("DOMContentLoaded", function() {
             ? (value - min) / span
             : 0;
         const progress = Math.max(0, Math.min(100, ratio * 100));
-        input.classList.add('simpai-gradio-range-fill');
-        input.style.setProperty('--simpai-gradio-range-progress', `${progress}%`);
+        if (!input.classList.contains('simpai-gradio-range-fill')) {
+            input.classList.add('simpai-gradio-range-fill');
+        }
+        const progressValue = `${progress}%`;
+        if (input.style.getPropertyValue('--simpai-gradio-range-progress') !== progressValue) {
+            input.style.setProperty('--simpai-gradio-range-progress', progressValue);
+        }
     }
 
     function syncAllRangeFills() {
@@ -3161,7 +3176,9 @@ document.addEventListener("DOMContentLoaded", function() {
         if (imageChecked !== null) {
             const showImagePanel = !!imageChecked && !isScene;
             setVisible('image_input_panel', showImagePanel);
-            document.documentElement.classList.toggle('simpai-engine-class-visible', showImagePanel);
+            if (document.documentElement.classList.contains('simpai-engine-class-visible') !== showImagePanel) {
+                document.documentElement.classList.toggle('simpai-engine-class-visible', showImagePanel);
+            }
         }
         if (ttsChecked !== null) setVisible('tts_panel', !!ttsChecked);
         if (advancedChecked !== null) setVisible('advanced_column', !!advancedChecked);
@@ -3309,9 +3326,9 @@ document.addEventListener("DOMContentLoaded", function() {
         const preset = String((params && (params.__preset || params.preset)) || '').trim();
         setVisible('scene_panel', isScene);
         setVisible('scene_primary_row', isScene);
-        setVisible('scene_additional_prompt', isScene);
         setVisible('scene_cloud_image_api', isScene && preset === 'GeneralAPIImage');
         if (!isScene) {
+            setVisible('scene_additional_prompt', false);
             if (typeof window.closeSam3FramesEditor === 'function') {
                 try { window.closeSam3FramesEditor(); } catch (e) {}
             }
@@ -3320,7 +3337,9 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         setVisible('image_input_panel', false);
-        document.documentElement.classList.remove('simpai-engine-class-visible');
+        if (document.documentElement.classList.contains('simpai-engine-class-visible')) {
+            document.documentElement.classList.remove('simpai-engine-class-visible');
+        }
 
         const theme = sceneThemeValue(sceneFrontend || {}, params || {});
         const themeLower = theme.toLowerCase();
@@ -3444,7 +3463,9 @@ document.addEventListener("DOMContentLoaded", function() {
             || null;
         const isScene = !!(params && typeof params === 'object' && (params.__is_scene_frontend || params.scene_frontend));
         const visible = !!visibility?.checkboxChecked?.('input_image_checkbox') && !isScene;
-        document.documentElement.classList.toggle('simpai-engine-class-visible', visible);
+        if (document.documentElement.classList.contains('simpai-engine-class-visible') !== visible) {
+            document.documentElement.classList.toggle('simpai-engine-class-visible', visible);
+        }
     }
 
     document.addEventListener('input', (event) => {
@@ -3894,20 +3915,26 @@ function setGradioComponentVisible(rootId, visible) {
     const root = getGradioRootById(rootId);
     if (!root) return false;
     if (visible) {
-        root.hidden = false;
-        root.removeAttribute('hidden');
-        root.removeAttribute('aria-hidden');
-        root.classList.remove('hidden', 'hide');
-        root.style.removeProperty('display');
-        root.style.removeProperty('pointer-events');
-        root.style.removeProperty('visibility');
+        if (root.hidden) root.hidden = false;
+        if (root.hasAttribute('hidden')) root.removeAttribute('hidden');
+        if (root.hasAttribute('aria-hidden')) root.removeAttribute('aria-hidden');
+        if (root.classList.contains('hidden')) root.classList.remove('hidden');
+        if (root.classList.contains('hide')) root.classList.remove('hide');
+        if (root.style.getPropertyValue('display')) root.style.removeProperty('display');
+        if (root.style.getPropertyValue('pointer-events')) root.style.removeProperty('pointer-events');
+        if (root.style.getPropertyValue('visibility')) root.style.removeProperty('visibility');
         return true;
     }
-    root.hidden = true;
-    root.classList.add('hidden', 'hide');
-    root.setAttribute('aria-hidden', 'true');
-    root.style.setProperty('display', 'none', 'important');
-    root.style.setProperty('pointer-events', 'none', 'important');
+    if (!root.hidden) root.hidden = true;
+    if (!root.classList.contains('hidden')) root.classList.add('hidden');
+    if (!root.classList.contains('hide')) root.classList.add('hide');
+    if (root.getAttribute('aria-hidden') !== 'true') root.setAttribute('aria-hidden', 'true');
+    if (root.style.getPropertyValue('display') !== 'none' || root.style.getPropertyPriority('display') !== 'important') {
+        root.style.setProperty('display', 'none', 'important');
+    }
+    if (root.style.getPropertyValue('pointer-events') !== 'none' || root.style.getPropertyPriority('pointer-events') !== 'important') {
+        root.style.setProperty('pointer-events', 'none', 'important');
+    }
     return true;
 }
 
@@ -3933,20 +3960,18 @@ function restoreGradioComponentVisibility(rootOrId, options = {}) {
             || node.style?.getPropertyValue('visibility')
             || node.style?.getPropertyValue('pointer-events')
         );
-        try { node.hidden = false; } catch (e) {}
-        try { node.removeAttribute('hidden'); } catch (e) {}
-        try { node.removeAttribute('aria-hidden'); } catch (e) {}
+        try { if (node.hidden) node.hidden = false; } catch (e) {}
+        try { if (node.hasAttribute('hidden')) node.removeAttribute('hidden'); } catch (e) {}
+        try { if (node.hasAttribute('aria-hidden')) node.removeAttribute('aria-hidden'); } catch (e) {}
         try {
-            node.classList.remove('hidden');
-            node.classList.remove('hide');
-            node.classList.remove('simpai-mounted-hidden');
-            node.classList.remove('simpai-force-hidden');
+            ['hidden', 'hide', 'simpai-mounted-hidden', 'simpai-force-hidden'].forEach((name) => {
+                if (node.classList.contains(name)) node.classList.remove(name);
+            });
         } catch (e) {}
         try {
-            node.style.removeProperty('display');
-            node.style.removeProperty('visibility');
-            node.style.removeProperty('pointer-events');
-            node.style.removeProperty('opacity');
+            ['display', 'visibility', 'pointer-events', 'opacity'].forEach((name) => {
+                if (node.style.getPropertyValue(name)) node.style.removeProperty(name);
+            });
         } catch (e) {}
         changed = changed || wasHidden;
     });
@@ -3955,9 +3980,9 @@ function restoreGradioComponentVisibility(rootOrId, options = {}) {
         if (button.disabled || button.getAttribute('aria-disabled') === 'true' || button.classList?.contains('disabled')) {
             changed = true;
         }
-        button.disabled = false;
-        button.setAttribute('aria-disabled', 'false');
-        button.classList?.remove('disabled');
+        if (button.disabled) button.disabled = false;
+        if (button.getAttribute('aria-disabled') !== 'false') button.setAttribute('aria-disabled', 'false');
+        if (button.classList?.contains('disabled')) button.classList.remove('disabled');
     }
     return changed;
 }
@@ -4011,9 +4036,14 @@ function setGradioButtonInteractive(rootId, interactive) {
     const button = getGradioButtonById(rootId);
     if (!button) return false;
     const nextInteractive = !!interactive;
-    button.disabled = !nextInteractive;
-    button.setAttribute('aria-disabled', String(!nextInteractive));
-    button.classList.toggle('disabled', !nextInteractive);
+    const disabled = !nextInteractive;
+    if (button.disabled !== disabled) button.disabled = disabled;
+    if (button.getAttribute('aria-disabled') !== String(disabled)) {
+        button.setAttribute('aria-disabled', String(disabled));
+    }
+    if (button.classList.contains('disabled') !== disabled) {
+        button.classList.toggle('disabled', disabled);
+    }
     return true;
 }
 
@@ -5880,12 +5910,27 @@ function initResolutionControlWidget(widget, options = {}) {
     const resolutionControlExplicitText = (en, cn, source = resolutionControlLangSource()) => (
         resolutionControlPrefersEnglish(source) ? en : (cn || en)
     );
+    const setResolutionText = (node, value) => {
+        if (node && node.textContent !== value) node.textContent = value;
+    };
+    const setResolutionAttribute = (node, name, value) => {
+        if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
+    };
+    const setResolutionDisabled = (node, disabled) => {
+        if (node && node.disabled !== disabled) node.disabled = disabled;
+    };
+    const toggleResolutionClass = (node, name, enabled) => {
+        if (node && node.classList.contains(name) !== enabled) node.classList.toggle(name, enabled);
+    };
+    const setResolutionStyle = (node, name, value) => {
+        if (node && node.style.getPropertyValue(name) !== value) node.style.setProperty(name, value);
+    };
     const syncModeButtonLabels = () => {
         const source = resolutionControlLangSource();
         for (const node of Array.from(widget.querySelectorAll('[data-role="localized-label"]'))) {
             const en = node.dataset.labelEn || node.textContent || '';
             const cn = node.dataset.labelCn || en;
-            node.textContent = resolutionControlExplicitText(en, cn, source);
+            setResolutionText(node, resolutionControlExplicitText(en, cn, source));
         }
         for (const button of modeButtons) {
             const en = button.dataset.labelEn || button.textContent || '';
@@ -5893,45 +5938,45 @@ function initResolutionControlWidget(widget, options = {}) {
             const titleEn = button.dataset.titleEn || en;
             const titleCn = button.dataset.titleCn || cn;
             const title = resolutionControlExplicitText(titleEn, titleCn, source);
-            button.textContent = resolutionControlExplicitText(en, cn, source);
-            button.title = title;
-            button.setAttribute('aria-label', title);
+            setResolutionText(button, resolutionControlExplicitText(en, cn, source));
+            if (button.title !== title) button.title = title;
+            setResolutionAttribute(button, 'aria-label', title);
         }
     };
     const profileInteractive = (profile) => !(profile && profile.interactive === false);
     const originalInputActive = () => !!(originalInputToggle && originalInputToggle.checked);
     const syncOriginalInputControls = () => {
         const active = originalInputActive();
-        widget.classList.toggle('resolution-original-input-active', active);
+        toggleResolutionClass(widget, 'resolution-original-input-active', active);
         const enabled = controlsAreInteractive();
         for (const button of modeButtons) {
-            button.disabled = !enabled || active;
+            setResolutionDisabled(button, !enabled || active);
         }
     };
     const setControlsInteractive = (enabled) => {
-        widget.classList.toggle('resolution-control-disabled', !enabled);
+        toggleResolutionClass(widget, 'resolution-control-disabled', !enabled);
         for (const node of [templateSelect, ratioSelect, randomToggle, overrideToggle, originalInputToggle, wInput, hInput, qStepSelect, multiplierInput, ratioLockToggle, ratioLockSelect, ratioLockCustomW, ratioLockCustomH]) {
-            if (node) node.disabled = !enabled;
+            setResolutionDisabled(node, !enabled);
         }
         for (const button of modeButtons) {
-            button.disabled = !enabled || originalInputActive();
+            setResolutionDisabled(button, !enabled || originalInputActive());
         }
-        if (enabled && profileStep(getActiveProfile()) && qStepSelect) qStepSelect.disabled = true;
+        if (enabled && profileStep(getActiveProfile()) && qStepSelect) setResolutionDisabled(qStepSelect, true);
     };
     const controlsAreInteractive = () => !widget.classList.contains('resolution-control-disabled');
     const syncRatioLockControls = () => {
         const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'proportional');
         const enabled = controlsAreInteractive() && mode !== 'proportional' && !!(ratioLockToggle && ratioLockToggle.checked);
         const customEnabled = enabled && !!(ratioLockSelect && ratioLockSelect.value === 'custom');
-        if (ratioLockSelect) ratioLockSelect.disabled = !enabled;
+        setResolutionDisabled(ratioLockSelect, !enabled);
         if (ratioLockCustom) {
-            ratioLockCustom.classList.toggle('resolution-ratio-custom-disabled', !customEnabled);
-            ratioLockCustom.setAttribute('aria-disabled', customEnabled ? 'false' : 'true');
+            toggleResolutionClass(ratioLockCustom, 'resolution-ratio-custom-disabled', !customEnabled);
+            setResolutionAttribute(ratioLockCustom, 'aria-disabled', customEnabled ? 'false' : 'true');
         }
-        if (ratioLockCustomW) ratioLockCustomW.disabled = !customEnabled;
-        if (ratioLockCustomH) ratioLockCustomH.disabled = !customEnabled;
-        widget.classList.toggle('resolution-ratio-lock-active', !!enabled);
-        widget.classList.toggle('resolution-ratio-custom-active', !!customEnabled);
+        setResolutionDisabled(ratioLockCustomW, !customEnabled);
+        setResolutionDisabled(ratioLockCustomH, !customEnabled);
+        toggleResolutionClass(widget, 'resolution-ratio-lock-active', !!enabled);
+        toggleResolutionClass(widget, 'resolution-ratio-custom-active', !!customEnabled);
         syncOriginalInputControls();
     };
     const syncAccordionTitle = (width, height, options = {}) => {
@@ -5960,7 +6005,8 @@ function initResolutionControlWidget(widget, options = {}) {
             ? `${titlePrefix} - ${titlePrefix === '\u5206\u8fa8\u7387' ? '\u539f\u59cb\u5c3a\u5bf8' : 'Original'}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`
             : `${titlePrefix} - ${width}\u00d7${height}${ratio ? ` | ${ratio}` : ""}${bracket ? ` ${bracket}` : ""}`;
         if (textNode) {
-            textNode.nodeValue = textNode.nodeValue.replace(/(?:Resolution|\u5206\u8fa8\u7387)(?:\s*[-–].*)?/, title);
+            const nextValue = textNode.nodeValue.replace(/(?:Resolution|\u5206\u8fa8\u7387)(?:\s*[-–].*)?/, title);
+            if (textNode.nodeValue !== nextValue) textNode.nodeValue = nextValue;
             return;
         }
         const leaf = Array.from(header.querySelectorAll('*')).find((node) => {
@@ -5968,7 +6014,7 @@ function initResolutionControlWidget(widget, options = {}) {
                 && node.childNodes[0].nodeType === Node.TEXT_NODE
                 && node.textContent.trim();
         });
-        if (leaf) leaf.textContent = title;
+        if (leaf && leaf.textContent !== title) leaf.textContent = title;
     };
     const syncAccordionOpen = (shouldOpen) => {
         _rc_syncResolutionAccordionShellOpen(shouldOpen);
@@ -6146,9 +6192,9 @@ function initResolutionControlWidget(widget, options = {}) {
     const syncDimensionInputStep = () => {
         const step = readStep();
         for (const input of [wInput, hInput]) {
-            input.min = "64";
-            input.max = "2048";
-            input.step = String(step);
+            if (input.min !== "64") input.min = "64";
+            if (input.max !== "2048") input.max = "2048";
+            if (input.step !== String(step)) input.step = String(step);
         }
     };
 
@@ -6309,7 +6355,7 @@ function initResolutionControlWidget(widget, options = {}) {
         widget.__rc_user_edit_mode = true;
         _rc_setTextValue(targetEditModeId, mode, commit);
         for (const button of modeButtons) {
-            button.classList.toggle('active', button.dataset.mode === mode);
+            toggleResolutionClass(button, 'active', button.dataset.mode === mode);
         }
         syncRatioLockControls();
         render();
@@ -6626,7 +6672,7 @@ function initResolutionControlWidget(widget, options = {}) {
         }
         const mode = normalizeEditMode(_rc_getTextValue(targetEditModeId), 'scale');
         for (const button of modeButtons) {
-            button.classList.toggle('active', button.dataset.mode === mode);
+            toggleResolutionClass(button, 'active', button.dataset.mode === mode);
         }
         syncOriginalInputControls();
         syncRatioLockControls();
@@ -6642,24 +6688,23 @@ function initResolutionControlWidget(widget, options = {}) {
         syncDimensionInputStep();
         const effectiveW = waitingOriginal ? 0 : _rc_quantize(dims.width * multiplier, step);
         const effectiveH = waitingOriginal ? 0 : _rc_quantize(dims.height * multiplier, step);
-        if (document.activeElement !== wInput) wInput.value = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1");
-        if (document.activeElement !== hInput) hInput.value = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.height) : "-1");
-        if (rectLabel) rectLabel.textContent = waitingOriginal ? ((ratioSelect && ratioSelect.selectedOptions && ratioSelect.selectedOptions[0] && (ratioSelect.selectedOptions[0].textContent || '').trim()) || 'Original') : `${effectiveW}\u00d7${effectiveH}`;
+        const widthValue = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.width) : "-1");
+        const heightValue = waitingOriginal ? "-1" : ((dims.manual || dims.profileMode) ? String(dims.height) : "-1");
+        if (document.activeElement !== wInput && wInput.value !== widthValue) wInput.value = widthValue;
+        if (document.activeElement !== hInput && hInput.value !== heightValue) hInput.value = heightValue;
+        const rectText = waitingOriginal ? ((ratioSelect && ratioSelect.selectedOptions && ratioSelect.selectedOptions[0] && (ratioSelect.selectedOptions[0].textContent || '').trim()) || 'Original') : `${effectiveW}\u00d7${effectiveH}`;
+        setResolutionText(rectLabel, rectText);
         syncAccordionTitle(effectiveW, effectiveH, { waitingOriginal });
         if (status) {
-            if (waitingOriginal) {
-                status.textContent = '';
-            } else {
-                const sourceText = dims.source ? `${dims.source.width}\u00d7${dims.source.height}` : `${dims.width}\u00d7${dims.height}`;
-                status.textContent = `${sourceText} \u2192 ${effectiveW}\u00d7${effectiveH}`;
-            }
+            const sourceText = dims.source ? `${dims.source.width}\u00d7${dims.source.height}` : `${dims.width}\u00d7${dims.height}`;
+            setResolutionText(status, waitingOriginal ? '' : `${sourceText} \u2192 ${effectiveW}\u00d7${effectiveH}`);
         }
         if (waitingOriginal) {
             _rc_clearResolutionPreviewCanvas(canvas);
-            rect.style.display = 'none';
+            setResolutionStyle(rect, 'display', 'none');
             return;
         }
-        rect.style.display = '';
+        setResolutionStyle(rect, 'display', '');
 
         const padW = Math.max(1, pad.clientWidth || 1);
         const padH = Math.max(1, pad.clientHeight || 1);
@@ -6669,18 +6714,20 @@ function initResolutionControlWidget(widget, options = {}) {
         const rh = Math.max(16, Math.round(effectiveH * scale));
         const rx = Math.round((padW - rw) / 2);
         const ry = Math.round((padH - rh) / 2);
-        rect.style.width = `${rw}px`;
-        rect.style.height = `${rh}px`;
-        rect.style.left = `${rx}px`;
-        rect.style.top = `${ry}px`;
+        setResolutionStyle(rect, 'width', `${rw}px`);
+        setResolutionStyle(rect, 'height', `${rh}px`);
+        setResolutionStyle(rect, 'left', `${rx}px`);
+        setResolutionStyle(rect, 'top', `${ry}px`);
         widget.__rc_render_info = { scale: scale * multiplier, visualScale: scale, rx, ry, rw, rh, width: dims.width, height: dims.height, effectiveW, effectiveH };
 
         if (canvas) {
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = Math.max(1, Math.round(padW * dpr));
-            canvas.height = Math.max(1, Math.round(padH * dpr));
-            canvas.style.width = `${padW}px`;
-            canvas.style.height = `${padH}px`;
+            const canvasWidth = Math.max(1, Math.round(padW * dpr));
+            const canvasHeight = Math.max(1, Math.round(padH * dpr));
+            if (canvas.width !== canvasWidth) canvas.width = canvasWidth;
+            if (canvas.height !== canvasHeight) canvas.height = canvasHeight;
+            setResolutionStyle(canvas, 'width', `${padW}px`);
+            setResolutionStyle(canvas, 'height', `${padH}px`);
             const ctx = canvas.getContext('2d');
             if (ctx) {
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -7361,12 +7408,14 @@ function initParameterProfilePlaceholder() {
     const englishText = 'Type name to save params';
     const displayText = simpleaiLocalText(englishText, '输入名称后保存当前参数', window.simpleaiTopbarSystemParams || {});
     try {
-        input.setAttribute('data-original-placeholder', englishText);
-        input.setAttribute('aria-label', displayText);
+        if (input.getAttribute('data-original-placeholder') !== englishText) {
+            input.setAttribute('data-original-placeholder', englishText);
+        }
+        if (input.getAttribute('aria-label') !== displayText) input.setAttribute('aria-label', displayText);
         if (typeof input.placeholder === 'string') {
-            input.placeholder = displayText;
+            if (input.placeholder !== displayText) input.placeholder = displayText;
         } else {
-            input.setAttribute('data-placeholder', displayText);
+            if (input.getAttribute('data-placeholder') !== displayText) input.setAttribute('data-placeholder', displayText);
         }
     } catch (e) {}
 }

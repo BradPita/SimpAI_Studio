@@ -1537,11 +1537,15 @@
     }
 
     async function sendCanvasPollRunRequest(runId, options) {
-        return WORKBENCH_API.pollRun(runId, options || {});
+        return WORKBENCH_API.pollRun(runId, Object.assign({}, options || {}, {
+            user_context: getWorkbenchUserContext()
+        }));
     }
 
     async function sendCanvasControlRunRequest(runId, action) {
-        return WORKBENCH_API.controlRun(runId, action);
+        return WORKBENCH_API.controlRun(runId, action, {
+            user_context: getWorkbenchUserContext()
+        });
     }
 
     async function sendCanvasQwenTtsRunRequest(payload) {
@@ -6136,6 +6140,14 @@ ${canvasAgentState.lastMessage ? `<div class="sai-canvas-agent-note">${escapeHtm
     function createCanvasAgentPresetProbeNode(entry, options) {
         const opts = options || {};
         const cleanName = normalizePresetName(entry?.name || entry?.display_name || '');
+        const sharedProbe = typeof WORKBENCH_API.buildPresetRunNode === 'function'
+            ? WORKBENCH_API.buildPresetRunNode(entry, {
+                id: `agent_probe_${cleanName || 'preset'}`,
+                sceneTheme: opts.sceneTheme,
+                prompt: ''
+            })
+            : null;
+        if (sharedProbe) return sharedProbe;
         const isScene = !!entry?.scene || !!(entry?.schema && typeof entry.schema === 'object' && entry.schema.scene_frontend);
         const defaultEngine = entry?.default_engine && typeof entry.default_engine === 'object' ? entry.default_engine : {};
         const backendParams = defaultEngine.backend_params && typeof defaultEngine.backend_params === 'object' ? defaultEngine.backend_params : {};

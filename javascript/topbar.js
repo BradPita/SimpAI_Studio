@@ -374,21 +374,81 @@ function getSimpleAIPresetCatalogBodies(root) {
     });
 }
 
+function setSimpleAIPresetCatalogAttributeIfChanged(element, name, value) {
+    if (!element || !name) return false;
+    const nextValue = String(value);
+    try {
+        if (element.getAttribute(name) === nextValue) return false;
+        element.setAttribute(name, nextValue);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function setSimpleAIPresetCatalogStyleIfChanged(element, name, value, priority) {
+    if (!element || !element.style || !name) return false;
+    const nextValue = String(value);
+    const nextPriority = String(priority || "");
+    try {
+        const currentValue = String(element.style.getPropertyValue(name) || "").trim();
+        const currentPriority = String(element.style.getPropertyPriority(name) || "");
+        const zeroMatches = nextValue === "0" && /^0(?:px)?(?:\s+0(?:px)?){0,3}$/.test(currentValue);
+        if ((currentValue === nextValue || zeroMatches) && currentPriority === nextPriority) return false;
+        element.style.setProperty(name, nextValue, nextPriority);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function removeSimpleAIAttributeIfPresent(element, name) {
+    if (!element || !name || !element.hasAttribute(name)) return false;
+    try {
+        element.removeAttribute(name);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function removeSimpleAIStyleIfPresent(element, name) {
+    if (!element || !element.style || !name || !element.style.getPropertyValue(name)) return false;
+    try {
+        element.style.removeProperty(name);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function setSimpleAIClassStateIfChanged(element, name, enabled) {
+    if (!element || !element.classList || !name) return false;
+    const nextEnabled = !!enabled;
+    try {
+        if (element.classList.contains(name) === nextEnabled) return false;
+        element.classList.toggle(name, nextEnabled);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function setSimpleAIPresetCatalogBodiesCollapsed(root, collapsed, options) {
     const force = !!(options && options.force);
     getSimpleAIPresetCatalogBodies(root).forEach((child) => {
         if (!child || !child.style) return;
         if (collapsed) {
-            try { child.dataset.simpleaiPresetSwitchCatalogBodyCollapsed = "1"; } catch (e) {}
-            try { child.setAttribute("aria-hidden", "true"); } catch (e) {}
-            try { child.style.setProperty("display", "none", "important"); } catch (e) {}
-            try { child.style.setProperty("min-height", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("height", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("max-height", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("margin", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("padding", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("border", "0", "important"); } catch (e) {}
-            try { child.style.setProperty("overflow", "hidden", "important"); } catch (e) {}
+            setSimpleAIPresetCatalogAttributeIfChanged(child, "data-simpleai-preset-switch-catalog-body-collapsed", "1");
+            setSimpleAIPresetCatalogAttributeIfChanged(child, "aria-hidden", "true");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "display", "none", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "min-height", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "height", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "max-height", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "margin", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "padding", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "border", "0", "important");
+            setSimpleAIPresetCatalogStyleIfChanged(child, "overflow", "hidden", "important");
         } else {
             let owned = false;
             try { owned = child.dataset.simpleaiPresetSwitchCatalogBodyCollapsed === "1"; } catch (e) {}
@@ -477,14 +537,18 @@ function bindSimpleAIPresetCatalogCollapseGuard(root) {
 function markSimpleAIPresetCatalogCollapsed(root) {
     if (!root) return false;
     try { coverSimpleAIGalleryFrostTargetsForCatalog("catalog_collapse"); } catch (e) {}
-    try { root.dataset.simpleaiPresetSwitchCatalogCollapsed = "1"; } catch (e) {}
-    try { root.classList.add("simpai-preset-switch-catalog-collapsed"); } catch (e) {}
+    setSimpleAIPresetCatalogAttributeIfChanged(root, "data-simpleai-preset-switch-catalog-collapsed", "1");
+    try {
+        if (!root.classList.contains("simpai-preset-switch-catalog-collapsed")) {
+            root.classList.add("simpai-preset-switch-catalog-collapsed");
+        }
+    } catch (e) {}
     bindSimpleAIPresetCatalogCollapseGuard(root);
     try {
         const label = root.querySelector(":scope > button.label-wrap") || root.querySelector("button.label-wrap");
         if (label) {
-            label.classList.remove("open");
-            label.setAttribute("aria-expanded", "false");
+            if (label.classList.contains("open")) label.classList.remove("open");
+            setSimpleAIPresetCatalogAttributeIfChanged(label, "aria-expanded", "false");
             try { label.open = false; } catch (e) {}
         }
     } catch (e) {}
@@ -7228,17 +7292,15 @@ function markWelcomePreviewGuardNode(el) {
     const isSurfaceRow = !!(el.matches && el.matches(".row"));
     try { delete el.dataset.simpleaiPostGenerationCollapsed; } catch (e) {}
     try { delete el.dataset.simpleaiPostGenerationSurface; } catch (e) {}
-    try { el.dataset.simpleaiGalleryWelcomeGuard = "1"; } catch (e) {}
-    try { el.hidden = false; } catch (e) {}
-    try { el.removeAttribute("hidden"); } catch (e) {}
-    try { el.removeAttribute("aria-hidden"); } catch (e) {}
-    try {
-        el.classList.remove("hidden");
-        el.classList.remove("hide");
-        el.classList.remove("simpai-mounted-hidden");
-    } catch (e) {}
-    try { el.style.setProperty("display", isSurfaceRow ? "block" : "flex", "important"); } catch (e) {}
-    try { el.style.setProperty("visibility", "visible", "important"); } catch (e) {}
+    setSimpleAIPresetCatalogAttributeIfChanged(el, "data-simpleai-gallery-welcome-guard", "1");
+    try { if (el.hidden) el.hidden = false; } catch (e) {}
+    removeSimpleAIAttributeIfPresent(el, "hidden");
+    removeSimpleAIAttributeIfPresent(el, "aria-hidden");
+    setSimpleAIClassStateIfChanged(el, "hidden", false);
+    setSimpleAIClassStateIfChanged(el, "hide", false);
+    setSimpleAIClassStateIfChanged(el, "simpai-mounted-hidden", false);
+    setSimpleAIPresetCatalogStyleIfChanged(el, "display", isSurfaceRow ? "block" : "flex", "important");
+    setSimpleAIPresetCatalogStyleIfChanged(el, "visibility", "visible", "important");
     return true;
 }
 
@@ -7417,16 +7479,16 @@ function shouldRefreshFinishedGalleryMediaSurface() {
 }
 
 function setFinishedGalleryOverlayActive(active) {
-    try { document.documentElement.classList.toggle("simpai-gallery-browser-overlay-active", !!active); } catch (e) {}
+    const enabled = !!active;
+    setSimpleAIClassStateIfChanged(document.documentElement, "simpai-gallery-browser-overlay-active", enabled);
+    const row = enabled ? getFinishedGallerySurfaceRow() : null;
     try {
         document.querySelectorAll(".simpai-gallery-browser-overlay-row").forEach((node) => {
-            node.classList.remove("simpai-gallery-browser-overlay-row");
+            if (node !== row) setSimpleAIClassStateIfChanged(node, "simpai-gallery-browser-overlay-row", false);
         });
     } catch (e) {}
-    if (!active) return;
-    const row = getFinishedGallerySurfaceRow();
     if (!row) return;
-    try { row.classList.add("simpai-gallery-browser-overlay-row"); } catch (e) {}
+    setSimpleAIClassStateIfChanged(row, "simpai-gallery-browser-overlay-row", true);
 }
 
 function shouldReleaseFinishedGalleryWelcomeGuard() {
@@ -11531,10 +11593,10 @@ function clearPostGenerationSupportSurface() {
     } catch (e) {}
     try {
         ["display", "visibility", "min-height", "height", "max-height", "overflow", "opacity", "pointer-events"].forEach((name) => {
-            guard.style.removeProperty(name);
+            removeSimpleAIStyleIfPresent(guard, name);
         });
     } catch (e) {}
-    try { guard.setAttribute("aria-hidden", "true"); } catch (e) {}
+    setSimpleAIPresetCatalogAttributeIfChanged(guard, "aria-hidden", "true");
     return true;
 }
 
@@ -12202,12 +12264,12 @@ function syncMainLayoutResponsiveStack() {
     const advancedChecks = document.querySelector(".advanced_check_row");
     if (!workspace || !advancedColumn) return;
 
-    workspace.classList.add("simpai-main-workspace-row");
+    setSimpleAIClassStateIfChanged(workspace, "simpai-main-workspace-row", true);
 
     const advancedVisible = simpleAiElementVisible(advancedColumn);
     if (!advancedVisible) {
-        document.documentElement.classList.remove("simpai-main-layout-stacked");
-        workspace.classList.remove("simpai-main-workspace-stacked");
+        setSimpleAIClassStateIfChanged(document.documentElement, "simpai-main-layout-stacked", false);
+        setSimpleAIClassStateIfChanged(workspace, "simpai-main-workspace-stacked", false);
         return;
     }
 
@@ -12239,8 +12301,8 @@ function syncMainLayoutResponsiveStack() {
         }
     }
 
-    document.documentElement.classList.toggle("simpai-main-layout-stacked", shouldStack);
-    workspace.classList.toggle("simpai-main-workspace-stacked", shouldStack);
+    setSimpleAIClassStateIfChanged(document.documentElement, "simpai-main-layout-stacked", shouldStack);
+    setSimpleAIClassStateIfChanged(workspace, "simpai-main-workspace-stacked", shouldStack);
 }
 window.syncMainLayoutResponsiveStack = syncMainLayoutResponsiveStack;
 
@@ -12250,7 +12312,7 @@ function bindMainLayoutResponsiveStack() {
         setTimeout(bindMainLayoutResponsiveStack, 300);
         return;
     }
-    workspace.classList.add("simpai-main-workspace-row");
+    setSimpleAIClassStateIfChanged(workspace, "simpai-main-workspace-row", true);
 
     if (mainLayoutResponsiveObserver && mainLayoutResponsiveObservedNode !== workspace) {
         try { mainLayoutResponsiveObserver.disconnect(); } catch (e) {}
@@ -13291,16 +13353,10 @@ function syncSceneAndAdvancedColumns(traceLabel, isSceneFrontend) {
     const restoreGeneralSettingTabsContainer = (generalSettingTabs) => {
         if (!generalSettingTabs) return;
         try {
-            generalSettingTabs.style.removeProperty("display");
-            generalSettingTabs.style.removeProperty("visibility");
-            generalSettingTabs.style.removeProperty("height");
-            generalSettingTabs.style.removeProperty("max-height");
-            generalSettingTabs.style.removeProperty("min-height");
-            generalSettingTabs.style.removeProperty("margin");
-            generalSettingTabs.style.removeProperty("padding");
-            generalSettingTabs.style.removeProperty("overflow");
-            generalSettingTabs.style.removeProperty("pointer-events");
-            generalSettingTabs.removeAttribute("aria-hidden");
+            ["display", "visibility", "height", "max-height", "min-height", "margin", "padding", "overflow", "pointer-events"].forEach((name) => {
+                removeSimpleAIStyleIfPresent(generalSettingTabs, name);
+            });
+            removeSimpleAIAttributeIfPresent(generalSettingTabs, "aria-hidden");
         } catch (e) {}
     };
     const disableQuickEnhanceForScene = () => {

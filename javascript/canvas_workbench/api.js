@@ -1,6 +1,246 @@
 (function () {
     'use strict';
 
+    const PRESET_RUN_ASPECT_OPTIONS = [
+        { key: 'auto', value: '' },
+        { key: '1:1', value: '1024*1024' },
+        { key: '16:9', value: '1344*768' },
+        { key: '9:16', value: '768*1344' },
+        { key: '4:3', value: '1152*864' },
+        { key: '3:4', value: '864*1152' },
+        { key: '2:3', value: '832*1216' },
+        { key: '3:2', value: '1216*832' },
+        { key: '7:4', value: '1344*768' },
+        { key: '4:7', value: '768*1344' }
+    ];
+
+    function clonePresetRunValue(value, fallback) {
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch (err) {
+            return fallback;
+        }
+    }
+
+    function presetRunAspectOptions() {
+        const configured = window.SimpAICanvasWorkbenchCanvasAgent?.CANVAS_AGENT_ASPECT_OPTIONS;
+        const source = Array.isArray(configured) && configured.length ? configured : PRESET_RUN_ASPECT_OPTIONS;
+        return clonePresetRunValue(source, PRESET_RUN_ASPECT_OPTIONS.slice());
+    }
+
+    function normalizePresetRunName(value) {
+        return String(value || '').trim().replace(/\.json$/i, '');
+    }
+
+    function presetRunStringList(value) {
+        if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+        if (typeof value !== 'string' || !value.trim()) return [];
+        try {
+            const parsed = JSON.parse(value.replace(/'/g, '"'));
+            if (Array.isArray(parsed)) return parsed.map(item => String(item || '').trim()).filter(Boolean);
+        } catch (err) {}
+        return value.split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function firstPresetRunText() {
+        for (const value of arguments) {
+            if (value === undefined || value === null || Array.isArray(value) || typeof value === 'object') continue;
+            const text = String(value || '').trim();
+            if (text) return text;
+        }
+        return '';
+    }
+
+    function presetRunThemeValue(source, key, theme) {
+        if (!source || typeof source !== 'object') return undefined;
+        const raw = source[key];
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+        if (theme && Object.prototype.hasOwnProperty.call(raw, theme)) return raw[theme];
+        const firstKey = Object.keys(raw).find(item => raw[item] !== undefined && raw[item] !== null && raw[item] !== '');
+        return firstKey ? raw[firstKey] : undefined;
+    }
+
+    function presetRunPromptDefaults(entry, schema, theme, themeInfo) {
+        const defaultEngine = entry?.default_engine && typeof entry.default_engine === 'object' ? entry.default_engine : {};
+        const sceneFrontend = Object.assign(
+            {},
+            schema?.scene_frontend && typeof schema.scene_frontend === 'object' ? schema.scene_frontend : {},
+            defaultEngine.scene_frontend && typeof defaultEngine.scene_frontend === 'object' ? defaultEngine.scene_frontend : {}
+        );
+        const themeDefaults = themeInfo?.defaults && typeof themeInfo.defaults === 'object' ? themeInfo.defaults : {};
+        const generation = entry?.generation_config && typeof entry.generation_config === 'object' ? entry.generation_config : {};
+        const styles = presetRunStringList(
+            entry?.default_styles
+            || generation.default_styles
+            || generation.style_selections
+            || themeDefaults.default_styles
+            || themeDefaults.style_selections
+        );
+        return {
+            styles,
+            prompt: firstPresetRunText(
+                presetRunThemeValue(sceneFrontend, 'prompt', theme),
+                themeDefaults.prompt,
+                themeDefaults.default_prompt,
+                entry?.default_prompt,
+                generation.default_prompt
+            ),
+            negativePrompt: firstPresetRunText(
+                presetRunThemeValue(sceneFrontend, 'negative_prompt', theme),
+                themeDefaults.negative_prompt,
+                themeDefaults.default_prompt_negative,
+                entry?.default_prompt_negative,
+                generation.default_prompt_negative
+            )
+        };
+    }
+
+    function buildPresetRunNode(entry, options) {
+        if (!entry || typeof entry !== 'object') return null;
+        const opts = options && typeof options === 'object' ? options : {};
+        const cleanName = normalizePresetRunName(entry.name || entry.display_name || opts.presetName || '');
+        if (!cleanName) return null;
+        const schema = entry.schema && typeof entry.schema === 'object' ? clonePresetRunValue(entry.schema, {}) : {};
+        const isScene = !!entry.scene || !!schema.scene_frontend;
+        const defaultEngine = entry.default_engine && typeof entry.default_engine === 'object' ? entry.default_engine : {};
+        const backendParams = defaultEngine.backend_params && typeof defaultEngine.backend_params === 'object' ? defaultEngine.backend_params : {};
+        const themes = Array.isArray(schema.themes) ? schema.themes : [];
+        const requestedTheme = String(opts.sceneTheme || '').trim();
+        const sceneTheme = requestedTheme && (!themes.length || themes.includes(requestedTheme))
+            ? requestedTheme
+            : (schema.default_theme || themes[0] || '');
+        const perTheme = schema.per_theme && typeof schema.per_theme === 'object' ? schema.per_theme : {};
+        const themeInfo = perTheme[sceneTheme] && typeof perTheme[sceneTheme] === 'object' ? perTheme[sceneTheme] : {};
+        const themeDefaults = themeInfo.defaults && typeof themeInfo.defaults === 'object'
+            ? clonePresetRunValue(themeInfo.defaults, {})
+            : {};
+        const promptDefaults = presetRunPromptDefaults(entry, schema, sceneTheme, themeInfo);
+        const hasPrompt = Object.prototype.hasOwnProperty.call(opts, 'prompt');
+        const hasNegativePrompt = Object.prototype.hasOwnProperty.call(opts, 'negativePrompt');
+        const prompt = hasPrompt ? String(opts.prompt || '').trim() : promptDefaults.prompt;
+        const negativePrompt = hasNegativePrompt ? String(opts.negativePrompt || '').trim() : promptDefaults.negativePrompt;
+        const imageNumber = Math.max(1, Math.min(16, Math.round(Number(opts.imageNumber || entry.default_image_number || 1) || 1)));
+        const params = isScene ? themeDefaults : {
+            uov_method: 'Upscale (1.5x)',
+            inpaint_mode: 'Inpaint or Outpaint (default)',
+            inpaint_denoising_strength: 1,
+            inpaint_respective_field: 0.618,
+            inpaint_engine: null,
+            inpaint_disable_initial_latent: false,
+            invert_mask: false,
+            inpaint_additional_prompt: '',
+            outpaint_selections: [],
+            enhance_uov_method: 'Disabled',
+            enhance_uov_strength: 0.5,
+            enhance_uov_processing_order: 'Before First Enhancement',
+            enhance_uov_prompt_type: 'Original Prompts',
+            mixing_image_prompt_and_vary_upscale: false,
+            mixing_image_prompt_and_inpaint: false
+        };
+        params.prompt = prompt;
+        params.negative_prompt = negativePrompt;
+        params.seed_random = opts.seedRandom !== false;
+        params.image_seed = Number.isFinite(Number(opts.imageSeed)) ? Math.max(0, Math.round(Number(opts.imageSeed))) : 0;
+        params.image_number = imageNumber;
+
+        const resolutionOverrides = clonePresetRunValue(opts.resolutionOverrides || {}, {});
+        const aspectKey = String(opts.aspectRatio || opts.aspect || 'auto').trim().toLowerCase();
+        const aspect = presetRunAspectOptions().find(item => String(item?.key || '').toLowerCase() === aspectKey);
+        const sizeMatch = String(aspect?.value || '').match(/^(\d{3,5})\s*[x*]\s*(\d{3,5})$/i);
+        if (sizeMatch) {
+            resolutionOverrides.width = Number(sizeMatch[1]);
+            resolutionOverrides.height = Number(sizeMatch[2]);
+            resolutionOverrides.aspect_ratio = `${sizeMatch[1]}*${sizeMatch[2]}`;
+            resolutionOverrides.random_aspect_ratio = false;
+        }
+        const generationOverrides = Object.assign(
+            {},
+            clonePresetRunValue(opts.generationOverrides || {}, {}),
+            { image_number: imageNumber }
+        );
+        const resolutionDefaults = clonePresetRunValue(entry.resolution_config || {}, {});
+        if (!resolutionDefaults.aspect_ratio && resolutionDefaults.default_aspect_ratio) {
+            resolutionDefaults.aspect_ratio = resolutionDefaults.default_aspect_ratio;
+        }
+        const defaultSize = String(resolutionDefaults.aspect_ratio || '').match(/^(\d{3,5})\s*[x*]\s*(\d{3,5})/i);
+        if (defaultSize && !(Number(resolutionDefaults.width) > 0 && Number(resolutionDefaults.height) > 0)) {
+            resolutionDefaults.width = Number(defaultSize[1]);
+            resolutionDefaults.height = Number(defaultSize[2]);
+        }
+        if (!resolutionDefaults.profile && resolutionDefaults.resolution_control && typeof resolutionDefaults.resolution_control === 'object') {
+            resolutionDefaults.profile = clonePresetRunValue(resolutionDefaults.resolution_control, {});
+        }
+        if (resolutionDefaults.quantize == null && resolutionDefaults.default_resolution_quantize_step != null) {
+            resolutionDefaults.quantize = resolutionDefaults.default_resolution_quantize_step;
+        }
+        if (resolutionDefaults.multiplier == null && resolutionDefaults.default_resolution_multiplier != null) {
+            resolutionDefaults.multiplier = resolutionDefaults.default_resolution_multiplier;
+        }
+        if (!resolutionDefaults.edit_mode && resolutionDefaults.default_resolution_edit_mode) {
+            resolutionDefaults.edit_mode = resolutionDefaults.default_resolution_edit_mode;
+        }
+        const runtimeTaskMethod = themeInfo.task_method
+            || presetRunThemeValue(defaultEngine.scene_frontend, 'task_method', sceneTheme)
+            || entry.task_method
+            || backendParams.task_method
+            || '';
+        const nodeId = String(opts.id || `preset_run_${Date.now().toString(36)}`);
+        return {
+            id: nodeId,
+            type: isScene ? 'preset' : 'classic',
+            node_type: isScene ? 'preset' : 'classic',
+            title: entry.display_name || cleanName,
+            classic_mode: 't2i',
+            current_tab: 'ip',
+            classic_ip_count: 1,
+            preset: {
+                name: cleanName,
+                display_name: entry.display_name || cleanName,
+                snapshot: {
+                    default_styles: promptDefaults.styles.slice(),
+                    default_prompt: promptDefaults.prompt || '',
+                    default_prompt_negative: promptDefaults.negativePrompt || ''
+                }
+            },
+            runtime: {
+                backend_engine: entry.backend_engine || backendParams.backend_engine || defaultEngine.backend_engine || 'Current',
+                engine_type: entry.engine_type || defaultEngine.engine_type || 'image',
+                scene_frontend: isScene ? 'scene' : '',
+                scene_theme: sceneTheme,
+                task_method: runtimeTaskMethod
+            },
+            schema,
+            params,
+            upload_slots: {},
+            upload_slot_sources: {},
+            models_config: {
+                mode: 'preset_default',
+                defaults: clonePresetRunValue(entry.models_config || {}, {}),
+                overrides: clonePresetRunValue(opts.modelOverrides || {}, {})
+            },
+            styles_config: {
+                mode: 'preset_default',
+                defaults: { style_selections: promptDefaults.styles.slice() },
+                overrides: clonePresetRunValue(opts.styleOverrides || {}, {})
+            },
+            resolution_config: {
+                mode: 'preset_default',
+                defaults: resolutionDefaults,
+                overrides: resolutionOverrides
+            },
+            generation_config: {
+                mode: 'preset_default',
+                defaults: clonePresetRunValue(entry.generation_config || {}, {}),
+                overrides: generationOverrides
+            },
+            model_requirements: {
+                model_list: Array.isArray(entry.model_list) ? clonePresetRunValue(entry.model_list, []) : [],
+                has_model_probe: !!entry.has_model_probe,
+                source: entry.source || ''
+            }
+        };
+    }
+
     async function postJson(endpoint, payload, options) {
         const opts = options || {};
         const emptyError = opts.emptyError || 'empty response';
@@ -125,6 +365,9 @@
         if (options && options.after_preview_serial !== undefined) {
             payload.after_preview_serial = options.after_preview_serial;
         }
+        if (options?.user_context && typeof options.user_context === 'object') {
+            payload.user_context = options.user_context;
+        }
         return postJson('/canvas-workbench/poll-run', payload, {
             emptyError: 'empty poll response',
             requestError: 'poll request failed'
@@ -134,8 +377,12 @@
         });
     }
 
-    function controlRun(runId, action) {
-        return postJson('/canvas-workbench/control-run', { run_id: runId, action }, {
+    function controlRun(runId, action, options) {
+        const payload = { run_id: runId, action };
+        if (options?.user_context && typeof options.user_context === 'object') {
+            payload.user_context = options.user_context;
+        }
+        return postJson('/canvas-workbench/control-run', payload, {
             emptyError: 'empty control response',
             requestError: 'control request failed'
         }).then((data) => {
@@ -612,6 +859,8 @@
 
     window.SimpAICanvasWorkbenchApi = {
         postJson,
+        buildPresetRunNode,
+        presetRunAspectOptions,
         saveProject,
         loadProject,
         listProjects,
