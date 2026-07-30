@@ -17,7 +17,7 @@ import traceback
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 SOURCE_EVENT_PREFIX = "__FORGE_NEO_SOURCE_EVENT__ "
@@ -1969,6 +1969,113 @@ def _register_source_style_grid_adapter_script() -> dict[str, Any]:
     return {"loaded": True, "registered": 1, "path": str(script_path), "adapter": True}
 
 
+def _adapt_source_style_grid_script_module(module: types.ModuleType) -> bool:
+    script_class = getattr(module, "StyleGridScript", None)
+    if not isinstance(script_class, type):
+        return False
+
+    weighted_tag_re = re.compile(r"^\((.+?):\d+\.?\d*\)$")
+
+    def map_lines(prompt: object, transform: Callable[[str], str]) -> str:
+        parts = re.split(r"(\r\n|\r|\n)", str(prompt or ""))
+        return "".join(part if index % 2 else transform(part) for index, part in enumerate(parts))
+
+    def dedup_line(prompt: str) -> str:
+        result: list[str] = []
+        seen: set[str] = set()
+        for part in prompt.split(","):
+            item = part.strip()
+            if not item:
+                continue
+            if item.upper() == "BREAK":
+                result.append(item)
+                continue
+            match = weighted_tag_re.match(item)
+            key = (match.group(1).strip() if match else item).lower()
+            if key not in seen:
+                seen.add(key)
+                result.append(item)
+        return ", ".join(result)
+
+    def dedup_prompt(prompt: object) -> str:
+        return map_lines(prompt, dedup_line)
+
+    def append_unique(prompt: object, additions: list[str]) -> str:
+        def append_to_line(line: str) -> str:
+            current = [part.strip() for part in line.split(",") if part.strip()]
+            seen = {part.lower() for part in current}
+            result = list(current)
+            for addition in additions:
+                for token in addition.split(","):
+                    item = token.strip()
+                    if item and item.lower() not in seen:
+                        seen.add(item.lower())
+                        result.append(item)
+            return ", ".join(result)
+
+        return map_lines(prompt, append_to_line)
+
+    def apply_template(prompt: object, template: str) -> str:
+        return map_lines(prompt, lambda line: template.replace("{prompt}", line))
+
+    def process(self, p, *args):
+        all_styles = list(module.get_cached_styles())
+        module.categorize_styles(all_styles)
+        active_source = str((args[1] if len(args) >= 2 else "") or "")
+        wildcard_pool = [
+            style for style in all_styles if not active_source or str(style.get("source_file") or "") == active_source
+        ]
+        if not wildcard_pool:
+            wildcard_pool = all_styles
+        styles_by_category: dict[str, list[dict[str, Any]]] = {}
+        for style in wildcard_pool:
+            key = str(style.get("category") or "").lower()
+            styles_by_category.setdefault(key, []).append(style)
+
+        p.all_prompts = [
+            dedup_prompt(module.resolve_sg_wildcards(prompt, styles_by_category)) for prompt in p.all_prompts
+        ]
+        p.all_negative_prompts = [
+            dedup_prompt(module.resolve_sg_wildcards(prompt, styles_by_category)) for prompt in p.all_negative_prompts
+        ]
+
+        silent_json = args[0] if args else "[]"
+        try:
+            style_names = json.loads(silent_json) if silent_json else []
+        except Exception:
+            style_names = []
+        if not isinstance(style_names, list) or not style_names:
+            return
+
+        style_map = {str(style.get("name") or ""): style for style in all_styles}
+        positive_additions: list[str] = []
+        negative_additions: list[str] = []
+        for name in style_names:
+            style = style_map.get(str(name))
+            if not style:
+                continue
+            positive = str(style.get("prompt") or "")
+            negative = str(style.get("negative_prompt") or "")
+            if "{prompt}" in positive:
+                p.all_prompts = [apply_template(prompt, positive) for prompt in p.all_prompts]
+            elif positive:
+                positive_additions.append(positive)
+            if "{prompt}" in negative:
+                p.all_negative_prompts = [apply_template(prompt, negative) for prompt in p.all_negative_prompts]
+            elif negative:
+                negative_additions.append(negative)
+        if positive_additions:
+            p.all_prompts = [append_unique(prompt, positive_additions) for prompt in p.all_prompts]
+        if negative_additions:
+            p.all_negative_prompts = [append_unique(prompt, negative_additions) for prompt in p.all_negative_prompts]
+
+        p.extra_generation_params["Style Grid"] = ", ".join(str(name) for name in style_names)
+        module.increment_usage(style_names)
+
+    script_class.process = process
+    return True
+
+
 def _ensure_source_style_grid_script() -> dict[str, Any]:
     from modules import scripts
 
@@ -1988,10 +2095,11 @@ def _ensure_source_style_grid_script() -> dict[str, Any]:
             errors.append(f"{type(exc).__name__}: {exc}")
             sys.modules.pop(module_name, None)
             continue
+        adapted = _adapt_source_style_grid_script_module(module)
         registered = _register_source_script_classes(module, script_path, extension_root)
         if registered:
             _SOURCE_ADAPTER_SCRIPT_IMPORTS.add(_source_path_key(script_path))
-            return {"loaded": True, "registered": registered, "path": str(script_path)}
+            return {"loaded": True, "registered": registered, "path": str(script_path), "adapter": adapted}
 
     fallback = _register_source_style_grid_adapter_script()
     fallback["searched"] = searched

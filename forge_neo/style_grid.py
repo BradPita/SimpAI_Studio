@@ -485,10 +485,15 @@ def style_grid_alwayson_payload(silent_styles_json: object = "[]", source_filter
     return {STYLE_GRID_SCRIPT_TITLE: {"args": style_grid_script_args(silent_styles_json, source_filter)}}
 
 
-def _dedup_prompt(prompt: str) -> str:
+def _map_prompt_lines(prompt: str, transform: Any) -> str:
+    parts = re.split(r"(\r\n|\r|\n)", str(prompt or ""))
+    return "".join(part if index % 2 else transform(part) for index, part in enumerate(parts))
+
+
+def _dedup_prompt_line(prompt: str) -> str:
     result: list[str] = []
     seen: set[str] = set()
-    for part in str(prompt or "").split(","):
+    for part in prompt.split(","):
         item = part.strip()
         if not item:
             continue
@@ -502,6 +507,10 @@ def _dedup_prompt(prompt: str) -> str:
         seen.add(key)
         result.append(item)
     return ", ".join(result)
+
+
+def _dedup_prompt(prompt: str) -> str:
+    return _map_prompt_lines(prompt, _dedup_prompt_line)
 
 
 def _source_filtered_styles(source_filter: str) -> list[dict[str, Any]]:
@@ -539,17 +548,24 @@ def resolve_style_grid_wildcards(prompt: str, source_filter: str = "") -> str:
 
 
 def _append_unique_prompt(prompt: str, additions: list[str]) -> str:
-    current = [part.strip() for part in str(prompt or "").split(",") if part.strip()]
-    seen = {part.lower() for part in current}
-    result = list(current)
-    for addition in additions:
-        for token in str(addition or "").split(","):
-            item = token.strip()
-            if not item or item.lower() in seen:
-                continue
-            seen.add(item.lower())
-            result.append(item)
-    return ", ".join(result)
+    def append_to_line(line: str) -> str:
+        current = [part.strip() for part in line.split(",") if part.strip()]
+        seen = {part.lower() for part in current}
+        result = list(current)
+        for addition in additions:
+            for token in str(addition or "").split(","):
+                item = token.strip()
+                if not item or item.lower() in seen:
+                    continue
+                seen.add(item.lower())
+                result.append(item)
+        return ", ".join(result)
+
+    return _map_prompt_lines(prompt, append_to_line)
+
+
+def _apply_prompt_template(prompt: str, template: str) -> str:
+    return _map_prompt_lines(prompt, lambda line: template.replace("{prompt}", line))
 
 
 def apply_style_grid_to_prompt_pair(
@@ -575,12 +591,12 @@ def apply_style_grid_to_prompt_pair(
         style_negative = str(style.get("negative_prompt") or "")
         if style_prompt:
             if "{prompt}" in style_prompt:
-                positive = style_prompt.replace("{prompt}", positive)
+                positive = _apply_prompt_template(positive, style_prompt)
             else:
                 positive_add.append(style_prompt)
         if style_negative:
             if "{prompt}" in style_negative:
-                negative = style_negative.replace("{prompt}", negative)
+                negative = _apply_prompt_template(negative, style_negative)
             else:
                 negative_add.append(style_negative)
     if positive_add:

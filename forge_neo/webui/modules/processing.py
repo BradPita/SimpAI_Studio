@@ -746,12 +746,12 @@ def create_infotext(p, all_prompts, all_seeds, all_subseeds, comments=None, iter
             "Conditional mask weight": getattr(p, "inpainting_mask_weight", shared.opts.inpainting_mask_weight) if p.is_using_inpainting_conditioning else None,
             "Clip skip": clip_skip if p.sd_model.is_sd1 else None,
             "ENSD": opts.eta_noise_seed_delta if uses_ensd else None,
-            "eps_scaling_factor": opts.scaling_factor if opts.scaling_factor > 1.0 else None,
-            "Token merging ratio": None if token_merging_ratio == 0 else token_merging_ratio,
-            "Token merging ratio hr": None if not enable_hr or token_merging_ratio_hr == 0 else token_merging_ratio_hr,
-            "Init image hash": getattr(p, "init_img_hash", None),
+            "eps_scaling_factor": opts.scaling_factor if opts.scaling_factor > 1.0 and p.sd_model.model_config.model_type.name == "EPS" else None,
+            "Token merging ratio": token_merging_ratio if token_merging_ratio > 0 else None,
+            "Token merging ratio hr": token_merging_ratio_hr if (enable_hr and token_merging_ratio_hr > 0) else None,
+            "Init image hash": getattr(p, "init_img_hash", None) if opts.save_init_img else None,
             "RNG": shared.opts.randn_source,
-            "Tiling": True if p.tiling else None,
+            "Tiling": p.sd_model.tiling_enabled if opts.tiling else None,
             **p.extra_generation_params,
             "Version": program_version() if opts.add_version_to_infotext else None,
             "User": p.user if opts.add_user_name_to_info else None,
@@ -788,6 +788,12 @@ def _unload_text_encoder_after_conditioning(p: StableDiffusionProcessing) -> Non
     unloaded = memory_management.unload_models([patcher])
     if unloaded:
         memory_management.logger.info("Unloaded text encoder after conditioning")
+
+
+def _process_before_every_sampling(p: StableDiffusionProcessing, **kwargs) -> None:
+    if p.scripts is not None:
+        p.scripts.process_before_every_sampling(p, **kwargs)
+    _unload_text_encoder_after_conditioning(p)
 
 
 def manage_model_and_prompt_cache(p: StableDiffusionProcessing):
@@ -979,7 +985,6 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 p.scripts.process_batch(p, batch_number=n, prompts=p.prompts, seeds=p.seeds, subseeds=p.subseeds)
 
             p.setup_conds()
-            _unload_text_encoder_after_conditioning(p)
 
             p.extra_generation_params.update(p.sd_model.extra_generation_params)
 
@@ -1381,8 +1386,7 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
             self.sd_model.forge_objects = self.sd_model.forge_objects_after_applying_lora.shallow_copy()
             apply_token_merging(self.sd_model, self.get_token_merging_ratio())
 
-            if self.scripts is not None:
-                self.scripts.process_before_every_sampling(self, x=x, noise=x, c=conditioning, uc=unconditional_conditioning)
+            _process_before_every_sampling(self, x=x, noise=x, c=conditioning, uc=unconditional_conditioning)
 
             if self.modified_noise is not None:
                 x = self.modified_noise
@@ -1545,8 +1549,7 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
         self.sd_model.forge_objects = self.sd_model.forge_objects_after_applying_lora.shallow_copy()
         apply_token_merging(self.sd_model, self.get_token_merging_ratio(for_hr=True))
 
-        if self.scripts is not None:
-            self.scripts.process_before_every_sampling(self, x=samples, noise=noise, c=self.hr_c, uc=self.hr_uc)
+        _process_before_every_sampling(self, x=samples, noise=noise, c=self.hr_c, uc=self.hr_uc)
 
         if self.modified_noise is not None:
             noise = self.modified_noise
@@ -1886,8 +1889,7 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
         self.sd_model.forge_objects = self.sd_model.forge_objects_after_applying_lora.shallow_copy()
         apply_token_merging(self.sd_model, self.get_token_merging_ratio())
 
-        if self.scripts is not None:
-            self.scripts.process_before_every_sampling(self, x=self.init_latent, noise=x, c=conditioning, uc=unconditional_conditioning)
+        _process_before_every_sampling(self, x=self.init_latent, noise=x, c=conditioning, uc=unconditional_conditioning)
 
         if self.modified_noise is not None:
             x = self.modified_noise
