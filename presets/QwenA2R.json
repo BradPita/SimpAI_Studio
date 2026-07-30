@@ -8,6 +8,10 @@
         "scene_frontend": {
             "version": "m1.1",
                 "theme": ["QwenEdit+A2R", "QwenEdit+A2R_lite"],
+                "theme_labels": {
+                    "QwenEdit+A2R": {"en": "Full quality", "zh": "\u5b8c\u6574\u8d28\u91cf"},
+                    "QwenEdit+A2R_lite": {"en": "Lite - Faster", "zh": "Lite - \u8f83\u5feb"}
+                },
                 "theme_title": "QwenEdit+ A2R Anime-to-Real",
                 "disable_canvas_mask": true,
                 "disvisible": ["scene_additional_prompt", "scene_video", "scene_audio","scene_input_image1","scene_input_image2",

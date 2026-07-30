@@ -148,6 +148,37 @@ def config_choices(user_did=None):
     return choices
 
 
+def _resolve_task_cloud_params(task):
+    params = getattr(task, "params_backend", None)
+    if not isinstance(params, dict):
+        params = {}
+        task.params_backend = params
+    required = ("cloud_base_url", "cloud_api_key", "cloud_model")
+    if all(str(params.get(key) or "").strip() for key in required):
+        return params
+
+    saved = config_by_id(params.get("cloud_config_id"), getattr(task, "user_did", None))
+    if not isinstance(saved, dict):
+        return params
+    mapping = {
+        "cloud_config_name": "name",
+        "cloud_protocol": "protocol",
+        "cloud_base_url": "base_url",
+        "cloud_api_key": "api_key",
+        "cloud_model": "model",
+    }
+    for target, source in mapping.items():
+        if not str(params.get(target) or "").strip():
+            params[target] = str(saved.get(source) or "").strip()
+    logger.info(
+        "Loaded saved Cloud Image API configuration for task: name=%s model=%s user=%s",
+        params.get("cloud_config_name") or "",
+        params.get("cloud_model") or "",
+        getattr(task, "user_did", None),
+    )
+    return params
+
+
 def _save_temp_image(value, prefix):
     image = None
     if isinstance(value, dict):
@@ -643,7 +674,7 @@ def _build_prompt_requests(task, count):
 def generate(task, progressbar, yield_result, stop_processing, started_at):
     task.simpleai_generation_had_output = False
     task.cloud_error = ""
-    params = task.params_backend
+    params = _resolve_task_cloud_params(task)
     base_url = str(params.get("cloud_base_url") or "").strip().rstrip("/")
     api_key = str(params.get("cloud_api_key") or "").strip()
     model = str(params.get("cloud_model") or "").strip()

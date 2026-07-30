@@ -8,6 +8,10 @@
         "scene_frontend": {
             "version": "m1.1",
             "theme": ["Prompt background", "Original background"],
+            "theme_labels": {
+                "Prompt background": {"en": "New background and relight", "zh": "\u65b0\u80cc\u666f + \u91cd\u6253\u5149"},
+                "Original background": {"en": "Keep background and relight", "zh": "\u4fdd\u7559\u80cc\u666f + \u91cd\u6253\u5149"}
+            },
             "theme_title": "Relight: use prompts to generate a different background and lighting, or keep the original background and only relight. Select a preset light position, or manually paint light/shadow (affected by brush color).",
             "disvisible":  ["scene_additional_prompt","scene_additional_prompt_2","scene_input_image1","scene_input_image2","scene_aspect_ratio", "scene_use_lora", "scene_video", "scene_audio",
                 "scene_var_number2","scene_var_number3","scene_var_number4","scene_switch_option1","scene_switch_option2","scene_steps", "scene_base_model" ,"scene_refiner_model",

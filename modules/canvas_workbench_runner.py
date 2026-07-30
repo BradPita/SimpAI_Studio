@@ -575,6 +575,11 @@ def _resolve_backend_aspect_ratio(resolution, params, materialized_inputs, skip_
     if _resolution_random_aspect_enabled(resolution):
         return _choose_random_backend_aspect_ratio(resolution)
 
+    if isinstance(resolution, dict) and resolution.get("use_input_aspect") and not skip_asset_fallback:
+        size = _asset_size_from_materialized_inputs(materialized_inputs)
+        if size:
+            return _format_backend_aspect(*size)
+
     width = _positive_int(resolution.get("width")) if isinstance(resolution, dict) else None
     height = _positive_int(resolution.get("height")) if isinstance(resolution, dict) else None
     if width and height:

@@ -9,6 +9,11 @@
             "version": "m1.1",
             "theme_title": "One-Key Restore - Flux2-Klein-9B-Edit",
             "theme": ["Restore", "Restore & colorize", "Slow high-fidelity 4-reference restore"],
+            "theme_labels": {
+                "Restore": {"en": "Restore - Preserve colors", "zh": "\u539f\u8272\u4fee\u590d"},
+                "Restore & colorize": {"en": "Restore and colorize", "zh": "\u4fee\u590d\u5e76\u4e0a\u8272"},
+                "Slow high-fidelity 4-reference restore": {"en": "High-fidelity restore - Slow", "zh": "\u9ad8\u4fdd\u771f\u4fee\u590d - \u8f83\u6162"}
+            },
             "disable_canvas_mask": true,
             "disvisible": ["scene_additional_prompt","scene_additional_prompt_2","scene_video", "scene_audio","scene_input_image1","scene_input_image2",
                 "scene_var_number","scene_var_number3","scene_refiner_model","scene_switch_option1","scene_switch_option2", "scene_var_number5", "scene_var_number6", "scene_var_number7", "scene_var_number8", "scene_var_number9", "scene_var_number10"

@@ -5,15 +5,39 @@ from .imagefunc import *
 
 
 mode_dict = {"ckpt_base.pth": "base", "ckpt_base_nightly.pth": "base-nightly", "ckpt_fast.pth": "fast"}
+
+
+def _model_directories():
+    model_dirs = []
+
+    for folder_name in ("transparent-background", "rembg"):
+        try:
+            model_dirs.extend(folder_paths.get_folder_paths(folder_name))
+        except (AttributeError, KeyError):
+            pass
+
+    # Keep compatibility with installations that predate ComfyUI model path registration.
+    for folder_name in ("transparent-background", "rembg"):
+        model_dirs.append(os.path.join(folder_paths.models_dir, folder_name))
+
+    unique_dirs = []
+    seen = set()
+    for model_dir in model_dirs:
+        normalized_dir = os.path.normcase(os.path.abspath(model_dir))
+        if normalized_dir not in seen:
+            seen.add(normalized_dir)
+            unique_dirs.append(model_dir)
+    return unique_dirs
+
+
 def scan_model():
     model_dict = {}
-    model_dirs = ["transparent-background", "rembg"]
-    for model_dir in model_dirs:
-        model_file_list = glob.glob(os.path.join(folder_paths.models_dir, model_dir) + '/*.pth')
-        for i in range(len(model_file_list)):
-            _, __filename = os.path.split(model_file_list[i])
-            if __filename not in model_dict:
-                model_dict[__filename] = model_file_list[i]
+    for model_dir in _model_directories():
+        model_file_list = glob.glob(os.path.join(model_dir, "**", "*.pth"), recursive=True)
+        for model_file in model_file_list:
+            model_name = os.path.relpath(model_file, model_dir)
+            if model_name not in model_dict:
+                model_dict[model_name] = model_file
     return model_dict
 
 class TransparentBackgroundUltra:

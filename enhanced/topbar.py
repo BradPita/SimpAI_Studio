@@ -1504,6 +1504,7 @@ def _build_canvas_scene_schema(scene_frontend):
         })
 
     per_theme = {}
+    theme_supported_tasks = scene_frontend.get("theme_supported_tasks") if isinstance(scene_frontend.get("theme_supported_tasks"), dict) else {}
     for theme in themes or [""]:
         defaults = {}
         for item in params:
@@ -1527,6 +1528,11 @@ def _build_canvas_scene_schema(scene_frontend):
             defaults.setdefault("scene_aspect_ratio", scene_frontend.get("aspect_ratio")[0])
         per_theme[theme] = {
             "task_method": _canvas_scene_value(scene_frontend, "task_method", theme, ""),
+            "supported_tasks": [
+                str(task or "").strip().lower().replace("-", "_").replace(" ", "_")
+                for task in (theme_supported_tasks.get(theme) if isinstance(theme_supported_tasks.get(theme), list) else [])
+                if str(task or "").strip()
+            ],
             "defaults": defaults,
             "generation_config_props": {
                 "overwrite_step": _canvas_scene_generation_step_props(scene_frontend, theme),
@@ -1537,6 +1543,7 @@ def _build_canvas_scene_schema(scene_frontend):
         "version": scene_frontend.get("version", ""),
         "themes": themes,
         "default_theme": default_theme,
+        "theme_labels": copy.deepcopy(scene_frontend.get("theme_labels") or {}),
         "theme_title": scene_frontend.get("theme_title", "Theme"),
         "director_capability": copy.deepcopy(scene_frontend.get("director_capability") or {}),
         "disvisible": disvisible,

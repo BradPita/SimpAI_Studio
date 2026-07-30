@@ -137,6 +137,14 @@
             mixing_image_prompt_and_vary_upscale: false,
             mixing_image_prompt_and_inpaint: false
         };
+        const allowedParameterKeys = new Set(
+            (Array.isArray(schema.params) ? schema.params : [])
+                .map((item) => String(item?.key || ''))
+                .filter(Boolean)
+        );
+        Object.entries(opts.parameterOverrides && typeof opts.parameterOverrides === 'object' ? opts.parameterOverrides : {}).forEach(([key, value]) => {
+            if (allowedParameterKeys.has(key)) params[key] = clonePresetRunValue(value, value);
+        });
         params.prompt = prompt;
         params.negative_prompt = negativePrompt;
         params.seed_random = opts.seedRandom !== false;
@@ -145,6 +153,8 @@
 
         const resolutionOverrides = clonePresetRunValue(opts.resolutionOverrides || {}, {});
         const aspectKey = String(opts.aspectRatio || opts.aspect || 'auto').trim().toLowerCase();
+        const hasExplicitAspect = Object.prototype.hasOwnProperty.call(opts, 'aspectRatio')
+            || Object.prototype.hasOwnProperty.call(opts, 'aspect');
         const aspect = presetRunAspectOptions().find(item => String(item?.key || '').toLowerCase() === aspectKey);
         const sizeMatch = String(aspect?.value || '').match(/^(\d{3,5})\s*[x*]\s*(\d{3,5})$/i);
         if (sizeMatch) {
@@ -152,6 +162,13 @@
             resolutionOverrides.height = Number(sizeMatch[2]);
             resolutionOverrides.aspect_ratio = `${sizeMatch[1]}*${sizeMatch[2]}`;
             resolutionOverrides.random_aspect_ratio = false;
+        } else if (
+            isScene
+            && hasExplicitAspect
+            && aspectKey === 'auto'
+            && !(Number(resolutionOverrides.width) > 0 && Number(resolutionOverrides.height) > 0)
+        ) {
+            resolutionOverrides.use_input_aspect = true;
         }
         const generationOverrides = Object.assign(
             {},
@@ -179,7 +196,8 @@
         if (!resolutionDefaults.edit_mode && resolutionDefaults.default_resolution_edit_mode) {
             resolutionDefaults.edit_mode = resolutionDefaults.default_resolution_edit_mode;
         }
-        const runtimeTaskMethod = themeInfo.task_method
+        const runtimeTaskMethod = String(opts.taskMethod || '').trim()
+            || themeInfo.task_method
             || presetRunThemeValue(defaultEngine.scene_frontend, 'task_method', sceneTheme)
             || entry.task_method
             || backendParams.task_method

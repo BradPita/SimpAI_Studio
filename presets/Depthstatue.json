@@ -8,6 +8,12 @@
         "scene_frontend": {
             "version": "m1.1",
             "theme": ["Depth map", "Detail redraw depth map", "Line art to white porcelain statue", "Photo to white porcelain statue"],
+            "theme_labels": {
+                "Depth map": {"en": "Depth map", "zh": "\u6df1\u5ea6\u56fe"},
+                "Detail redraw depth map": {"en": "Depth map - Detail redraw", "zh": "\u6df1\u5ea6\u56fe - \u7ec6\u8282\u91cd\u7ed8"},
+                "Line art to white porcelain statue": {"en": "Line art to porcelain statue", "zh": "\u7ebf\u7a3f\u8f6c\u767d\u74f7\u50cf"},
+                "Photo to white porcelain statue": {"en": "Photo to porcelain statue", "zh": "\u7167\u7247\u8f6c\u767d\u74f7\u50cf"}
+            },
             "theme_title": "For images with little depth info (line art, anime, artistic images), choose the Line Art option: it generates a statue first, then a depth map. For real photos with richer info, choose other options: it generates a depth map first, then a statue or detail redraw. EXR (professional format) files are saved under SimpAI\\\\outputs\\\\users\\\\<UserID>\\\\outputs\\\\ComfyUI with prefix OneKeyDepth_EXR.",
             "disable_canvas_mask": true,
             "disvisible": ["scene_additional_prompt", "scene_input_image1", "scene_aspect_ratio", "scene_var_number", "scene_input_image2", "scene_use_lora", "scene_video", "scene_audio",

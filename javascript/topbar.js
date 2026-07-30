@@ -8108,6 +8108,72 @@ function normalizeFinishedGalleryBrowserDimensions(value) {
     return result;
 }
 
+function normalizeFinishedGalleryMediaPath(value) {
+    let path = String(value || "").trim();
+    if (!path) return "";
+    try { path = decodeURIComponent(path); } catch (e) {}
+    path = path.replace(/\\/g, "/");
+    if (/^\/[a-z]:\//i.test(path)) path = path.slice(1);
+    return path.toLowerCase();
+}
+
+function decodeFinishedGalleryPreviewOriginalPath(source) {
+    const text = String(source || "");
+    if (!text) return "";
+    try {
+        const url = new URL(text, document.baseURI || window.location?.href || location.href);
+        const fileName = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+        const match = fileName.match(/^simpai_gprev__([A-Za-z0-9_-]+)__[0-9a-f]{16}\.jpg$/);
+        if (!match) return "";
+        const encoded = match[1].replace(/-/g, "+").replace(/_/g, "/");
+        const binary = atob(encoded + "=".repeat((4 - encoded.length % 4) % 4));
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        return window.TextDecoder
+            ? new TextDecoder("utf-8").decode(bytes)
+            : decodeURIComponent(Array.from(bytes, (byte) => "%" + byte.toString(16).padStart(2, "0")).join(""));
+    } catch (e) {
+        return "";
+    }
+}
+
+function finishedGalleryMediaPathFromElement(node) {
+    if (!node) return "";
+    const source = String(node.currentSrc || node.src || node.getAttribute?.("src") || "").trim();
+    if (!source || /^(?:data|blob):/i.test(source)) return "";
+    const previewOriginalPath = decodeFinishedGalleryPreviewOriginalPath(source);
+    if (previewOriginalPath) return previewOriginalPath;
+    try {
+        const url = new URL(source, document.baseURI || window.location?.href || location.href);
+        const match = url.pathname.match(/\/(?:gradio_api\/)?file=(.+)$/i);
+        return match ? decodeURIComponent(match[1]) : "";
+    } catch (e) {
+        const match = source.match(/\/(?:gradio_api\/)?file=([^?#]+)/i);
+        if (!match) return "";
+        try { return decodeURIComponent(match[1]); } catch (_e) { return match[1]; }
+    }
+}
+
+function finishedGalleryMediaPathsMatch(left, right) {
+    const normalizedLeft = normalizeFinishedGalleryMediaPath(left);
+    const normalizedRight = normalizeFinishedGalleryMediaPath(right);
+    return !!normalizedLeft && normalizedLeft === normalizedRight;
+}
+
+function finishedGalleryBrowserMappedPath(path) {
+    const dimensions = finishedGalleryBrowserState.dimensions || {};
+    const exact = dimensions[String(path)];
+    if (exact) return String(path);
+    const normalizedPath = normalizeFinishedGalleryMediaPath(path);
+    if (!normalizedPath) return "";
+    const keys = Object.keys(dimensions);
+    const normalizedMatch = keys.find((key) => normalizeFinishedGalleryMediaPath(key) === normalizedPath);
+    if (normalizedMatch) return normalizedMatch;
+    const fileName = normalizedPath.split("/").pop() || "";
+    if (!fileName) return "";
+    const fileNameMatches = keys.filter((key) => (normalizeFinishedGalleryMediaPath(key).split("/").pop() || "") === fileName);
+    return fileNameMatches.length === 1 ? fileNameMatches[0] : "";
+}
+
 function mergeFinishedGalleryBrowserDimensions(incoming, reset) {
     const normalized = normalizeFinishedGalleryBrowserDimensions(incoming);
     if (reset) {
@@ -8121,7 +8187,8 @@ function mergeFinishedGalleryBrowserDimensions(incoming, reset) {
 function finishedGalleryBrowserDimensionForPath(path) {
     if (!path) return null;
     const dimensions = finishedGalleryBrowserState.dimensions || {};
-    return dimensions[String(path)] || null;
+    const mappedPath = finishedGalleryBrowserMappedPath(path);
+    return mappedPath ? dimensions[mappedPath] : null;
 }
 
 function finishedGalleryVideoDimensionsFromHost(host) {
@@ -8140,11 +8207,22 @@ function mediaResolutionElementFromHost(host) {
 function applyFinishedGalleryResolutionBadge(host, path, options) {
     if (!host) return false;
     const media = mediaResolutionElementFromHost(host);
-    const dimensions = finishedGalleryBrowserDimensionForPath(path)
-        || mediaResolutionDimensionsFromElement(media)
-        || finishedGalleryVideoDimensionsFromHost(host);
+    const mediaSource = String(media?.currentSrc || media?.src || media?.getAttribute?.("src") || "").trim();
+    const sourcePath = finishedGalleryMediaPathFromElement(media);
+    const mappedSourcePath = finishedGalleryBrowserMappedPath(sourcePath);
+    const usesScaledPreview = !!decodeFinishedGalleryPreviewOriginalPath(mediaSource);
+    const indexedPathMatchesSource = !sourcePath || !path || (!!mappedSourcePath && finishedGalleryMediaPathsMatch(mappedSourcePath, path));
+    const dimensions = finishedGalleryBrowserDimensionForPath(sourcePath)
+        || (indexedPathMatchesSource ? finishedGalleryBrowserDimensionForPath(path) : null)
+        || (!usesScaledPreview ? mediaResolutionDimensionsFromElement(media) : null)
+        || (!usesScaledPreview ? finishedGalleryVideoDimensionsFromHost(host) : null);
     if (dimensions && typeof window.simpleaiApplyMediaResolutionBadge === "function") {
         return window.simpleaiApplyMediaResolutionBadge(host, dimensions);
+    }
+    if (sourcePath && path && !indexedPathMatchesSource) {
+        return typeof window.simpleaiClearMediaResolutionBadge === "function"
+            ? window.simpleaiClearMediaResolutionBadge(host)
+            : false;
     }
     if (options?.keepExistingOnMissing) return false;
     if (typeof window.simpleaiClearMediaResolutionBadge === "function") {

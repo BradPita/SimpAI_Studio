@@ -91,23 +91,20 @@ DESCRIBE_CHAT_BASE_SYSTEM = (
 
 CREATIVE_ASSISTANT_SYSTEM = (
     "Creative mode for SimpAI Studio VLM chat. The UI may already show a session preference card for anime, realistic, automatic, or a specific Preset. "
-    "When the user asks to draw, create, render, generate, or edit an image, return exactly one JSON object: "
-    "{\"reply\":\"short user-facing reply\",\"actions\":[{\"type\":\"generate_image\",\"prompt\":\"complete generation prompt\","
-    "\"preset\":\"Z-imageT\",\"task\":\"supported task id from the Preset catalog\",\"media_refs\":[],"
-    "\"aspect_ratio\":\"auto\",\"image_number\":1}]}. "
+    "When the user asks to draw, create, render, generate, or edit an image, identify only the user's task intent and return exactly one JSON object: "
+    "{\"reply\":\"short user-facing reply\",\"actions\":[{\"type\":\"generate_image\",\"instruction\":\"complete generation or editing instruction\","
+    "\"task\":\"task id\",\"media_refs\":[],\"preset_hint\":\"exact Preset name only when the user explicitly named it\","
+    "\"aspect_ratio\":\"auto\",\"image_number\":1,\"outpaint\":{\"up\":0,\"down\":0,\"left\":15,\"right\":15}}]}. "
     "If the user explicitly names a preferred style or Preset for this conversation, also return a set_creative_preference action before generate_image: "
     "{\"type\":\"set_creative_preference\",\"style\":\"anime|realistic|auto|custom\",\"preset\":\"exact Preset name when known\",\"scope\":\"session\"}. "
     "An unqualified request such as `use Anima to generate it` counts as a session preference. "
     "Do not return that preference action only when the user explicitly says the choice is for this image or one time. "
-    "The generate_image action is a request, not proof that generation has started. The UI decides whether it needs confirmation. "
+    "The generate_image action is a task request, not an execution plan and not proof that generation has started. The application selects and validates the Preset, theme, task_method, models, input slots, and interaction requirements. "
     "For image work, include the exact attached media refs in visual input order. Use image_edit for a general one-image edit and multi_image_edit for a general edit using two or more images. "
     "Use the matching specialized task when requested: image_upscale, image_restore, image_background_removal, image_object_removal, image_object_transfer, image_outpaint, image_relight, image_style_transfer, image_face_swap, image_pose_transfer, image_pose_extraction, image_anime_to_real, image_view_synthesis, image_depth_estimation, or image_expression_transfer. "
-    "Choose a Preset whose supported_tasks includes the requested task and whose max_images is at least the number of media_refs. "
-    "For general image edits, object removal, and object transfer, prefer Flux2-KleinEdit, then Krea2-ImageEdit. "
-    "Do not automatically choose a specialized OneKeyKontext theme because this chat action cannot select its theme/task_method yet. "
-    "Presets marked requires=mask need manual masking and should only be chosen after automatic routes. "
-    "Classic/AIO Presets and their traditional img2img path are not VLM Chat image-edit routes; use a compatible Scene Image Edit Preset for image_edit or multi_image_edit. Never invent media refs. "
-    "Use an active concrete session Preset when present. When the session style is auto and has no concrete Preset, choose the best compatible Preset for this request from the available catalog. Use Z-imageT only when no more suitable route is identified. Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
+    "For image_outpaint, write instruction as a concise English natural-language FLUX/T5 outpaint prompt, and express the requested expansion as percentage intent in outpaint.up/down/left/right. Use 0 for directions the user excluded. "
+    "Do not choose or invent a Preset, theme, task_method, input slot, model, API route, or canvas node. Set preset_hint only when the user's latest message explicitly names that Preset. Never invent media refs. "
+    "Supported aspect_ratio values are auto, 1:1, 16:9, 9:16, 4:3, 3:4, 2:3, 3:2, 7:4, and 4:7. "
     "image_number must be an integer from 1 to 4. Do not invent API routes, canvas node IDs, run IDs, file paths, or completed image URLs. "
     "For ordinary conversation that does not request an image or prompt, answer normally without action JSON."
 )
@@ -123,9 +120,9 @@ CREATIVE_DIRECTOR_SYSTEM = (
     "{\"offer\":false,\"score\":0.0,\"reason\":\"none\",\"scene_key\":\"\"}. "
     "For an offer: {\"offer\":true,\"score\":0.85,\"reason\":\"scene_change\","
     "\"scene_key\":\"short stable lowercase scene identity\",\"offer_text\":\"one short sentence offering to draw this moment\","
-    "\"prompt\":\"complete image-generation prompt\",\"preset\":\"exact preferred Preset name when available\","
+    "\"prompt\":\"complete image-generation prompt\","
     "\"aspect_ratio\":\"16:9\",\"image_number\":1}. "
-    "Never invent API routes, run IDs, files, completed images, or extra actions."
+    "Do not choose a Preset or theme. Never invent API routes, run IDs, files, completed images, or extra actions."
 )
 
 CREATIVE_OFFER_REASONS = {
@@ -657,6 +654,42 @@ def _normalize_preset_capabilities(value, limit=100):
                 model_status = "ready"
             else:
                 model_status = "unknown"
+        raw_slots = item.get("image_slots") if isinstance(item.get("image_slots"), list) else []
+        allowed_slots = (
+            "scene_canvas_image",
+            "scene_input_image1",
+            "scene_input_image2",
+            "scene_input_image3",
+            "scene_input_image4",
+        )
+        image_slots = []
+        for raw_slot in raw_slots:
+            slot = str(raw_slot or "").strip()
+            if slot in allowed_slots and slot not in image_slots:
+                image_slots.append(slot)
+        image_slots = image_slots[:max_images]
+        raw_themes = item.get("themes") if isinstance(item.get("themes"), list) else []
+        themes = []
+        for raw_theme in raw_themes:
+            theme = re.sub(r"[\x00-\x1f\x7f]+", "", str(raw_theme or "")).strip()[:120]
+            if theme and theme not in themes:
+                themes.append(theme)
+        themes = themes[:40]
+        default_theme = re.sub(r"[\x00-\x1f\x7f]+", "", str(item.get("default_theme") or "")).strip()[:120]
+        if default_theme not in themes:
+            default_theme = themes[0] if themes else ""
+        raw_per_theme = item.get("per_theme") if isinstance(item.get("per_theme"), dict) else {}
+        per_theme = {}
+        for theme in themes:
+            theme_info = raw_per_theme.get(theme) if isinstance(raw_per_theme.get(theme), dict) else {}
+            theme_method = _clean_text(theme_info.get("task_method"))[:120]
+            theme_tasks = []
+            for raw_task in theme_info.get("supported_tasks") if isinstance(theme_info.get("supported_tasks"), list) else []:
+                task_key = str(raw_task or "").strip().lower().replace("-", "_").replace(" ", "_")
+                task = GENERATION_TASK_ALIASES.get(task_key, task_key)
+                if task in IMAGE_GENERATION_TASKS and task not in theme_tasks:
+                    theme_tasks.append(task)
+            per_theme[theme] = {"task_method": theme_method, "supported_tasks": theme_tasks}
         normalized.append(
             {
                 "name": name,
@@ -669,6 +702,10 @@ def _normalize_preset_capabilities(value, limit=100):
                 "backend_engine": _clean_text(item.get("backend_engine"))[:80],
                 "task_method": _clean_text(item.get("task_method"))[:120],
                 "purpose": _clean_text(item.get("purpose"))[:240],
+                "image_slots": image_slots,
+                "themes": themes,
+                "default_theme": default_theme,
+                "per_theme": per_theme,
             }
         )
         if len(normalized) >= max(1, min(200, int(limit or 100))):
@@ -955,50 +992,22 @@ def _describe_chat_system_prompt(options, lang):
                 f"Attached media manifest, in the exact order seen by the VLM: {manifest_text}. "
                 "Use only these refs in media_refs."
             )
-        capabilities = options.get("preset_capabilities") if isinstance(options.get("preset_capabilities"), list) else []
-        if capabilities:
-            capability_items = []
-            for item in capabilities:
-                if not isinstance(item, dict) or item.get("output_type") != "image":
-                    continue
-                details = [f"images={item.get('min_images')}-{item.get('max_images')}"]
-                if item.get("supported_tasks"):
-                    details.append(f"tasks={'|'.join(item.get('supported_tasks'))}")
-                if item.get("interaction_requirements"):
-                    details.append(f"requires={'|'.join(item.get('interaction_requirements'))}")
-                details.append(f"models={item.get('model_status') or 'unknown'}")
-                if item.get("backend_engine"):
-                    details.append(f"engine={item.get('backend_engine')}")
-                if item.get("task_method"):
-                    details.append(f"method={item.get('task_method')}")
-                if item.get("purpose"):
-                    details.append(f"purpose={item.get('purpose')}")
-                capability_items.append(f"{item.get('name')}[{'; '.join(details)}]")
-            capability_text = ", ".join(capability_items)
-            if capability_text:
-                sections.append(f"Available image Presets and execution metadata: {capability_text}.")
         if preferred_style or preferred_preset:
             sections.append(
                 "Active session creative preference: "
-                f"style={preferred_style or 'unspecified'}, preset={preferred_preset or 'choose a suitable Preset for the style'}. "
-                "Use this as the default for image proposals. A clear one-image-only request may override it without changing the session preference."
+                f"style={preferred_style or 'unspecified'}, preset={preferred_preset or 'application-selected'}. "
+                "Use the style as prompt context. The application applies and validates the concrete Preset."
             )
         else:
             sections.append(
                 "No session creative preference is selected. The UI preference card already lets the user choose, so do not repeat that question. "
-                "If the user names a style or Preset now, record it with set_creative_preference; otherwise choose a suitable Preset for the current request."
+                "If the user names a style or Preset now, record it with set_creative_preference."
             )
         if automatic_preset_selection:
             sections.append(
-                "Automatic Preset selection is active. Choose one concrete, exact Preset name from the available image Preset list for each generate_image action, "
-                "based on the requested operation, visual style, prompt language, and number of referenced images. "
-                "Among compatible Presets that do not require manual interaction, prefer models=ready. "
-                "Avoid requires=mask unless the user explicitly selected that Preset or no automatic route exists. "
-                "Do not choose models=missing when a compatible models=ready Preset exists. "
-                "This is a per-request choice: do not return set_creative_preference merely because you selected a Preset. "
+                "Automatic Preset selection is active in the application. Return only the task request; do not make a per-request Preset choice. "
                 "The session preference must remain automatic unless the user explicitly asks to make a style or Preset their ongoing preference."
             )
-            sections.append(_describe_preset_guide_skill())
         creative_target = {"preset": preferred_preset or options.get("target_preset")}
         sections.append(
             _describe_anima_prompt_skill(ANIMA_CREATIVE_PROMPT_ADAPTER)
@@ -1471,6 +1480,291 @@ def _preset_requires_manual_interaction(capability):
     return bool(requirements) if isinstance(requirements, list) else False
 
 
+GENERATION_PRESET_PRIORITIES = {
+    "image_upscale": ("Z-TTP", "Wan-TTP"),
+    "image_restore": ("Imagerepair+", "OneKeyKontext"),
+    "image_background_removal": ("Removebg", "OneKeyKontext"),
+    "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Eraser"),
+    "image_object_transfer": ("Flux2-KleinEdit", "Krea2-ImageEdit", "OneKeyKontext", "Swap+", "NunSwap_fp4", "NunSwap_int4"),
+    "image_outpaint": ("OneKey-Outpaint",),
+    "image_relight": ("Relight", "Flux2-AngleLight", "OneKeyKontext"),
+    "image_style_transfer": ("StyleTransfer+",),
+    "image_face_swap": ("Swapface",),
+    "image_pose_transfer": ("Flux2-KleinPose", "QwenPose"),
+    "image_pose_extraction": ("OneKeyPose",),
+    "image_anime_to_real": ("Flux2-A2R", "QwenA2R"),
+    "image_view_synthesis": ("QwenMultiAngle", "OneKeyKontext"),
+    "image_depth_estimation": ("Depthstatue", "OneKeyKontext"),
+    "image_expression_transfer": ("LivePortrait Exp",),
+}
+
+
+def _generation_preset_priorities(task):
+    return GENERATION_PRESET_PRIORITIES.get(task) or (
+        ("Flux2-KleinEdit", "Krea2-ImageEdit", "QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit", "OneKeyKontext")
+        if task in {"image_edit", "multi_image_edit"}
+        else ("Z-imageT", "Anima")
+    )
+
+
+def _capability_route_rows(capability, task):
+    if not isinstance(capability, dict) or capability.get("output_type") != "image":
+        return []
+    preset_tasks = capability.get("supported_tasks") if isinstance(capability.get("supported_tasks"), list) else []
+    themes = capability.get("themes") if isinstance(capability.get("themes"), list) else []
+    per_theme = capability.get("per_theme") if isinstance(capability.get("per_theme"), dict) else {}
+    default_theme = str(capability.get("default_theme") or (themes[0] if themes else "")).strip()
+    rows = []
+    for theme in themes:
+        info = per_theme.get(theme) if isinstance(per_theme.get(theme), dict) else {}
+        theme_tasks = info.get("supported_tasks") if isinstance(info.get("supported_tasks"), list) else []
+        if theme_tasks and task in theme_tasks:
+            rows.append({"theme": theme, "task_method": str(info.get("task_method") or "").strip(), "specialized": True})
+    if rows:
+        return rows
+    if task not in preset_tasks:
+        return []
+    info = per_theme.get(default_theme) if isinstance(per_theme.get(default_theme), dict) else {}
+    return [{
+        "theme": default_theme,
+        "task_method": str(info.get("task_method") or capability.get("task_method") or "").strip(),
+        "specialized": False,
+    }]
+
+
+def _capability_accepts_image_count(capability, task, image_count):
+    try:
+        min_images = max(0, int(capability.get("min_images") or 0))
+        max_images = max(0, int(capability.get("max_images") or 0))
+        count = max(0, int(image_count or 0))
+    except Exception:
+        return False
+    if task == "text_to_image":
+        return count == 0 and min_images == 0
+    required = max(1, min_images)
+    if task in MULTI_IMAGE_GENERATION_TASKS:
+        required = max(2, required)
+    return required <= count <= max_images
+
+
+def _explicit_preset_hint(value, user_message, preset_capabilities):
+    hint = re.sub(r"[\x00-\x1f\x7f]+", "", str(value or "")).strip()[:120]
+    message = str(user_message or "").lower()
+    capability = _preset_capability_map(preset_capabilities).get(hint.lower())
+    return hint if capability and hint.lower() in message else ""
+
+
+def _explicit_creative_style(value, user_message, has_explicit_preset=False):
+    style = str(value or "").strip().lower()
+    if style not in {"anime", "realistic", "auto", "custom"}:
+        return ""
+    if has_explicit_preset:
+        return style or "custom"
+    message = str(user_message or "")
+    patterns = {
+        "anime": r"(?:anime|动漫|二次元|动画风)",
+        "realistic": r"(?:realistic|photoreal|写实|真人|摄影风)",
+        "auto": r"(?:agent.{0,8}(?:decide|选择|决定)|自动选择|你来决定|交给\s*agent)",
+    }
+    return style if style in patterns and re.search(patterns[style], message, re.I) else ""
+
+
+OUTPAINT_DEFAULT_PERCENT = 15
+OUTPAINT_DIRECTIONS = ("up", "down", "left", "right")
+OUTPAINT_DIRECTION_PATTERNS = {
+    "up": r"(?:向?上(?:方|边|侧)?|顶部|top|up(?:ward)?)",
+    "down": r"(?:向?下(?:方|边|侧)?|底部|bottom|down(?:ward)?)",
+    "left": r"(?:向?左(?:方|边|侧)?|left)",
+    "right": r"(?:向?右(?:方|边|侧)?|right)",
+}
+
+
+def _outpaint_percent(value):
+    try:
+        return max(0, min(100, int(round(float(value)))))
+    except Exception:
+        return 0
+
+
+def _normalize_outpaint_intent(value, intent_text=""):
+    source = value if isinstance(value, dict) else {}
+    normalized = {direction: _outpaint_percent(source.get(direction)) for direction in OUTPAINT_DIRECTIONS}
+    text = str(intent_text or "")
+    selected = set()
+    if re.search(r"(?:左右|横向|两侧|both sides|horizontal)", text, re.I):
+        selected.update(("left", "right"))
+    if re.search(r"(?:上下|纵向|顶部和底部|top and bottom|vertical)", text, re.I):
+        selected.update(("up", "down"))
+    for direction, pattern in OUTPAINT_DIRECTION_PATTERNS.items():
+        if re.search(pattern, text, re.I):
+            selected.add(direction)
+    if re.search(r"(?:四周|四边|周围|所有方向|all directions|all sides)", text, re.I):
+        selected.update(OUTPAINT_DIRECTIONS)
+    if any(normalized.values()) and not selected:
+        return normalized
+    if not selected:
+        selected.update(OUTPAINT_DIRECTIONS)
+
+    generic_match = re.search(r"(?:扩图|外扩|扩展|outpaint|extend).{0,12}?(\d{1,3}(?:\.\d+)?)\s*%", text, re.I)
+    generic_percent = _outpaint_percent(generic_match.group(1)) if generic_match else OUTPAINT_DEFAULT_PERCENT
+    for direction in selected:
+        pattern = OUTPAINT_DIRECTION_PATTERNS[direction]
+        directional_match = re.search(
+            rf"(?:{pattern}).{{0,12}}?(\d{{1,3}}(?:\.\d+)?)\s*%|(\d{{1,3}}(?:\.\d+)?)\s*%.{{0,12}}?(?:{pattern})",
+            text,
+            re.I,
+        )
+        explicit = next((group for group in directional_match.groups() if group is not None), None) if directional_match else None
+        normalized[direction] = _outpaint_percent(explicit) if explicit is not None else normalized[direction] or generic_percent
+    for direction in set(OUTPAINT_DIRECTIONS) - selected:
+        normalized[direction] = 0
+    if not any(normalized.values()):
+        normalized = {direction: OUTPAINT_DEFAULT_PERCENT for direction in OUTPAINT_DIRECTIONS}
+    return normalized
+
+
+def normalize_creative_task_request(item, available_media_refs=None, user_message=""):
+    source = item if isinstance(item, dict) else {}
+    instruction = str(
+        source.get("instruction")
+        or source.get("prompt")
+        or source.get("text")
+        or source.get("positive_prompt")
+        or ""
+    ).strip()
+    refs, available = _normalize_generation_media_refs(
+        source.get("media_refs") or source.get("input_refs"),
+        available_media_refs,
+    )
+    task = _normalize_generation_task(
+        source.get("task") or source.get("task_type"),
+        refs,
+        "\n".join(part for part in (user_message, instruction) if part),
+    )
+    if task != "text_to_image" and not refs:
+        refs = available[:5]
+        task = _normalize_generation_task(task, refs, user_message or instruction)
+    outpaint = _normalize_outpaint_intent(
+        source.get("outpaint") or source.get("outpaint_percentages"),
+        "\n".join(part for part in (user_message, instruction) if part),
+    ) if task == "image_outpaint" else {}
+    request = {
+        "task": task,
+        "media_refs": refs,
+        "instruction": instruction,
+        "preset_hint": str(source.get("preset_hint") or source.get("preset") or source.get("preset_name") or "").strip()[:120],
+        "aspect_ratio": _normalize_creative_aspect_ratio(source.get("aspect_ratio") or source.get("aspect") or source.get("ratio")),
+        "image_number": _normalize_creative_image_number(source.get("image_number") or source.get("count") or source.get("images")),
+    }
+    if outpaint:
+        request["outpaint"] = outpaint
+    return request
+
+
+def compile_creative_execution_plan(
+    task_request,
+    preset_capabilities=None,
+    available_media_refs=None,
+    preferred_preset="",
+    user_message="",
+):
+    request = normalize_creative_task_request(task_request, available_media_refs, user_message)
+    capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
+    refs = request["media_refs"]
+    task = request["task"]
+    route_rows = []
+    for order, capability in enumerate(capabilities):
+        for route in _capability_route_rows(capability, task):
+            route_rows.append({"capability": capability, "order": order, **route})
+
+    required_count = 0 if task == "text_to_image" else 2 if task in MULTI_IMAGE_GENERATION_TASKS else 1
+    count_compatible = [
+        route for route in route_rows
+        if _capability_accepts_image_count(route["capability"], task, len(refs))
+    ]
+    status = "ready"
+    candidates = count_compatible
+    if not refs and required_count:
+        status = "needs_media"
+        candidates = [
+            route for route in route_rows
+            if int(route["capability"].get("max_images") or 0) >= required_count
+        ]
+    if not candidates:
+        return {
+            "schema": "simpai.execution_plan.v1",
+            "status": "needs_media" if route_rows and len(refs) < required_count else "no_compatible_route",
+            "task": task,
+            "preset": "",
+            "theme": "",
+            "task_method": "",
+            "media_bindings": [],
+            "interaction_requirements": [],
+            "model_status": "unknown",
+            "preset_source": "automatic",
+            "parameter_overrides": {},
+        }
+
+    preferred = str(preferred_preset or "").strip()
+    hint = _explicit_preset_hint(request.get("preset_hint"), user_message, capabilities)
+    requested_preset = hint or preferred
+    explicit_candidates = [
+        route for route in candidates
+        if str(route["capability"].get("name") or "").strip().lower() == requested_preset.lower()
+    ] if requested_preset else []
+    if explicit_candidates:
+        candidates = explicit_candidates
+        preset_source = "request_hint" if hint else "session_preference"
+    else:
+        preset_source = "automatic"
+
+    priorities = {name.lower(): index for index, name in enumerate(_generation_preset_priorities(task))}
+    readiness_rank = {"ready": 0, "unknown": 1, "missing": 2}
+    candidates.sort(key=lambda route: (
+        1 if _preset_requires_manual_interaction(route["capability"]) else 0,
+        readiness_rank[_preset_model_status(route["capability"])],
+        priorities.get(str(route["capability"].get("name") or "").strip().lower(), len(priorities)),
+        0 if route.get("specialized") else 1,
+        route["order"],
+    ))
+    selected = candidates[0]
+    capability = selected["capability"]
+    requirements = capability.get("interaction_requirements") if isinstance(capability.get("interaction_requirements"), list) else []
+    model_status = _preset_model_status(capability)
+    if status == "ready" and requirements:
+        status = "needs_mask" if "mask" in requirements else "needs_interaction"
+    if status == "ready" and model_status == "missing":
+        status = "models_missing"
+    slots = capability.get("image_slots") if isinstance(capability.get("image_slots"), list) else []
+    bindings = [
+        {"ref": ref, "slot": slots[index]}
+        for index, ref in enumerate(refs)
+        if index < len(slots)
+    ]
+    parameter_overrides = {}
+    if task == "image_outpaint":
+        outpaint = request.get("outpaint") if isinstance(request.get("outpaint"), dict) else {}
+        parameter_overrides = {
+            "scene_var_number7": _outpaint_percent(outpaint.get("up")),
+            "scene_var_number8": _outpaint_percent(outpaint.get("down")),
+            "scene_var_number9": _outpaint_percent(outpaint.get("left")),
+            "scene_var_number10": _outpaint_percent(outpaint.get("right")),
+        }
+    return {
+        "schema": "simpai.execution_plan.v1",
+        "status": status,
+        "task": task,
+        "preset": str(capability.get("name") or "").strip(),
+        "theme": selected.get("theme") or "",
+        "task_method": selected.get("task_method") or "",
+        "media_bindings": bindings,
+        "interaction_requirements": list(requirements),
+        "model_status": model_status,
+        "preset_source": preset_source,
+        "parameter_overrides": parameter_overrides,
+    }
+
+
 def _compatible_generation_preset(preset, task, image_count, preset_capabilities):
     current = str(preset or "").strip()
     capabilities = [item for item in (preset_capabilities or []) if isinstance(item, dict)]
@@ -1478,28 +1772,7 @@ def _compatible_generation_preset(preset, task, image_count, preset_capabilities
         item for item in capabilities
         if _preset_supports_generation_task(item.get("name"), task, image_count, capabilities)
     ]
-    task_priorities = {
-        "image_upscale": ("Z-TTP", "Wan-TTP"),
-        "image_restore": ("Imagerepair+",),
-        "image_background_removal": ("Removebg",),
-        "image_object_removal": ("Flux2-KleinEdit", "Krea2-ImageEdit", "Eraser"),
-        "image_object_transfer": ("Flux2-KleinEdit", "Krea2-ImageEdit", "Swap+", "NunSwap_fp4", "NunSwap_int4"),
-        "image_outpaint": ("OneKey-Outpaint",),
-        "image_relight": ("Relight", "Flux2-AngleLight"),
-        "image_style_transfer": ("StyleTransfer+",),
-        "image_face_swap": ("Swapface",),
-        "image_pose_transfer": ("Flux2-KleinPose", "QwenPose"),
-        "image_pose_extraction": ("OneKeyPose",),
-        "image_anime_to_real": ("Flux2-A2R", "QwenA2R"),
-        "image_view_synthesis": ("QwenMultiAngle",),
-        "image_depth_estimation": ("Depthstatue",),
-        "image_expression_transfer": ("LivePortrait Exp",),
-    }
-    priorities = task_priorities.get(task) or (
-        ("Flux2-KleinEdit", "Krea2-ImageEdit", "QwenEdit+", "NunQwenEdit+_fp4", "NunQwenEdit+_int4", "Bernini-ImageEdit")
-        if task in {"image_edit", "multi_image_edit"}
-        else ("Z-imageT", "Anima")
-    )
+    priorities = _generation_preset_priorities(task)
     priority_map = {name.lower(): index for index, name in enumerate(priorities)}
     readiness_rank = {"ready": 0, "unknown": 1, "missing": 2}
     compatible.sort(
@@ -1549,12 +1822,108 @@ def _apply_generation_media_limits(actions, available_media_refs=None, preset_ca
     return normalized
 
 
+def compile_creative_action_plans(
+    actions,
+    available_media_refs=None,
+    preset_capabilities=None,
+    preferred_preset="",
+    user_message="",
+):
+    effective_preference = str(preferred_preset or "").strip()
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, dict) or action.get("type") != "set_creative_preference":
+            continue
+        candidate = _explicit_preset_hint(action.get("preset"), user_message, preset_capabilities)
+        if candidate:
+            effective_preference = candidate
+    compiled = []
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, dict) or action.get("type") != "generate_image":
+            compiled.append(action)
+            continue
+        item = dict(action)
+        request_source = item.get("task_request") if isinstance(item.get("task_request"), dict) else item
+        request = normalize_creative_task_request(request_source, available_media_refs, user_message)
+        plan = compile_creative_execution_plan(
+            request,
+            preset_capabilities,
+            available_media_refs,
+            effective_preference,
+            user_message,
+        )
+        item.update({
+            "task": request["task"],
+            "media_refs": request["media_refs"],
+            "task_request": request,
+            "execution_plan": plan,
+            "prompt": request["instruction"],
+            "preset": plan.get("preset") or ("" if preset_capabilities else item.get("preset") or "Z-imageT"),
+            "aspect_ratio": request["aspect_ratio"],
+            "image_number": request["image_number"],
+        })
+        compiled.append(item)
+    return compiled
+
+
+def _creative_action_prompt_target(action, preset_capabilities=None):
+    if not isinstance(action, dict) or action.get("type") != "generate_image":
+        return ""
+    plan = action.get("execution_plan") if isinstance(action.get("execution_plan"), dict) else {}
+    task = str(plan.get("task") or action.get("task") or "").strip().lower()
+    if task == "image_outpaint":
+        return "outpaint_instruction"
+    preset = str(plan.get("preset") or action.get("preset") or "").strip()
+    capability = _preset_capability_map(preset_capabilities).get(preset.lower()) or {}
+    descriptor = " ".join(
+        str(value or "").strip().lower()
+        for value in (
+            preset,
+            capability.get("backend_engine"),
+            capability.get("task_method"),
+            plan.get("task_method"),
+            capability.get("purpose"),
+        )
+    )
+    return "flux_t5_en" if re.search(r"(?:\bflux\b|flux\d|t5[-_ ]?xxl|\bt5\b)", descriptor, re.I) else ""
+
+
+def _translate_creative_prompt_to_english(prompt):
+    try:
+        import enhanced.all_parameters as ads
+        import enhanced.translator as translator
+
+        method = ads.get_admin_default("translation_methods")
+        return str(translator.convert(prompt, method, "en") or "").strip()
+    except Exception:
+        return str(prompt or "").strip()
+
+
+def normalize_creative_action_prompt_languages(actions, preset_capabilities=None, translate_to_english=None):
+    translate = translate_to_english or _translate_creative_prompt_to_english
+    normalized = []
+    for action in actions if isinstance(actions, list) else []:
+        if not isinstance(action, dict):
+            normalized.append(action)
+            continue
+        item = dict(action)
+        target = _creative_action_prompt_target(item, preset_capabilities)
+        prompt = str(item.get("prompt") or "").strip()
+        if target in {"outpaint_instruction", "flux_t5_en"} and re.search(r"[\u3400-\u9fff]", prompt):
+            translated = str(translate(prompt) or "").strip()
+            if translated and not re.search(r"[\u3400-\u9fff]", translated):
+                item["prompt"] = translated
+        normalized.append(item)
+    return normalized
+
+
 def normalize_limited_actions(
     actions,
     allow_generation=False,
     default_generation_preset="Z-imageT",
     available_media_refs=None,
     preset_capabilities=None,
+    preferred_generation_preset="",
+    user_message="",
 ):
     normalized = []
     for item in actions if isinstance(actions, list) else []:
@@ -1564,10 +1933,12 @@ def normalize_limited_actions(
         if action_type == "set_creative_preference":
             if not allow_generation or str(item.get("scope") or "session").strip().lower() != "session":
                 continue
-            style = str(item.get("style") or "").strip().lower()
-            if style not in {"anime", "realistic", "auto", "custom"}:
-                style = ""
-            preset = re.sub(r"[\x00-\x1f\x7f]+", "", str(item.get("preset") or item.get("preset_name") or "")).strip()[:120]
+            preset = _explicit_preset_hint(
+                item.get("preset") or item.get("preset_name"),
+                user_message,
+                preset_capabilities,
+            )
+            style = _explicit_creative_style(item.get("style"), user_message, bool(preset))
             if not style and not preset:
                 continue
             normalized.append(
@@ -1591,7 +1962,8 @@ def normalize_limited_actions(
         if action_type not in ALLOWED_PROMPT_ACTIONS and action_type != "generate_image":
             continue
         prompt_text = str(
-            item.get("prompt")
+            item.get("instruction")
+            or item.get("prompt")
             or item.get("text")
             or item.get("value")
             or item.get("positive_prompt")
@@ -1602,36 +1974,38 @@ def normalize_limited_actions(
         prompt_text = sanitize_danbooru_character_outfit_tags(prompt_text)
         prompt_text = canvas_danbooru_service._canvas_prompt_safe_danbooru_text(prompt_text)
         if action_type == "generate_image":
-            preset = re.sub(
-                r"[\x00-\x1f\x7f]+",
-                "",
-                str(item.get("preset") or item.get("preset_name") or default_generation_preset or "Z-imageT"),
-            ).strip()[:120]
-            refs, available = _normalize_generation_media_refs(
-                item.get("media_refs") or item.get("input_refs"),
+            request = normalize_creative_task_request(
+                {**item, "instruction": prompt_text},
                 available_media_refs,
+                user_message,
             )
-            task = _normalize_generation_task(item.get("task") or item.get("task_type"), refs, prompt_text)
-            if task != "text_to_image" and not refs:
-                refs = available[:5]
-                task = _normalize_generation_task(task, refs)
-            preset = _compatible_generation_preset(preset, task, len(refs), preset_capabilities)
-            limit = _generation_media_limit(preset, preset_capabilities)
-            refs = refs[:limit]
+            plan = compile_creative_execution_plan(
+                request,
+                preset_capabilities,
+                available_media_refs,
+                preferred_generation_preset,
+                user_message,
+            )
+            preset = plan.get("preset")
+            if not preset and not preset_capabilities:
+                preset = _compatible_generation_preset(
+                    default_generation_preset,
+                    request["task"],
+                    len(request["media_refs"]),
+                    preset_capabilities,
+                )
             normalized.append(
                 {
                     "type": "generate_image",
                     "target": "canvas_run",
-                    "task": _normalize_generation_task(task, refs),
-                    "media_refs": refs,
+                    "task": request["task"],
+                    "media_refs": request["media_refs"],
+                    "task_request": request,
+                    "execution_plan": plan,
                     "prompt": prompt_text,
-                    "preset": preset or "Z-imageT",
-                    "aspect_ratio": _normalize_creative_aspect_ratio(
-                        item.get("aspect_ratio") or item.get("aspect") or item.get("ratio")
-                    ),
-                    "image_number": _normalize_creative_image_number(
-                        item.get("image_number") or item.get("count") or item.get("images")
-                    ),
+                    "preset": preset if preset_capabilities else (preset or default_generation_preset or "Z-imageT"),
+                    "aspect_ratio": request["aspect_ratio"],
+                    "image_number": request["image_number"],
                     "label": str(item.get("label") or "").strip()[:120],
                 }
             )
@@ -1657,6 +2031,8 @@ def parse_limited_response(
     default_generation_preset="Z-imageT",
     available_media_refs=None,
     preset_capabilities=None,
+    preferred_generation_preset="",
+    user_message="",
 ):
     if not allow_actions:
         return {"reply": str(text or "").strip(), "actions": [], "raw_json": None}
@@ -1669,6 +2045,8 @@ def parse_limited_response(
         default_generation_preset=default_generation_preset,
         available_media_refs=available_media_refs,
         preset_capabilities=preset_capabilities,
+        preferred_generation_preset=preferred_generation_preset,
+        user_message=user_message,
     )
     if not actions and data.get("prompt"):
         action_type = str(data.get("action") or data.get("type") or "set_prompt").strip()
@@ -1678,6 +2056,8 @@ def parse_limited_response(
             default_generation_preset=default_generation_preset,
             available_media_refs=available_media_refs,
             preset_capabilities=preset_capabilities,
+            preferred_generation_preset=preferred_generation_preset,
+            user_message=user_message,
         )
     reply = str(data.get("reply") or data.get("message") or data.get("text") or "").strip()
     if not reply and actions:
@@ -1766,6 +2146,7 @@ def recover_creative_generation_action(
         default_generation_preset=default_generation_preset,
         available_media_refs=available_media_refs,
         preset_capabilities=preset_capabilities,
+        user_message=message,
     )
     return next((action for action in actions if action.get("type") == "generate_image"), None)
 
@@ -1965,6 +2346,8 @@ def run_describe_vlm_chat(payload):
         default_generation_preset=params.get("describe_creative_preference_preset") or "Z-imageT",
         available_media_refs=runtime_payload.get("params", {}).get("describe_media_manifest"),
         preset_capabilities=runtime_payload.get("params", {}).get("describe_preset_capabilities"),
+        preferred_generation_preset=params.get("describe_creative_preference_preset") or "",
+        user_message=payload.get("message") or "",
     )
     if params.get("describe_generation_actions_enabled"):
         parsed_actions = parsed.get("actions") if isinstance(parsed.get("actions"), list) else []
@@ -1984,17 +2367,18 @@ def run_describe_vlm_chat(payload):
                 ]
                 parsed_actions.append(recovered_action)
                 parsed["actions"] = parsed_actions
-        parsed["actions"] = _apply_creative_preference_preset(
-            parsed.get("actions"),
-            params.get("describe_creative_preference_preset"),
-            runtime_payload.get("params", {}).get("describe_preset_capabilities"),
-        )
-        parsed["actions"] = _apply_generation_media_limits(
+        parsed["actions"] = compile_creative_action_plans(
             parsed.get("actions"),
             runtime_payload.get("params", {}).get("describe_media_manifest"),
             runtime_payload.get("params", {}).get("describe_preset_capabilities"),
+            params.get("describe_creative_preference_preset") or "",
+            payload.get("message") or "",
         )
         parsed["actions"] = _repair_creative_anima_actions(parsed.get("actions"), payload.get("message"))
+        parsed["actions"] = normalize_creative_action_prompt_languages(
+            parsed.get("actions"),
+            runtime_payload.get("params", {}).get("describe_preset_capabilities"),
+        )
     result = dict(result)
     original_text = str(result.get("text") or "")
     result["text"] = parsed.get("reply") or original_text

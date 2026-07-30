@@ -29,6 +29,18 @@
                 "Clear background",
                 "Depth reference"
             ],
+            "theme_supported_tasks": {
+                "General": ["image_edit"],
+                "All-in-one": ["image_restore"],
+                "Composite relighting": ["image_relight"],
+                "Pattern extraction": ["image_style_transfer"],
+                "Angle edit": ["image_view_synthesis"],
+                "IP 3-View": ["image_view_synthesis"],
+                "Remove Anything": ["image_object_removal"],
+                "Object insertion": ["image_object_transfer"],
+                "Clear background": ["image_restore"],
+                "Depth reference": ["image_depth_estimation"]
+            },
             "theme_title": "One-Key Kontext Retouch Preset [Final size matches the input image]",
             "prompt": {
                 "General": "Retouch the product in the image and change the background to a pure white one.",

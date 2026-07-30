@@ -16,6 +16,10 @@
                 "ACE+Pulid": "head, face"
             },
             "theme": ["ACE++", "ACE+Pulid"],
+            "theme_labels": {
+                "ACE++": {"en": "ACE++ - Fast", "zh": "ACE++ - \u8f83\u5feb"},
+                "ACE+Pulid": {"en": "ACE + PuLID - High fidelity / Slow", "zh": "ACE + PuLID - \u9ad8\u4fdd\u771f / \u8f83\u6162"}
+            },
             "theme_title": "ACE++ is fast; PuLID is slow. Larger processing size = clearer but slower. Output keeps original image size.",
             "image_preprocessor_method": {
             "ACE++": [["-normalization"]],

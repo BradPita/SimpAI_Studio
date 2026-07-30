@@ -8,6 +8,10 @@
         "scene_frontend": {
             "version": "m1.1",
             "theme": ["SDPose-OOD","DWPose"],
+            "theme_labels": {
+                "SDPose-OOD": {"en": "SDPose - Full body / Multi-person", "zh": "SDPose - \u5168\u8eab / \u591a\u4eba"},
+                "DWPose": {"en": "DWPose - Standard pose", "zh": "DWPose - \u6807\u51c6\u59ff\u6001"}
+            },
             "theme_title": "Quick Pose (skeleton) conversion",
             "disable_canvas_mask": true,
             "disvisible": ["scene_input_image1", "scene_input_image2","scene_additional_prompt","scene_additional_prompt_2","scene_aspect_ratio", "scene_image_number", "scene_use_lora", "scene_video", "scene_audio", "pose_studio",

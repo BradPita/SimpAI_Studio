@@ -248,12 +248,16 @@
                 const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
                 const task = creativeActionTask(action, inputCount);
                 if (
-                    ['awaiting_confirmation', 'models_missing', 'preset_missing'].includes(generationState)
+                    ['awaiting_confirmation', 'models_missing', 'preset_missing', 'needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route'].includes(generationState)
                     && entry
-                    && creativePresetSupportsTask(entry, task, inputCount)
+                    && creativePresetHasTaskRoute(entry, task, inputCount)
                 ) {
                     action.preset = preset;
                     action.preset_source = 'session_preference';
+                    action.execution_plan = creativeExecutionPlanForEntry(action, entry, 'session_preference');
+                    action.generation = action.generation || { assets: [] };
+                    action.generation.state = action.execution_plan.status === 'ready' ? 'awaiting_confirmation' : action.execution_plan.status;
+                    action.generation.error = '';
                 }
             });
         });
@@ -1830,10 +1834,11 @@
                 ? action.media_inputs.slice(0, MAX_ATTACHMENTS).map(normalizeCreativeMediaInput).filter(Boolean)
                 : [],
             prompt,
-            preset: String(action.preset || CREATIVE_DEFAULT_PRESET).slice(0, 200),
+            preset: String(action.preset || (action.execution_plan?.status === 'no_compatible_route' ? '' : CREATIVE_DEFAULT_PRESET)).slice(0, 200),
             preset_source: ['agent_auto', 'session_preference', 'user'].includes(String(action.preset_source || ''))
                 ? String(action.preset_source)
                 : '',
+            execution_plan: normalizeCreativeExecutionPlan(action.execution_plan),
             aspect_ratio: String(action.aspect_ratio || 'auto').slice(0, 40),
             image_number: Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1))),
             label: String(action.label || '').slice(0, 200),
@@ -2594,6 +2599,143 @@
         return requirements.length > 0;
     }
 
+    function creativeThemeSupportedTasks(entry, theme) {
+        const declared = creativeDeclaredThemeSupportedTasks(entry, theme);
+        if (declared.length) return declared;
+        return String(theme || '').trim() === String(entry?.schema?.default_theme || '').trim()
+            ? creativePresetSupportedTasks(entry)
+            : [];
+    }
+
+    function creativeDeclaredThemeSupportedTasks(entry, theme) {
+        const declared = entry?.schema?.per_theme?.[theme]?.supported_tasks;
+        if (Array.isArray(declared) && declared.length) {
+            return [...new Set(declared.map((task) => {
+                const key = String(task || '').trim().toLowerCase().replace(/[- ]/g, '_');
+                return CREATIVE_TASK_ALIASES[key] || key;
+            }).filter((task) => CREATIVE_IMAGE_TASKS.has(task)))];
+        }
+        return [];
+    }
+
+    function creativeTaskThemes(entry, task) {
+        const themes = Array.isArray(entry?.schema?.themes)
+            ? entry.schema.themes.map((theme) => String(theme || '')).filter(Boolean)
+            : [];
+        if (!themes.length) return [];
+        const routed = themes.filter((theme) => creativeDeclaredThemeSupportedTasks(entry, theme).includes(task));
+        if (routed.length) return routed;
+        if (!creativePresetSupportedTasks(entry).includes(task)) return [];
+        const hasDeclaredRoutes = themes.some((theme) => creativeDeclaredThemeSupportedTasks(entry, theme).length > 0);
+        if (!hasDeclaredRoutes) return themes;
+        const defaultTheme = String(entry?.schema?.default_theme || themes[0] || '');
+        return defaultTheme ? [defaultTheme] : [];
+    }
+
+    function creativeThemeDisplayLabel(entry, theme) {
+        const configured = entry?.schema?.theme_labels?.[theme];
+        if (configured && typeof configured === 'object') {
+            return localText(configured.en || configured.zh || theme, configured.zh || configured.en || theme);
+        }
+        return String(configured || theme || '');
+    }
+
+    function creativePresetHasTaskRoute(entry, task, inputCount = 0) {
+        if (creativePresetSupportsTask(entry, task, inputCount)) return true;
+        if (!entry || inputCount < creativePresetMinImages(entry) || inputCount > creativePresetMaxImages(entry)) return false;
+        const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes : [];
+        return themes.some((theme) => creativeThemeSupportedTasks(entry, theme).includes(task));
+    }
+
+    function creativeOutpaintParameterOverrides(action) {
+        const current = action?.execution_plan?.parameter_overrides && typeof action.execution_plan.parameter_overrides === 'object'
+            ? action.execution_plan.parameter_overrides
+            : {};
+        const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+        const overrides = {
+            scene_var_number7: clampPercent(current.scene_var_number7),
+            scene_var_number8: clampPercent(current.scene_var_number8),
+            scene_var_number9: clampPercent(current.scene_var_number9),
+            scene_var_number10: clampPercent(current.scene_var_number10)
+        };
+        if (!Object.values(overrides).some((value) => value > 0)) {
+            Object.keys(overrides).forEach((key) => { overrides[key] = 15; });
+        }
+        return overrides;
+    }
+
+    function creativePresetSupportsOutpaintDirections(entry) {
+        const keys = new Set(
+            (Array.isArray(entry?.schema?.params) ? entry.schema.params : [])
+                .map((item) => String(item?.key || ''))
+                .filter(Boolean)
+        );
+        return ['scene_var_number7', 'scene_var_number8', 'scene_var_number9', 'scene_var_number10']
+            .every((key) => keys.has(key));
+    }
+
+    function creativeExecutionPlanForEntry(action, entry, presetSource = 'user') {
+        const inputs = Array.isArray(action?.media_inputs) ? action.media_inputs : [];
+        const task = creativeActionTask(action, inputs.length);
+        if (!entry || !creativePresetHasTaskRoute(entry, task, inputs.length)) {
+            return {
+                schema: 'simpai.execution_plan.v1', status: CREATIVE_IMAGE_INPUT_TASKS.has(task) && !inputs.length ? 'needs_media' : 'no_compatible_route',
+                task, preset: String(entry?.name || ''), theme: '', task_method: '', media_bindings: [],
+                interaction_requirements: [], model_status: creativePresetModelReadiness(entry), preset_source: presetSource
+            };
+        }
+        const themes = creativeTaskThemes(entry, task);
+        const defaultTheme = String(entry?.schema?.default_theme || themes[0] || '');
+        const requestedTheme = String(action?.execution_plan?.preset || '') === String(entry.name || '')
+            ? String(action?.execution_plan?.theme || '')
+            : '';
+        const specialized = themes.find((theme) => creativeDeclaredThemeSupportedTasks(entry, theme).includes(task));
+        const theme = String(themes.includes(requestedTheme) ? requestedTheme : specialized || themes[0] || defaultTheme);
+        const taskMethod = String(entry?.schema?.per_theme?.[theme]?.task_method || entry?.task_method || '');
+        const requirements = Array.isArray(entry?.media_capability?.interaction_requirements)
+            ? entry.media_capability.interaction_requirements.slice(0, 8)
+            : [];
+        const modelStatus = creativePresetModelReadiness(entry);
+        let status = requirements.includes('mask') ? 'needs_mask' : requirements.length ? 'needs_interaction' : 'ready';
+        if (status === 'ready' && modelStatus === 'missing') status = 'models_missing';
+        const slots = creativePresetImageSlots(entry);
+        const parameterOverrides = task === 'image_outpaint' && creativePresetSupportsOutpaintDirections(entry)
+            ? creativeOutpaintParameterOverrides(action)
+            : {};
+        return {
+            schema: 'simpai.execution_plan.v1', status, task, preset: String(entry.name || ''), theme, task_method: taskMethod,
+            media_bindings: inputs.slice(0, slots.length).map((input, index) => ({ ref: String(input.ref || ''), slot: slots[index] })),
+            interaction_requirements: requirements, model_status: modelStatus, preset_source: presetSource,
+            parameter_overrides: parameterOverrides
+        };
+    }
+
+    function normalizeCreativeExecutionPlan(plan) {
+        if (!plan || typeof plan !== 'object' || plan.schema !== 'simpai.execution_plan.v1') return null;
+        const statuses = new Set(['ready', 'needs_media', 'needs_mask', 'needs_interaction', 'models_missing', 'no_compatible_route']);
+        return {
+            schema: 'simpai.execution_plan.v1',
+            status: statuses.has(String(plan.status || '')) ? String(plan.status) : 'no_compatible_route',
+            task: String(plan.task || ''),
+            preset: String(plan.preset || '').slice(0, 200),
+            theme: String(plan.theme || '').slice(0, 200),
+            task_method: String(plan.task_method || '').slice(0, 200),
+            media_bindings: Array.isArray(plan.media_bindings) ? plan.media_bindings.slice(0, MAX_ATTACHMENTS).map((binding) => ({
+                ref: String(binding?.ref || '').slice(0, 160),
+                slot: String(binding?.slot || '').slice(0, 120)
+            })).filter((binding) => binding.ref && binding.slot) : [],
+            interaction_requirements: Array.isArray(plan.interaction_requirements) ? plan.interaction_requirements.slice(0, 8).map(String) : [],
+            model_status: ['ready', 'missing', 'unknown'].includes(String(plan.model_status || '')) ? String(plan.model_status) : 'unknown',
+            preset_source: String(plan.preset_source || 'automatic'),
+            parameter_overrides: Object.fromEntries(Object.entries(
+                plan.parameter_overrides && typeof plan.parameter_overrides === 'object' ? plan.parameter_overrides : {}
+            ).filter(([key]) => ['scene_var_number7', 'scene_var_number8', 'scene_var_number9', 'scene_var_number10'].includes(key)).map(([key, value]) => [
+                key,
+                Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
+            ]))
+        };
+    }
+
     function creativeCompatiblePresetEntry(task, inputCount = 0) {
         const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
         const taskPriorities = {
@@ -2628,20 +2770,31 @@
     }
 
     function creativePresetCapabilitiesPayload() {
-        return state.creativePresetCatalog.slice(0, 100).map((entry) => ({
-            name: String(entry?.name || ''),
-            min_images: creativePresetMinImages(entry),
-            max_images: creativePresetMaxImages(entry),
-            output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image',
-            supported_tasks: creativePresetSupportedTasks(entry),
-            interaction_requirements: Array.isArray(entry?.media_capability?.interaction_requirements)
-                ? entry.media_capability.interaction_requirements.slice(0, 8)
-                : [],
-            model_status: creativePresetModelReadiness(entry),
-            backend_engine: String(entry?.backend_engine || entry?.default_engine?.backend_engine || '').slice(0, 80),
-            task_method: String(entry?.task_method || '').slice(0, 120),
-            purpose: String(entry?.schema?.theme_title || '').trim().replace(/^Theme$/i, '').slice(0, 240)
-        })).filter((item) => item.name);
+        return state.creativePresetCatalog.slice(0, 100).map((entry) => {
+            const themes = Array.isArray(entry?.schema?.themes) ? entry.schema.themes.slice(0, 40).map((theme) => String(theme || '')).filter(Boolean) : [];
+            const perTheme = entry?.schema?.per_theme && typeof entry.schema.per_theme === 'object' ? entry.schema.per_theme : {};
+            return {
+                name: String(entry?.name || ''),
+                min_images: creativePresetMinImages(entry),
+                max_images: creativePresetMaxImages(entry),
+                output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image',
+                supported_tasks: creativePresetSupportedTasks(entry),
+                interaction_requirements: Array.isArray(entry?.media_capability?.interaction_requirements)
+                    ? entry.media_capability.interaction_requirements.slice(0, 8)
+                    : [],
+                model_status: creativePresetModelReadiness(entry),
+                backend_engine: String(entry?.backend_engine || entry?.default_engine?.backend_engine || '').slice(0, 80),
+                task_method: String(entry?.task_method || '').slice(0, 120),
+                purpose: String(entry?.schema?.theme_title || '').trim().replace(/^Theme$/i, '').slice(0, 240),
+                image_slots: creativePresetImageSlots(entry),
+                themes,
+                default_theme: String(entry?.schema?.default_theme || themes[0] || ''),
+                per_theme: Object.fromEntries(themes.map((theme) => [theme, {
+                    task_method: String(perTheme?.[theme]?.task_method || '').slice(0, 120),
+                    supported_tasks: creativeThemeSupportedTasks(entry, theme)
+                }]))
+            };
+        }).filter((item) => item.name);
     }
 
     function creativePresetForStyle(style) {
@@ -2743,7 +2896,8 @@
             .map(normalizeCreativeMediaInput)
             .filter(Boolean);
         action.task = creativeActionTask(action, action.media_inputs.length);
-        action.preset = String(action.preset || CREATIVE_DEFAULT_PRESET).trim() || CREATIVE_DEFAULT_PRESET;
+        const noCompatibleRoute = action.execution_plan?.status === 'no_compatible_route';
+        action.preset = String(action.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET)).trim();
         action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
         action.image_number = Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1)));
         action.tool_call_id = String(action.tool_call_id || uid('describe_vlm_chat_tool'));
@@ -2802,35 +2956,25 @@
                 prepared.push({ type: 'set_prompt', target: 'main_prompt', prompt: String(action.prompt || ''), label: String(action.label || '') });
                 return;
             }
-            const requestedRefs = Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
-            const requestedTask = creativeActionTask(action, requestedRefs.length);
-            const preferredPreset = String(state.creativePreference?.preset || '').trim();
-            const preferredEntry = creativePresetEntry(preferredPreset);
-            if (preferredPreset && creativePresetSupportsTask(preferredEntry, requestedTask, requestedRefs.length)) {
-                action.preset = preferredPreset;
-                action.preset_source = 'session_preference';
-            } else if (String(state.creativePreference?.style || '') === 'auto') {
-                action.preset_source = 'agent_auto';
-            }
-            const selectedEntry = creativePresetEntry(action.preset);
-            const compatibleEntry = creativeCompatiblePresetEntry(requestedTask, requestedRefs.length);
-            const automaticSelection = !preferredPreset || String(state.creativePreference?.style || '') === 'auto';
-            const shouldPreferReady = automaticSelection
-                && creativePresetModelReadiness(selectedEntry) !== 'ready'
-                && creativePresetModelReadiness(compatibleEntry) === 'ready';
-            const shouldPreferAutomatic = automaticSelection
-                && creativePresetRequiresManualInteraction(selectedEntry)
-                && !creativePresetRequiresManualInteraction(compatibleEntry);
-            if ((!creativePresetSupportsTask(selectedEntry, requestedTask, requestedRefs.length) || shouldPreferReady || shouldPreferAutomatic) && compatibleEntry) {
-                action.preset = compatibleEntry.name;
-                action.preset_source = 'agent_auto';
-            }
+            const plan = normalizeCreativeExecutionPlan(action.execution_plan);
+            const requestedRefs = plan?.media_bindings?.length
+                ? plan.media_bindings.map((binding) => binding.ref)
+                : Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
+            action.execution_plan = plan;
+            action.task = plan?.task || creativeActionTask(action, requestedRefs.length);
+            action.preset = plan?.preset || (plan?.status === 'no_compatible_route' ? '' : String(action.preset || CREATIVE_DEFAULT_PRESET));
+            action.preset_source = plan?.preset_source === 'session_preference'
+                ? 'session_preference'
+                : plan?.preset_source === 'request_hint' ? 'user' : 'agent_auto';
             action.media_inputs = requestedRefs.map((ref, index) => {
                 const resolved = mediaByRef.get(ref);
                 return resolved ? normalizeCreativeMediaInput(resolved, index) : null;
             }).filter(Boolean);
-            creativeGenerationForAction(action);
+            const generation = creativeGenerationForAction(action);
             clampCreativeActionMediaInputs(action);
+            if (plan && ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route'].includes(plan.status) && generation.state === 'awaiting_confirmation') {
+                generation.state = plan.status;
+            }
             prepared.push(action);
         });
         return prepared.filter((action) => action && String(action.prompt || '').trim());
@@ -2857,10 +3001,14 @@
     }
 
     function creativePresetOptions(action) {
-        const selected = String(action?.preset || CREATIVE_DEFAULT_PRESET);
+        const noCompatibleRoute = action?.execution_plan?.status === 'no_compatible_route';
+        const selected = String(action?.preset || (noCompatibleRoute ? '' : CREATIVE_DEFAULT_PRESET));
         const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
         const task = creativeActionTask(action, inputCount);
-        const rows = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
+        const rows = state.creativePresetCatalog.filter((entry) => creativePresetHasTaskRoute(entry, task, inputCount));
+        if (noCompatibleRoute && !selected) {
+            return `<option value="" selected disabled>${escapeHtml(localText('No compatible Preset', '没有兼容的 Preset'))}</option>`;
+        }
         if (!rows.some((entry) => entry.name === selected)) {
             const selectedEntry = creativePresetEntry(selected);
             rows.unshift(Object.assign({}, selectedEntry || {}, {
@@ -2871,6 +3019,19 @@
         }
         if (!rows.length) rows.push({ name: CREATIVE_DEFAULT_PRESET, display_name: CREATIVE_DEFAULT_PRESET });
         return rows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selected ? 'selected' : ''} ${entry.task_incompatible ? 'disabled' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`).join('');
+    }
+
+    function creativeThemeControl(action, actionRef, disabled = '') {
+        const entry = creativePresetEntry(action?.preset);
+        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
+        const task = creativeActionTask(action, inputCount);
+        const themes = creativeTaskThemes(entry, task);
+        if (themes.length < 2) return '';
+        const selected = themes.includes(String(action?.execution_plan?.theme || ''))
+            ? String(action.execution_plan.theme)
+            : String(entry?.schema?.default_theme || themes[0]);
+        const options = themes.map((theme) => `<option value="${escapeHtml(theme)}" ${theme === selected ? 'selected' : ''}>${escapeHtml(creativeThemeDisplayLabel(entry, theme))}</option>`).join('');
+        return `<label><span>${escapeHtml(localText('Method', '处理方式'))}</span><select data-describe-vlm-chat-generation-theme="${escapeHtml(actionRef)}" ${disabled}>${options}</select></label>`;
     }
 
     function creativeAssetUrl(value) {
@@ -2894,6 +3055,10 @@
 
     function creativeStateLabel(generation) {
         const current = String(generation?.state || 'awaiting_confirmation').toLowerCase();
+        if (current === 'needs_media') return localText('Input image required', '需要引用输入图片');
+        if (current === 'needs_mask') return localText('Manual mask required', '需要手动绘制遮罩');
+        if (current === 'needs_interaction') return localText('Manual setup required', '需要手动设置');
+        if (current === 'no_compatible_route') return localText('No compatible generation route', '没有兼容的生成路线');
         if (current === 'checking_models') return localText('Checking models', '正在检查模型');
         if (current === 'models_missing') {
             const count = Math.max(0, Number(generation?.missing_count) || 0);
@@ -3124,6 +3289,19 @@
 </div>`;
     }
 
+    function renderCreativeOutpaintOptions(action, actionRef, disabled = '') {
+        if (String(action?.task || '') !== 'image_outpaint') return '';
+        if (!creativePresetSupportsOutpaintDirections(creativePresetEntry(action?.preset))) return '';
+        const values = creativeOutpaintParameterOverrides(action);
+        const fields = [
+            ['scene_var_number7', 'up', localText('Up (%)', '向上 (%)')],
+            ['scene_var_number8', 'down', localText('Down (%)', '向下 (%)')],
+            ['scene_var_number9', 'left', localText('Left (%)', '向左 (%)')],
+            ['scene_var_number10', 'right', localText('Right (%)', '向右 (%)')]
+        ];
+        return `<div class="describe-vlm-chat-outpaint-options"><div class="describe-vlm-chat-generation-media-head"><span>${escapeHtml(localText('Outpaint area', '外扩区域'))}</span></div><div>${fields.map(([key, direction, label]) => `<label><span>${escapeHtml(label)}</span><input type="number" min="0" max="100" step="1" value="${values[key]}" data-describe-vlm-chat-outpaint="${direction}" data-describe-vlm-chat-outpaint-ref="${escapeHtml(actionRef)}" ${disabled}></label>`).join('')}</div></div>`;
+    }
+
     function renderCreativeGenerationAction(action, actionRef) {
         const generation = creativeGenerationForAction(action);
         const currentState = String(generation.state || 'awaiting_confirmation').toLowerCase();
@@ -3138,7 +3316,8 @@
             ? `<div class="describe-vlm-chat-generation-preview"><img src="${escapeHtml(previewSource)}" alt="${escapeHtml(localText('Sampling preview', '采样预览'))}"></div>`
             : '';
         const statusDetail = String(generation.message || '').trim();
-        const canSubmit = !active;
+        const planBlocked = ['needs_media', 'needs_mask', 'needs_interaction', 'no_compatible_route'].includes(currentState);
+        const canSubmit = !active && !planBlocked;
         const submitLabel = ['finished', 'failed', 'canceled', 'skipped'].includes(currentState)
             ? localText('Generate again', '再次生成')
             : ['models_missing', 'preset_missing'].includes(currentState)
@@ -3168,14 +3347,17 @@
             : '';
         const collapseTitle = collapsed ? localText('Expand generation details', '展开生图详情') : localText('Collapse generation details', '折叠生图详情');
         const headerStatus = collapsed ? creativeStateLabel(generation) : offerReason;
+        const themeControl = creativeThemeControl(action, actionRef, disabled);
         return `<div class="describe-vlm-chat-action-card describe-vlm-chat-generation${collapsed ? ' is-collapsed' : ''}" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}">
   <div class="describe-vlm-chat-generation-title"><i class="fa-solid ${offered ? 'fa-clapperboard' : 'fa-wand-magic-sparkles'}"></i><span>${escapeHtml(cardTitle)}</span>${headerStatus ? `<b>${escapeHtml(headerStatus)}</b>` : ''}${offered && !active ? `<button type="button" data-describe-vlm-chat-offer-dismiss="${escapeHtml(actionRef)}" title="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}" aria-label="${escapeHtml(localText('Dismiss this suggestion', '忽略这次提议'))}"><i class="fa-solid fa-xmark"></i></button>` : ''}<button type="button" data-describe-vlm-chat-generation-collapse="${escapeHtml(actionRef)}" title="${escapeHtml(collapseTitle)}" aria-label="${escapeHtml(collapseTitle)}" aria-expanded="${collapsed ? 'false' : 'true'}"><i class="fa-solid ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i></button></div>
   <div class="describe-vlm-chat-generation-body" ${collapsed ? 'hidden' : ''}>
   ${offerNote}
   ${renderCreativeMediaInputs(action, actionRef, disabled)}
+  ${renderCreativeOutpaintOptions(action, actionRef, disabled)}
   <label class="describe-vlm-chat-generation-prompt"><span>${escapeHtml(localText('Prompt', '提示词'))}</span><textarea rows="4" data-describe-vlm-chat-generation-prompt="${escapeHtml(actionRef)}" ${disabled}>${escapeHtml(prompt)}</textarea></label>
-  <div class="describe-vlm-chat-generation-options">
+  <div class="describe-vlm-chat-generation-options${themeControl ? ' has-theme' : ''}">
     <label><span>${escapeHtml(presetLabel)}</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
+    ${themeControl}
     <label><span>${escapeHtml(localText('Aspect', '比例'))}</span><select data-describe-vlm-chat-generation-aspect="${escapeHtml(actionRef)}" ${disabled}>${creativeAspectOptions().map((item) => `<option value="${escapeHtml(item.key)}" ${String(item.key) === action.aspect_ratio ? 'selected' : ''}>${escapeHtml(item.key === 'auto' ? localText('Auto', '自适应') : item.key)}</option>`).join('')}</select></label>
     <label><span>${escapeHtml(localText('Images', '数量'))}</span><select data-describe-vlm-chat-generation-count="${escapeHtml(actionRef)}" ${disabled}>${[1, 2, 3, 4].map((count) => `<option value="${count}" ${count === action.image_number ? 'selected' : ''}>${count}</option>`).join('')}</select></label>
   </div>
@@ -3205,8 +3387,27 @@
         if (!card) return found;
         found.action.prompt = String(card.querySelector('[data-describe-vlm-chat-generation-prompt]')?.value || found.action.prompt || '').trim();
         found.action.preset = String(card.querySelector('[data-describe-vlm-chat-generation-preset]')?.value || found.action.preset || CREATIVE_DEFAULT_PRESET);
+        const selectedTheme = String(card.querySelector('[data-describe-vlm-chat-generation-theme]')?.value || '').trim();
+        if (selectedTheme) {
+            found.action.execution_plan = Object.assign({}, found.action.execution_plan || {}, {
+                preset: found.action.preset,
+                theme: selectedTheme
+            });
+        }
         found.action.aspect_ratio = String(card.querySelector('[data-describe-vlm-chat-generation-aspect]')?.value || found.action.aspect_ratio || 'auto');
         found.action.image_number = Math.max(1, Math.min(4, Math.round(Number(card.querySelector('[data-describe-vlm-chat-generation-count]')?.value || found.action.image_number || 1))));
+        if (
+            String(found.action.task || '') === 'image_outpaint'
+            && creativePresetSupportsOutpaintDirections(creativePresetEntry(found.action.preset))
+        ) {
+            const keys = { up: 'scene_var_number7', down: 'scene_var_number8', left: 'scene_var_number9', right: 'scene_var_number10' };
+            const parameterOverrides = Object.assign({}, found.action.execution_plan?.parameter_overrides || {});
+            card.querySelectorAll('[data-describe-vlm-chat-outpaint]').forEach((input) => {
+                const key = keys[String(input.getAttribute('data-describe-vlm-chat-outpaint') || '')];
+                if (key) parameterOverrides[key] = Math.max(0, Math.min(100, Math.round(Number(input.value) || 0)));
+            });
+            found.action.execution_plan = Object.assign({}, found.action.execution_plan || {}, { parameter_overrides: parameterOverrides });
+        }
         return found;
     }
 
@@ -3219,6 +3420,7 @@
         if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= inputs.length || to >= inputs.length) return false;
         [inputs[from], inputs[to]] = [inputs[to], inputs[from]];
         clampCreativeActionMediaInputs(found.action);
+        found.action.execution_plan = creativeExecutionPlanForEntry(found.action, creativePresetEntry(found.action.preset), found.action.preset_source || 'user');
         persistCreativeAction(true);
         return true;
     }
@@ -3231,14 +3433,15 @@
         if (!Number.isInteger(target) || target < 0 || target >= inputs.length) return false;
         inputs.splice(target, 1);
         clampCreativeActionMediaInputs(found.action);
+        found.action.execution_plan = creativeExecutionPlanForEntry(found.action, creativePresetEntry(found.action.preset), found.action.preset_source || 'user');
         persistCreativeAction(true);
         return true;
     }
 
-    function persistCreativeAction(render = true) {
+    function persistCreativeAction(render = true, renderOptions = {}) {
         state.persistenceDirty = true;
         saveConversationSnapshot();
-        if (render) renderMessages();
+        if (render) renderMessages(renderOptions);
     }
 
     function applyCreativeRunResponse(ref, response) {
@@ -3266,7 +3469,7 @@
         if (CREATIVE_TERMINAL_STATES.has(responseState)) {
             generation.finished_at = String(response?.finished_at || new Date().toISOString());
         }
-        persistCreativeAction(true);
+        persistCreativeAction(true, CREATIVE_TERMINAL_STATES.has(responseState) ? {} : { anchorGenerationRef: ref });
         if (!wasFinished && responseState === 'finished' && generation.assets.length) {
             setStatus(state.autoAttachPreviousImage
                 ? localText(
@@ -3396,20 +3599,7 @@
         }
         const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
         const requestedTask = creativeActionTask(action, inputCount);
-        const compatibleEntry = creativeCompatiblePresetEntry(requestedTask, inputCount);
-        const automaticRoute = !['user', 'session_preference'].includes(String(action.preset_source || ''));
-        const shouldPreferReady = automaticRoute
-            && creativePresetModelReadiness(entry) !== 'ready'
-            && creativePresetModelReadiness(compatibleEntry) === 'ready';
-        const shouldPreferAutomatic = automaticRoute
-            && creativePresetRequiresManualInteraction(entry)
-            && !creativePresetRequiresManualInteraction(compatibleEntry);
-        if ((!creativePresetSupportsTask(entry, requestedTask, inputCount) || shouldPreferReady || shouldPreferAutomatic) && action.preset_source !== 'user' && compatibleEntry) {
-            entry = compatibleEntry;
-            action.preset = compatibleEntry.name;
-            action.preset_source = 'agent_auto';
-        }
-        if (!creativePresetSupportsTask(entry, requestedTask, inputCount)) {
+        if (!creativePresetHasTaskRoute(entry, requestedTask, inputCount)) {
             action.generation.state = 'failed';
             action.generation.error = CREATIVE_IMAGE_INPUT_TASKS.has(requestedTask)
                 ? localText(
@@ -3424,8 +3614,19 @@
             return;
         }
         action.preset = entry.name;
-        const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
         const mediaInputs = clampCreativeActionMediaInputs(action, entry);
+        const sourceName = action.preset_source === 'session_preference' ? 'session_preference' : action.preset_source === 'user' ? 'request_hint' : 'automatic';
+        const executionPlan = creativeExecutionPlanForEntry(action, entry, sourceName);
+        action.execution_plan = executionPlan;
+        if (['needs_mask', 'needs_interaction'].includes(executionPlan.status)) {
+            action.generation.state = executionPlan.status;
+            action.generation.error = executionPlan.status === 'needs_mask'
+                ? localText('This route requires a manually painted mask. Open the Preset workspace to prepare the mask.', '这条路线需要手动绘制遮罩，请在 Preset 工作区完成遮罩后运行。')
+                : localText('This route requires manual setup in the Preset workspace.', '这条路线需要在 Preset 工作区手动设置。');
+            persistCreativeAction(true);
+            return;
+        }
+        const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
         const minImages = creativePresetMinImages(entry);
         if (CREATIVE_IMAGE_INPUT_TASKS.has(String(action.task || '')) && !mediaInputs.length) {
             action.generation.state = 'failed';
@@ -3445,9 +3646,11 @@
             return;
         }
         const assetSources = {};
-        mediaInputs.forEach((input, index) => {
+        const mediaByRef = new Map(mediaInputs.map((input) => [String(input.ref || ''), input]));
+        executionPlan.media_bindings.forEach((binding) => {
+            const input = mediaByRef.get(String(binding.ref || ''));
             const source = creativeMediaAssetSource(input);
-            const slot = imageSlots[index];
+            const slot = imageSlots.includes(binding.slot) ? binding.slot : '';
             if (source && slot) assetSources[slot] = source;
         });
         const api = creativeCanvasApi();
@@ -3455,7 +3658,10 @@
             id: `describe_vlm_chat_preset_${action.tool_call_id}`,
             prompt: action.prompt,
             aspectRatio: action.aspect_ratio,
-            imageNumber: action.image_number
+            imageNumber: action.image_number,
+            sceneTheme: executionPlan.theme,
+            taskMethod: executionPlan.task_method,
+            parameterOverrides: executionPlan.parameter_overrides
         });
         if (!api || !presetNode || typeof api.presetModelStatus !== 'function' || typeof api.runNode !== 'function') {
             action.generation.state = 'failed';
@@ -3583,13 +3789,19 @@
         return Array.from(new Set(ids));
     }
 
-    function renderMessages() {
+    function renderMessages(options = {}) {
         const modal = ensureModal();
         const log = modal.querySelector('[data-describe-vlm-chat-log]');
         if (!log) return;
         renderCreativePreferenceMount(modal);
         const previousScrollTop = log.scrollTop;
         const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+        const anchorRef = String(options?.anchorGenerationRef || '');
+        const oldAnchorCard = anchorRef
+            ? Array.from(log.querySelectorAll('[data-describe-vlm-chat-generation-ref]')).find((node) => node.getAttribute('data-describe-vlm-chat-generation-ref') === anchorRef)
+            : null;
+        const oldAnchor = oldAnchorCard?.querySelector?.('[data-describe-vlm-chat-generation-stop]') || oldAnchorCard;
+        const oldAnchorTop = oldAnchor?.getBoundingClientRect?.().top;
         syncBusyControls(modal);
         if (!state.messages.length) {
             log.innerHTML = `<div class="describe-vlm-chat-empty">${escapeHtml(t('No chat yet.', '暂无对话。'))}</div>`;
@@ -3640,7 +3852,16 @@
   ${actionHtml}
 </div>`;
         }).join('');
-        log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
+        if (oldAnchor && Number.isFinite(oldAnchorTop)) {
+            const newAnchorCard = Array.from(log.querySelectorAll('[data-describe-vlm-chat-generation-ref]')).find((node) => node.getAttribute('data-describe-vlm-chat-generation-ref') === anchorRef);
+            const newAnchor = newAnchorCard?.querySelector?.('[data-describe-vlm-chat-generation-stop]') || newAnchorCard;
+            const newAnchorTop = newAnchor?.getBoundingClientRect?.().top;
+            log.scrollTop = Number.isFinite(newAnchorTop)
+                ? previousScrollTop + newAnchorTop - oldAnchorTop
+                : previousScrollTop;
+        } else {
+            log.scrollTop = wasNearBottom ? log.scrollHeight : previousScrollTop;
+        }
     }
 
     function historyTextForMessage(message) {
@@ -4002,11 +4223,17 @@
         const liveMessage = state.messages.find((item) => item?.id === sourceMessageId);
         if (!liveMessage || messageHasCreativeImageAction(liveMessage)) return;
         if (!Array.isArray(liveMessage.actions)) liveMessage.actions = [];
+        const preferredEntry = creativePresetEntry(state.creativePreference.preset);
+        const selectedEntry = creativePresetHasTaskRoute(preferredEntry, 'text_to_image', 0)
+            ? preferredEntry
+            : creativeCompatiblePresetEntry('text_to_image', 0);
         const action = {
             type: 'offer_image',
             target: 'canvas_run',
+            task: 'text_to_image',
             prompt: String(offer.prompt || '').trim(),
-            preset: String(offer.preset || state.creativePreference.preset || CREATIVE_DEFAULT_PRESET),
+            preset: String(selectedEntry?.name || CREATIVE_DEFAULT_PRESET),
+            preset_source: preferredEntry === selectedEntry ? 'session_preference' : 'agent_auto',
             aspect_ratio: String(offer.aspect_ratio || 'auto'),
             image_number: Math.max(1, Math.min(4, Math.round(Number(offer.image_number) || 1))),
             offer_text: String(offer.offer_text || '').trim(),
@@ -4017,6 +4244,11 @@
             generation: { state: 'awaiting_confirmation', assets: [] }
         };
         creativeGenerationForAction(action);
+        action.execution_plan = creativeExecutionPlanForEntry(
+            action,
+            selectedEntry,
+            preferredEntry === selectedEntry ? 'session_preference' : 'automatic'
+        );
         liveMessage.actions.push(action);
         state.creativeInitiative = normalizeCreativeInitiative(Object.assign({}, initiative, {
             last_offer_turn: initiative.turn_index,
@@ -4452,7 +4684,14 @@
             const found = syncCreativeActionFromDom(ref);
             if (found) {
                 found.action.preset_source = 'user';
-                const after = clampCreativeActionMediaInputs(found.action, creativePresetEntry(found.action.preset)).length;
+                const entry = creativePresetEntry(found.action.preset);
+                const after = clampCreativeActionMediaInputs(found.action, entry).length;
+                found.action.execution_plan = creativeExecutionPlanForEntry(found.action, entry, 'request_hint');
+                const generation = creativeGenerationForAction(found.action);
+                if (!CREATIVE_ACTIVE_STATES.has(String(generation.state || ''))) {
+                    generation.state = found.action.execution_plan.status === 'ready' ? 'awaiting_confirmation' : found.action.execution_plan.status;
+                    generation.error = '';
+                }
                 persistCreativeAction(true);
                 if (after < before) {
                     setStatus(localText(
@@ -4463,10 +4702,26 @@
             }
             return;
         }
-        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt]')) {
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-theme]')) {
+            const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-theme');
+            const found = syncCreativeActionFromDom(ref);
+            if (found) {
+                const entry = creativePresetEntry(found.action.preset);
+                found.action.execution_plan = creativeExecutionPlanForEntry(found.action, entry, 'request_hint');
+                const generation = creativeGenerationForAction(found.action);
+                if (!CREATIVE_ACTIVE_STATES.has(String(generation.state || ''))) {
+                    generation.state = found.action.execution_plan.status === 'ready' ? 'awaiting_confirmation' : found.action.execution_plan.status;
+                    generation.error = '';
+                }
+                persistCreativeAction(true);
+            }
+            return;
+        }
+        if (evt.target?.matches?.('[data-describe-vlm-chat-generation-aspect], [data-describe-vlm-chat-generation-count], [data-describe-vlm-chat-generation-prompt], [data-describe-vlm-chat-outpaint]')) {
             const ref = evt.target.getAttribute('data-describe-vlm-chat-generation-aspect')
                 || evt.target.getAttribute('data-describe-vlm-chat-generation-count')
-                || evt.target.getAttribute('data-describe-vlm-chat-generation-prompt');
+                || evt.target.getAttribute('data-describe-vlm-chat-generation-prompt')
+                || evt.target.getAttribute('data-describe-vlm-chat-outpaint-ref');
             syncCreativeActionFromDom(ref);
             persistCreativeAction(false);
             return;
