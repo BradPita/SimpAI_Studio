@@ -1,4 +1,5 @@
 {
+    "supported_tasks": ["image_outpaint"],
     "default_engine": {
         "backend_engine": "Flux",
             "disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],

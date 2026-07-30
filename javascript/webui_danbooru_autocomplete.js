@@ -20,6 +20,7 @@
         items: [],
         selectedIndex: 0,
         requestId: 0,
+        activeController: null,
         timer: 0,
         cache: new Map(),
         warmStarted: false,
@@ -179,9 +180,17 @@
         showRuntimeNotice(message, level);
     }
 
+    function cancelActiveRequest() {
+        state.requestId += 1;
+        const controller = state.activeController;
+        state.activeController = null;
+        if (controller && !controller.signal.aborted) controller.abort();
+    }
+
     function hideDropdown() {
         window.clearTimeout(state.timer);
         state.timer = 0;
+        cancelActiveRequest();
         state.field = null;
         state.token = null;
         state.items = [];
@@ -359,15 +368,31 @@
             return;
         }
         const requestId = ++state.requestId;
+        const controller = new AbortController();
+        state.activeController = controller;
         const api = window.SimpAICanvasWorkbenchApi;
-        const response = api && typeof api.danbooruAutocomplete === 'function'
-            ? await api.danbooruAutocomplete({ query: token.query, tag_source: 'all', limit: 32 })
-            : await fetch('/canvas-workbench/danbooru-autocomplete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: token.query, tag_source: 'all', limit: 32 })
-            }).then(r => r.json());
+        let response;
+        try {
+            response = api && typeof api.danbooruAutocomplete === 'function'
+                ? await api.danbooruAutocomplete(
+                    { query: token.query, tag_source: 'all', limit: 32 },
+                    { signal: controller.signal }
+                )
+                : await fetch('/canvas-workbench/danbooru-autocomplete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: token.query, tag_source: 'all', limit: 32 }),
+                    signal: controller.signal
+                }).then(r => r.json());
+        } catch (err) {
+            if (err?.name === 'AbortError' || requestId !== state.requestId) return;
+            hideDropdown();
+            return;
+        } finally {
+            if (state.activeController === controller) state.activeController = null;
+        }
         if (requestId !== state.requestId) return;
+        if (response?.aborted) return;
         if (!field.isConnected || currentActiveElement() !== field) {
             hideDropdown();
             return;
@@ -384,6 +409,7 @@
 
     function schedule(field) {
         window.clearTimeout(state.timer);
+        cancelActiveRequest();
         const token = tokenForField(field);
         if (!token) {
             hideDropdown();
@@ -393,7 +419,7 @@
         state.token = token;
         state.timer = window.setTimeout(() => {
             requestAutocomplete(field, token).catch(() => hideDropdown());
-        }, 45);
+        }, 180);
     }
 
     function dispatchInput(field, inputType, data) {
@@ -438,6 +464,11 @@
     }
 
     function onInput(evt) {
+        const field = fieldFromTarget(evt.target);
+        if (field && !evt.isComposing) schedule(field);
+    }
+
+    function onCompositionEnd(evt) {
         const field = fieldFromTarget(evt.target);
         if (field) schedule(field);
     }
@@ -490,6 +521,7 @@
         if (!root || state.boundRoots.has(root)) return;
         state.boundRoots.add(root);
         root.addEventListener('input', onInput, true);
+        root.addEventListener('compositionend', onCompositionEnd, true);
         root.addEventListener('focusin', onFocusIn, true);
         root.addEventListener('focusout', onFocusOut, true);
         root.addEventListener('keydown', onKeyDown, true);
@@ -504,8 +536,15 @@
         state.warmStarted = true;
         window.setTimeout(() => {
             const api = window.SimpAICanvasWorkbenchApi;
-            if (!api || typeof api.danbooruAutocomplete !== 'function') return;
-            api.danbooruAutocomplete({ query: '1g', tag_source: 'all', limit: 32 })
+            const payload = { query: '1g', tag_source: 'all', limit: 32 };
+            const request = api && typeof api.danbooruAutocomplete === 'function'
+                ? api.danbooruAutocomplete(payload)
+                : fetch('/canvas-workbench/danbooru-autocomplete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(response => response.json());
+            request
                 .then((response) => {
                     if (response?.ok && Array.isArray(response.items)) {
                         state.cache.set('all:1g:32', response.items);

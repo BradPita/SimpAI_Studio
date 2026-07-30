@@ -869,6 +869,8 @@ def _apply_regen_manifest(parsed_parameters, state_params, manifest):
         state_params["__regen_preset_restore"] = True
         state_params["__preset_switched"] = False
     if isinstance(preset_json, dict):
+        state_params["__preset_supported_tasks"] = config.resolve_preset_supported_tasks(preset_json, preset_name)
+        state_params["__preset_interaction_requirements"] = config.resolve_preset_interaction_requirements(preset_json, preset_name)
         state_params["__preset_model_list_raw"] = preset_json.get("model_list", [])
         state_params["__preset_previous_default_model_info"] = {
             "default_model": preset_json.get("default_model", ""),
@@ -1357,6 +1359,26 @@ def save_preset(*args):
                 engine.pop("backend_params", None)
 
         preset["default_engine"] = engine
+        source_supported_tasks = config.normalize_preset_supported_tasks(state_params.get("__preset_supported_tasks"))
+        if not source_supported_tasks:
+            source_preset_name = state_params.get("__preset")
+            source_preset = config.try_get_preset_content(source_preset_name, state_params['user'].get_did())
+            source_supported_tasks = config.resolve_preset_supported_tasks(source_preset, source_preset_name)
+        preset["supported_tasks"] = source_supported_tasks or config.resolve_preset_supported_tasks(
+            {"default_engine": engine},
+            name,
+        )
+        source_interaction_requirements = config.normalize_preset_interaction_requirements(
+            state_params.get("__preset_interaction_requirements")
+        )
+        if not source_interaction_requirements:
+            source_preset_name = state_params.get("__preset")
+            source_preset = config.try_get_preset_content(source_preset_name, state_params['user'].get_did())
+            source_interaction_requirements = config.resolve_preset_interaction_requirements(
+                source_preset,
+                source_preset_name,
+            )
+        preset["interaction_requirements"] = source_interaction_requirements
 
         preset["default_model"] = base_model
         preset["default_refiner"] = refiner_model

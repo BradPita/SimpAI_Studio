@@ -1,4 +1,5 @@
 {
+    "supported_tasks": ["video_face_swap"],
     "default_engine": {
         "backend_engine": "Comfy",
         "engine_type": "video",

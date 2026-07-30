@@ -242,24 +242,27 @@
   },
   "163": {
     "inputs": {
-      "method": "mkl",
+      "reference_image": [
+        "3",
+        0
+      ],
+      "edited_image": [
+        "14",
+        0
+      ],
       "strength": [
         "164",
         0
       ],
-      "multithread": true,
-      "image_ref": [
-        "3",
-        0
-      ],
-      "image_target": [
-        "14",
-        0
-      ]
+      "sample_fraction": 0.35,
+      "analysis_size": 512,
+      "mask_sensitivity": 3.0,
+      "mask_expand": 8,
+      "confidence_threshold": 0.55
     },
-    "class_type": "ColorMatch",
+    "class_type": "SimpAIAutoProtectedColorMatch",
     "_meta": {
-      "title": "Color Match"
+      "title": "Auto-Protected Color Match"
     }
   },
   "164": {
@@ -396,7 +399,7 @@
         0
       ],
       "on_false": [
-        "234",
+        "43",
         0
       ]
     },
@@ -660,7 +663,7 @@
   "204": {
     "inputs": {
       "pixels": [
-        "231",
+        "180",
         0
       ],
       "vae": [
@@ -701,7 +704,7 @@
         0
       ],
       "source_image": [
-        "231",
+        "180",
         0
       ],
       "source_image_b": [
@@ -753,12 +756,12 @@
   "209": {
     "inputs": {
       "width": [
-        "222",
-        1
+        "2",
+        6
       ],
       "height": [
-        "222",
-        2
+        "2",
+        7
       ],
       "batch_size": 1
     },
@@ -866,32 +869,6 @@
     "class_type": "GetImageSize",
     "_meta": {
       "title": "Get Image Size"
-    }
-  },
-  "222": {
-    "inputs": {
-      "width": [
-        "2",
-        6
-      ],
-      "height": [
-        "2",
-        7
-      ],
-      "upscale_method": "lanczos",
-      "keep_proportion": "pillarbox_blur",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 16,
-      "device": "cpu",
-      "image": [
-        "180",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "Resize Image v2"
     }
   },
   "223": {
@@ -1015,8 +992,8 @@
         0
       ],
       "on_true": [
-        "222",
-        1
+        "2",
+        6
       ],
       "on_false": [
         "220",
@@ -1035,32 +1012,12 @@
         0
       ],
       "on_true": [
-        "222",
-        2
+        "2",
+        7
       ],
       "on_false": [
         "220",
         1
-      ]
-    },
-    "class_type": "easy ifElse",
-    "_meta": {
-      "title": "If else"
-    }
-  },
-  "231": {
-    "inputs": {
-      "boolean": [
-        "225",
-        0
-      ],
-      "on_true": [
-        "222",
-        0
-      ],
-      "on_false": [
-        "180",
-        0
       ]
     },
     "class_type": "easy ifElse",
@@ -1099,32 +1056,6 @@
     "class_type": "GrowMaskWithBlur",
     "_meta": {
       "title": "Grow Mask With Blur"
-    }
-  },
-  "234": {
-    "inputs": {
-      "width": [
-        "2",
-        6
-      ],
-      "height": [
-        "2",
-        7
-      ],
-      "upscale_method": "lanczos",
-      "keep_proportion": "pillarbox_blur",
-      "pad_color": "0, 0, 0",
-      "crop_position": "center",
-      "divisible_by": 16,
-      "device": "cpu",
-      "image": [
-        "43",
-        0
-      ]
-    },
-    "class_type": "ImageResizeKJv2",
-    "_meta": {
-      "title": "Resize Image v2"
     }
   }
 }

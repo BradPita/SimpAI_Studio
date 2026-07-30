@@ -145,7 +145,7 @@ def compare_button_gr_update(value=None, visible=True, ready=False):
     return gr_update(
         value=COMPARE_BUTTON_ICON if value is None else value,
         visible=visible,
-        interactive=bool(ready),
+        interactive=True,
         size='sm',
         variant='primary' if ready else 'secondary',
     )
@@ -1249,7 +1249,7 @@ def generate_clicked(task: worker.AsyncTask, state):
         return value
 
     def compare_button_update(visible=True):
-        return tracked_component_update("compare_btn", visible=True, value=COMPARE_BUTTON_ICON, size='sm', variant='secondary')
+        return tracked_component_update("compare_btn", visible=True, interactive=True, value=COMPARE_BUTTON_ICON, size='sm', variant='secondary')
 
     def controls_interactive_updates(interactive):
         updates = []
@@ -3945,7 +3945,7 @@ with shared.gradio_root:
                             image_tools_box_title = gr.Markdown('<b>ToolBox</b>', visible=True)
                             open_folder_btn = gr.Button(value='📁', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             open_folder_btn.click(toolbox.open_output_folder, inputs=state_topbar, outputs=[open_folder_btn], show_progress=False)
-                            compare_btn = gr.Button(COMPARE_BUTTON_ICON, visible=True, interactive=False, size='sm', elem_id='compare_btn', elem_classes=['toolbox_icon_btn'])
+                            compare_btn = gr.Button(COMPARE_BUTTON_ICON, visible=True, interactive=True, size='sm', elem_id='compare_btn', elem_classes=['toolbox_icon_btn'])
                             prompt_info_button = gr.Button(value='ℹ️', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             prompt_regen_button = gr.Button(value='🔁', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
                             prompt_delete_button = gr.Button(value='🗑️', size='sm', visible=True, elem_classes=['toolbox_icon_btn'])
@@ -9287,6 +9287,15 @@ with shared.gradio_root:
             }
         }"""
         generation_start_js = """async (...args) => {
+            const frontendStartAt = performance.now();
+            const perfMark = (event, data = {}) => {
+                try { window.SimpAIStudioPerformance?.mark?.(event, data); } catch (e) {}
+            };
+            const generationState = args.find((value) => value && typeof value === "object" && (
+                Object.prototype.hasOwnProperty.call(value, "gallery_state")
+                || Object.prototype.hasOwnProperty.call(value, "__main_gallery_browser_folder")
+                || Object.prototype.hasOwnProperty.call(value, "__preset")
+            ));
             const rootById = (id) => {
                 try {
                     return (typeof getGradioRootById === "function" ? getGradioRootById(id) : null)
@@ -9332,6 +9341,10 @@ with shared.gradio_root:
                 button.setAttribute("aria-disabled", String(!interactive));
                 button.classList.toggle("disabled", !interactive);
             };
+            perfMark("generation.frontend_start", {
+                has_state: !!generationState,
+                preset: String(generationState?.__preset || "").slice(0, 160)
+            });
             try {
                 setVisible("generate_button", false);
                 setInteractive("generate_button", false);
@@ -9345,11 +9358,6 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] generation_button_prepare_failed", e);
             }
             try {
-                const generationState = args.find((value) => value && typeof value === "object" && (
-                    Object.prototype.hasOwnProperty.call(value, "gallery_state")
-                    || Object.prototype.hasOwnProperty.call(value, "__main_gallery_browser_folder")
-                    || Object.prototype.hasOwnProperty.call(value, "__preset")
-                ));
                 if (typeof prepareSimpleAIGenerationStartSurface === "function") {
                     prepareSimpleAIGenerationStartSurface("generate_start", generationState);
                 } else if (typeof scheduleSimpleAIPresetGalleryClear === "function") {
@@ -9361,8 +9369,24 @@ with shared.gradio_root:
                 console.warn("[UI-TRACE] generation_surface_prepare_failed", e);
             }
             try {
-                if (window.SimpAISketch?.flushAll) await window.SimpAISketch.flushAll({ force: true, change: true, cache: true });
+                if (typeof showSimpleAIGenerationPreparingState === "function") {
+                    showSimpleAIGenerationPreparingState(generationState);
+                }
             } catch (e) {
+                console.warn("[UI-TRACE] generation_preparing_progress_failed", e);
+            }
+            let sketchFlushOk = true;
+            try {
+                if (window.SimpAISketch?.flushAll) {
+                    sketchFlushOk = await window.SimpAISketch.flushAll({
+                        force: true,
+                        change: true,
+                        cache: true,
+                        cacheWaitMs: 1500
+                    });
+                }
+            } catch (e) {
+                sketchFlushOk = false;
                 console.warn("[UI-TRACE] scene_sketch_flush_failed", e);
             }
             try {
@@ -9372,6 +9396,10 @@ with shared.gradio_root:
             } catch (e) {
                 console.warn("[UI-TRACE] preset_gallery.generate_clear_failed", e);
             }
+            perfMark("generation.frontend_ready", {
+                duration_ms: Math.round((performance.now() - frontendStartAt) * 10) / 10,
+                sketch_flush_ok: sketchFlushOk !== false
+            });
             return args;
         }"""
         preview_start_js = """async () => {
@@ -10110,6 +10138,29 @@ with shared.gradio_root:
                 compare_button_gr_update(ready=False),
             )
 
+        def prepare_generation_ui(
+            video,
+            audio,
+            original_video_path,
+            state_params,
+            existing_audio,
+        ):
+            started_at = time.perf_counter()
+            media_updates = list(_stash_scene_media_before_generation(
+                video,
+                audio,
+                original_video_path,
+                state_params,
+                existing_audio,
+            ))
+            surface_updates = list(show_generation_preview_surface(state_params))
+            logger.info(
+                "[Generate] prepare_ui: elapsed=%.3fs, preset=%s",
+                time.perf_counter() - started_at,
+                state_params.get("__preset") if isinstance(state_params, dict) else None,
+            )
+            return media_updates + surface_updates
+
         def generate_clicked_or_director(generation_task, state_params, director_enabled, director_runtime):
             yield from scene_director_webui.generate_clicked_or_director(
                 generation_task,
@@ -10305,9 +10356,15 @@ with shared.gradio_root:
         scene_batch_evt.then(topbar.process_after_generation, inputs=state_topbar, outputs=[generate_button, stop_button, skip_button, state_is_generating, gallery_index, index_radio] + protections + [gallery_index_stat, history_link], show_progress=False) \
             .then(fn=None, inputs=[gallery_index_stat, state_topbar], queue=False, show_progress=False, js='(x,state)=>{try{if(typeof scheduleSimpleAIPresetGalleryClear==="function") scheduleSimpleAIPresetGalleryClear("generation_done_batch"); else if(typeof clearSimpleAIPresetSwitchGalleryHidden==="function") clearSimpleAIPresetSwitchGalleryHidden("generation_done_batch");}catch(e){} refresh_finished_images_catalog_label(x, state && (state.__gallery_engine_type || state.engine_type), {refresh: !(state && state.__skip_gallery_browser_refresh_once), syncSwitch:false});}')
 
-        generate_event = bind_generation_failure_cleanup(generate_button.click(_stash_scene_media_before_generation, inputs=[scene_video, scene_audio, scene_original_video_path, state_topbar, scene_audio_backup], outputs=[scene_video_backup, scene_audio_backup, scene_original_video_backup, scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder, generate_button, skip_button, stop_button, random_aspect_ratio_state], show_progress=False, queue=False, js=generation_start_js))
+        generate_event = bind_generation_failure_cleanup(generate_button.click(
+            prepare_generation_ui,
+            inputs=[scene_video, scene_audio, scene_original_video_path, state_topbar, scene_audio_backup],
+            outputs=[scene_video_backup, scene_audio_backup, scene_original_video_backup, scene_video, scene_audio, scene_original_video_path, scene_video_placeholder, scene_audio_placeholder, generate_button, skip_button, stop_button, random_aspect_ratio_state, progress_window, progress_gallery, progress_video, gallery, comparison_box, compare_btn],
+            show_progress=False,
+            queue=False,
+            js=generation_start_js,
+        ))
         generate_event = bind_generation_failure_cleanup(generate_event.success(cache_input_image_func, inputs=[state_topbar, enhance_checkbox, current_tab, uov_input_image, inpaint_input_image, enhance_input_image, scene_input_image1, scene_canvas_image], outputs=[cached_input_image], show_progress=False, queue=False))
-        generate_event = bind_generation_failure_cleanup(generate_event.success(show_generation_preview_surface, inputs=state_topbar, outputs=[progress_window, progress_gallery, progress_video, gallery, comparison_box, compare_btn], show_progress=False, queue=False))
         generate_event = bind_generation_failure_cleanup(generate_event.success(
             topbar.process_before_generation,
             inputs=[
@@ -12498,7 +12555,13 @@ async def canvas_workbench_danbooru_autocomplete(payload: dict = Body(...)):
         query = str(payload.get("query") or payload.get("term") or "")[:200]
         tag_source_mode = canvas_danbooru_service._canvas_danbooru_tag_source_mode(payload.get("tag_source") or payload.get("tag_source_mode") or "all")
         limit = max(1, min(int(payload.get("limit") or 32), 80))
-        items = canvas_danbooru_service._canvas_autocomplete_danbooru_tags(query, limit=limit, source_mode=tag_source_mode)
+        items = await run_in_threadpool(
+            lambda: canvas_danbooru_service._canvas_autocomplete_danbooru_tags(
+                query,
+                limit=limit,
+                source_mode=tag_source_mode,
+            )
+        )
         runtime_status = canvas_danbooru_service._canvas_danbooru_fast_runtime_status()
         return JSONResponse({"ok": True, "items": items, "query": query, "tag_source": tag_source_mode, "runtime_status": runtime_status})
     except Exception as e:

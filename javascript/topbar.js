@@ -1099,6 +1099,8 @@ function ensureSimpleAICompareButtonLabel(el) {
 
 function restoreSimpleAICompareButtonNodeInteractivity(node) {
     if (!node) return;
+    try { if ("disabled" in node) node.disabled = false; } catch (e) {}
+    try { node.removeAttribute("aria-disabled"); } catch (e) {}
     try { node.style.removeProperty("pointer-events"); } catch (e) {}
     try { node.style.removeProperty("cursor"); } catch (e) {}
 }
@@ -1113,18 +1115,11 @@ function setSimpleAICompareButtonReadyState(el, ready) {
     getSimpleAICompareButtonElements(el).forEach((node) => {
         ensureSimpleAICompareButtonLabel(node);
         restoreSimpleAICompareButtonNodeInteractivity(node);
-        try {
-            if ("disabled" in node) node.disabled = !ready;
-            if (ready) node.removeAttribute("aria-disabled");
-            else node.setAttribute("aria-disabled", "true");
-        } catch (e) {}
         try { node.classList.toggle("simpleai-compare-ready", !!ready); } catch (e) {}
-        if (ready) {
-            try {
-                node.classList.add("primary");
-                node.classList.remove("secondary");
-            } catch (e) {}
-        }
+        try {
+            node.classList.toggle("primary", !!ready);
+            node.classList.toggle("secondary", !ready);
+        } catch (e) {}
         try { node.dataset.simpleaiCompareReady = ready ? "1" : "0"; } catch (e) {}
     });
 }
@@ -1399,6 +1394,40 @@ function prepareSimpleAIGenerationStartSurface(reason, state) {
     return nextState;
 }
 window.prepareSimpleAIGenerationStartSurface = prepareSimpleAIGenerationStartSurface;
+
+function showSimpleAIGenerationPreparingState(state) {
+    const params = state && typeof state === "object"
+        ? state
+        : (window.simpleaiTopbarSystemParams || topbarLastSystemParams || {});
+    const lang = String(params?.__lang || "").trim().toLowerCase();
+    const statusText = /^(?:cn|zh)(?:[-_]|$)/i.test(lang)
+        ? "正在准备任务并处理输入..."
+        : "Preparing task and processing inputs...";
+    const root = getSimpleAIElementById("progress_html");
+    if (!root) return false;
+    const content = root.querySelector?.(":scope > .prose") || root.querySelector?.(".prose") || root;
+    try {
+        root.hidden = false;
+        root.removeAttribute("hidden");
+        root.removeAttribute("aria-hidden");
+        root.classList.remove("hidden", "hide");
+        root.style.removeProperty("display");
+        content.innerHTML = `
+            <div class="loader-container sai-generation-progress" style="--sai-progress: 1%;">
+                <div class="loader"></div>
+                <div class="progress-container sai-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="1" aria-label="${statusText}">
+                    <div class="sai-progress-fill"></div>
+                    <div class="sai-progress-marker"><span>1%</span></div>
+                </div>
+                <span class="sai-progress-status" title="${statusText}">${statusText}</span>
+            </div>`;
+        root.dataset.simpleaiGenerationPreparingAt = String(Date.now());
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+window.showSimpleAIGenerationPreparingState = showSimpleAIGenerationPreparingState;
 
 function shouldIgnorePresetGalleryClearClick(evt) {
     try {
@@ -12342,6 +12371,62 @@ function bindMainLayoutResponsiveStack() {
 }
 window.bindMainLayoutResponsiveStack = bindMainLayoutResponsiveStack;
 
+function hasSimpleAIComparableInputFromDom() {
+    const inputIds = [
+        "scene_canvas",
+        "scene_input_image1",
+        "uov_input_image",
+        "inpaint_input_image",
+        "enhance_input_image",
+    ];
+    const isRendered = (root) => {
+        if (!root || root.hidden) return false;
+        try {
+            const style = window.getComputedStyle ? window.getComputedStyle(root) : null;
+            if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+        } catch (e) {}
+        try {
+            const rect = root.getBoundingClientRect();
+            if (!(rect.width > 0 && rect.height > 0)) return false;
+        } catch (e) {}
+        return true;
+    };
+    const hasSketchPayload = (root) => {
+        const textarea = root?.querySelector?.("textarea");
+        const raw = String(textarea?.value || "").trim();
+        if (!raw || raw[0] !== "{") return false;
+        try {
+            const payload = JSON.parse(raw);
+            const width = Number(payload?.width || 0);
+            const height = Number(payload?.height || 0);
+            const imageRef = String(payload?.image_ref || "").trim();
+            return width > 8
+                && height > 8
+                && !!imageRef
+                && (payload?.simpai_sketch_cached === true || imageRef.startsWith("simpai-sketch-cache:"));
+        } catch (e) {
+            return false;
+        }
+    };
+    const hasLoadedImage = (root) => {
+        try {
+            return Array.from(root.querySelectorAll("img")).some((image) => {
+                const src = String(image.currentSrc || image.src || image.getAttribute("src") || "");
+                const width = Number(image.naturalWidth || 0);
+                const height = Number(image.naturalHeight || 0);
+                return !!src && !/welcome/i.test(src) && width > 8 && height > 8;
+            });
+        } catch (e) {
+            return false;
+        }
+    };
+    return inputIds.some((id) => {
+        const root = getSimpleAIAppElement(id) || document.getElementById(id);
+        return isRendered(root) && (hasSketchPayload(root) || hasLoadedImage(root));
+    });
+}
+window.hasSimpleAIComparableInputFromDom = hasSimpleAIComparableInputFromDom;
+
 function syncPostGenerationResultControls(stateOverride) {
     const app = gradioApp();
     try {
@@ -12569,6 +12654,12 @@ function syncPostGenerationResultControls(stateOverride) {
         const hasResultSurface = !!document.querySelector(
             ".preview_column > .row[data-simpleai-generation-result-surface='1'], .preview_column > .row[data-simpleai-post-generation-surface='1']"
         );
+        const hasRenderedImageOutput = mediaNodes.some((node) => String(node.tagName || "").toUpperCase() === "IMG");
+        const domCompareInputOk = !!(
+            hasRenderedGenerationSignature
+            && hasRenderedImageOutput
+            && hasSimpleAIComparableInputFromDom()
+        );
         const shouldNormalizeRenderedOutput = hasBrowserState || hasRenderedGenerationSignature || hasResultSurface;
         if (!shouldNormalizeRenderedOutput) return candidateParams;
         const nextParams = Object.assign({}, candidate);
@@ -12588,8 +12679,9 @@ function syncPostGenerationResultControls(stateOverride) {
                 || compareBtn.classList?.contains("primary")
             )
         );
+        nextParams.__post_generation_compare_input_ok = domCompareInputOk || !!nextParams.__post_generation_compare_input_ok;
         nextParams.__post_generation_compare_visible = !!compareBtn;
-        nextParams.__post_generation_compare_ready = compareReady || !!nextParams.__post_generation_compare_ready;
+        nextParams.__post_generation_compare_ready = domCompareInputOk || compareReady || !!nextParams.__post_generation_compare_ready;
         nextParams.__post_generation_compare_cleared = !nextParams.__post_generation_compare_ready;
         topbarLastSystemParams = nextParams;
         window.simpleaiTopbarSystemParams = nextParams;
@@ -12598,6 +12690,7 @@ function syncPostGenerationResultControls(stateOverride) {
             reason: reason || "rendered_generation_output",
             itemCount,
             hasSource: !!source,
+            domCompareInputOk,
         });
         return nextParams;
     };

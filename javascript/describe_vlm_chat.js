@@ -49,6 +49,45 @@
     const CREATIVE_POLL_INTERVAL_MS = 900;
     const CREATIVE_TERMINAL_STATES = new Set(['finished', 'failed', 'canceled', 'skipped']);
     const CREATIVE_ACTIVE_STATES = new Set(['preparing', 'checking_models', 'queued', 'running', 'cancelling', 'skipping']);
+    const CREATIVE_IMAGE_TASKS = new Set([
+        'text_to_image', 'image_edit', 'multi_image_edit', 'image_upscale', 'image_restore',
+        'image_background_removal', 'image_object_removal', 'image_outpaint', 'image_relight',
+        'image_style_transfer', 'image_face_swap', 'image_pose_transfer', 'image_pose_extraction',
+        'image_anime_to_real', 'image_view_synthesis', 'image_depth_estimation',
+        'image_object_transfer', 'image_expression_transfer'
+    ]);
+    const CREATIVE_IMAGE_INPUT_TASKS = new Set([...CREATIVE_IMAGE_TASKS].filter((task) => task !== 'text_to_image'));
+    const CREATIVE_MULTI_IMAGE_TASKS = new Set([
+        'multi_image_edit', 'image_style_transfer', 'image_face_swap', 'image_pose_transfer',
+        'image_object_transfer', 'image_expression_transfer'
+    ]);
+    const CREATIVE_TASK_ALIASES = {
+        t2i: 'text_to_image',
+        text2image: 'text_to_image',
+        edit: 'image_edit',
+        image_to_image: 'image_edit',
+        multi_edit: 'multi_image_edit',
+        upscale: 'image_upscale',
+        super_resolution: 'image_upscale',
+        restore: 'image_restore',
+        remove_background: 'image_background_removal',
+        background_removal: 'image_background_removal',
+        remove_object: 'image_object_removal',
+        object_removal: 'image_object_removal',
+        outpaint: 'image_outpaint',
+        relight: 'image_relight',
+        style_transfer: 'image_style_transfer',
+        face_swap: 'image_face_swap',
+        pose_transfer: 'image_pose_transfer',
+        pose_extraction: 'image_pose_extraction',
+        anime_to_real: 'image_anime_to_real',
+        view_synthesis: 'image_view_synthesis',
+        depth_estimation: 'image_depth_estimation',
+        feature_transfer: 'image_object_transfer',
+        object_transfer: 'image_object_transfer',
+        image_feature_transfer: 'image_object_transfer',
+        expression_transfer: 'image_expression_transfer'
+    };
 
     function normalizeCreativePreference(value) {
         const source = value && typeof value === 'object' ? value : {};
@@ -207,11 +246,14 @@
                 if (!['generate_image', 'offer_image'].includes(action?.type)) return;
                 const generationState = String(action.generation?.state || 'awaiting_confirmation').toLowerCase();
                 const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
+                const task = creativeActionTask(action, inputCount);
                 if (
                     ['awaiting_confirmation', 'models_missing', 'preset_missing'].includes(generationState)
-                    && (inputCount === 0 || (entry && creativePresetMaxImages(entry) >= inputCount))
+                    && entry
+                    && creativePresetSupportsTask(entry, task, inputCount)
                 ) {
                     action.preset = preset;
+                    action.preset_source = 'session_preference';
                 }
             });
         });
@@ -1778,15 +1820,20 @@
         const prompt = String(action.prompt || '').slice(0, MAX_PERSISTED_TEXT);
         if (!prompt) return null;
         if (!['generate_image', 'offer_image'].includes(type)) return { type, prompt };
+        const taskKey = String(action.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
+        const task = CREATIVE_TASK_ALIASES[taskKey] || taskKey;
         return {
             type,
             target: 'canvas_run',
-            task: ['image_edit', 'multi_image_edit'].includes(String(action.task || '')) ? String(action.task) : 'text_to_image',
+            task: CREATIVE_IMAGE_TASKS.has(task) ? task : 'text_to_image',
             media_inputs: Array.isArray(action.media_inputs)
                 ? action.media_inputs.slice(0, MAX_ATTACHMENTS).map(normalizeCreativeMediaInput).filter(Boolean)
                 : [],
             prompt,
             preset: String(action.preset || CREATIVE_DEFAULT_PRESET).slice(0, 200),
+            preset_source: ['agent_auto', 'session_preference', 'user'].includes(String(action.preset_source || ''))
+                ? String(action.preset_source)
+                : '',
             aspect_ratio: String(action.aspect_ratio || 'auto').slice(0, 40),
             image_number: Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1))),
             label: String(action.label || '').slice(0, 200),
@@ -2489,12 +2536,111 @@
             : 0;
     }
 
+    function creativeActionTask(action, inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0) {
+        const requested = String(action?.task || '').trim().toLowerCase().replace(/[- ]/g, '_');
+        const normalized = CREATIVE_TASK_ALIASES[requested] || requested;
+        if (!CREATIVE_IMAGE_TASKS.has(normalized)) {
+            return inputCount > 1 ? 'multi_image_edit' : inputCount === 1 ? 'image_edit' : 'text_to_image';
+        }
+        if (normalized === 'text_to_image' && inputCount > 0) return inputCount > 1 ? 'multi_image_edit' : 'image_edit';
+        if (normalized === 'image_edit' && inputCount > 1) return 'multi_image_edit';
+        if (normalized === 'multi_image_edit' && inputCount === 1) return 'image_edit';
+        return normalized;
+    }
+
+    function creativePresetSupportedTasks(entry) {
+        const declared = Array.isArray(entry?.media_capability?.supported_tasks)
+            ? entry.media_capability.supported_tasks.map((task) => {
+                const taskKey = String(task || '').trim().toLowerCase().replace(/[- ]/g, '_');
+                return CREATIVE_TASK_ALIASES[taskKey] || taskKey;
+            })
+            : [];
+        if (declared.length) return [...new Set(declared.filter((task) => CREATIVE_IMAGE_TASKS.has(task)))];
+        const descriptor = [
+            entry?.name,
+            entry?.task_method,
+            entry?.schema?.theme_title
+        ].map((value) => String(value || '').toLowerCase()).join(' ');
+        const editMarkers = [
+            'image edit', 'image-edit', 'image_edit', 'editing', 'qwenedit', 'qwen_edit',
+            'kleinedit', 'klein_edit', 'flux2_9b_edit', 'kontext', 'inpaint', 'outpaint',
+            'retouch', 'imagerepair', 'image repair', 'pose editor', 'a2r'
+        ];
+        const maxImages = creativePresetMaxImages(entry);
+        if (maxImages > 0 && editMarkers.some((marker) => descriptor.includes(marker))) {
+            return maxImages > 1 ? ['image_edit', 'multi_image_edit'] : ['image_edit'];
+        }
+        return ['text_to_image'];
+    }
+
+    function creativePresetSupportsTask(entry, task, inputCount = 0) {
+        if (!entry || !creativePresetSupportedTasks(entry).includes(task)) return false;
+        const count = Math.max(0, Math.round(Number(inputCount) || 0));
+        if (task === 'text_to_image') return count === 0;
+        const required = Math.max(CREATIVE_MULTI_IMAGE_TASKS.has(task) ? 2 : 1, creativePresetMinImages(entry));
+        return count >= required && count <= creativePresetMaxImages(entry);
+    }
+
+    function creativePresetModelReadiness(entry) {
+        if (entry?.missing === true) return 'missing';
+        if (entry?.has_model_probe === true) return 'ready';
+        return 'unknown';
+    }
+
+    function creativePresetRequiresManualInteraction(entry) {
+        const requirements = Array.isArray(entry?.media_capability?.interaction_requirements)
+            ? entry.media_capability.interaction_requirements
+            : [];
+        return requirements.length > 0;
+    }
+
+    function creativeCompatiblePresetEntry(task, inputCount = 0) {
+        const candidates = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
+        const taskPriorities = {
+            image_upscale: ['Z-TTP', 'Wan-TTP'],
+            image_restore: ['Imagerepair+'],
+            image_background_removal: ['Removebg'],
+            image_object_removal: ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'Eraser'],
+            image_object_transfer: ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'Swap+', 'NunSwap_fp4', 'NunSwap_int4'],
+            image_outpaint: ['OneKey-Outpaint'],
+            image_relight: ['Relight', 'Flux2-AngleLight'],
+            image_style_transfer: ['StyleTransfer+'],
+            image_face_swap: ['Swapface'],
+            image_pose_transfer: ['Flux2-KleinPose', 'QwenPose'],
+            image_pose_extraction: ['OneKeyPose'],
+            image_anime_to_real: ['Flux2-A2R', 'QwenA2R'],
+            image_view_synthesis: ['QwenMultiAngle'],
+            image_depth_estimation: ['Depthstatue'],
+            image_expression_transfer: ['LivePortrait Exp']
+        };
+        const priorities = (taskPriorities[task] || ['Flux2-KleinEdit', 'Krea2-ImageEdit', 'QwenEdit+', 'NunQwenEdit+_fp4', 'NunQwenEdit+_int4', 'Bernini-ImageEdit']).slice();
+        if (task === 'text_to_image') priorities.splice(0, priorities.length, CREATIVE_DEFAULT_PRESET, 'Anima');
+        const readinessRank = { ready: 0, unknown: 1, missing: 2 };
+        return candidates.slice().sort((left, right) => {
+            const interactionDifference = Number(creativePresetRequiresManualInteraction(left)) - Number(creativePresetRequiresManualInteraction(right));
+            if (interactionDifference) return interactionDifference;
+            const readinessDifference = readinessRank[creativePresetModelReadiness(left)] - readinessRank[creativePresetModelReadiness(right)];
+            if (readinessDifference) return readinessDifference;
+            const leftPriority = priorities.findIndex((name) => name.toLowerCase() === String(left?.name || '').toLowerCase());
+            const rightPriority = priorities.findIndex((name) => name.toLowerCase() === String(right?.name || '').toLowerCase());
+            return (leftPriority < 0 ? priorities.length : leftPriority) - (rightPriority < 0 ? priorities.length : rightPriority);
+        })[0] || null;
+    }
+
     function creativePresetCapabilitiesPayload() {
         return state.creativePresetCatalog.slice(0, 100).map((entry) => ({
             name: String(entry?.name || ''),
             min_images: creativePresetMinImages(entry),
             max_images: creativePresetMaxImages(entry),
-            output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image'
+            output_type: String(entry?.media_capability?.output_type || entry?.engine_type || 'image').toLowerCase() === 'video' ? 'video' : 'image',
+            supported_tasks: creativePresetSupportedTasks(entry),
+            interaction_requirements: Array.isArray(entry?.media_capability?.interaction_requirements)
+                ? entry.media_capability.interaction_requirements.slice(0, 8)
+                : [],
+            model_status: creativePresetModelReadiness(entry),
+            backend_engine: String(entry?.backend_engine || entry?.default_engine?.backend_engine || '').slice(0, 80),
+            task_method: String(entry?.task_method || '').slice(0, 120),
+            purpose: String(entry?.schema?.theme_title || '').trim().replace(/^Theme$/i, '').slice(0, 240)
         })).filter((item) => item.name);
     }
 
@@ -2596,12 +2742,7 @@
             .slice(0, MAX_ATTACHMENTS)
             .map(normalizeCreativeMediaInput)
             .filter(Boolean);
-        const requestedTask = String(action.task || '').trim().toLowerCase();
-        action.task = action.media_inputs.length > 1
-            ? 'multi_image_edit'
-            : action.media_inputs.length === 1
-                ? 'image_edit'
-                : (['image_edit', 'multi_image_edit'].includes(requestedTask) ? requestedTask : 'text_to_image');
+        action.task = creativeActionTask(action, action.media_inputs.length);
         action.preset = String(action.preset || CREATIVE_DEFAULT_PRESET).trim() || CREATIVE_DEFAULT_PRESET;
         action.aspect_ratio = String(action.aspect_ratio || 'auto').trim() || 'auto';
         action.image_number = Math.max(1, Math.min(4, Math.round(Number(action.image_number) || 1)));
@@ -2624,9 +2765,7 @@
         action.media_inputs.forEach((input, index) => {
             input.role = index === 0 ? 'base_image' : `reference_image_${index}`;
         });
-        if (action.media_inputs.length > 1) action.task = 'multi_image_edit';
-        else if (action.media_inputs.length === 1) action.task = 'image_edit';
-        else if (!['image_edit', 'multi_image_edit'].includes(String(action.task || ''))) action.task = 'text_to_image';
+        action.task = creativeActionTask(action, action.media_inputs.length);
         return action.media_inputs;
     }
 
@@ -2664,10 +2803,27 @@
                 return;
             }
             const requestedRefs = Array.isArray(action.media_refs) ? action.media_refs.map((ref) => String(ref || '')) : [];
+            const requestedTask = creativeActionTask(action, requestedRefs.length);
             const preferredPreset = String(state.creativePreference?.preset || '').trim();
             const preferredEntry = creativePresetEntry(preferredPreset);
-            if (preferredPreset && (!preferredEntry || creativePresetMaxImages(preferredEntry) >= requestedRefs.length)) {
+            if (preferredPreset && creativePresetSupportsTask(preferredEntry, requestedTask, requestedRefs.length)) {
                 action.preset = preferredPreset;
+                action.preset_source = 'session_preference';
+            } else if (String(state.creativePreference?.style || '') === 'auto') {
+                action.preset_source = 'agent_auto';
+            }
+            const selectedEntry = creativePresetEntry(action.preset);
+            const compatibleEntry = creativeCompatiblePresetEntry(requestedTask, requestedRefs.length);
+            const automaticSelection = !preferredPreset || String(state.creativePreference?.style || '') === 'auto';
+            const shouldPreferReady = automaticSelection
+                && creativePresetModelReadiness(selectedEntry) !== 'ready'
+                && creativePresetModelReadiness(compatibleEntry) === 'ready';
+            const shouldPreferAutomatic = automaticSelection
+                && creativePresetRequiresManualInteraction(selectedEntry)
+                && !creativePresetRequiresManualInteraction(compatibleEntry);
+            if ((!creativePresetSupportsTask(selectedEntry, requestedTask, requestedRefs.length) || shouldPreferReady || shouldPreferAutomatic) && compatibleEntry) {
+                action.preset = compatibleEntry.name;
+                action.preset_source = 'agent_auto';
             }
             action.media_inputs = requestedRefs.map((ref, index) => {
                 const resolved = mediaByRef.get(ref);
@@ -2702,12 +2858,19 @@
 
     function creativePresetOptions(action) {
         const selected = String(action?.preset || CREATIVE_DEFAULT_PRESET);
-        const rows = state.creativePresetCatalog.slice();
+        const inputCount = Array.isArray(action?.media_inputs) ? action.media_inputs.length : 0;
+        const task = creativeActionTask(action, inputCount);
+        const rows = state.creativePresetCatalog.filter((entry) => creativePresetSupportsTask(entry, task, inputCount));
         if (!rows.some((entry) => entry.name === selected)) {
-            rows.unshift({ name: selected, display_name: selected });
+            const selectedEntry = creativePresetEntry(selected);
+            rows.unshift(Object.assign({}, selectedEntry || {}, {
+                name: selected,
+                display_name: `${selectedEntry?.display_name || selected} ${localText('(not available for this task)', '（不支持当前任务）')}`,
+                task_incompatible: true
+            }));
         }
         if (!rows.length) rows.push({ name: CREATIVE_DEFAULT_PRESET, display_name: CREATIVE_DEFAULT_PRESET });
-        return rows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selected ? 'selected' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`).join('');
+        return rows.map((entry) => `<option value="${escapeHtml(entry.name)}" ${entry.name === selected ? 'selected' : ''} ${entry.task_incompatible ? 'disabled' : ''}>${escapeHtml(entry.display_name || entry.name)}</option>`).join('');
     }
 
     function creativeAssetUrl(value) {
@@ -2749,6 +2912,31 @@
         if (current === 'skipped') return localText('Skipped', '已跳过');
         if (current === 'failed') return String(generation?.error || generation?.message || localText('Generation failed.', '生成失败。'));
         return localText('Ready', '等待确认');
+    }
+
+    function creativeTaskLabel(task) {
+        const labels = {
+            text_to_image: ['Image generation', '生图'],
+            image_edit: ['Image edit', '图片编辑'],
+            multi_image_edit: ['Multi-image edit', '多图编辑'],
+            image_upscale: ['Image upscale', '图像放大'],
+            image_restore: ['Image restoration', '图像修复'],
+            image_background_removal: ['Remove background', '去背景'],
+            image_object_removal: ['Remove object', '去除物体'],
+            image_outpaint: ['Image outpaint', '扩图'],
+            image_relight: ['Image relighting', '图像重打光'],
+            image_style_transfer: ['Style transfer', '风格迁移'],
+            image_face_swap: ['Face swap', '换脸'],
+            image_pose_transfer: ['Pose transfer', '姿势迁移'],
+            image_pose_extraction: ['Pose extraction', '姿势提取'],
+            image_anime_to_real: ['Anime to real', '动漫转真人'],
+            image_view_synthesis: ['View synthesis', '多视角生成'],
+            image_depth_estimation: ['Depth estimation', '深度估计'],
+            image_object_transfer: ['Object transfer', '物体迁移'],
+            image_expression_transfer: ['Expression transfer', '表情迁移']
+        };
+        const label = labels[String(task || '')] || labels.text_to_image;
+        return localText(label[0], label[1]);
     }
 
     function creativePreviewSource(generation) {
@@ -2831,7 +3019,11 @@
     function renderCreativeFinishedResult(action, actionRef, assets) {
         const rerunTitle = localText('Generate again', '再次生成');
         const copyTitle = localText('Copy prompt', '复制提示词');
-        return `<div class="describe-vlm-chat-generated-result" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}">${assets.map((asset, index) => {
+        const presetName = String(action?.preset || CREATIVE_DEFAULT_PRESET).trim() || CREATIVE_DEFAULT_PRESET;
+        const presetLabel = action?.preset_source === 'agent_auto'
+            ? localText('Agent Preset', 'Agent 使用的 Preset')
+            : 'Preset';
+        return `<div class="describe-vlm-chat-generated-result" data-describe-vlm-chat-generation-ref="${escapeHtml(actionRef)}"><div class="describe-vlm-chat-generated-meta" title="${escapeHtml(`${presetLabel}: ${presetName}`)}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>${escapeHtml(presetLabel)}</span><b>${escapeHtml(presetName)}</b></div>${assets.map((asset, index) => {
             const src = creativeAssetUrl(asset.preview_url);
             if (!src) return '';
             const resultLabel = localText(`Generated image ${index + 1}`, `生成图片 ${index + 1}`);
@@ -2906,7 +3098,7 @@
         const entry = creativePresetEntry(action?.preset);
         const maxImages = entry ? creativePresetMaxImages(entry) : MAX_ATTACHMENTS;
         if (!inputs.length) {
-            return ['image_edit', 'multi_image_edit'].includes(String(action?.task || ''))
+            return CREATIVE_IMAGE_INPUT_TASKS.has(String(action?.task || ''))
                 ? `<div class="describe-vlm-chat-generation-media-empty"><i class="fa-solid fa-triangle-exclamation"></i><span>${escapeHtml(localText('The editing source is unavailable. Attach the image again.', '编辑素材不可用，请重新引用图片。'))}</span></div>`
                 : '';
         }
@@ -2966,12 +3158,11 @@
         };
         const cardTitle = offered
             ? localText('I want to draw this moment', '我想画下这一幕')
-            : action.task === 'multi_image_edit'
-                ? localText('Multi-image edit', '多图编辑')
-                : action.task === 'image_edit'
-                    ? localText('Image edit', '图片编辑')
-                    : localText('Image generation', '生图');
+            : creativeTaskLabel(action.task);
         const offerReason = offered ? offerReasonLabels[String(action.offer_reason || '')] || '' : '';
+        const presetLabel = action.preset_source === 'agent_auto'
+            ? localText('Preset · Agent choice', 'Preset · Agent 本次选择')
+            : 'Preset';
         const offerNote = offered && String(action.offer_text || '').trim()
             ? `<p class="describe-vlm-chat-offer-note">${escapeHtml(action.offer_text)}</p>`
             : '';
@@ -2984,7 +3175,7 @@
   ${renderCreativeMediaInputs(action, actionRef, disabled)}
   <label class="describe-vlm-chat-generation-prompt"><span>${escapeHtml(localText('Prompt', '提示词'))}</span><textarea rows="4" data-describe-vlm-chat-generation-prompt="${escapeHtml(actionRef)}" ${disabled}>${escapeHtml(prompt)}</textarea></label>
   <div class="describe-vlm-chat-generation-options">
-    <label><span>Preset</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
+    <label><span>${escapeHtml(presetLabel)}</span><select data-describe-vlm-chat-generation-preset="${escapeHtml(actionRef)}" ${disabled}>${creativePresetOptions(action)}</select></label>
     <label><span>${escapeHtml(localText('Aspect', '比例'))}</span><select data-describe-vlm-chat-generation-aspect="${escapeHtml(actionRef)}" ${disabled}>${creativeAspectOptions().map((item) => `<option value="${escapeHtml(item.key)}" ${String(item.key) === action.aspect_ratio ? 'selected' : ''}>${escapeHtml(item.key === 'auto' ? localText('Auto', '自适应') : item.key)}</option>`).join('')}</select></label>
     <label><span>${escapeHtml(localText('Images', '数量'))}</span><select data-describe-vlm-chat-generation-count="${escapeHtml(actionRef)}" ${disabled}>${[1, 2, 3, 4].map((count) => `<option value="${count}" ${count === action.image_number ? 'selected' : ''}>${count}</option>`).join('')}</select></label>
   </div>
@@ -3203,11 +3394,40 @@
             persistCreativeAction(true);
             return;
         }
+        const inputCount = Array.isArray(action.media_inputs) ? action.media_inputs.length : 0;
+        const requestedTask = creativeActionTask(action, inputCount);
+        const compatibleEntry = creativeCompatiblePresetEntry(requestedTask, inputCount);
+        const automaticRoute = !['user', 'session_preference'].includes(String(action.preset_source || ''));
+        const shouldPreferReady = automaticRoute
+            && creativePresetModelReadiness(entry) !== 'ready'
+            && creativePresetModelReadiness(compatibleEntry) === 'ready';
+        const shouldPreferAutomatic = automaticRoute
+            && creativePresetRequiresManualInteraction(entry)
+            && !creativePresetRequiresManualInteraction(compatibleEntry);
+        if ((!creativePresetSupportsTask(entry, requestedTask, inputCount) || shouldPreferReady || shouldPreferAutomatic) && action.preset_source !== 'user' && compatibleEntry) {
+            entry = compatibleEntry;
+            action.preset = compatibleEntry.name;
+            action.preset_source = 'agent_auto';
+        }
+        if (!creativePresetSupportsTask(entry, requestedTask, inputCount)) {
+            action.generation.state = 'failed';
+            action.generation.error = CREATIVE_IMAGE_INPUT_TASKS.has(requestedTask)
+                ? localText(
+                    'This Preset cannot edit referenced images. Choose a Scene Image Edit Preset.',
+                    '这个 Preset 不能编辑引用图片，请选择 Scene Image Edit Preset。'
+                )
+                : localText(
+                    'This Preset does not support the requested task.',
+                    '这个 Preset 不支持当前任务。'
+                );
+            persistCreativeAction(true);
+            return;
+        }
         action.preset = entry.name;
         const imageSlots = creativePresetImageSlots(entry).slice(0, creativePresetMaxImages(entry));
         const mediaInputs = clampCreativeActionMediaInputs(action, entry);
         const minImages = creativePresetMinImages(entry);
-        if (['image_edit', 'multi_image_edit'].includes(String(action.task || '')) && !mediaInputs.length) {
+        if (CREATIVE_IMAGE_INPUT_TASKS.has(String(action.task || '')) && !mediaInputs.length) {
             action.generation.state = 'failed';
             action.generation.error = imageSlots.length
                 ? localText('The source image is unavailable. Reference the image and send the edit request again.', '编辑源图不可用，请重新引用图片并发送编辑需求。')
@@ -4231,6 +4451,7 @@
             const before = creativeActionFromRef(ref)?.action?.media_inputs?.length || 0;
             const found = syncCreativeActionFromDom(ref);
             if (found) {
+                found.action.preset_source = 'user';
                 const after = clampCreativeActionMediaInputs(found.action, creativePresetEntry(found.action.preset)).length;
                 persistCreativeAction(true);
                 if (after < before) {

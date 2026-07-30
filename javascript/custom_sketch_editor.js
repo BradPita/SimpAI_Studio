@@ -727,21 +727,47 @@
         return /^data:image\//i.test(String(value || ""));
     }
 
+    function sketchPerformanceMark(event, data = {}) {
+        try {
+            window.SimpAIStudioPerformance?.mark?.(event, data);
+        } catch {
+        }
+    }
+
     async function postSketchCachePayload(payload) {
         if (!payload || (!isDataImageUrl(payload.image) && !isDataImageUrl(payload.mask))) return null;
-        const response = await fetch(SKETCH_CACHE_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                image: isDataImageUrl(payload.image) ? payload.image : "",
-                mask: isDataImageUrl(payload.mask) ? payload.mask : "",
-                width: payload.width,
-                height: payload.height
-            })
+        const startedAt = performance.now();
+        let responseStatus = 0;
+        let succeeded = false;
+        sketchPerformanceMark("sketch.cache.request_start", {
+            has_image: isDataImageUrl(payload.image),
+            has_mask: isDataImageUrl(payload.mask),
+            width: Number(payload.width) || 0,
+            height: Number(payload.height) || 0
         });
-        if (!response.ok) return null;
-        const result = await response.json();
-        return result && result.ok ? result : null;
+        try {
+            const response = await fetch(SKETCH_CACHE_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    image: isDataImageUrl(payload.image) ? payload.image : "",
+                    mask: isDataImageUrl(payload.mask) ? payload.mask : "",
+                    width: payload.width,
+                    height: payload.height
+                })
+            });
+            responseStatus = Number(response.status) || 0;
+            if (!response.ok) return null;
+            const result = await response.json();
+            succeeded = !!(result && result.ok);
+            return succeeded ? result : null;
+        } finally {
+            sketchPerformanceMark("sketch.cache.request_finish", {
+                duration_ms: Math.round((performance.now() - startedAt) * 10) / 10,
+                status: responseStatus,
+                ok: succeeded
+            });
+        }
     }
 
     function transferTypes(transfer) {
@@ -2000,6 +2026,32 @@
             return reference;
         }
 
+        function waitForPayloadCache(task, maxWaitMs) {
+            const waitMs = Number(maxWaitMs);
+            if (!task || !Number.isFinite(waitMs) || waitMs <= 0) return task;
+            const startedAt = performance.now();
+            return new Promise((resolve) => {
+                let settled = false;
+                const finish = (result, timedOut) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    if (timedOut) {
+                        sketchPerformanceMark("sketch.cache.wait_timeout", {
+                            max_wait_ms: waitMs,
+                            elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10
+                        });
+                    }
+                    resolve(result);
+                };
+                const timer = setTimeout(() => finish(false, true), waitMs);
+                Promise.resolve(task).then(
+                    (result) => finish(result, false),
+                    () => finish(false, false)
+                );
+            });
+        }
+
         async function ensureCachedPayload(payload, options = {}) {
             if (!payload) return false;
             const existingText = cachedReferenceText(payload);
@@ -2009,7 +2061,7 @@
             }
             const key = payloadCacheKey(payload);
             if (payloadCacheTask && payloadCacheTaskKey === key) {
-                return payloadCacheTask;
+                return waitForPayloadCache(payloadCacheTask, options.maxWaitMs);
             }
             payloadCacheTaskKey = key;
             payloadCacheTask = postSketchCachePayload(payload)
@@ -2031,7 +2083,7 @@
                         payloadCacheTaskKey = "";
                     }
                 });
-            return payloadCacheTask;
+            return waitForPayloadCache(payloadCacheTask, options.maxWaitMs);
         }
 
         function serialize(options = {}) {
@@ -2066,11 +2118,15 @@
 
         function flush(options = {}) {
             if (!valueDirty && !options.force) {
-                if (options.cache && lastPayload) return ensureCachedPayload(lastPayload, { write: true });
+                if (options.cache && lastPayload) {
+                    return ensureCachedPayload(lastPayload, { write: true, maxWaitMs: options.cacheWaitMs });
+                }
                 return true;
             }
             serialize(options);
-            if (options.cache && lastPayload) return ensureCachedPayload(lastPayload, { write: true });
+            if (options.cache && lastPayload) {
+                return ensureCachedPayload(lastPayload, { write: true, maxWaitMs: options.cacheWaitMs });
+            }
             return true;
         }
 
@@ -2885,27 +2941,49 @@
         window.SimpAISketch.toggleUi = (target) => window.SimpAISketch.get(target)?.toggleUi();
         window.SimpAISketch.flush = (target, options) => window.SimpAISketch.get(target)?.flush(options);
         window.SimpAISketch.flushAll = (options) => {
+            const startedAt = performance.now();
             let ok = true;
             const pending = [];
+            let instanceCount = 0;
             for (const sketch of Array.from(window.SimpAISketch.instances || [])) {
                 if (!sketch?.editor?.isConnected) {
                     window.SimpAISketch.instances.delete(sketch);
                     continue;
                 }
+                instanceCount += 1;
                 try {
                     const result = sketch.flush?.(options);
                     if (result && typeof result.then === "function") {
-                        pending.push(result.catch(() => {
-                            ok = false;
-                        }));
+                        pending.push(Promise.resolve(result).then(
+                            (value) => {
+                                if (value === false) ok = false;
+                            },
+                            () => {
+                                ok = false;
+                            }
+                        ));
                     }
                 } catch {
                     ok = false;
                 }
             }
             if (pending.length) {
-                return Promise.all(pending).then(() => ok);
+                return Promise.all(pending).then(() => {
+                    sketchPerformanceMark("sketch.flush_all_finish", {
+                        duration_ms: Math.round((performance.now() - startedAt) * 10) / 10,
+                        instance_count: instanceCount,
+                        pending_count: pending.length,
+                        ok
+                    });
+                    return ok;
+                });
             }
+            sketchPerformanceMark("sketch.flush_all_finish", {
+                duration_ms: Math.round((performance.now() - startedAt) * 10) / 10,
+                instance_count: instanceCount,
+                pending_count: 0,
+                ok
+            });
             return ok;
         };
         window.SimpAISketch.releaseHidden = releaseHiddenSketches;

@@ -1,4 +1,5 @@
 {
+    "supported_tasks": ["image_pose_transfer"],
     "default_engine": {
         "backend_engine": "Qwen",
             "disvisible": ["input_image_checkbox","refiner_model", "prompt_panel_checkbox", "performance_selection"],

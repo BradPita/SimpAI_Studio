@@ -842,7 +842,7 @@ def gallery_preview_compare_button_update(image_tools_checkbox, state_params):
     )
     return gr_update(
         visible=visible,
-        interactive=ready,
+        interactive=True,
         variant="primary" if ready else "secondary",
     )
 

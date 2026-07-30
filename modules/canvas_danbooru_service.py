@@ -28,6 +28,7 @@ _canvas_danbooru_fast_backend_cache = {}
 _canvas_danbooru_fast_lookup_cache = {}
 _canvas_danbooru_fast_runtime_status_cache = {}
 _canvas_danbooru_fast_build_lock = threading.Lock()
+_canvas_danbooru_autocomplete_lock = threading.Lock()
 
 _CANVAS_DANBOORU_CATEGORY_LABELS = {
     "0": "general",
@@ -3346,58 +3347,63 @@ def _canvas_danbooru_autocomplete_index(source_mode="all"):
     if isinstance(cached, dict) and cached.get("signature") == signature:
         return cached
 
-    all_rows = _canvas_load_danbooru_tag_rows(source_mode=mode)
-    canonical_rows = {
-        str(row.get("tag") or "").strip(): row
-        for row in all_rows
-        if str(row.get("source") or "") == "danbooru_all.csv" and str(row.get("tag") or "").strip()
-    }
-    rows = [
-        row for row in all_rows
-        if mode != "all" or str(row.get("source") or "") in {"danbooru_all.csv", "custom_tags.csv"}
-    ]
-    entries = []
-    prefix_index = defaultdict(list)
-    cjk_index = defaultdict(list)
-    for row in rows:
-        tag = str(row.get("tag") or "").strip()
-        if not tag:
-            continue
-        canonical = canonical_rows.get(tag) or row
-        aliases = []
-        for alias in _canvas_danbooru_aliases(canonical.get("aliases")) + _canvas_danbooru_aliases(row.get("aliases")):
-            if alias not in aliases:
-                aliases.append(alias)
-        translation = _canvas_danbooru_join_pipe_values(canonical.get("translation"), row.get("translation"))
-        group = str(canonical.get("top_group") or canonical.get("group") or row.get("top_group") or row.get("group") or "").strip()
-        sub_group = str(canonical.get("sub_group") or row.get("sub_group") or "").strip()
-        entry = {
-            "row": row,
-            "canonical": canonical,
-            "tag": tag,
-            "aliases": aliases,
-            "translation": translation,
-            "group": group,
-            "sub_group": sub_group,
-        }
-        index = len(entries)
-        entries.append(entry)
-        for value in [tag] + aliases:
-            for key in _canvas_danbooru_autocomplete_prefix_keys(value):
-                prefix_index[key].append(index)
-        cjk_source = "|".join([translation, group, sub_group, str(row.get("path_group") or "")])
-        for char in set(re.findall(r"[\u3400-\u9fff]", cjk_source)):
-            cjk_index[char].append(index)
+    with _canvas_danbooru_autocomplete_lock:
+        cached = _canvas_danbooru_autocomplete_cache.get(mode) if isinstance(_canvas_danbooru_autocomplete_cache, dict) else None
+        if isinstance(cached, dict) and cached.get("signature") == signature:
+            return cached
 
-    result = {
-        "signature": signature,
-        "entries": entries,
-        "prefix_index": dict(prefix_index),
-        "cjk_index": dict(cjk_index),
-        "canonical_rows": canonical_rows,
-    }
-    _canvas_danbooru_autocomplete_cache[mode] = result
-    return result
+        all_rows = _canvas_load_danbooru_tag_rows(source_mode=mode)
+        canonical_rows = {
+            str(row.get("tag") or "").strip(): row
+            for row in all_rows
+            if str(row.get("source") or "") == "danbooru_all.csv" and str(row.get("tag") or "").strip()
+        }
+        rows = [
+            row for row in all_rows
+            if mode != "all" or str(row.get("source") or "") in {"danbooru_all.csv", "custom_tags.csv"}
+        ]
+        entries = []
+        prefix_index = defaultdict(list)
+        cjk_index = defaultdict(list)
+        for row in rows:
+            tag = str(row.get("tag") or "").strip()
+            if not tag:
+                continue
+            canonical = canonical_rows.get(tag) or row
+            aliases = []
+            for alias in _canvas_danbooru_aliases(canonical.get("aliases")) + _canvas_danbooru_aliases(row.get("aliases")):
+                if alias not in aliases:
+                    aliases.append(alias)
+            translation = _canvas_danbooru_join_pipe_values(canonical.get("translation"), row.get("translation"))
+            group = str(canonical.get("top_group") or canonical.get("group") or row.get("top_group") or row.get("group") or "").strip()
+            sub_group = str(canonical.get("sub_group") or row.get("sub_group") or "").strip()
+            entry = {
+                "row": row,
+                "canonical": canonical,
+                "tag": tag,
+                "aliases": aliases,
+                "translation": translation,
+                "group": group,
+                "sub_group": sub_group,
+            }
+            index = len(entries)
+            entries.append(entry)
+            for value in [tag] + aliases:
+                for key in _canvas_danbooru_autocomplete_prefix_keys(value):
+                    prefix_index[key].append(index)
+            cjk_source = "|".join([translation, group, sub_group, str(row.get("path_group") or "")])
+            for char in set(re.findall(r"[\u3400-\u9fff]", cjk_source)):
+                cjk_index[char].append(index)
+
+        result = {
+            "signature": signature,
+            "entries": entries,
+            "prefix_index": dict(prefix_index),
+            "cjk_index": dict(cjk_index),
+            "canonical_rows": canonical_rows,
+        }
+        _canvas_danbooru_autocomplete_cache[mode] = result
+        return result
 
 
 def _canvas_autocomplete_danbooru_tags(query, limit=32, source_mode="all"):
@@ -3419,10 +3425,10 @@ def _canvas_autocomplete_danbooru_tags(query, limit=32, source_mode="all"):
         chars = re.findall(r"[\u3400-\u9fff]", raw_query)
         if chars:
             buckets = [cjk_index.get(char, []) for char in chars[:2]]
-            if len(buckets) > 1 and buckets[0] and buckets[1]:
+            if len(buckets) > 1 and all(buckets):
                 other = set(buckets[1])
                 candidate_indices = [idx for idx in buckets[0] if idx in other]
-            else:
+            elif len(buckets) == 1 and buckets[0]:
                 candidate_indices = list(buckets[0] if buckets else [])
     else:
         keys = set()
@@ -3433,6 +3439,8 @@ def _canvas_autocomplete_danbooru_tags(query, limit=32, source_mode="all"):
         for key in keys:
             candidate_indices.extend(prefix_index.get(key, []))
     if not candidate_indices:
+        if query_has_cjk:
+            return []
         candidate_indices = range(len(entries))
 
     best = {}

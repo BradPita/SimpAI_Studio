@@ -1,4 +1,5 @@
 {
+    "supported_tasks": ["video_person_replace"],
     "default_engine": {
         "backend_engine": "Wan",
         "engine_type": "video",

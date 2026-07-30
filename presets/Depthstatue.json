@@ -1,4 +1,5 @@
 {
+    "supported_tasks": ["image_depth_estimation"],
     "default_engine": {
         "backend_engine": "Comfy",
 	"disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],

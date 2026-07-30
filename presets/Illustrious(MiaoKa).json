@@ -1,5 +1,6 @@
 
 {
+    "supported_tasks": ["text_to_image"],
     "default_engine": {
         "backend_engine": "SDXL",
         "disvisible": ["backend_selection", "performance_selection", "refiner_model"],
@@ -70,4 +71,3 @@
         "controlnet,xinsir_cn_union_sdxl_1.0_promax.safetensors,2513342408,0,"
     ]
 }
-

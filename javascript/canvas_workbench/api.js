@@ -770,10 +770,12 @@
         });
     }
 
-    function danbooruAutocomplete(payload) {
+    function danbooruAutocomplete(payload, options) {
+        const opts = options || {};
         return postJson('/canvas-workbench/danbooru-autocomplete', payload || {}, {
             emptyError: 'empty Danbooru autocomplete response',
-            requestError: 'Danbooru autocomplete failed'
+            requestError: 'Danbooru autocomplete failed',
+            signal: opts.signal
         });
     }
 

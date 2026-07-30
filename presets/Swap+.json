@@ -1,4 +1,6 @@
-{ 
+{
+    "supported_tasks": ["image_object_transfer"],
+    "interaction_requirements": ["mask"],
     "default_engine": {
 	"backend_engine": "Flux",
 	"disvisible": ["input_image_checkbox", "prompt_panel_checkbox", "performance_selection"],
@@ -91,5 +93,3 @@
         "upscale_models,4x-UltraSharp.pth,66961958,0,"
     	]
 }
-
-

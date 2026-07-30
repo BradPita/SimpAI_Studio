@@ -1081,6 +1081,8 @@ def init_nav_bars(state_params, comfyd_active_checkbox, fast_comfyd_checkbox, ca
         state_params.pop("scene_theme", None)
     state_params.update({"task_method": initial_task_method})
     state_params['__preset_prepared'] = initial_preset_prepared
+    state_params['__preset_supported_tasks'] = config.resolve_preset_supported_tasks(initial_config_preset, initial_preset)
+    state_params['__preset_interaction_requirements'] = config.resolve_preset_interaction_requirements(initial_config_preset, initial_preset)
     state_params['__preset_model_list_raw'] = initial_config_preset.get('model_list', []) if isinstance(initial_config_preset, dict) else []
     state_params['__preset_previous_default_model_info'] = {
         'default_model': initial_config_preset.get('default_model', '') if isinstance(initial_config_preset, dict) else '',
@@ -1217,7 +1219,11 @@ def _read_preset_content_silent(preset_name, user_did=None):
         return {}
     try:
         with open(preset_path, "r", encoding="utf-8") as json_file:
-            return json.load(json_file)
+            preset_content = json.load(json_file)
+            if isinstance(preset_content, dict):
+                preset_content["supported_tasks"] = config.resolve_preset_supported_tasks(preset_content, resolved_name)
+                preset_content["interaction_requirements"] = config.resolve_preset_interaction_requirements(preset_content, resolved_name)
+            return preset_content
     except Exception:
         return {}
 
@@ -1544,7 +1550,15 @@ def _build_canvas_scene_schema(scene_frontend):
     }
 
 
-def _build_canvas_media_capability(schema, engine_type="image"):
+def _build_canvas_media_capability(
+    schema,
+    engine_type="image",
+    preset_name="",
+    task_method="",
+    backend_engine="",
+    explicit_supported_tasks=None,
+    explicit_interaction_requirements=None,
+):
     schema = schema if isinstance(schema, dict) else {}
     ordered_image_slots = (
         "scene_canvas_image",
@@ -1571,12 +1585,94 @@ def _build_canvas_media_capability(schema, engine_type="image"):
         declared_min = 0
     max_images = max(0, min(len(image_slots), declared_max))
     min_images = max(0, min(max_images, declared_min))
-    return {
-        "output_type": "video" if str(engine_type or "").strip().lower() == "video" else "image",
+    task_aliases = {
+        "t2i": "text_to_image",
+        "text2image": "text_to_image",
+        "text_to_image": "text_to_image",
+        "edit": "image_edit",
+        "image_edit": "image_edit",
+        "image_to_image": "image_edit",
+        "multi_edit": "multi_image_edit",
+        "multi_image_edit": "multi_image_edit",
+        "t2v": "text_to_video",
+        "i2v": "image_to_video",
+        "v2v": "video_edit",
+        "a2v": "audio_to_video",
+        "v2a": "video_to_audio",
+    }
+    raw_supported_tasks = explicit_supported_tasks
+    if not isinstance(raw_supported_tasks, (list, tuple)):
+        raw_supported_tasks = director.get("supported_tasks") or schema.get("supported_tasks")
+    supported_tasks = []
+    for raw_task in raw_supported_tasks if isinstance(raw_supported_tasks, (list, tuple)) else []:
+        task_key = str(raw_task or "").strip().lower().replace("-", "_").replace(" ", "_")
+        normalized_task = task_aliases.get(task_key, task_key)
+        valid_task = normalized_task[:1].isalpha() and all(char.isalnum() or char == "_" for char in normalized_task)
+        if valid_task and normalized_task not in supported_tasks:
+            supported_tasks.append(normalized_task)
+
+    output_type = "video" if str(engine_type or "").strip().lower() == "video" else "image"
+    if not supported_tasks:
+        descriptor = " ".join(
+            str(value or "").strip().lower()
+            for value in (
+                preset_name,
+                task_method,
+                backend_engine,
+                schema.get("theme_title"),
+            )
+        )
+        edit_markers = (
+            "image edit",
+            "image-edit",
+            "image_edit",
+            "imageediting",
+            "editing",
+            "qwenedit",
+            "qwen_edit",
+            "kleinedit",
+            "klein_edit",
+            "flux2_9b_edit",
+            "kontext",
+            "inpaint",
+            "outpaint",
+            "retouch",
+            "imagerepair",
+            "image repair",
+            "pose editor",
+            "a2r",
+        )
+        if output_type == "video":
+            supported_tasks = ["video_edit"]
+        elif max_images > 0 and any(marker in descriptor for marker in edit_markers):
+            supported_tasks = ["image_edit"]
+            if max_images > 1:
+                supported_tasks.append("multi_image_edit")
+        else:
+            supported_tasks = ["text_to_image"]
+
+    supported_tasks = [
+        task for task in supported_tasks
+        if task not in {"image_edit", "multi_image_edit"}
+        or (task == "image_edit" and max_images >= 1)
+        or (task == "multi_image_edit" and max_images >= 2)
+    ]
+    interaction_requirements = []
+    for raw_requirement in explicit_interaction_requirements if isinstance(explicit_interaction_requirements, (list, tuple)) else []:
+        requirement = str(raw_requirement or "").strip().lower().replace("-", "_").replace(" ", "_")
+        valid_requirement = requirement[:1].isalpha() and all(char.isalnum() or char == "_" for char in requirement)
+        if valid_requirement and requirement not in interaction_requirements:
+            interaction_requirements.append(requirement)
+    capability = {
+        "output_type": output_type,
         "image_slots": image_slots[:max_images],
         "min_images": min_images,
         "max_images": max_images,
+        "supported_tasks": supported_tasks,
     }
+    if interaction_requirements:
+        capability["interaction_requirements"] = interaction_requirements
+    return capability
 
 
 def _build_canvas_lora_defaults(preset_content, backend_params=None):
@@ -1641,7 +1737,7 @@ def _build_preset_store_meta(state, copy_cached=True):
         samples = []
 
     sample_signature = (
-        "canvas_preset_meta_media_capability_v3",
+        "canvas_preset_meta_media_capability_v7",
         *(
             item[0] if isinstance(item, (list, tuple)) and item else item
             for item in samples
@@ -1673,6 +1769,8 @@ def _build_preset_store_meta(state, copy_cached=True):
         engine_type = "image"
         is_scene = False
         task_method = ""
+        explicit_supported_tasks = None
+        explicit_interaction_requirements = None
         schema = {}
         models_config = {}
         resolution_config = {}
@@ -1703,6 +1801,14 @@ def _build_preset_store_meta(state, copy_cached=True):
             has_model_probe = bool(model_list_raw) or _has_preset_model_probe(preset_name, user_did)
             default_engine = preset_content.get("default_engine", {}) if isinstance(preset_content, dict) else {}
             if isinstance(default_engine, dict):
+                explicit_supported_tasks = (
+                    preset_content.get("supported_tasks")
+                    or default_engine.get("supported_tasks")
+                )
+                explicit_interaction_requirements = config.resolve_preset_interaction_requirements(
+                    preset_content,
+                    preset_name,
+                )
                 backend_engine = (
                     default_engine.get("backend_engine")
                     or default_engine.get("engine")
@@ -1737,6 +1843,7 @@ def _build_preset_store_meta(state, copy_cached=True):
                 }
                 scene_frontend = default_engine.get("scene_frontend", {})
                 if isinstance(scene_frontend, dict):
+                    explicit_supported_tasks = scene_frontend.get("supported_tasks") or explicit_supported_tasks
                     schema = _build_canvas_scene_schema(scene_frontend)
                     scene_themes = schema.get("themes", []) if isinstance(schema, dict) else []
                     scene_theme = scene_themes[0] if scene_themes else ""
@@ -1792,7 +1899,15 @@ def _build_preset_store_meta(state, copy_cached=True):
             "scene": bool(is_scene),
             "task_method": str(task_method or ""),
             "schema": schema,
-            "media_capability": _build_canvas_media_capability(schema, engine_type),
+            "media_capability": _build_canvas_media_capability(
+                schema,
+                engine_type,
+                preset_name,
+                task_method,
+                backend_engine,
+                explicit_supported_tasks,
+                explicit_interaction_requirements,
+            ),
             "themes": schema.get("themes", []) if isinstance(schema, dict) else [],
             "models_config": models_config,
             "resolution_config": resolution_config,
@@ -2858,6 +2973,8 @@ def reset_layout_ui(prompt, negative_prompt, state_params, is_generating, inpain
         'is_mobile': state_params["__is_mobile"] })
 
     state_params['__preset_prepared'] = preset_prepared # Cache for reset_layout_values
+    state_params['__preset_supported_tasks'] = config.resolve_preset_supported_tasks(config_preset, resolved_preset)
+    state_params['__preset_interaction_requirements'] = config.resolve_preset_interaction_requirements(config_preset, resolved_preset)
     state_params['__preset_model_list_raw'] = config_preset.get('model_list', []) if isinstance(config_preset, dict) else []
     state_params['__preset_previous_default_model_info'] = {
         'default_model': config_preset.get('default_model', '') if isinstance(config_preset, dict) else '',

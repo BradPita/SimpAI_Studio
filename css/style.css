@@ -16530,6 +16530,30 @@ button[aria-label="Edit"][title="Edit"] {
     min-width: 0;
 }
 
+.describe-vlm-chat-generated-meta {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: rgba(235, 237, 241, 0.72);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.describe-vlm-chat-generated-meta i {
+    color: #f5b82e;
+}
+
+.describe-vlm-chat-generated-meta b {
+    min-width: 0;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.94);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .describe-vlm-chat-generated-media {
     position: relative;
     display: flex;

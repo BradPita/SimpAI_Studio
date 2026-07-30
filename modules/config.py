@@ -1,6 +1,7 @@
 import os
 import json
 import numbers
+import re
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -250,6 +251,199 @@ def get_gpu_arch_str_in_preset_name():
             return '_int4'
     return ''
 
+
+def normalize_preset_supported_tasks(value):
+    aliases = {
+        "t2i": "text_to_image",
+        "text2image": "text_to_image",
+        "i2i": "image_edit",
+        "image_to_image": "image_edit",
+        "multi_edit": "multi_image_edit",
+        "t2v": "text_to_video",
+        "i2v": "image_to_video",
+        "v2v": "video_edit",
+        "a2v": "audio_to_video",
+        "v2a": "video_to_audio",
+        "upscale": "image_upscale",
+        "super_resolution": "image_upscale",
+        "restore": "image_restore",
+        "remove_background": "image_background_removal",
+        "background_removal": "image_background_removal",
+        "remove_object": "image_object_removal",
+        "object_removal": "image_object_removal",
+        "outpaint": "image_outpaint",
+        "relight": "image_relight",
+        "style_transfer": "image_style_transfer",
+        "face_swap": "image_face_swap",
+        "pose_transfer": "image_pose_transfer",
+        "pose_extraction": "image_pose_extraction",
+        "anime_to_real": "image_anime_to_real",
+        "view_synthesis": "image_view_synthesis",
+        "depth_estimation": "image_depth_estimation",
+        "feature_transfer": "image_object_transfer",
+        "object_transfer": "image_object_transfer",
+        "image_feature_transfer": "image_object_transfer",
+        "expression_transfer": "image_expression_transfer",
+    }
+    if isinstance(value, str):
+        source = [item.strip() for item in value.split(",")]
+    elif isinstance(value, (list, tuple)):
+        source = value
+    else:
+        source = []
+    normalized = []
+    for item in source:
+        task = str(item or "").strip().lower().replace("-", "_").replace(" ", "_")
+        task = aliases.get(task, task)
+        if re.fullmatch(r"[a-z][a-z0-9_]{1,63}", task or "") and task not in normalized:
+            normalized.append(task)
+    return normalized
+
+
+def normalize_preset_interaction_requirements(value):
+    if isinstance(value, str):
+        source = [item.strip() for item in value.split(",")]
+    elif isinstance(value, (list, tuple)):
+        source = value
+    else:
+        source = []
+    normalized = []
+    for item in source:
+        requirement = str(item or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if re.fullmatch(r"[a-z][a-z0-9_]{1,63}", requirement or "") and requirement not in normalized:
+            normalized.append(requirement)
+    return normalized
+
+
+def resolve_preset_interaction_requirements(preset_content, preset_name=""):
+    content = preset_content if isinstance(preset_content, dict) else {}
+    engine = content.get("default_engine") if isinstance(content.get("default_engine"), dict) else {}
+    scene = engine.get("scene_frontend") if isinstance(engine.get("scene_frontend"), dict) else {}
+    for declared in (
+        content.get("interaction_requirements"),
+        engine.get("interaction_requirements"),
+        scene.get("interaction_requirements"),
+    ):
+        normalized = normalize_preset_interaction_requirements(declared)
+        if normalized:
+            return normalized
+
+    task_method = scene.get("task_method") or ""
+    if isinstance(task_method, dict):
+        method_text = " ".join(str(item or "") for item in task_method.values())
+    else:
+        method_text = str(task_method or "")
+    descriptor = f"{preset_name} {scene.get('theme_title') or ''} {method_text}".lower()
+    if any(marker in descriptor for marker in ("eraser", "clothing_fp4", "clothing_int4", "feature transfer")):
+        return ["mask"]
+    return []
+
+
+def resolve_preset_supported_tasks(preset_content, preset_name=""):
+    content = preset_content if isinstance(preset_content, dict) else {}
+    engine = content.get("default_engine") if isinstance(content.get("default_engine"), dict) else {}
+    scene = engine.get("scene_frontend") if isinstance(engine.get("scene_frontend"), dict) else {}
+    for declared in (
+        content.get("supported_tasks"),
+        engine.get("supported_tasks"),
+        scene.get("supported_tasks"),
+    ):
+        normalized = normalize_preset_supported_tasks(declared)
+        if normalized:
+            return normalized
+
+    backend_params = engine.get("backend_params") if isinstance(engine.get("backend_params"), dict) else {}
+    raw_method = scene.get("task_method") or backend_params.get("task_method") or ""
+    if isinstance(raw_method, dict):
+        method_text = " ".join(str(item or "") for item in raw_method.values())
+    elif isinstance(raw_method, list):
+        method_text = " ".join(str(item or "") for item in raw_method)
+    else:
+        method_text = str(raw_method or "")
+    descriptor = " ".join(
+        str(item or "").strip().lower()
+        for item in (preset_name, method_text, scene.get("theme_title"))
+    )
+    engine_type = str(engine.get("engine_type") or "image").strip().lower()
+    raw_hidden = scene.get("disvisible") if isinstance(scene.get("disvisible"), list) else []
+    hidden = {str(item or "") for item in raw_hidden}
+    image_slots = [
+        slot for slot in ("scene_canvas_image", "scene_input_image1", "scene_input_image2", "scene_input_image3", "scene_input_image4")
+        if scene and slot not in hidden
+    ]
+
+    if engine_type == "video":
+        if any(marker in descriptor for marker in ("lip sync", "lip_sync", "infinitetalk")):
+            if "av2v" in descriptor:
+                return ["video_audio_to_video", "lip_sync"]
+            return ["image_audio_to_video", "lip_sync"]
+        if any(marker in descriptor for marker in ("foley", "audio_gen", "video to audio")):
+            return ["video_to_audio"]
+        if any(marker in descriptor for marker in ("ia2v", "image+audio")):
+            return ["image_audio_to_video"]
+        if any(marker in descriptor for marker in ("ta2v", "text+audio")):
+            return ["audio_to_video"]
+        if any(marker in descriptor for marker in ("t2v", "text-to-video", "text to video")):
+            return ["text_to_video"]
+        if any(marker in descriptor for marker in ("multi_i2v", "multi-i2v")):
+            return ["image_to_video", "multi_image_to_video"]
+        if any(marker in descriptor for marker in ("i2v", "image-to-video", "image to video")):
+            tasks = ["image_to_video"]
+            if len(image_slots) > 1:
+                tasks.append("multi_image_to_video")
+            return tasks
+        specialized_video_tasks = []
+        video_task_markers = (
+            (("upscale", "super-resolution", "super resolution", "nvidia_vsr"), "video_upscale"),
+            (("frame interpolation", "interpolation"), "video_frame_interpolation"),
+            (("restore", "video_restore"), "video_restore"),
+            (("subtitle", "subtitles_remove"), "video_subtitle_removal"),
+            (("watermark", "watermark_remove"), "video_watermark_removal"),
+            (("outpaint", "video_outpaint"), "video_outpaint"),
+            (("extent", "extend", "video_extend"), "video_extend"),
+            (("remover", "object removal", "object_removal"), "video_object_removal"),
+            (("face swap", "faceswap", "face_swap", "sam3_face"), "video_face_swap"),
+            (("motion transfer", "motion_transfer", "animate_pose"), "video_motion_transfer"),
+            (("object replacement", "sam3_replace"), "video_object_replace"),
+            (("person replacement", "character replacement", "sam3_person"), "video_person_replace"),
+            (("expression", "liveportrait"), "video_expression_transfer"),
+        )
+        for markers, task in video_task_markers:
+            if any(marker in descriptor for marker in markers):
+                specialized_video_tasks.append(task)
+        if specialized_video_tasks:
+            return specialized_video_tasks
+        return ["video_edit"]
+
+    if not scene or not image_slots:
+        return ["text_to_image"]
+    if "cloud_image_generate" in descriptor:
+        return ["text_to_image", "image_edit", "multi_image_edit"]
+    specialized_image_tasks = (
+        (("ttp", "upscale", "super-resolution", "super resolution"), "image_upscale"),
+        (("imagerepair", "image repair", "restore"), "image_restore"),
+        (("removebg", "remove background", "background removal"), "image_background_removal"),
+        (("outpaint",), "image_outpaint"),
+        (("relight", "anglelight", "angle light"), "image_relight"),
+        (("styletransfer", "style transfer"), "image_style_transfer"),
+        (("swapface", "face swap"), "image_face_swap"),
+        (("pose editor", "qwenpose", "kleinpose"), "image_pose_transfer"),
+        (("onekeypose", "dw_pose", "sdpose"), "image_pose_extraction"),
+        (("a2r", "anime-to-real", "anime to real"), "image_anime_to_real"),
+        (("multiangle", "multi-angle", "multi angle"), "image_view_synthesis"),
+        (("depthstatue", "depth map", "depth estimation"), "image_depth_estimation"),
+        (("clothing_fp4", "clothing_int4", "feature transfer", "object transfer"), "image_object_transfer"),
+        (("liveportrait", "expression"), "image_expression_transfer"),
+        (("eraser", "remove anything", "object removal"), "image_object_removal"),
+    )
+    for markers, task in specialized_image_tasks:
+        if any(marker in descriptor for marker in markers):
+            return [task]
+    tasks = ["image_edit"]
+    if len(image_slots) > 1:
+        tasks.append("multi_image_edit")
+    return tasks
+
 def try_get_preset_content(preset, user_did=None):
     if isinstance(preset, str):
         try:
@@ -279,6 +473,9 @@ def try_get_preset_content(preset, user_did=None):
                         json_content['default_engine']['backend_engine'] = 'Fooocus'
                     elif not has_default_engine:
                         json_content['default_engine'] = {'backend_engine': 'Fooocus'}
+
+                    json_content["supported_tasks"] = resolve_preset_supported_tasks(json_content, preset)
+                    json_content["interaction_requirements"] = resolve_preset_interaction_requirements(json_content, preset)
 
                     return json_content
             else:

@@ -10,6 +10,7 @@
     const HEARTBEAT_INTERVAL_MS = 10000;
     const EVENT_LOOP_INTERVAL_MS = 1000;
     const POST_DRAG_WINDOW_MS = 5000;
+    const GENERATION_DIAGNOSTIC_WINDOW_MS = 45000;
     const SLOW_EVENT_THRESHOLD_MS = 50;
     const PASSIVE_SLOW_EVENT_NAMES = new Set([
         'pointerover', 'pointerenter', 'pointerout', 'pointerleave',
@@ -627,6 +628,10 @@
     function handleFileInputChange(event) {
         const input = event.target;
         if (!(input instanceof HTMLInputElement) || input.type !== 'file') return;
+        diagnosticWindowUntil = Math.max(
+            diagnosticWindowUntil,
+            performance.now() + GENERATION_DIAGNOSTIC_WINDOW_MS,
+        );
         mark('file_input.change', {
             target: componentFromEvent(event),
             file_count: input.files?.length || 0,
@@ -642,6 +647,7 @@
     function resourceCategory(resourceName) {
         try {
             const pathname = new URL(resourceName, document.baseURI).pathname.toLowerCase();
+            if (pathname.includes('/simpai/sketch-cache')) return 'sketch_cache';
             if (pathname.includes('/upload')) return 'upload';
             if (pathname.includes('/queue/')) return 'gradio_queue';
             if (pathname.includes('/run/') || pathname.includes('/predict')) return 'gradio_run';
@@ -651,6 +657,23 @@
         } catch (_) {
             return 'unparsed';
         }
+    }
+
+    function resourcePathname(resourceName, category) {
+        try {
+            const pathname = new URL(resourceName, document.baseURI).pathname;
+            if (category === 'file' || pathname.toLowerCase().includes('/file=')) return '/file=<redacted>';
+            return pathname.slice(0, 240);
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function resourcePhaseDuration(startValue, endValue) {
+        const start = Number(startValue || 0);
+        const end = Number(endValue || 0);
+        if (!(start > 0) || !(end >= start)) return null;
+        return round(end - start, 1);
     }
 
     function installPerformanceObservers() {
@@ -707,9 +730,17 @@
                     if (category === 'performance_log') continue;
                     mark('performance.resource', {
                         category,
+                        pathname: resourcePathname(entry.name, category),
                         initiator_type: String(entry.initiatorType || '').slice(0, 80),
                         start_ms: round(entry.startTime, 1),
                         duration_ms: round(entry.duration, 1),
+                        fetch_start_ms: round(entry.fetchStart, 1),
+                        request_start_ms: round(entry.requestStart, 1),
+                        response_start_ms: round(entry.responseStart, 1),
+                        response_end_ms: round(entry.responseEnd, 1),
+                        request_queue_ms: resourcePhaseDuration(entry.fetchStart, entry.requestStart),
+                        response_wait_ms: resourcePhaseDuration(entry.requestStart, entry.responseStart),
+                        response_read_ms: resourcePhaseDuration(entry.responseStart, entry.responseEnd),
                         transfer_bytes: Number(entry.transferSize || 0),
                         encoded_bytes: Number(entry.encodedBodySize || 0),
                         decoded_bytes: Number(entry.decodedBodySize || 0),
@@ -789,6 +820,33 @@
             finishDrag('dragend');
         }, true);
         document.addEventListener('change', handleFileInputChange, true);
+        document.addEventListener('pointerdown', (event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            const control = target?.closest?.('#generate_button, #stop_button, #skip_button');
+            if (!control) return;
+            diagnosticWindowUntil = Math.max(
+                diagnosticWindowUntil,
+                performance.now() + GENERATION_DIAGNOSTIC_WINDOW_MS,
+            );
+            mark('generation.control_pointerdown', {
+                control: String(control.id || '').slice(0, 80),
+                disabled: Boolean(control.disabled || control.getAttribute?.('aria-disabled') === 'true'),
+                target: describeElement(target),
+                ui: currentUiState(),
+            }, { urgent: true });
+        }, true);
+        document.addEventListener('click', (event) => {
+            const target = event.target instanceof Element ? event.target : null;
+            const control = target?.closest?.('#generate_button, #stop_button, #skip_button');
+            if (!control) return;
+            mark('generation.control_click', {
+                control: String(control.id || '').slice(0, 80),
+                disabled: Boolean(control.disabled || control.getAttribute?.('aria-disabled') === 'true'),
+                default_prevented_at_capture: Boolean(event.defaultPrevented),
+                target: describeElement(target),
+                ui: currentUiState(),
+            }, { urgent: true });
+        }, true);
         document.addEventListener('visibilitychange', () => {
             mark('page.visibility', { visibility: document.visibilityState }, { urgent: document.hidden });
             if (document.hidden && activeDrag) finishDrag('visibility-hidden');
