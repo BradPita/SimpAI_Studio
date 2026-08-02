@@ -11818,17 +11818,6 @@ async def simpai_sketch_cache_endpoint(payload: dict = Body(...)):
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
 
-@app.post("/simpai/pmplus-whoami")
-async def simpai_pmplus_whoami_endpoint(request: Request):
-    """PM Plus 跨进程身份查询：用请求自带 Cookie(User-Agent) 解析当前 sstoken 对应的 user_did。
-    仅回传请求者自身的身份，供 PM Plus 专案栏自动选取帐号。"""
-    try:
-        did = _get_request_identity_did(request) or ""
-    except Exception:
-        did = ""
-    return JSONResponse({"ok": True, "did": did})
-
-
 def _canvas_workbench_standalone_system_params(request: Request):
     query = request.query_params if request is not None else {}
     try:
